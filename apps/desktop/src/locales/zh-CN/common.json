@@ -82,6 +82,7 @@
   "sessionMenu": {
     "open": "打开",
     "rename": "重命名",
+    "regenerateTitle": "重新生成标题",
     "archive": "归档",
     "unarchive": "取消归档",
     "copyId": "拷贝任务 ID",

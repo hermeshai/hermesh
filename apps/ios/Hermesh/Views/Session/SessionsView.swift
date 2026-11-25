@@ -39,7 +39,7 @@ struct MenuSessionRow: View {
                     Text(session.displayTitle)
                         .foregroundStyle(session.status == .archived ? .secondary : .primary)
                         .lineLimit(1)
-                        .shimmer(session.isActive && !session.needsAttention, paused: !(model.drawerOpen || model.menuInView))
+                        .shimmer((session.isActive && !session.needsAttention) || session.titleGenerating, paused: !(model.drawerOpen || model.menuInView))
                         .frame(maxWidth: .infinity, alignment: .leading)
                     mark
                 }
@@ -98,6 +98,8 @@ struct SessionActions: View {
 
     var body: some View {
         Button("Rename", systemImage: "pencil") { renaming = true }
+        Button("Regenerate Title", systemImage: "arrow.trianglehead.2.clockwise") { Task { await model.regenerateTitle(session) } }
+            .disabled(session.titleGenerating)
         if session.status == .archived {
             Button("Unarchive", systemImage: "tray.and.arrow.up") { Task { await model.setArchived(session, false) } }
         } else {

@@ -499,7 +499,7 @@ func (o *Owner) SetHerAssistantMode(ctx context.Context, machineID, botID, mode 
 		return err
 	}
 	return onBot(ctx, h, botID, func(conn, session string) error {
-		return herOp(ctx, h, conn, session, map[string]any{"type": "set_permission_mode", "mode": mode})
+		return herOp(ctx, h, conn, session, "", map[string]any{"type": "set_permission_mode", "mode": mode})
 	})
 }
 
@@ -595,12 +595,12 @@ func herResult(r *herv1.Response) ([]byte, error) {
 
 // herOp sends op on the conversation session, which the connection conn
 // opened.
-func herOp(ctx context.Context, h herMachine, conn, session string, op any) error {
+func herOp(ctx context.Context, h herMachine, conn, session, locale string, op any) error {
 	params, err := json.Marshal(map[string]any{"session_id": session, "op": op})
 	if err != nil {
 		return err
 	}
-	res, err := h.HerCall(ctx, &herv1.CallRequest{ConnectionId: conn, Request: &herv1.Request{Method: "session/op", Params: params}})
+	res, err := h.HerCall(ctx, &herv1.CallRequest{ConnectionId: conn, Request: &herv1.Request{Method: "session/op", Params: params}, Locale: locale})
 	if err != nil {
 		return err
 	}
@@ -712,7 +712,7 @@ func (o *Owner) HerSend(ctx context.Context, req *localv1.HerSendRequest) (*loca
 	fresh := w == nil
 	if fresh { // else a send tried again: the one kept goes
 		w = &localv1.HerWaiting{Id: id, MachineId: req.MachineId, BotId: req.BotId, Text: req.Text,
-			LocalPaths: slices.Clone(req.LocalPaths), CreatedAt: timestamppb.Now(), Reply: req.Reply}
+			LocalPaths: slices.Clone(req.LocalPaths), CreatedAt: timestamppb.Now(), Reply: req.Reply, Locale: req.Locale}
 		if err := o.keepPictures(w, req.Pictures); err != nil {
 			return nil, err
 		}
@@ -867,7 +867,7 @@ func (o *Owner) herDeliver(ctx context.Context, w *localv1.HerWaiting, on herCon
 	octx, cancel := context.WithTimeout(ctx, herAnswerWithin)
 	defer cancel()
 	if on.conn != "" && on.session != "" {
-		err := herOp(octx, h, on.conn, on.session, op)
+		err := herOp(octx, h, on.conn, on.session, w.Locale, op)
 		if err == nil || errors.Is(err, errHerConsent) || ctx.Err() != nil || octx.Err() != nil || tunnelError(err) {
 			return o.herLate(ctx, octx, h, err)
 		}
@@ -875,7 +875,7 @@ func (o *Owner) herDeliver(ctx context.Context, w *localv1.HerWaiting, on herCon
 		// conversation. One of its own says.
 	}
 	err = onBot(octx, h, w.BotId, func(conn, session string) error {
-		return herOp(octx, h, conn, session, op)
+		return herOp(octx, h, conn, session, w.Locale, op)
 	})
 	return o.herLate(ctx, octx, h, err)
 }

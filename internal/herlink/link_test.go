@@ -94,6 +94,25 @@ func TestArguments(t *testing.T) {
 		t.Error("a start without a prompt")
 	}
 
+	// Client UI locale recorded on the link is injected into session_start,
+	// cannot be forged by tool arguments, and persists across restarts.
+	l.SetLocale("zh_CN.UTF-8")
+	args, err = l.arguments(start, "Bot 1", "call_8", json.RawMessage(`{"project":"mini/app","prompt":"fix race","locale":"fr"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(args, " "); !strings.Contains(got, "--locale=zh-CN") || strings.Contains(got, "--locale=fr") {
+		t.Errorf("session_start locale injection: %q", got)
+	}
+	reloaded := New(machine.HerLinkConfig{DataDir: l.cfg.DataDir}).(*Link)
+	args, err = reloaded.arguments(start, "Bot 1", "call_9", json.RawMessage(`{"project":"mini/app","prompt":"fix race"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(args, " "); !strings.Contains(got, "--locale=zh-CN") {
+		t.Errorf("reloaded session_start locale: %q", got)
+	}
+
 	send, _ := find("session_send")
 	args, err = l.arguments(send, "Bot 1", "c", json.RawMessage(`{"session_id":"s_abc","message":"one more test"}`))
 	if err != nil {

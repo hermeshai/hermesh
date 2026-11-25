@@ -24,6 +24,9 @@ func (l *Local) HerOpen(ctx context.Context, req *herv1.OpenRequest, send func(*
 
 // HerCall is HerService.Call.
 func (l *Local) HerCall(ctx context.Context, req *herv1.CallRequest) (*herv1.CallResponse, error) {
+	if req.GetLocale() != "" {
+		l.n.setHerLocale(req.GetLocale())
+	}
 	h, err := l.n.herHost()
 	if err != nil {
 		return nil, err

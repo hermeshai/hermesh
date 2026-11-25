@@ -364,9 +364,9 @@ test("a row's ⋯ menu renames in place, archives, and deletes once confirmed, i
     return page.getByRole("menu", { name: "更多操作" });
   };
 
-  // ⋯ in place of the archive button: rename, archive, then delete after a line.
+  // ⋯ in place of the archive button: rename, regenerate title, archive, then delete after a line.
   let menu = await more("改个名字");
-  await expect(menu.getByRole("menuitem")).toHaveText(["重命名", "归档", "删除…"]);
+  await expect(menu.getByRole("menuitem")).toHaveText(["重命名", "重新生成标题", "归档", "删除…"]);
   await snap(page, "row-menu");
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);

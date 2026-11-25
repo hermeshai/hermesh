@@ -36,9 +36,12 @@ type Driver struct {
 	DisableHotSwitch bool
 	DisableSteer     bool
 	DisableResume    bool
+	EnableTitleGen   bool
+	TitleFunc        func(ctx context.Context, req runtime.TitleGenRequest) (runtime.TitleGenResult, error)
 
 	mu         sync.Mutex
 	startSpecs []runtime.StartSpec
+	setTitles  []string
 	sessionSeq atomic.Uint64
 }
 
@@ -166,6 +169,13 @@ type session struct {
 
 func (s *session) Events() <-chan runtime.Event { return s.events }
 func (s *session) Alive() bool                  { return s.alive.Load() }
+
+func (s *session) SetTitle(_ context.Context, title string) error {
+	s.drv.mu.Lock()
+	s.drv.setTitles = append(s.drv.setTitles, title)
+	s.drv.mu.Unlock()
+	return nil
+}
 
 func (s *session) SetSelection(_ context.Context, sel *sessionv1.ModelSelection) error {
 	if s.drv.DisableHotSwitch {

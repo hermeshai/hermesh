@@ -36,6 +36,7 @@ import {
   findProviderInstance,
   groupSteps,
   isSessionRunningOrWaiting,
+  language,
   pendingRequestOf,
   projectOnMachine,
   providerUnusable,
@@ -415,6 +416,7 @@ export function SessionPage() {
         modelSelection: modelSel.instanceId ? modelSel : undefined,
         runtimeMode: clampedMode,
         interactionMode,
+        locale: language(),
       };
       const job = sends.current.then(() => sessionApi.dispatchMessage(req));
       sends.current = job.catch(() => {});
@@ -437,6 +439,7 @@ export function SessionPage() {
       initialPrompt: text,
       attachments,
       commandId: crypto.randomUUID(),
+      locale: language(),
     };
     setPrompt("");
     setAttachments([]);
