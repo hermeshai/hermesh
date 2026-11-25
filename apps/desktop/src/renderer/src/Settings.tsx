@@ -9,7 +9,6 @@ import { SheetHost } from "./Sheets";
 import { settingsRoute, settingsUp, type SettingsPage } from "./settingsRoute";
 import { useNow, useStore, type Store } from "./store";
 import { Account } from "./settings/Account";
-import { AskSheet, type Ask } from "./settings/common";
 import { Environment, addEnvironmentMenu, envItemTitle, envTitle, machineIcon, useDaemon } from "./settings/Environment";
 import { General } from "./settings/General";
 import { Grants } from "./settings/Grants";
@@ -37,7 +36,6 @@ export function SettingsWindow() {
   const [page, setPage] = useState<SettingsPage>(start.page);
   const [item, setItem] = useState(start.item);
   const [forward, setForward] = useState<string[]>([]);
-  const [ask, setAsk] = useState<Ask | null>(null);
   // A machine only sets what is this Mac's: no grants, and no other machine.
   const only = st.status?.machineOnly === true;
   const shown: SettingsPage = only && page === "grants" ? "general" : page;
@@ -80,12 +78,11 @@ export function SettingsWindow() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
-      if (ask) setAsk(null);
-      else if (!st.sheet) window.close();
+      if (!st.sheet) window.close();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [ask, st.sheet]);
+  }, [st.sheet]);
 
   const nav = (p: "general" | "notifications" | "grants", icon: string, extra?: React.ReactNode) => (
     <button className={`nav-i ${p === shown ? "sel" : ""}`} aria-current={p === shown ? "page" : undefined} onClick={() => open(p)}>
@@ -95,15 +92,21 @@ export function SettingsWindow() {
     </button>
   );
   const user = window.hermesh?.userName || "—";
+  const out = !only && (!st.status?.initialized || st.status.signedOut);
   return (
     <div className="settings">
       <aside className="side set-side">
         <div className="set-side-top drag" />
         <nav className="side-nav" aria-label={t("title")}>
           <button className={`set-me ${shown === "account" ? "sel" : ""}`} aria-label={t(only ? "pages.accountOnly" : "pages.account")} aria-current={shown === "account" ? "page" : undefined} onClick={() => open("account")}>
-            <span className="av me" aria-hidden="true">{user.slice(0, 1).toUpperCase()}</span>
+            {/* Without an account: a figure and "Not signed in" (docs/cold-start-prd.md §7.1). */}
+            {out ? (
+              <span className="av me out" aria-hidden="true"><Icon name="user" /></span>
+            ) : (
+              <span className="av me" aria-hidden="true">{user.slice(0, 1).toUpperCase()}</span>
+            )}
             <span>
-              <b>{user}</b>
+              <b>{out ? t("account.notSignedIn") : user}</b>
               <small>{t(only ? "pages.accountOnly" : "pages.account")}</small>
             </span>
           </button>
@@ -142,11 +145,10 @@ export function SettingsWindow() {
           {shown === "general" && <General />}
           {shown === "notifications" && <Notifications />}
           {shown === "grants" && <Grants open={item} select={go} />}
-          {shown === "account" && <Account ask={setAsk} />}
+          {shown === "account" && <Account />}
           {shown === "env" && <Environment key={envId} item={resolved} go={go} />}
         </div>
       </main>
-      {ask && <AskSheet ask={ask} close={() => setAsk(null)} />}
       <SheetHost />
       <ToastView />
     </div>

@@ -152,6 +152,7 @@ export function AddDeviceSheet() {
   const { t } = useTranslation("sheets");
   const st = useStore();
   const addr = st.status?.connectAddress ?? "";
+  const signedIn = !!st.status?.initialized && !st.status.signedOut;
   const [before] = useState(() => new Set(st.pairings.map((p) => p.code)));
   const arrived = st.pairings.find((p) => p.kind === PairingKind.DEVICE && !before.has(p.code))?.code;
   useWaitForPairings();
@@ -163,35 +164,46 @@ export function AddDeviceSheet() {
     navigator.clipboard.writeText(addr).catch(() => {});
     st.show(t("copied"));
   };
+  // iPhone, or another computer with the app (docs/cold-start-prd.md §7.3): three steps, the
+  // second for an own server with this account's connection address.
+  const step = (n: number, text: string) => (
+    <div className="frow add-step">
+      <span className="add-num" aria-hidden="true">{n}</span>
+      <div className="ft">{text}</div>
+    </div>
+  );
+  const own = signedIn && !st.status?.hosted;
   return (
     <>
       <h3 id="sheet-title">{t("addDevice.title")}</h3>
       <p className="sub">{t("addDevice.sub")}</p>
-      <div className="fhead">{t("addDevice.step1")}</div>
-      {st.status?.hosted ? (
-        <p className="sub">{t("addDevice.hosted")}</p>
-      ) : (
-        <>
-          <p className="sub">{t("addDevice.selfHosted")}</p>
-          <div className="msgbox sel-text" style={{ paddingRight: 80 }}>
-            {addr}
-            <button className="btn sm" onClick={copy}>
-              <Icon name="copy" />
-              {t("copy")}
-            </button>
-          </div>
-        </>
-      )}
-      <div className="fhead" style={{ marginTop: 14 }}>{t("addDevice.step2")}</div>
-      <div className="waitline">
-        <Mark size={40} variant="wait" />
-        <div>
-          <b>{t("addDevice.waiting")}</b>
-          <span>{t("addDevice.waitingDetail")}</span>
-        </div>
+      <div className="fgroup">
+        {step(1, t("addDevice.step1"))}
+        {step(2, own ? t("addDevice.step2Own") : t("addDevice.step2"))}
+        {step(3, t("addDevice.step3"))}
       </div>
+      {own && (
+        <div className="msgbox sel-text" style={{ paddingRight: 80, marginTop: 10 }}>
+          {addr}
+          <button className="btn sm" onClick={copy}>
+            <Icon name="copy" />
+            {t("copy")}
+          </button>
+        </div>
+      )}
+      <p className="sheet-note">{t("addDevice.note")}</p>
       <div className="sheet-foot">
-        <button className="btn" onClick={() => st.set({ sheet: null })}>{t("done")}</button>
+        {signedIn ? (
+          <>
+            <span className="left add-wait">{t("addDevice.waiting")}</span>
+            <button className="btn primary" onClick={() => st.set({ sheet: null })}>{t("done")}</button>
+          </>
+        ) : (
+          <>
+            <button className="btn" onClick={() => st.set({ sheet: null })}>{t("cancel")}</button>
+            <button className="btn primary" onClick={() => st.set({ sheet: { kind: "signIn", way: "official" } })}>{t("needSignIn.signIn")}</button>
+          </>
+        )}
       </div>
     </>
   );

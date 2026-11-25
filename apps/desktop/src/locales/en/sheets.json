@@ -25,14 +25,16 @@
     "enterCode": "Enter Pairing Code…"
   },
   "addDevice": {
-    "title": "Add Trusted Device",
-    "sub": "Once a new device joins, it can approve connection requests too. Remove a lost device from another one.",
-    "step1": "1. Install and open Hermesh on the new Mac",
-    "hosted": "Sign in with the same account.",
-    "selfHosted": "Click “Use Your Own Server…”, then “Join it…”, and enter this connection address:",
-    "step2": "2. Verify here, then enter the two digits on the new Mac",
-    "waiting": "Waiting for the new device to send its request…",
-    "waitingDetail": "Its join request will pop up: approve if the verification codes match, then enter the two digits shown here on the new Mac."
+    "title": "Add a Device",
+    "sub": "An iPhone, or another computer with Hermesh.",
+    "step1": "Install Hermesh on that device",
+    "step2": "Sign in with the same account",
+    "step2Own": "Choose “Use Your Own Server…”, then “Join it…”, and enter this connection address:",
+    "step3": "Come back here and approve it with Touch ID",
+    "step3_win": "Come back here and approve it with Windows Hello",
+    "step3_linux": "Come back here and approve it with your system password",
+    "note": "It reaches this Mac from anywhere, and cloud assistants and other computers too.",
+    "waiting": "Waiting for it to connect…"
   },
   "addProject": {
     "added": "Added project “{{name}}”",
@@ -289,5 +291,14 @@
     "done": "Her is off on “{{name}}”",
     "erased": "Her is off on “{{name}}”, and her data is erased",
     "offline": "“{{name}}” is offline, so Her’s data stays on it."
+  },
+  "needSignIn": {
+    "newGrant": "Connecting an agent needs an account",
+    "addMachine": "Adding an environment needs an account",
+    "enterCode": "Entering a pairing code needs an account",
+    "body": "Sign in to a Hermesh account so other devices and agents can reach this Mac.",
+    "body_win": "Sign in to a Hermesh account so other devices and agents can reach this PC.",
+    "body_linux": "Sign in to a Hermesh account so other devices and agents can reach this computer.",
+    "signIn": "Sign In…"
   }
 }

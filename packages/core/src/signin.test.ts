@@ -10,6 +10,7 @@ describe("sign-in", () => {
   test("the browser starts on the center's app-login page", () => {
     expect(appLoginURL("https://hermesh.io/", "abc")).toBe("https://hermesh.io/app-login?challenge=abc");
     expect(appLoginURL(" http://127.0.0.1:8080 ", "a-b_c")).toBe("http://127.0.0.1:8080/app-login?challenge=a-b_c");
+    expect(appLoginURL("https://hermesh.io", "abc", ["o_1", "o_2"])).toBe("https://hermesh.io/app-login?challenge=abc&owners=o_1%2Co_2");
     expect(() => appLoginURL("hermesh.io", "x")).toThrow("中心地址无效");
     expect(() => appLoginURL("file:///etc", "x")).toThrow("中心地址无效");
   });

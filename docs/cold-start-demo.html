@@ -1,0 +1,924 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="ink">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>冷启动与账号 · 原型</title>
+<style>
+:root{--font:"Google Sans Flex","Google Sans",-apple-system,BlinkMacSystemFont,"PingFang SC",system-ui,sans-serif;--mono:"Google Sans Code",ui-monospace,"SF Mono",Menlo,monospace;--ease:cubic-bezier(.2,.8,.2,1)}
+html{
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--page-bd:rgba(255,255,255,.08);
+  --win:#1b1b1f;--side:#252529;--grp:#2a2a2e;--grp-bd:rgba(255,255,255,.05);
+  --l1:rgba(255,255,255,.9);--l2:rgba(255,255,255,.55);--l3:rgba(255,255,255,.32);--l4:rgba(255,255,255,.14);
+  --sep:rgba(255,255,255,.08);--fill:rgba(255,255,255,.05);--fill2:rgba(255,255,255,.085);--fill3:rgba(255,255,255,.14);
+  --side-sel:rgba(255,255,255,.1);--accent:#4a66ff;--accent-t:#8fa2ff;--accent-bg:rgba(91,121,255,.16);
+  --green:#3fcf86;--orange:#f0a64a;--red:#ff6670;
+  --btn:rgba(255,255,255,.13);--btn-sh:0 0 0 .5px rgba(255,255,255,.06);
+  --menu:#2c2c30;--menu-bd:rgba(255,255,255,.12);--scrim:rgba(0,0,0,.4);
+  --shadow-win:0 0 0 .5px rgba(255,255,255,.14),0 24px 70px rgba(0,0,0,.6),0 8px 22px rgba(0,0,0,.35);
+  --t-blue:#56627c;--t-slate:#5c6470;--t-sage:#5a6e62;--t-sand:#786b58;--t-plum:#6a5c72;--t-rose:#785c5c;
+  --aurora-0:#22e1c9;--aurora-1:#3e7bff;--aurora-2:#7b61ff;--glow:.3;--grid:0;--grid-c:rgba(255,255,255,.07);
+  --cta:var(--accent);--cta-fg:#fff;--amb:#9fb0ff;
+}
+/* 墨黑 (locked, docs/cold-start-prd.md §4): the website's own look. Near black, hairlines, a white button, colour only where something moves. */
+[data-theme=ink]{
+  --page:#040405;--win:#09090b;--side:#0e0e11;--grp:#131316;--grp-bd:rgba(255,255,255,.09);
+  --menu:#17171a;--aurora-0:#0891b2;--aurora-1:#2f6bf0;--aurora-2:#6d3cf0;--accent:#3d5bff;--accent-t:#9db0ff;
+  --glow:.2;--cta:#fff;--cta-fg:#0a0a0b;--amb:#ffffff;
+  --t-blue:#2a2d36;--t-slate:#2a2a2f;--t-sage:#262b28;--t-sand:#2d2a26;--t-plum:#2b2830;--t-rose:#2f2828;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:13px/1.45 var(--font);-webkit-font-smoothing:antialiased;padding-bottom:80px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:disabled{cursor:default}
+svg{display:block}
+p,h1,h2,ul{margin:0;padding:0}
+a{color:var(--accent-t);text-decoration:none}
+
+/* The page around the window */
+.top{max-width:1100px;margin:0 auto;padding:24px 24px 0;display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap}
+.top h1{font-size:20px;font-weight:650}
+.top p{color:var(--page-fg2);font-size:13px;margin-top:4px;max-width:680px}
+.ctl{margin-left:auto;display:flex;gap:12px;align-items:center}
+.seg{display:inline-flex;background:var(--fill2);border-radius:999px;padding:2px;gap:1px}
+.seg button{height:24px;padding:0 12px;border-radius:999px;font-size:12.5px}
+.seg button.on{background:var(--btn);box-shadow:0 1px 2px rgba(0,0,0,.14)}
+.steps{max-width:1100px;margin:18px auto 0;padding:0 24px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.steps button{height:28px;padding:0 12px 0 6px;border-radius:999px;font-size:12.5px;color:var(--page-fg2);display:inline-flex;gap:7px;align-items:center;background:var(--fill)}
+.steps button i{width:18px;height:18px;border-radius:50%;background:var(--fill3);font-style:normal;font-size:11px;display:flex;align-items:center;justify-content:center}
+.steps button.on{background:var(--accent-bg);color:var(--page-fg)}
+.steps button.on i{background:var(--cta);color:var(--cta-fg)}
+.steps .gap{width:1px;height:16px;background:var(--page-bd);margin:0 4px}
+.cap{max-width:1100px;margin:12px auto 0;padding:0 24px;font-size:13px;color:var(--page-fg2);min-height:22px}
+.stage{display:flex;justify-content:center;padding:14px 24px 10px;min-height:690px;align-items:flex-start}
+.notes{max-width:980px;margin:0 auto;padding:0 24px}
+.notes h2{font-size:15px;font-weight:650;margin:28px 0 8px}
+.notes ul{padding-left:18px;color:var(--page-fg2);font-size:13px;line-height:1.75}
+.notes li b{color:var(--page-fg);font-weight:600}
+.notes table{border-collapse:collapse;width:100%;font-size:12.5px;color:var(--page-fg2)}
+.notes th,.notes td{text-align:left;vertical-align:top;padding:7px 14px 7px 0;border-top:.5px solid var(--page-bd);line-height:1.55}
+.notes th{color:var(--page-fg);font-weight:600;border-top:0}
+.notes td:first-child{color:var(--page-fg);font-weight:600;white-space:nowrap}
+
+/* The window: its size moves between the first run and the main window; its content fades out and comes in. */
+.win{border-radius:12px;overflow:hidden;box-shadow:var(--shadow-win);background:var(--win);position:relative;color:var(--l1);transition:width .75s var(--ease),height .75s var(--ease)}
+.win.ob{width:720px;height:660px}
+.win.mainw{width:1000px;height:660px}
+.win.set{width:880px;height:640px}
+.inner{position:absolute;inset:0;transition:opacity .16s ease,transform .16s ease}
+.inner.ob{display:flex;flex-direction:column}
+.inner.mainw{display:grid;grid-template-columns:232px minmax(0,1fr)}
+.inner.set{display:grid;grid-template-columns:210px minmax(0,1fr)}
+.inner.leaving{opacity:0;transform:scale(.985)}
+.entering .in{animation:rise .7s var(--ease) backwards;animation-delay:calc(var(--i,0) * 80ms + var(--d,0ms))}
+@keyframes rise{from{opacity:0;transform:translateY(14px);filter:blur(6px)}}
+
+/* The aurora behind the first run: two lights that move with each step. */
+.aurora{position:absolute;inset:0;pointer-events:none;overflow:hidden;animation:drift 12s ease-in-out infinite alternate}
+.aurora i{position:absolute;left:50%;top:50%;width:460px;height:460px;margin:-230px;border-radius:50%;filter:blur(80px);opacity:0;transition:transform 1.5s var(--ease),opacity 1.2s ease,background 1.2s ease}
+.aurora i:nth-child(1){background:var(--aurora-0)}
+.aurora i:nth-child(2){background:var(--aurora-2)}
+[data-step=welcome] .aurora i:nth-child(1){opacity:var(--glow);transform:translate(-70px,-110px) scale(.8)}
+[data-step=welcome] .aurora i:nth-child(2){opacity:var(--glow);transform:translate(80px,-60px) scale(.8)}
+[data-step=team] .aurora i:nth-child(1){opacity:calc(var(--glow) * .7);transform:translate(-300px,-300px)}
+[data-step=team] .aurora i:nth-child(2){opacity:calc(var(--glow) * .5);transform:translate(320px,260px)}
+[data-step=her] .aurora i:nth-child(1){opacity:calc(var(--glow) * .5);transform:translate(-40px,-230px) scale(.6);background:#b3bcf2}
+[data-step=her] .aurora i:nth-child(2){opacity:calc(var(--glow) * .5);transform:translate(50px,-200px) scale(.6);background:#ffa3be}
+[data-step=awake] .aurora i:nth-child(1){opacity:var(--glow);transform:translate(-90px,-190px) scale(.95);background:#b3bcf2}
+[data-step=awake] .aurora i:nth-child(2){opacity:calc(var(--glow) * .9);transform:translate(100px,-170px) scale(.95);background:#ffa3be}
+[data-step=far] .aurora i:nth-child(1){opacity:calc(var(--glow) * .6);transform:translate(-260px,-60px)}
+[data-step=far] .aurora i:nth-child(2){opacity:calc(var(--glow) * .6);transform:translate(260px,-60px)}
+[data-step=linked] .aurora i:nth-child(1){opacity:var(--glow);transform:translate(-200px,-40px) scale(1.1)}
+[data-step=linked] .aurora i:nth-child(2){opacity:var(--glow);transform:translate(200px,-40px) scale(1.1)}
+@keyframes drift{from{transform:translate(-12px,-6px)}to{transform:translate(12px,10px)}}
+.gridbg{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .8s;background-image:linear-gradient(var(--grid-c) 1px,transparent 1px),linear-gradient(90deg,var(--grid-c) 1px,transparent 1px);background-size:36px 36px;-webkit-mask-image:radial-gradient(ellipse 70% 60% at 50% 38%,#000,transparent);mask-image:radial-gradient(ellipse 70% 60% at 50% 38%,#000,transparent)}
+.win.ob .gridbg{opacity:var(--grid)}
+.prog{position:absolute;left:0;right:0;top:0;height:2px;z-index:3;opacity:0;transition:opacity .5s}
+.win.ob .prog{opacity:1}
+.prog i{display:block;height:100%;width:var(--p,0%);background:linear-gradient(90deg,var(--aurora-0),var(--aurora-1),var(--aurora-2));border-radius:0 2px 2px 0;transition:width .9s var(--ease)}
+
+.side{background:var(--side);border-right:.5px solid var(--sep);display:flex;flex-direction:column;min-height:0;position:relative}
+.lights{height:44px;display:flex;gap:8px;align-items:center;padding:0 16px;flex:none;position:relative}
+.lights i{width:12px;height:12px;border-radius:50%;background:var(--fill3)}
+.nav{padding:0 10px 10px;overflow-y:auto;display:flex;flex-direction:column;gap:1px}
+.nav-gap{height:12px}
+.ni{display:flex;align-items:center;gap:8px;height:30px;padding:0 7px;border-radius:7px;width:100%;text-align:left;color:var(--l1);font-size:13px}
+.ni:hover{background:var(--fill)}
+.ni.sel{background:var(--side-sel)}
+.ni .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ni>svg{width:16px;height:16px;color:var(--l2);flex:none;margin:0 3px}
+.ni>.cat{width:20px;height:20px;flex:none;margin:0 1px}
+.tile{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;flex:none;font-size:12px;font-weight:600}
+.tile svg{width:14px;height:14px}
+.tile.gray{background:var(--fill2);color:var(--l2)}
+.me{display:flex;gap:10px;align-items:center;padding:8px 7px;border-radius:9px;width:100%;text-align:left}
+.me:hover{background:var(--fill)}.me.sel{background:var(--side-sel)}
+.me .tile{width:34px;height:34px;border-radius:50%}.me .tile svg{width:18px;height:18px}
+.avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#6f86c9,#8a76b6);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none}
+.me b{display:block;font-size:13px;font-weight:600}.me small{display:block;font-size:11px;color:var(--l2)}
+.nav-h{font-size:11px;font-weight:600;color:var(--l3);padding:10px 7px 3px;display:flex;align-items:center}
+.nav-h button{margin-left:auto;width:18px;height:18px;border-radius:5px;color:var(--l2);display:flex;align-items:center;justify-content:center}
+.nav-h button:hover{background:var(--fill2)}.nav-h svg{width:12px;height:12px}
+.main{display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
+.bar-top{height:44px;flex:none;display:flex;align-items:center;gap:2px;padding:0 20px}
+.bar-top h1{font-size:13px;font-weight:600}
+.body{flex:1;min-height:0;overflow-y:auto;padding:4px 26px 26px}
+.pane{display:flex;flex-direction:column;gap:18px;max-width:560px;margin:0 auto}
+
+/* Grouped lists */
+.grp{background:var(--grp);border-radius:10px;border:.5px solid var(--grp-bd)}
+.row{display:flex;align-items:center;gap:10px;min-height:40px;padding:8px 12px;position:relative;text-align:left}
+.row+.row::before{content:"";position:absolute;top:0;left:12px;right:12px;border-top:.5px solid var(--sep)}
+.row.ic+.row::before{left:44px}
+.row .t{flex:1;min-width:0}
+.row .t .d{font-size:11.5px;color:var(--l2);margin-top:1px;line-height:1.5}
+.row .v{color:var(--l2);font-size:12.5px;white-space:nowrap;flex:none;display:inline-flex;align-items:center;gap:5px}
+.row .v.ok{color:var(--green)}.row .v.warn{color:var(--orange)}
+.row .v svg{width:13px;height:13px}
+.row.go{width:100%}
+.row.go:hover{background:var(--fill)}
+.chev{width:13px;height:13px;color:var(--l3);flex:none}
+.foot{font-size:11.5px;color:var(--l2);margin:-12px 12px 0;line-height:1.55}
+.ghead{font-size:13px;font-weight:600;margin:0 2px -10px}
+.sw{width:32px;height:19px;border-radius:999px;background:var(--fill3);position:relative;flex:none;transition:background .2s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .2s}
+.sw.on{background:var(--accent)}.sw.on::after{transform:translateX(13px)}
+.btn{height:24px;padding:0 11px;border-radius:6px;background:var(--btn);box-shadow:var(--btn-sh);display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex:none;font-size:12.5px}
+.btn:disabled{opacity:.4}
+.btn.primary{background:var(--cta);color:var(--cta-fg);box-shadow:none;font-weight:600}
+.btn.danger{color:var(--red)}
+.btn.lg{height:38px;padding:0 28px;border-radius:19px;font-size:14px;font-weight:600;transition:transform .2s var(--ease),box-shadow .3s}
+.btn.lg:hover{transform:translateY(-1px);box-shadow:0 8px 28px color-mix(in srgb,var(--accent) 45%,transparent)}
+.btn.md{height:30px;padding:0 16px;border-radius:15px;font-size:13px}
+.link{color:var(--l2);font-size:12.5px}
+.link:hover{color:var(--l1)}
+.acts{display:flex;gap:8px;align-items:center}
+.push{margin-left:auto}
+.field{height:26px;border-radius:6px;border:.5px solid var(--l4);background:var(--win);color:var(--l1);font:inherit;font-size:12.5px;padding:0 8px;width:260px}
+.mono{font-family:var(--mono);font-size:11.5px}
+.hero{display:flex;flex-direction:column;align-items:center;text-align:center;padding:10px 0 2px}
+.hero .big{width:64px;height:64px;border-radius:16px;display:flex;align-items:center;justify-content:center;color:#fff;margin-bottom:10px}
+.hero .big svg{width:34px;height:34px}
+.hero b{font-size:19px;font-weight:650}
+.hero>span{font-size:12px;color:var(--l2);margin-top:2px;max-width:420px}
+.pill{display:inline-flex;align-items:center;gap:6px;margin-top:8px;height:22px;padding:0 10px;border-radius:11px;background:var(--fill2);font-size:12px;color:var(--l2)}
+.pill i{width:7px;height:7px;border-radius:50%;background:var(--l3)}
+.pill.on i{background:var(--green)}
+.banner{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:10px;background:var(--fill2)}
+.banner .t{flex:1}
+
+/* Sheets, alerts, toasts */
+.scrim{position:absolute;inset:0;background:var(--scrim);display:flex;align-items:flex-start;justify-content:center;z-index:6;animation:fade .2s ease both}
+.sheet{margin-top:44px;width:480px;display:flex;flex-direction:column;background:var(--win);border-radius:12px;box-shadow:var(--shadow-win);overflow:hidden;animation:drop .35s var(--ease) both}
+.sheet .sh{padding:16px 18px 10px}
+.sheet .sh b{font-size:14px;font-weight:650;display:block}.sheet .sh>span{font-size:12px;color:var(--l2);line-height:1.5;display:block;margin-top:2px}
+.sheet .sb{padding:0 18px;display:flex;flex-direction:column;gap:12px}
+.sheet .sb .foot{margin:-6px 4px 0}
+.sheet .sf{display:flex;gap:8px;padding:14px 18px;align-items:center}
+.sheet .status{padding:26px 18px 6px}
+.alert{margin:auto;width:300px;background:var(--win);border-radius:12px;box-shadow:var(--shadow-win);padding:20px 18px 16px;text-align:center;animation:drop .35s var(--ease) both}
+.alert .tile{width:44px;height:44px;border-radius:11px;margin:0 auto 10px}.alert .tile svg{width:24px;height:24px}
+.alert b{display:block;font-size:13px;font-weight:650}
+.alert p{font-size:11.5px;color:var(--l2);margin-top:6px;line-height:1.55}
+.alert .ab{display:flex;flex-direction:column;gap:6px;margin-top:14px}
+.alert .ab .btn{justify-content:center;height:26px}
+.toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:var(--menu);border:.5px solid var(--menu-bd);border-radius:10px;padding:8px 14px;box-shadow:0 8px 28px rgba(0,0,0,.25);font-size:12.5px;z-index:7;max-width:86%;text-align:center}
+@keyframes fade{from{opacity:0}}
+@keyframes drop{from{opacity:0;transform:translateY(-10px) scale(.98)}}
+.new{display:inline-flex;align-items:center;height:15px;padding:0 5px;border-radius:7px;font-size:10px;font-weight:600;color:var(--accent-t);background:var(--accent-bg);margin-left:6px;vertical-align:1px;white-space:nowrap}
+.demo-next{font-size:11.5px;color:var(--l3);border-bottom:.5px dashed var(--l3)}
+.demo-next:hover{color:var(--l1)}
+
+/* First run */
+.ob-body{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;padding:0 56px;position:relative}
+.ob-body.mid{justify-content:center;padding-bottom:20px}
+.ob-foot{flex:none;display:flex;gap:10px;align-items:center;padding:14px 24px 20px;position:relative;min-height:66px}
+.center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;width:100%}
+.big-h{font-size:30px;font-weight:650;letter-spacing:.01em;line-height:1.3}
+.ob-h{font-size:24px;font-weight:650;text-align:center;line-height:1.35;letter-spacing:.01em}
+.ob-p{font-size:13.5px;color:var(--l2);text-align:center;line-height:1.7;margin-top:8px;max-width:460px}
+.lede{color:var(--l2);font-size:15px;line-height:1.8;margin-top:14px}
+.promise{display:flex;gap:6px;align-items:center;font-size:11.5px;color:var(--l3);line-height:1.45;flex:1;text-align:left}
+.promise svg{width:13px;height:13px;flex:none}
+/* The mark, drawn in beam by beam. */
+.mark{width:92px;height:92px;overflow:visible}
+.entering .mark .beam{stroke-dasharray:100;stroke-dashoffset:100;animation:draw 1s cubic-bezier(.6,0,.2,1) forwards;animation-delay:calc(var(--i) * .2s + .2s)}
+@keyframes draw{to{stroke-dashoffset:0}}
+.mark.sm{width:52px;height:52px}
+/* Text that is typed, a character at a time. */
+.ty span{opacity:0}
+.entering .ty span{animation:ty .3s ease forwards;animation-delay:calc(var(--i) * 55ms + var(--d,0ms))}
+.inner:not(.entering) .ty span{opacity:1}
+@keyframes ty{from{opacity:0;filter:blur(4px)}to{opacity:1;filter:none}}
+/* Looking for the agents: each lit in turn. */
+.sweep{display:flex;gap:12px;justify-content:center;margin-top:26px}
+.sweep .tile{width:32px;height:32px;border-radius:9px;font-size:14px;opacity:.2;animation:sweep 1.8s ease-in-out calc(var(--i) * .16s) infinite}
+@keyframes sweep{0%,40%,100%{opacity:.2;transform:none}15%{opacity:1;transform:translateY(-3px)}}
+.team{width:100%;margin-top:22px}
+.team .row{min-height:50px}
+.team .tile{width:30px;height:30px;border-radius:8px;font-size:14px}
+.entering .okc{animation:pop .5s cubic-bezier(.3,1.6,.5,1) both;animation-delay:calc(var(--i) * 80ms + 500ms)}
+@keyframes pop{from{opacity:0;transform:scale(.3)}to{opacity:1;transform:none}}
+.ag-group{font-size:12px;font-weight:600;color:var(--l2);margin:16px 2px 6px;align-self:flex-start}
+/* Cards: muted, a little grain, one glyph, a title and one line. */
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;width:100%}
+.card{display:flex;flex-direction:column;align-items:flex-start;position:relative;border-radius:14px;padding:14px 14px 15px;text-align:left;overflow:hidden;border:.5px solid var(--grp-bd);background:linear-gradient(165deg,color-mix(in srgb,var(--tint) 18%,var(--grp)),var(--grp) 70%);transition:transform .3s var(--ease),box-shadow .3s,border-color .3s}
+.card{--tint:var(--aurora-1)}
+.card::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;mix-blend-mode:soft-light;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .5  0 0 0 0 .5  0 0 0 0 .5  0 0 0 .9 0'/></filter><rect width='140' height='140' filter='url(%23n)'/></svg>")}
+.card:hover,.card.lit{transform:translateY(-3px);box-shadow:0 12px 30px rgba(0,0,0,.22);border-color:color-mix(in srgb,var(--tint) 60%,transparent)}
+.card svg.g{width:22px;height:22px;color:var(--l1);opacity:.85;position:relative}
+.card b{display:block;font-size:13.5px;font-weight:600;margin-top:22px;position:relative}
+.card span{display:block;font-size:11.5px;color:var(--l2);margin-top:3px;line-height:1.5;position:relative}
+/* Her's cat (apps/desktop/src/renderer/src/her/Cat.tsx, cat.css). Asleep until she has a model; then she wakes. */
+.cat{display:block;overflow:visible}
+.cat .cat-body{transform-box:fill-box;transform-origin:50% 100%;animation:cat-breathe 3.4s ease-in-out infinite}
+.cat .eye{transform-box:fill-box;transform-origin:center;animation:cat-blink 4.8s infinite}
+.cat.busy .cat-body{animation:cat-bob .8s ease-in-out infinite}
+.cat.asleep .cat-body{animation-duration:5.2s}
+.cat.asleep .eye{animation:none;transform:scaleY(.1)}
+.entering .cat.wake .eye{animation:cat-open .7s var(--ease) .25s both,cat-blink 4.8s 1.4s infinite}
+.entering .cat.wake .cat-body{animation:cat-hop .8s cubic-bezier(.3,1.5,.5,1) .3s both,cat-breathe 3.4s 1.2s ease-in-out infinite}
+@keyframes cat-breathe{0%,100%{transform:none}50%{transform:scale(1.02,.975)}}
+@keyframes cat-blink{0%,45%,49%,100%{transform:none}47%{transform:scaleY(.1)}}
+@keyframes cat-bob{0%,100%{transform:none}50%{transform:scale(1.03,.96)}}
+@keyframes cat-open{from{transform:scaleY(.1)}to{transform:none}}
+@keyframes cat-hop{0%{transform:none}35%{transform:translateY(-10px) scale(.97,1.05)}70%{transform:scale(1.04,.95)}100%{transform:none}}
+.her-face{position:relative;width:112px;height:112px;flex:none}
+.her-face .cat{width:112px;height:112px;position:relative}
+.ring{position:absolute;inset:0;border-radius:50%;border:1.5px solid #cbd3fb;opacity:0}
+.entering .ring{animation:ring 1.6s var(--ease) both;animation-delay:calc(var(--i) * .35s + .35s)}
+@keyframes ring{from{opacity:.7;transform:scale(.7)}to{opacity:0;transform:scale(2.4)}}
+.said{margin-top:22px;font-size:20px;line-height:1.7;font-weight:500;text-align:center;min-height:68px}
+.using{margin-top:14px;font-size:12px;color:var(--l3)}
+/* The model step's show: Her handing one fix around three machines, as the README tells it. */
+.show{position:relative;width:632px;height:232px;flex:none;border-radius:16px;background:color-mix(in srgb,var(--grp) 70%,transparent);border:.5px solid var(--grp-bd);overflow:hidden}
+.show .tag{position:absolute;right:12px;top:10px;font-size:10.5px;color:var(--l3)}
+.show svg.wires{position:absolute;inset:0}
+.show .wires path{fill:none;stroke:var(--l4);stroke-width:1.2}
+.s-top{position:absolute;left:0;right:0;top:14px;display:flex;justify-content:center;align-items:center;gap:10px}
+.s-top .cat{width:36px;height:36px;flex:none}
+.s-say{padding:7px 14px;border-radius:17px;background:color-mix(in srgb,var(--aurora-1) 16%,var(--win));border:.5px solid color-mix(in srgb,var(--aurora-1) 45%,transparent);font-size:13px;white-space:nowrap}
+.s-say.pop{animation:saypop .45s var(--ease)}
+@keyframes saypop{from{opacity:0;transform:translateY(5px) scale(.98)}}
+.s-row{position:absolute;left:0;right:0;top:66px;display:flex;justify-content:center;gap:8px;opacity:0;transition:opacity .3s;pointer-events:none}
+.show[data-ask="1"] .s-ask,.show[data-ask="2"] .s-ask,.show[data-out="1"] .s-out{opacity:1}
+.s-ask .btn{height:26px;border-radius:13px;padding:0 14px;transition:transform .15s,filter .15s}
+.show[data-ask="2"] .s-ask .primary{transform:scale(.93);filter:brightness(1.25);transition-delay:.5s}
+.cur{position:absolute;left:50%;top:14px;width:16px;height:16px;color:#fff;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));opacity:0;transform:translate(110px,104px);transition:transform .5s var(--ease),opacity .2s}
+.show[data-ask="2"] .cur{opacity:1;transform:translate(-40px,64px)}
+.s-out span{height:24px;padding:0 11px;border-radius:12px;background:var(--fill2);border:.5px solid var(--grp-bd);font-size:11.5px;display:inline-flex;align-items:center;font-family:var(--mono)}
+.tcards{position:absolute;left:14px;right:14px;top:110px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.tcard{position:relative;border-radius:12px;background:var(--grp);border:.5px solid var(--grp-bd);padding:10px 11px 11px;text-align:left;overflow:hidden;transition:opacity .4s,border-color .4s,box-shadow .4s}
+.tcard .th{display:flex;gap:8px;align-items:center}
+.tcard .tile{width:26px;height:26px;border-radius:7px;font-size:12.5px}
+.tcard b{display:block;font-size:12px;font-weight:600}.tcard small{display:block;font-size:10.5px;color:var(--l3)}
+.tcard .task{font-size:12.5px;margin-top:10px}
+.tcard .st{font-size:11px;display:flex;align-items:center;gap:5px;height:16px;margin-top:3px;color:var(--l3)}
+.tcard .st svg{width:12px;height:12px;animation:pop .45s cubic-bezier(.3,1.6,.5,1)}
+.tcard.idle{opacity:.5}.tcard.idle .task{color:var(--l3)}
+.tcard.run{border-color:color-mix(in srgb,var(--aurora-1) 70%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--aurora-1) 16%,transparent)}
+.tcard.run .st{color:var(--accent-t)}
+.tcard.run .st i{width:10px;height:10px;border-radius:50%;border:1.5px solid currentColor;border-top-color:transparent;animation:spin .7s linear infinite}
+.tcard.run::after{content:"";position:absolute;left:0;bottom:0;height:2px;width:40%;background:linear-gradient(90deg,transparent,var(--aurora-1),transparent);animation:slide 1.1s linear infinite}
+.tcard.ok .st{color:var(--green)}
+.tcard.fail{border-color:color-mix(in srgb,var(--red) 70%,transparent);animation:shake .45s}
+.tcard.fail .st{color:var(--red)}
+.tcard.fail .st i::before{content:"✕";font-style:normal;font-size:10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+@keyframes shake{20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(2px)}}
+.acts2{display:flex;justify-content:center;gap:22px;margin:10px 0 2px}
+.acts2 button{font-size:12px;color:var(--l3);padding:3px 0;border-bottom:1.5px solid transparent;transition:color .3s,border-color .3s}
+.acts2 button.on{color:var(--l1);border-color:var(--aurora-1)}
+.cards.compact .card{padding:11px 13px 12px}
+.cards.compact .card b{margin-top:9px}
+.cards.compact .card svg.g{width:18px;height:18px}
+
+/* The sign-in step: the website's 连接图, at work. */
+.mesh{position:relative;width:632px;height:286px;flex:none;margin-top:14px}
+.mesh svg.wires{position:absolute;inset:0;overflow:visible}
+.mesh .wires path{fill:none;stroke:var(--l4);stroke-width:1.2;transition:stroke .35s,stroke-width .35s}
+.mesh .wires path.lit{stroke:var(--aurora-1);stroke-width:1.8;filter:drop-shadow(0 0 5px var(--aurora-1))}
+.mnode{position:absolute;transform:translate(-50%,0);display:flex;flex-direction:column;align-items:center;text-align:center;font-size:12px;font-weight:600;white-space:nowrap}
+.mnode small{font-size:10.500px;font-weight:400;color:var(--l3);margin-top:1px}
+.mnode .dot{width:40px;height:40px;border-radius:12px;background:var(--grp);border:.5px solid var(--grp-bd);display:flex;align-items:center;justify-content:center;color:var(--l2);margin-bottom:6px;transition:box-shadow .35s,border-color .35s}
+.mnode .dot.round{border-radius:50%}
+.mnode .dot svg{width:20px;height:20px}
+.mnode .cat{width:50px;height:50px;margin:-6px 0 2px;transition:filter .35s}
+.mnode.on .dot{border-color:var(--aurora-1);box-shadow:0 0 0 4px color-mix(in srgb,var(--aurora-1) 22%,transparent),0 0 22px color-mix(in srgb,var(--aurora-1) 40%,transparent)}
+.mnode.on .cat{filter:drop-shadow(0 0 12px color-mix(in srgb,var(--aurora-1) 70%,transparent))}
+.mteam{position:absolute;left:8px;right:8px;top:166px;height:104px;border:1px dashed var(--l4);border-radius:16px}
+.mteam>span{position:absolute;left:14px;bottom:8px;font-size:10.500px;color:var(--l3)}
+.mteam>em{position:absolute;right:14px;bottom:8px;font-size:10.500px;color:var(--l3);font-style:normal;display:flex;gap:5px;align-items:center}
+.mteam>em svg{width:11px;height:11px}
+.mchip{position:absolute;top:182px;transform:translate(-50%,0);width:172px;height:46px;border-radius:12px;background:var(--grp);border:.5px solid var(--grp-bd);display:flex;align-items:center;gap:9px;padding:0 10px;text-align:left;transition:box-shadow .35s,border-color .35s}
+.mchip .tile{width:28px;height:28px;border-radius:8px;font-size:13px}
+.mchip b{display:block;font-size:12px;font-weight:600}.mchip small{display:block;font-size:10.500px;color:var(--l3)}
+.mchip.on{border-color:var(--aurora-1);box-shadow:0 0 0 4px color-mix(in srgb,var(--aurora-1) 22%,transparent),0 0 22px color-mix(in srgb,var(--aurora-1) 40%,transparent)}
+.mbub{position:absolute;left:316px;top:112px;transform:translate(-50%,0);height:32px;padding:0 13px 0 5px;border-radius:16px;display:flex;align-items:center;gap:7px;font-size:12.5px;white-space:nowrap;
+  background:color-mix(in srgb,var(--aurora-1) 20%,var(--win));border:.5px solid color-mix(in srgb,var(--aurora-1) 55%,transparent);box-shadow:0 6px 22px color-mix(in srgb,var(--aurora-1) 22%,transparent);opacity:0;transition:opacity .3s,transform .3s var(--ease)}
+.mbub.up{opacity:1;transform:translate(-50%,4px)}
+.mbub .av{width:22px;height:22px;border-radius:50%;background:var(--fill3);color:var(--l1);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex:none}
+.mbub .av svg{width:13px;height:13px}
+.mbub .cat{width:24px;height:24px;flex:none;margin:0 -1px}
+.mbub em{font-style:normal;color:var(--accent-t);font-size:11.5px}
+.mesh .wires path{opacity:.75}
+.mesh .wires path.lit{opacity:1}
+.seg.full{display:flex;align-self:stretch}.seg.full button{flex:1;height:26px;display:inline-flex;align-items:center;justify-content:center}
+.qrbox{display:flex;gap:18px;align-items:center;padding:6px 4px 2px}
+.qrbox svg{width:132px;height:132px;flex:none;border-radius:10px;background:#fff;padding:9px}
+.qrbox b{display:block;font-size:13px;font-weight:600}.qrbox span{display:block;font-size:12px;color:var(--l2);line-height:1.6;margin-top:4px}
+.num{width:22px;height:22px;border-radius:50%;background:var(--fill2);color:var(--l2);font-size:11.5px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.avatar.sm,.who.sm{width:34px;height:34px;font-size:14px}
+.who{border-radius:50%;background:var(--fill2);color:var(--l2);display:flex;align-items:center;justify-content:center;flex:none}
+.who.sm svg{width:18px;height:18px}
+.ghead small{font-weight:400;color:var(--l3);font-size:12px;margin-left:6px}
+.foot .link{font-size:11.5px;color:var(--accent-t)}
+/* Choosing a model on the Her step: three plain buttons in a row. */
+.pick{display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:16px}
+.pick>b{font-size:13.5px;font-weight:600}
+.pick>span{font-size:11.5px;color:var(--l3)}
+.ways{display:flex;gap:10px}
+.way{height:34px;padding:0 16px 0 13px;border-radius:17px;background:var(--btn);box-shadow:var(--btn-sh);display:inline-flex;gap:8px;align-items:center;font-size:13px;transition:transform .2s var(--ease),background .2s}
+.way:hover{transform:translateY(-1px);background:var(--fill3)}
+.way svg{width:16px;height:16px;color:var(--l2)}
+.gains{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;width:100%;margin-top:14px}
+.gains div{font-size:11.500px;color:var(--l2);line-height:1.5;padding-left:10px;border-left:1.5px solid var(--aurora-1)}
+.gains b{display:block;font-size:12.500px;color:var(--l1);font-weight:600}
+
+/* The main window */
+.mnav{padding:0 10px;display:flex;flex-direction:column;gap:1px}
+.side-h{font-size:11px;font-weight:600;color:var(--l3);padding:16px 18px 4px}
+.side-empty{flex:1;padding:6px 18px;color:var(--l3);font-size:12px;line-height:1.55}
+.side-empty b{display:block;color:var(--l2);font-weight:600;margin-bottom:2px}
+.acct{display:flex;gap:9px;align-items:center;margin:8px 10px 10px;padding:6px 8px;border-radius:9px;text-align:left}
+.acct:hover,.acct.open{background:var(--fill2)}
+.acct .avatar{width:26px;height:26px;font-size:12px}
+.acct b{display:block;font-size:12.5px;font-weight:600}.acct small{display:block;font-size:11px;color:var(--l2)}
+.amenu{position:absolute;left:10px;right:10px;bottom:54px;background:var(--menu);border:.5px solid var(--menu-bd);border-radius:10px;padding:5px;box-shadow:0 10px 30px rgba(0,0,0,.3);z-index:5}
+.amenu button{display:flex;align-items:center;gap:9px;width:100%;height:28px;padding:0 8px;border-radius:6px;font-size:13px;text-align:left}
+.amenu button svg{width:15px;height:15px;color:var(--l2)}
+.amenu button:hover{background:var(--fill2)}
+.amenu kbd{margin-left:auto;font:inherit;font-size:11.5px;color:var(--l3)}
+.amenu hr{border:0;border-top:.5px solid var(--sep);margin:4px 6px}
+.chat{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:14px;max-width:600px;margin:0 auto;width:100%;padding:18px 0}
+.msg{font-size:14px;line-height:1.7;display:flex;gap:10px;align-items:flex-start}
+.msg .cat{width:26px;height:26px;flex:none;margin-top:-1px}
+.ways-h{font-size:11.5px;font-weight:600;color:var(--l3);margin:4px 2px -8px}
+.chat .foot{margin:-6px 4px 0}
+.chat .tile{width:28px;height:28px;border-radius:8px}.chat .tile svg{width:16px;height:16px}
+.composer{flex:none;max-width:600px;margin:0 auto 20px;width:100%;border-radius:14px;background:var(--grp);border:.5px solid var(--grp-bd);padding:12px 14px;color:var(--l3);min-height:66px;font-size:14px}
+.status{display:flex;flex-direction:column;align-items:center;text-align:center}
+.ctiles{width:100%;padding:10px;border-radius:12px;margin-top:14px;background:linear-gradient(135deg,color-mix(in srgb,var(--aurora-0) 14%,transparent),color-mix(in srgb,var(--aurora-1) 12%,transparent),color-mix(in srgb,var(--aurora-2) 14%,transparent))}
+.ctiles-row{display:flex;gap:8px}
+.ctiles-row span{flex:1;padding:10px 0;border-radius:8px;background:var(--win);box-shadow:0 .5px 1.5px rgba(0,0,0,.14);font-family:var(--mono);font-size:22px;font-weight:600;letter-spacing:.08em;text-align:center}
+.ctiles-cap{display:flex;justify-content:space-between;margin-top:8px;font-size:11.5px;color:var(--l2)}
+.digits{width:120px;height:56px;border-radius:8px;border:.5px solid var(--l4);background:var(--win);color:var(--l1);font-family:var(--mono);font-size:36px;font-weight:600;text-align:center;letter-spacing:.2em;margin-top:14px}
+#fx{position:absolute;left:0;top:0;pointer-events:none;z-index:4}
+[data-step=done] .aurora i:nth-child(1){opacity:var(--glow);transform:translate(-150px,-120px) scale(1.15)}
+[data-step=done] .aurora i:nth-child(2){opacity:var(--glow);transform:translate(150px,-100px) scale(1.15);background:#ffa3be}
+.entering .mark.late .beam{animation-delay:calc(var(--i) * .2s + 1s)}
+.cat.busy .cat-eyes{animation:cat-look 2.4s ease-in-out infinite}
+@keyframes cat-look{0%,100%{transform:translate(-2.5px,-2.5px)}50%{transform:translate(2.5px,-2.5px)}}
+.hero .who{width:64px;height:64px;border-radius:50%;background:var(--fill2);color:var(--l2);display:flex;align-items:center;justify-content:center;margin-bottom:10px}
+.hero .who svg{width:30px;height:30px}
+.hero .btn{margin-top:14px}
+.me .who{width:34px;height:34px;border-radius:50%;background:var(--fill2);color:var(--l2);display:flex;align-items:center;justify-content:center;flex:none}
+.me .who svg{width:18px;height:18px}
+.pane .row{min-height:46px}
+.pane .tile{width:26px;height:26px;border-radius:7px}.pane .tile svg{width:15px;height:15px}
+.pane .row.ic+.row::before{left:48px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.ty span{opacity:1}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>冷启动与账号 · 原型</h1>
+    <p>欢迎、Agent 提供方、Her、登录（可跳过）、完成。配色锁定为墨黑。点步骤可以重播动效。</p>
+  </div>
+</header>
+<nav class="steps" id="steps"></nav>
+<p class="cap" id="cap"></p>
+<div class="stage"><div class="win ob" id="win"><div class="aurora"><i></i><i></i></div><div class="gridbg"></div><div class="prog"><i></i></div><div class="inner ob" id="inner"></div><canvas id="fx"></canvas><div id="over"></div></div></div>
+
+<section class="notes">
+  <h2>文档</h2>
+  <ul>
+    <li><b>产品需求</b>：<a href="cold-start-prd.md">cold-start-prd.md</a>，每一页的文案、布局、状态和动效参数都以它为准。</li>
+    <li><b>技术方案</b>：<a href="cold-start-tech.md">cold-start-tech.md</a>。</li>
+    <li>原型里点击后弹出「示意：…，和现在一样」的地方，是沿用现有功能，原型没有重画；清单见产品需求 §10。</li>
+  </ul>
+  <h2>启动流程</h2>
+  <table>
+    <tr><th>步骤</th><th>标题</th><th>仪式感</th></tr>
+    <tr><td>1 欢迎</td><td>欢迎使用 Hermesh</td><td>粒子从四周汇聚成标志，标志随后一笔一笔画实</td></tr>
+    <tr><td>2 Agent 提供方</td><td>已找到 2 个 Agent 提供方</td><td>逐个点亮查找，结果一行行落下，对勾弹出</td></tr>
+    <tr><td>3 Her</td><td>Her 带着一支 Agent 团队为你工作</td><td>循环播放 Her 调度三台电脑的示例；接上模型后 Her 醒来，粒子散开</td></tr>
+    <tr><td>4 登录</td><td>登录，接入 Hermesh 网络</td><td>连接图循环播放；登录后每个节点溅出光点</td></tr>
+    <tr><td>5 完成</td><td>设置完成</td><td>撒花</td></tr>
+    <tr><td>6 主窗口</td><td></td><td>小窗口展开成主窗口</td></tr>
+  </table>
+</section>
+
+<script>
+const P = {
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  bell:'<path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/>',
+  key:'<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M17 6l3 3M15 8l2 2"/>',
+  laptop:'<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>',
+  phone:'<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/>',
+  agent:'<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V4M9.5 13h.01M14.5 13h.01M2.5 13v2M21.500 13v2"/>',
+  link:'<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/>',
+  chev:'<path d="m9 6 6 6-6 6"/>',
+  check:'<path d="m5 12 5 5 9-10"/>',
+  folder:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  code:'<path d="m8 8-4 4 4 4M16 8l4 4-4 4"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  shield:'<path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6z"/>',
+  pencil:'<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+  grid:'<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  chat:'<path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/>',
+  plan:'<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 10h16M8 15h3"/>',
+};
+const ic = (n, c='') => `<svg class="${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${P[n]}</svg>`;
+const tile = (n, color, c='') => `<span class="tile ${c}" style="background:var(${color})">${ic(n)}</span>`;
+const $ = id => document.getElementById(id), win = $('win');
+// The Hermesh mark: three round-capped beams at 0°, 60° and 120°, each 10 off the centre (packages/ui/src/mark.tsx).
+const BEAMS = [[-37,10,37,10],[-27.16,-27.04,9.84,37.04],[9.84,-37.04,-27.16,27.04]];
+const mark = (c='') => `<svg class="mark ${c}" viewBox="-45 -45 90 90" fill="none" stroke-width="12" stroke-linecap="round" style="isolation:isolate">
+  <defs>${BEAMS.map((b,i)=>`<linearGradient id="mk${i}" gradientUnits="userSpaceOnUse" x1="${b[0]}" y1="${b[1]}" x2="${b[2]}" y2="${b[3]}"><stop offset="0" stop-color="var(--aurora-0)"/><stop offset=".5" stop-color="var(--aurora-1)"/><stop offset="1" stop-color="var(--aurora-2)"/></linearGradient>`).join('')}</defs>
+  ${BEAMS.map((b,i)=>`<path class="beam" style="--i:${i}" pathLength="100" d="M${b[0]} ${b[1]}L${b[2]} ${b[3]}" stroke="url(#mk${i})" opacity=".92"/>`).join('')}</svg>`;
+// Her's cat, as Cat.tsx draws it: small leaves out the shading.
+let catN = 0;
+function cat(cls='', small=false){
+  const id = 'c'+(catN++), fill = `url(#${id}g)`, ink = '#3c2f3a', blush = '#ffa3be', apart = small ? 12.5 : 11.5;
+  const ear = `<path d="M30 53L26 25L50 37Z" fill="#cbd3fb" stroke="#cbd3fb" stroke-width="8" stroke-linejoin="round"/>${small?'':`<path d="M33 45L31.5 33L42.5 38.5Z" fill="${blush}" stroke="${blush}" stroke-width="3" stroke-linejoin="round" opacity=".55" filter="url(#${id}b1)"/>`}`;
+  const eye = x => `<g class="eye"><ellipse cx="${x}" cy="64" rx="${small?5.2:4.1}" ry="${small?5.9:4.7}" fill="${ink}"/>${small?'':`<circle cx="${x+1.3}" cy="62.4" r="1.25" fill="#fff"/>`}</g>`;
+  return `<svg class="cat ${cls}" viewBox="8 16 104 104" aria-hidden="true"><defs>
+    <radialGradient id="${id}g" gradientUnits="userSpaceOnUse" cx="44" cy="50" r="72"><stop offset="0" stop-color="#f1f3ff"/><stop offset=".55" stop-color="#d7ddff"/><stop offset="1" stop-color="#b3bcf2"/></radialGradient>
+    ${small?'':[0.8,1.1,2.4].map((b,i)=>`<filter id="${id}b${i+1}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${b}"/></filter>`).join('')}</defs>
+    ${small?'':`<ellipse cx="60" cy="111" rx="34" ry="3.6" fill="#4b4660" opacity=".12" filter="url(#${id}b2)"/>`}
+    <g class="cat-body">${ear}<g transform="translate(120 0) scale(-1 1)">${ear}</g>
+      ${small?'':`<circle cx="16" cy="86" r="7.5" fill="${fill}"/><circle cx="104" cy="86" r="7.5" fill="${fill}"/>`}
+      <path d="M60 30C84 30 100 48 103 72C106 96 92 110 60 110C28 110 14 96 17 72C20 48 36 30 60 30Z" fill="${fill}"/>
+      ${small?'':`<ellipse cx="37" cy="47" rx="7" ry="3.6" fill="#fff" opacity=".5" filter="url(#${id}b2)" transform="rotate(-30 37 47)"/>`}
+      <path d="M46 47H74C86 47 92 55 92 65.5C92 80 82 88 60 88C38 88 28 80 28 65.5C28 55 34 47 46 47Z" fill="#fafbff" ${small?'':`filter="url(#${id}b1)"`}/>
+      ${small?'':`<ellipse cx="37" cy="73" rx="6.5" ry="4.4" fill="${blush}" opacity=".6" filter="url(#${id}b3)"/><ellipse cx="83" cy="73" rx="6.5" ry="4.4" fill="${blush}" opacity=".6" filter="url(#${id}b3)"/>`}
+      <g class="cat-eyes">${eye(60-apart)}${eye(60+apart)}</g>
+      ${small?'':`<path d="M55.2 71.2q2.4 3.3 4.8 0q2.4 3.3 4.8 0" fill="none" stroke="${ink}" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>`}
+    </g></svg>`;
+}
+// Text typed a character at a time, starting d ms after the page comes in.
+const typed = (text, d=0) => `<span class="ty" style="--d:${d}ms">${[...text].map((ch,i)=>`<span style="--i:${i}">${ch}</span>`).join('')}</span>`;
+
+/* ---------- Particles: one canvas over the window ---------- */
+const FX = (() => {
+  const c = $('fx'), ctx = c.getContext('2d'), still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let ps = [], amb = [], raf = 0, ambient = false, timers = [], last = 0;
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const aurora = () => [css('--aurora-0'), css('--aurora-1'), css('--aurora-2')];
+  const CAT = ['#cbd3fb','#ffa3be','#f1f3ff','#b3bcf2'];
+  const rnd = (a,b) => a + Math.random()*(b-a), pick = a => a[Math.random()*a.length|0];
+  function size(){ const w = win.clientWidth, h = win.clientHeight, d = devicePixelRatio || 1;
+    if (c.width !== Math.round(w*d) || c.height !== Math.round(h*d)) { c.width = Math.round(w*d); c.height = Math.round(h*d); c.style.width = w+'px'; c.style.height = h+'px'; }
+    ctx.setTransform(d,0,0,d,0,0); return [w,h]; }
+  function draw(p, a){ ctx.globalAlpha = Math.max(0, a); ctx.fillStyle = ctx.strokeStyle = p.c;
+    if (p.s === 'bar') { ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.r); ctx.lineWidth = p.z; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-p.l/2,0); ctx.lineTo(p.l/2,0); ctx.stroke(); ctx.restore(); }
+    else if (p.s === 'ring') { ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(p.x,p.y,p.z,0,7); ctx.stroke(); }
+    else { ctx.beginPath(); ctx.arc(p.x,p.y,p.z,0,7); ctx.fill(); } }
+  let ambc = '#9fb0ff';
+  function tick(t){ ambc = css('--amb') || ambc; const dt = Math.min(2.5, (t - last)/16.7 || 1); last = t; const [w,h] = size(); ctx.clearRect(0,0,w,h);
+    ctx.globalCompositeOperation = 'lighter';
+    if (ambient) for (const p of amb) { p.c = ambc; p.x += p.vx*dt; p.y += p.vy*dt; p.t += .02*dt; if (p.y < -5) { p.y = h+5; p.x = rnd(0,w); } draw(p, p.a*(.55+.45*Math.sin(p.t))); }
+    const born = [];
+    ps = ps.filter(p => { if (p.wait > 0) { p.wait -= dt; return true; }
+      p.age += dt;
+      if (p.path) { p.u += dt/50; if (p.u >= 1) return false; const q = p.path.getPointAtLength(p.len*(p.rev?1-p.u:p.u)); p.x = p.ox+q.x; p.y = p.oy+q.y;
+        born.push({x:p.x, y:p.y, vx:0, vy:0, g:0, drag:1, r:0, vr:0, z:1.6, c:p.c, s:'dot', age:0, life:16, wait:0}); draw(p, 1); return true; }
+      if (p.tx !== undefined) { p.x += (p.tx-p.x)*.085*dt; p.y += (p.ty-p.y)*.085*dt; }
+      else { const k = Math.pow(p.drag, dt); p.vx *= k; p.vy = p.vy*k + p.g*dt; p.x += p.vx*dt; p.y += p.vy*dt; p.r += p.vr*dt; }
+      const k = p.age/p.life; if (k >= 1) return false; draw(p, Math.min(1, k*6) * (k > .7 ? (1-k)/.3 : 1)); return true; });
+    ps.push(...born); ctx.globalAlpha = 1;
+    raf = (ps.length || ambient) ? requestAnimationFrame(tick) : 0; }
+  const run = () => { if (!raf && !still) { last = 0; raf = requestAnimationFrame(tick); } };
+  const at = el => { const a = el.getBoundingClientRect(), b = win.getBoundingClientRect(); return [a.left-b.left+a.width/2, a.top-b.top+a.height/2, a.width]; };
+  return {
+    aurora, CAT,
+    count: () => ps.length,
+    later(f, ms){ timers.push(setTimeout(f, ms)); },
+    reset(){ timers.forEach(clearTimeout); timers = []; ps = []; },
+    // A few lights that rise slowly behind the first run.
+    ambient(on){ ambient = on && !still; if (ambient && !amb.length) amb = Array.from({length:34}, () => ({x:rnd(0,1000), y:rnd(0,660), vx:rnd(-.06,.06), vy:rnd(-.2,-.05), z:rnd(.6,1.5), c:'#9fb0ff', a:rnd(.15,.5), t:rnd(0,6), s:'dot'})); run(); },
+    // Dots fly in from around the window and settle along the mark's three beams, as the beams are drawn.
+    assemble(el){ if (!el || still) return; const [cx,cy,w] = at(el), k = w/90, col = aurora();
+      BEAMS.forEach((b,i) => { for (let j=0;j<36;j++){ const u = j/35, a = rnd(0,6.28), d = rnd(240,420);
+        ps.push({x:cx+Math.cos(a)*d, y:cy+Math.sin(a)*d, tx:cx+(b[0]+(b[2]-b[0])*u)*k+rnd(-2.5,2.5), ty:cy+(b[1]+(b[3]-b[1])*u)*k+rnd(-2.5,2.5), z:rnd(1,2.2), c:col[u<.34?0:u<.67?1:2], s:'dot', age:0, life:rnd(95,125), wait:rnd(0,22)+i*6}); } }); run(); },
+    burst(el, colors, n, v=5){ if (!el || still) return; const [x,y] = at(el);
+      for (let i=0;i<n;i++){ const a = rnd(0,6.28), sp = rnd(v*.35,v), s = Math.random();
+        ps.push({x, y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, g:.03, drag:.95, r:a, vr:rnd(-.1,.1), z:s<.3?2:rnd(1.2,2.6), l:rnd(6,11), c:pick(colors), s:s<.3?'bar':s<.5?'ring':'dot', age:0, life:rnd(45,85), wait:0}); } run(); },
+    // A light that runs along a wire of the connection map, from its start or (rev) back to it.
+    travel(path, rev){ if (!path || still) return; const a = path.ownerSVGElement.getBoundingClientRect(), b = win.getBoundingClientRect();
+      ps.push({path, rev, u:0, len:path.getTotalLength(), ox:a.left-b.left, oy:a.top-b.top, x:0, y:0, z:3, c:css('--aurora-0'), s:'dot', age:0, life:999, wait:0}); run(); },
+    // The finish: beams, dots and rings in the brand's colours, thrown up from both lower corners.
+    confetti(){ if (still) return; const [w,h] = size(), col = [...aurora(), '#cbd3fb', '#ffa3be'];
+      for (const side of [0,1]) for (let i=0;i<80;i++){ const a = rnd(.85,1.4), sp = rnd(9,18), s = Math.random();
+        ps.push({x:side?w+6:-6, y:h-30, vx:Math.cos(a)*sp*(side?-1:1), vy:-Math.sin(a)*sp, g:.2, drag:.985, r:rnd(0,6.28), vr:rnd(-.25,.25), z:s<.55?2.6:rnd(1.5,3), l:rnd(8,15), c:pick(col), s:s<.55?'bar':s<.75?'ring':'dot', age:0, life:rnd(115,175), wait:rnd(0,16)}); } run(); },
+  };
+})();
+
+const SERVERS = {official:{name:'Hermesh 官方服务', host:'hermesh.io'}, own:{name:'自己的服务器', host:'relay.example.com'}};
+const PROV = [{name:'Claude Code',c:'#b0705a',ver:'2.1.4',in:true},{name:'Codex',c:'#5a5a5f',ver:'0.58.0',in:true},{name:'Gemini CLI',c:'#5a7cb8',ver:'0.12.1',in:false}];
+const SUPPORTED = [['C','#b0705a'],['C','#5a5a5f'],['G','#5a7cb8'],['C','#6b6b70'],['O','#5f7a6a'],['C','#55657f'],['Q','#7a6aa0'],['K','#4f6f8f'],['D','#56689a']];
+// The connection map's story (the website's demo data, and two lines from the phone straight to an agent):
+// who says what to whom, along which wires. A wire runs from its upper end; rev is back up it.
+const MESH = [
+  {from:'you', to:'Codex', say:'在 Windows 上复现一下', wires:[['you-cx',0]], on:['cx']},
+  {from:'cx', to:'你', say:'复现了，路径分隔符写死了', wires:[['you-cx',1]], on:['you']},
+  {from:'you', to:'Her', say:'现在修', wires:[['her-you',1]], on:['her']},
+  {from:'her', to:'Claude Code', say:'修好 #218，提个 PR', wires:[['her-cc',0]], on:['cc']},
+  {from:'her', to:'2 个 Agent', say:'验证一下修复分支', wires:[['her-cx',0],['her-gm',0]], on:['cx','gm']},
+  {from:'cl', to:'Gemini', say:'再跑一遍回归测试', wires:[['cl-gm',0]], on:['gm']},
+  {from:'her', to:'你', say:'修好了，PR #222，三个系统都验证过', wires:[['her-you',0]], on:['you']},
+];
+// What Her does with a team, as the README tells it: it patrols and asks, hands the fix around three machines, and reports.
+// Each frame is the whole picture: the act, what Her says, each machine's task and state, and the wires a light runs along.
+const SHOW = [
+  {act:0, say:'今天巡检有一件事：GitHub 上 3 个 issue、X 上 9 个人，说的是同一个崩溃。'},
+  {act:0, say:'我先让 Windows 电脑上的 Codex 复现。', cx:['复现崩溃','run'], go:[['cx',0]]},
+  {act:0, say:'复现了，是路径分隔符写死了。现在修吗？', cx:['复现崩溃','ok'], ask:1, go:[['cx',1]]},
+  {act:0, say:'复现了，是路径分隔符写死了。现在修吗？', cx:['复现崩溃','ok'], ask:2},
+  {act:1, say:'好，交给这台 Mac 上的 Claude Code 修。', cc:['修复 #218','run'], cx:['复现崩溃','ok'], go:[['cc',0]]},
+  {act:1, say:'修好了一版。Windows 和 Linux 同时验证。', cc:['修复 #218','ok'], cx:['Windows 验证','run'], gm:['Linux 验证','run'], go:[['cx',0],['gm',0]]},
+  {act:1, say:'Windows 上还是崩，日志转回给 Claude 了。', cc:['再修一轮','run'], cx:['Windows 验证','fail'], gm:['Linux 验证','ok'], go:[['cx',1],['cc',0]]},
+  {act:1, say:'又修了一版，Windows 上再验一次。', cc:['再修一轮','ok'], cx:['再验一次','run'], gm:['Linux 验证','ok'], go:[['cx',0]]},
+  {act:2, say:'修好了，PR 是 #222，三个系统都验证过。', cc:['再修一轮','ok'], cx:['再验一次','ok'], gm:['Linux 验证','ok'], out:1, go:[['cx',1]]},
+  {act:2, say:'合并 PR、在 X 上回复，等你点头再做。', cc:['再修一轮','ok'], cx:['再验一次','ok'], gm:['Linux 验证','ok'], out:1},
+];
+const WIRES = {
+  'her-cl':'M288 30C220 8 170 14 122 30', 'her-you':'M344 30C420 8 470 14 512 30',
+  'cl-cc':'M92 88C92 130 90 140 90 180', 'cl-cx':'M100 88C120 150 250 130 290 180', 'cl-gm':'M106 88C160 168 400 116 490 180',
+  'her-cc':'M306 88C290 134 150 140 116 180', 'her-cx':'M316 88L316 180', 'her-gm':'M326 88C342 134 482 140 516 180',
+  'you-cc':'M526 88C472 168 232 116 142 180', 'you-cx':'M532 88C512 150 382 130 342 180', 'you-gm':'M540 88C540 130 542 140 542 180',
+};
+
+// win: 'ob' (first run), 'main', 'set' (settings). conn: null (not signed in) or a SERVERS key.
+// model: 0 none yet, 1 signing in to ChatGPT in the browser, 2 connected.
+const S = {scene:'welcome', win:'ob', page:'welcome', found:false, conn:null, devs:[], model:0, menu:false, side:'acct', sheet:null, alert:null, toast:''};
+
+const SCENES = [
+  ['welcome','欢迎', {win:'ob',page:'welcome',conn:null,model:0,found:false}, '粒子汇聚成标志。不提账号，不提服务器。'],
+  ['team','Agent 提供方', {win:'ob',page:'team',found:false}, '先连接这台 Mac 上的 Agent 提供方。'],
+  ['her','Her', {win:'ob',page:'her',model:0}, '这一页讲功能：演示 Her 怎么带着团队干活。选模型只是底下一行三个按钮。'],
+  ['far','登录', {win:'ob',page:'far',model:2,conn:null}, '最后才提登录：用官网的连接图演示 Hermesh 网络在做什么，可以跳过。'],
+  ['done','完成', {win:'ob',page:'done',model:2}, '完成时撒花。'],
+  ['main','主窗口', {win:'main',model:2,menu:true,conn:null}, '未登录也能用。点「添加环境…」：用到时才提示登录。'],
+  ['acct','账号 · 未登录', {win:'set',side:'acct',conn:null}, '三段：账号（怎么连）、设备（谁能用）、经网络接入的 agent 和电脑。未登录时下面两项提示需要登录。'],
+  ['in','账号 · 已登录', {win:'set',side:'acct',conn:'official'}, '登录后结构不变，账号那一行换成你的账号。'],
+  ['add','添加设备', {win:'set',side:'acct'}, '以后的扫码直连放在这里：添加设备时选方式，账号只是其中一种。扫码后设备那一行会写明它是怎么连的。'],
+];
+function goScene(id){ const sc = SCENES.find(x=>x[0]===id); Object.assign(S, {sheet:null, alert:null, toast:'', menu:false}, sc[2], {scene:id});
+  if (id==='welcome') S.devs = []; if (id==='add') S.sheet = {k:'dev', tab:'qr'}; lastKey = null; render(); }
+
+const row = (t, d, right='', lead='', cls='', style='') => `<div class="row ${lead?'ic':''} ${cls}" style="${style}">${lead}<div class="t"><div class="n">${t}</div>${d?`<div class="d">${d}</div>`:''}</div>${right}</div>`;
+
+/* ---------- First run ---------- */
+const lights = '<div class="lights"><i></i><i></i><i></i></div>';
+function obWelcome(){
+  return `${lights}<div class="ob-body"><div class="center" style="padding-bottom:30px">
+    ${mark('late')}
+    <h1 class="big-h in" style="--d:1900ms;margin-top:34px">欢迎使用 Hermesh</h1>
+    <p class="lede in" style="--d:2300ms">Her 是住在你电脑上的私人助理，<br>带着一支跨机 Agent 团队。</p>
+    <button class="btn primary lg in" style="--d:2800ms;margin-top:36px" data-act="start">开始设置</button>
+  </div></div>`;
+}
+function obTeam(){
+  if (!S.found) return `${lights}<div class="ob-body"><div class="center">
+    ${mark('sm')}
+    <h2 class="ob-h in" style="margin-top:24px;font-size:19px">正在查找 Agent 提供方…</h2>
+    <div class="sweep in" style="--i:1">${SUPPORTED.map((a,i)=>`<span class="tile" style="background:${a[1]};--i:${i}">${a[0]}</span>`).join('')}</div>
+  </div></div>`;
+  const ready = PROV.filter(a=>a.in).length;
+  return `${lights}<div class="ob-body" style="padding-top:26px">
+    <h2 class="ob-h in">已找到 ${ready} 个 Agent 提供方</h2>
+    <p class="ob-p in" style="--i:1">Her 会把编码任务交给它们。</p>
+    <div class="grp team">${PROV.map((a,i)=>`<div class="row ic in" style="--i:${i+2}"><span class="tile" style="background:${a.c}">${a.name[0]}</span><div class="t"><div class="n">${a.name}</div><div class="d mono">${a.ver}</div></div>${a.in?`<span class="v ok"><span class="okc" style="--i:${i+2}">${ic('check')}</span>已登录</span>`:'<span class="v warn">还没登录</span><button class="btn" data-act="toast" data-msg="示意：在终端运行登录命令，和现在一样">在终端运行</button>'}</div>`).join('')}</div>
+    <div class="ag-group in" style="--i:5">项目</div>
+    <div class="grp in" style="--i:6;width:100%">${row('hermesh','<span class="mono">~/CodeSpace/hermesh</span>','<span class="v">独立 worktree</span><button class="btn" data-act="toast" data-msg="选择文件夹…">添加项目…</button>',tile('folder','--t-sage'))}</div>
+  </div>
+  <div class="ob-foot in" style="--i:7"><p class="promise">${ic('shield')}绝不获取 Agent 的任何令牌和密钥，只像你自己在命令行里一样使用它们。</p>
+    <button class="link" data-act="team-done">稍后设置</button><button class="btn primary md" data-act="team-done">继续</button></div>`;
+}
+function obHer(){
+  if (S.model===2) return `${lights}<div class="ob-body mid">
+    <div class="her-face"><span class="ring" style="--i:0"></span><span class="ring" style="--i:1"></span>${cat('wake')}</div>
+    <p class="said">${typed('你好，我是 Her。', 1300)}<br>${typed('已准备就绪，随时可以开始。', 2100)}</p>
+    <p class="using in" style="--d:3100ms">当前模型：gpt-6.1-sol · 可在助手设置中更换</p>
+  </div>
+  <div class="ob-foot in" style="--d:3300ms"><button class="btn primary md push" data-act="her-done">继续</button></div>`;
+  const ways = [['way-chatgpt','chat','用 ChatGPT 登录'],['toast','plan','接入 Token Plan'],['toast','key','填写 API Key']];
+  const tcard = (id, a, where) => `<div class="tcard idle" id="t-${id}"><div class="th"><span class="tile" style="background:${a.c}">${a.name[0]}</span><span><b>${a.name}</b><small>${where}</small></span></div><div class="task">待命</div><div class="st"></div></div>`;
+  return `${lights}<div class="ob-body mid" style="padding:0 44px 0">
+    <h2 class="ob-h in">Her 带着一支 Agent 团队为你工作</h2>
+    <p class="ob-p in" style="--i:1;max-width:600px">写代码的活派给各台电脑上的 Claude Code、Codex，跟到结果再回来汇报。</p>
+    <div class="show in" id="show" data-ask="0" data-out="0" style="--i:2;margin-top:18px">
+      <span class="tag">示例</span>
+      <svg class="wires" width="632" height="232" viewBox="0 0 632 232"><path id="sw-cc" d="M300 58C280 84 150 82 110 110"/><path id="sw-cx" d="M316 58L316 110"/><path id="sw-gm" d="M332 58C352 84 482 82 522 110"/></svg>
+      <div class="s-top">${cat('',true)}<div class="s-say" id="s-say"></div></div>
+      <div class="s-row s-ask"><button class="btn primary">现在修</button><button class="btn">先不修</button></div>
+      <svg class="cur" viewBox="0 0 16 16"><path d="M2 1l11 6-4.6 1.4L6.500 13z" fill="currentColor" stroke="#000" stroke-width=".8"/></svg>
+      <div class="s-row s-out"><span>PR #222</span><span>发布说明.md</span></div>
+      <div class="tcards">${tcard('cc', PROV[0], '这台 Mac')}${tcard('cx', PROV[1], 'Windows 电脑')}${tcard('gm', {name:'Gemini', c:'#5a7cb8'}, 'Linux 服务器')}</div>
+    </div>
+    <div class="acts2 in" id="acts" style="--i:3"><button data-show="0">主动巡检</button><button data-show="4">跨机接力</button><button data-show="8">回来汇报</button></div>
+    <div class="pick in" style="--i:4">${S.model===1
+      ? `<b>请在浏览器中登录 ChatGPT</b><div class="ways"><button class="way" data-act="way-back">换一种方式</button><button class="demo-next" data-act="model-done" style="align-self:center;margin-left:6px">示意：登录完成 →</button></div><span>完成后会自动回到这里。</span>`
+      : `<b>为 Her 选择模型，就可以开始</b><div class="ways">${ways.map(w=>`<button class="way" data-act="${w[0]}" ${w[0]==='toast'?`data-msg="示意：${w[2]}，和现在一样"`:''}>${ic(w[1])}${w[2]}</button>`).join('')}</div><span>密钥和登录信息只保存在这台 Mac 上。</span>`}</div>
+  </div>
+  <div class="ob-foot in" style="--i:5;min-height:54px;padding-top:8px"><button class="link push" data-act="her-done">稍后设置</button></div>`;
+}
+// The show plays in a loop; a frame is drawn whole, so the page can be redrawn under it at any time.
+let showTimer, showI = 0;
+const ST = {idle:'', run:'<i></i>运行中', ok:`${ic('check')}完成`, fail:'<i></i>没过'};
+function showApply(moving){
+  const box = $('show'); if (!box) return;
+  const f = SHOW[showI % SHOW.length], say = $('s-say');
+  if (say.dataset.t !== f.say) { say.dataset.t = f.say; say.textContent = f.say; say.classList.remove('pop'); void say.offsetWidth; say.classList.add('pop'); }
+  for (const id of ['cc','cx','gm']) { const [task, st] = f[id] || ['待命','idle'], el = $('t-'+id);
+    if (el.dataset.k === task+st) continue; el.dataset.k = task+st;
+    el.className = 'tcard '+st; el.querySelector('.task').textContent = task; el.querySelector('.st').innerHTML = ST[st]; }
+  box.dataset.ask = f.ask || 0; box.dataset.out = f.out || 0;
+  document.querySelectorAll('#acts button').forEach((b,i) => b.classList.toggle('on', i === f.act));
+  if (moving) (f.go || []).forEach(([w, rev]) => FX.travel($('sw-'+w), rev));
+}
+function playShow(from = 0){
+  clearInterval(showTimer); showI = from; showApply(true);
+  showTimer = setInterval(() => { if (!$('show')) return clearInterval(showTimer); showI++; showApply(true); }, 2100);
+}
+function obFar(){
+  const on = !!S.conn, node = (id, x, y, face, t, d) => `<div class="mnode" id="n-${id}" style="left:${x}px;top:${y}px">${face}${t}<small>${d}</small></div>`;
+  const chip = (id, x, a, where) => `<div class="mchip" id="n-${id}" style="left:${x}px"><span class="tile" style="background:${a.c}">${a.name[0]}</span><span><b>${a.name}</b><small>${where}</small></span></div>`;
+  return `${lights}<div class="ob-body mid" style="padding:0 44px 6px">
+    <h2 class="ob-h in">${on?'已接入 Hermesh 网络':'登录，接入 Hermesh 网络'}</h2>
+    <p class="ob-p in" style="--i:1;max-width:520px">${on?'接下来可以添加 iPhone、其他电脑和云端助手。':'一张专为 AI Agent 搭的通信网：你的手机、电脑和各家 Agent 两两互通。'}</p>
+    <div class="mesh in" style="--i:2">
+      <svg class="wires" width="632" height="286" viewBox="0 0 632 286">${Object.entries(WIRES).map(([id,d])=>`<path id="w-${id}" d="${d}"/>`).join('')}</svg>
+      ${node('cloud', 96, 10, `<span class="dot">${ic('agent')}</span>`, '云端助手', 'ChatGPT · Grok Bot')}
+      ${node('her', 316, 4, cat(), 'Her', '这台 Mac')}
+      ${node('you', 536, 10, `<span class="dot round">${ic('user')}</span>`, '你', 'iPhone 上')}
+      <div class="mteam"><span>Her 的团队 · 你的电脑</span><em>${ic('shield')}全部端到端加密</em></div>
+      ${chip('cc', 116, PROV[0], '这台 Mac')}${chip('cx', 316, PROV[1], 'Windows 电脑')}${chip('gm', 516, {name:'Gemini', c:'#5a7cb8'}, 'Linux 服务器')}
+      <div class="mbub" id="mbub"></div>
+    </div>
+    <div class="gains in" style="--i:3"><div><b>两两互通</b>手机、云端助手、Her 都能直接找任一台电脑上的 Agent</div><div><b>跨机接力</b>三家的 Agent，三台电脑</div><div><b>消息必达</b>电脑睡眠时暂存，唤醒即达</div></div>
+  </div>
+  <div class="ob-foot in" style="--i:4">${on ? `<button class="btn primary md push" data-act="far-done">继续</button>`
+    : `<button class="link" data-act="c-own">使用自己的服务器…</button><button class="link push" data-act="far-done" style="margin-right:8px">暂不登录</button><button class="btn primary md" data-act="c-official">登录</button>`}</div>`;
+}
+// The connection map at work: every 2.4 s the next message runs along its wires.
+let meshTimer;
+function playMesh(){
+  clearInterval(meshTimer); let i = 0;
+  const step = () => { if (!$('mbub')) return clearInterval(meshTimer);
+    const m = MESH[i++ % MESH.length], bub = $('mbub');
+    document.querySelectorAll('.mesh .lit,.mesh .on').forEach(e => e.classList.remove('lit','on'));
+    bub.classList.remove('up');
+    m.wires.forEach(([w, rev]) => { const path = $('w-'+w); path.classList.add('lit'); FX.travel(path, rev); });
+    setTimeout(() => { m.on.forEach(n => $('n-'+n)?.classList.add('on')); if ($('mbub')) { const w = $('w-'+m.wires[0][0]), q = w.getPointAtLength(w.getTotalLength()/2);
+      bub.style.left = Math.max(110, Math.min(522, q.x))+'px'; bub.style.top = Math.max(98, q.y-16)+'px'; const face = {her:cat('',true), you:`<span class="av">${ic('user')}</span>`, cl:`<span class="av">${ic('agent')}</span>`, cx:`<span class="av" style="background:${PROV[1].c}">C</span>`}[m.from];
+      bub.innerHTML = `${face}<em>→ ${m.to}</em>${m.say}`; bub.classList.add('up'); } }, 650);
+  };
+  FX.later(() => { step(); meshTimer = setInterval(step, 2400); }, 1100);
+}
+function obDone(){
+  return `${lights}<div class="ob-body mid">
+    <div class="her-face in">${cat(S.model===2?'busy':'asleep')}</div>
+    <h2 class="ob-h in" style="--i:1;margin-top:20px">设置完成</h2>
+    <p class="ob-p in" style="--i:2">${S.model===2?'Her 已准备好为你工作。':'可以随时在主窗口中为 Her 选择模型。'}</p>
+    <button class="btn primary lg in" style="--i:5;margin-top:32px" data-act="enter">进入 Hermesh</button>
+  </div>`;
+}
+
+/* ---------- Main window ---------- */
+function mainWin(){
+  const menu = !S.menu ? '' : `<div class="amenu">
+      <button data-act="m-grant">${ic('key')}连接 agent…<kbd>⇧⌘N</kbd></button>
+      <button data-act="m-machine">${ic('laptop')}添加环境…</button>
+      <button data-act="m-code">${ic('link')}输入配对码…<kbd>⇧⌘P</kbd></button><hr>
+      <button data-act="m-settings">${ic('gear')}设置…<kbd>⌘,</kbd></button>
+      <button data-act="m-acct">${ic('user')}账号…</button></div>`;
+  const way = (icon, color, t, d) => `<button class="row go ic" data-act="toast" data-msg="示意：${t}，和现在一样">${tile(icon,color)}<div class="t"><div class="n">${t}</div><div class="d">${d}</div></div>${ic('chev','chev')}</button>`;
+  const body = S.model===2
+    ? `<div class="chat"><div class="msg in">${cat('',true)}<span>${typed('好了，我会用 gpt-6.1-sol 和你聊，想换可以去助手设置。有什么要我做的？', 700)}</span></div></div><div class="composer in" style="--d:600ms">发消息给 Her</div>`
+    : `<div class="chat"><div class="msg in">${cat('asleep',true)}<span>你好，我是 Her，在这台 Mac 上为你做事。开始之前，我需要接上一个模型来思考和回答，选一种方式吧。</span></div>
+        <div class="ways-h in" style="--i:1">接入方式</div><div class="grp in" style="--i:1">
+        ${way('chat','--t-sage','用 ChatGPT 登录','用你的 ChatGPT 订阅，在浏览器里登录')}${way('plan','--t-sand','接入 Token Plan','已订阅的模型套餐，如百炼、火山方舟、智谱 GLM')}${way('key','--t-slate','填写 API Key','DeepSeek、OpenAI、Anthropic 等服务商的 Key')}
+        </div></div><div class="composer in" style="--i:2">接上模型后就能回复你</div>`;
+  const ni = (icon, label, sel='') => `<button class="ni ${sel}" data-act="toast" data-msg="示意：${label}，和现在一样">${icon}<span class="nm">${label}</span></button>`;
+  return `<aside class="side">${lights}
+      <nav class="mnav">${ni(ic('pencil'),'新会话')}${ni(cat('',true),'Her','sel')}${ni(ic('grid'),'概览')}</nav>
+      <div class="side-h">任务</div>
+      <div class="side-empty"><b>还没有任务</b>交给 Her 一件事，它派给 Agent 的任务会显示在这里。</div>
+      ${menu}
+      <button class="acct ${S.menu?'open':''}" data-act="menu"><span class="avatar">U</span><span><b>user</b><small>${S.conn?'已登录':'未登录'}</small></span></button>
+    </aside>
+    <section class="main"><div class="bar-top"><h1>Her</h1></div><div class="body" style="display:flex;flex-direction:column;padding-bottom:0">${body}</div></section>`;
+}
+
+/* ---------- Settings ---------- */
+function setWin(){
+  const srv = S.conn && SERVERS[S.conn];
+  const it = (id, t, label) => `<button class="ni ${S.side===id?'sel':''}" data-side="${id}">${t}<span class="nm">${label}</span></button>`;
+  const me = srv ? `<button class="me ${S.side==='acct'?'sel':''}" data-side="acct"><span class="avatar">U</span><span><b>user</b><small>账号与设备</small></span></button>`
+    : `<button class="me ${S.side==='acct'?'sel':''}" data-side="acct"><span class="who">${ic('user')}</span><span><b>未登录</b><small>账号与设备</small></span></button>`;
+  const panes = {acct:['账号与设备', acctPane], general:['通用', generalPane], notify:['通知', notifyPane], grants:['授权', grantsPane], env:['这台 Mac', envPane]};
+  const [title, pane] = panes[S.side];
+  return `<aside class="side">${lights}<nav class="nav">
+      ${me}<div class="nav-gap"></div>
+      ${it('general', tile('gear','--t-slate'), '通用')}
+      ${it('notify', tile('bell','--t-rose'), '通知')}
+      ${it('grants', tile('key','--t-sand'), '授权')}
+      <div class="nav-h">环境<button data-act="m-machine" title="添加环境…">${ic('plus')}</button></div>
+      ${it('env', tile('laptop','--t-blue'), '这台 Mac')}
+    </nav></aside>
+    <section class="main"><div class="bar-top"><h1>${title}</h1></div><div class="body">${pane()}</div></section>`;
+}
+function acctPane(){
+  const srv = S.conn && SERVERS[S.conn];
+  const acct = srv
+    ? row('user', `${srv.name} · ${srv.host}`, `<span class="v ok">${S.conn==='official'?'已登录':'已连接'}</span><button class="btn" data-act="out">退出登录…</button>`, '<span class="avatar sm">U</span>')
+    : row('未登录', '登录后，在任何地方都能连到这台 Mac，并接入云端助手和其他电脑。', '<button class="btn primary" data-act="c-official">登录</button>', `<span class="who sm">${ic('user')}</span>`);
+  // How a device reaches this Mac says so on its row: by the account, or directly (a later way in).
+  const how = d => !d.direct ? '经 Hermesh 账号' : srv ? '直连 · 不在同一网络时经 Hermesh 账号' : '直连 · 在同一网络时可用';
+  const devs = row('MacBook Pro','这台 Mac','',tile('laptop','--t-slate')) + S.devs.map(d=>row(d.name, how(d), '<button class="btn" data-act="toast" data-msg="示意：移除…，和现在一样">移除…</button>', tile('phone','--t-blue'))).join('');
+  return `<div class="pane">
+    <div class="ghead">Hermesh 账号</div>
+    <div class="grp">${acct}</div>
+    ${srv?'':'<div class="foot">不登录也可以在这台 Mac 上使用 Her 和 Agent 提供方。 <button class="link" data-act="c-own">使用自己的服务器…</button></div>'}
+    <div class="ghead">设备</div>
+    <div class="grp">${devs}</div>
+    <div class="foot">设备可以查看任务、直接给 Agent 派活、批准连接请求。</div>
+    <div class="acts"><button class="btn push" data-act="add-dev">添加设备…</button></div>
+    <div class="ghead">经 Hermesh 网络接入${srv?'':'<small>需要登录</small>'}</div>
+    <div class="grp">
+      ${row('云端助手和其他 agent','ChatGPT、Grok Bot 等，通过 MCP 或 CLI','<button class="btn" data-act="m-grant">连接 agent…</button>',tile('agent','--t-sage'))}
+      ${row('其他电脑','使用它们上面的 Agent 提供方','<button class="btn" data-act="m-machine">添加环境…</button>',tile('laptop','--t-sand'))}
+    </div>
+    ${srv?'<div class="acts"><button class="btn push" data-act="adv">高级…</button></div>':''}
+  </div>`;
+}
+// A stand-in for a QR code: three finders and a fixed scatter of modules.
+function qr(){
+  let seed = 7, out = ''; const rnd = () => (seed = (seed*1103515245+12345) & 0x7fffffff) / 0x7fffffff, N = 25;
+  const finder = (x,y) => `<rect x="${x}" y="${y}" width="7" height="7"/><rect x="${x+1}" y="${y+1}" width="5" height="5" fill="#fff"/><rect x="${x+2}" y="${y+2}" width="3" height="3"/>`;
+  for (let y=0;y<N;y++) for (let x=0;x<N;x++){ const f = (x<8&&y<8)||(x>N-9&&y<8)||(x<8&&y>N-9); if (!f && rnd()<.48) out += `<rect x="${x}" y="${y}" width="1" height="1"/>`; }
+  return `<svg viewBox="0 0 ${N} ${N}" fill="#111" shape-rendering="crispEdges">${out}${finder(0,0)}${finder(N-7,0)}${finder(0,N-7)}</svg>`;
+}
+const sw = on => `<button class="sw ${on?'on':''}" data-sw="1"></button>`;
+function generalPane(){ return `<div class="pane"><div class="grp">${row('语言','','<span class="v">跟随系统（简体中文）</span>')}${row('自动下载更新','',sw(true))}</div></div>`; }
+function notifyPane(){ return `<div class="pane"><div class="grp">${row('agent 提问','',sw(true))}${row('任务出错','',sw(true))}</div></div>`; }
+function grantsPane(){
+  return `<div class="pane">
+    <div class="grp">${row('Her','所有电脑 · 不会到期','',`<span class="tile gray">${cat('',true)}</span>`)}</div>
+    <div class="acts"><button class="btn push" data-act="m-grant">连接 agent…</button></div>
+  </div>`;
+}
+function envPane(){
+  const go = (icon, color, t, v) => `<button class="row go ic" data-act="toast" data-msg="示意：${t}，和现在一样">${tile(icon,color)}<div class="t"><div class="n">${t}</div></div><span class="v">${v}</span>${ic('chev','chev')}</button>`;
+  return `<div class="pane">
+    <div class="hero"><span class="big" style="background:var(--t-blue)">${ic('laptop')}</span><b>macbook-pro</b><span>这台 Mac · macOS · arm64</span></div>
+    <div class="grp">${go('code','--t-slate','Agent 提供方','2 个可用')}${go('folder','--t-sage','项目','1')}</div>
+  </div>`;
+}
+
+/* ---------- Sheets ---------- */
+const NEED = {machine:'添加环境', grant:'连接 agent', code:'输入配对码'};
+function sheetHtml(){
+  const s = S.sheet, wrap = (h) => `<div class="scrim"><div class="sheet">${h}</div></div>`;
+  if (s.k==='adv'){ const srv = SERVERS[S.conn]; return wrap(`<div class="sh"><b>高级</b></div><div class="sb">
+    <div class="grp">${row('服务器','',`<span class="v">${srv.host}</span>`)}${row('身份 ID','','<span class="v mono">o_7f3a…c21e</span><button class="btn">拷贝</button>')}${row('连接地址','',`<span class="v mono">${S.conn==='official'?'connect.hermesh.io':srv.host}/o_7f3a…</span><button class="btn">拷贝</button>`)}${row('网页控制台','','<button class="btn">打开</button>')}</div></div>
+    <div class="sf"><button class="btn danger" data-act="toast" data-msg="示意：全部清空…，和现在一样">全部清空…</button><button class="btn primary push" data-act="close">完成</button></div>`); }
+  if (s.k==='dev'){ const acct = s.tab==='acct', n = i => `<span class="num">${i}</span>`;
+    return wrap(`<div class="sh"><b>添加设备</b><span>iPhone，或另一台装了 Hermesh 的电脑。</span></div>
+    <div class="sb"><div class="seg full"><button class="${acct?'on':''}" data-tab="acct">用 Hermesh 账号</button><button class="${acct?'':'on'}" data-tab="qr">扫码直连<span class="new">设想</span></button></div>
+      ${acct ? `<div class="grp">${row('在那台设备上安装 Hermesh','','',n(1))}${row('用同一个账号登录','','',n(2))}${row('回到这里，按 Touch ID 批准','','',n(3))}</div><p class="foot">在任何地方都能连，也能接入云端助手和其他电脑。</p>`
+      : `<div class="qrbox">${qr()}<div><b>用 iPhone 上的 Hermesh 扫描</b><span>两台设备在同一网络时直接连接，不经过服务器，不需要账号。之后登录账号，出门在外也能连。</span></div></div>`}
+    </div>
+    <div class="sf">${acct ? (S.conn ? `<span style="font-size:12px;color:var(--l3)">等它连上来…</span><button class="btn primary push" data-act="close">完成</button>` : `<button class="btn push" data-act="close">取消</button><button class="btn primary" data-act="c-official">登录…</button>`)
+      : `<button class="btn" data-act="close">取消</button><button class="demo-next push" data-act="qr-done">示意：iPhone 扫码了 →</button>`}</div>`); }
+  const step = s.step;
+  if (step==='browser') return wrap(`<div class="status">${mark('sm')}<h2 class="ob-h" style="font-size:17px;margin-top:14px">请在浏览器里完成登录</h2><p class="ob-p">完成后会自动回到这里。</p></div>
+    <div class="sf"><button class="btn" data-act="close">取消</button><button class="demo-next push" data-act="c-next">示意：登录完成 →</button></div>`);
+  if (step==='own') return wrap(`<div class="sh"><b>连接你自己的服务器</b></div>
+    <div class="sb"><div class="grp">${row('服务器地址','','<input class="field" value="relay.example.com" spellcheck="false">')}${row('认领码','','<input class="field mono" value="K7QM-2XPA-9RTD" spellcheck="false">')}</div>
+      <p class="foot">认领码在服务器第一次启动时给出。</p></div>
+    <div class="sf"><button class="link" data-act="c-join">已在别的设备上用？加入它…</button><button class="btn push" data-act="close">取消</button><button class="btn primary" data-act="c-next">继续</button></div>`);
+  if (step==='addr') return wrap(`<div class="sh"><b>加入你已有的 Hermesh</b></div>
+    <div class="sb"><div class="grp">${row('连接地址','','<input class="field mono" value="relay.example.com/o_7f3a9c21e4b8" spellcheck="false">')}</div>
+      <p class="foot">连接地址在已有设备的「设置 › 账号与设备 › 高级…」里。</p></div>
+    <div class="sf"><button class="btn push" data-act="close">取消</button><button class="btn primary" data-act="c-next">继续</button></div>`);
+  if (step==='auth'){ const join = s.way==='join'; return wrap(`<div class="sh"><b>${join?'让这台 Mac 加入你的 Hermesh？':'让这台 Mac 成为你的可信设备？'}</b><span>${join?'继续后按一次 Touch ID，再到你已有的设备上批准。':'以后有设备或 agent 要连接这台 Mac，都要你在这里按 Touch ID 批准。'}</span></div>
+    <div class="sf"><button class="btn push" data-act="close">取消</button><button class="btn primary" data-act="c-next" ${s.busy?'disabled':''}>${s.busy?'正在设置…':'继续'}</button></div>`); }
+  if (step==='wait') return wrap(`<div class="status">${mark('sm')}<h2 class="ob-h" style="font-size:17px;margin-top:14px">在你已有的设备上批准</h2>
+      <div class="ctiles"><div class="ctiles-row"><span>4N7D</span><span>W2KQ</span><span>8HXA</span></div><div class="ctiles-cap"><span>核对码</span><b>须与已有设备显示的一致</b></div></div></div>
+    <div class="sf"><button class="btn" data-act="close">取消</button><button class="demo-next push" data-act="c-next">示意：已有设备批准了 →</button></div>`);
+  if (step==='digits') return wrap(`<div class="status"><h2 class="ob-h" style="font-size:17px">输入已有设备上的两位数字</h2><input class="digits" value="47" maxlength="2"></div>
+    <div class="sf"><button class="btn push" data-act="close">我没有批准过</button><button class="btn primary" data-act="c-next">加入</button></div>`);
+  return '';
+}
+const WAYS = {official:['browser','auth'], own:['own','auth'], join:['addr','auth','wait','digits']};
+function connectNext(){
+  const s = S.sheet, steps = WAYS[s.way], i = steps.indexOf(s.step);
+  if (s.step==='auth' && !s.touched) { s.busy = true; render(); return setTimeout(()=>{ if (S.sheet===s){ s.busy=false; s.touched=true; connectNext(); } }, 900); }
+  if (i < steps.length-1) { s.step = steps[i+1]; return render(); }
+  S.conn = s.way==='official' ? 'official' : 'own'; S.sheet = null;
+  if (S.win==='ob') return render();
+  if (S.win==='set') { S.side='acct'; S.scene='in'; }
+  flash(S.conn==='official' ? '已登录' : '已连接自己的服务器');
+}
+function alertHtml(){ const a = S.alert; return `<div class="scrim" style="align-items:center"><div class="alert">${tile('user','--t-blue')}<b>${a.t}</b><p>${a.m}</p>
+  <div class="ab"><button class="btn primary" data-act="${a.act}">${a.ok}</button><button class="btn" data-act="alert-no">取消</button></div></div></div>`; }
+
+/* ---------- Render ---------- */
+let toastTimer, teamTimer, swapTimer, lastKey = null, pending = null;
+function flash(msg){ S.toast = msg; render(); clearTimeout(toastTimer); toastTimer = setTimeout(()=>{ S.toast=''; render(); }, 2600); }
+// What each page sets off as it comes in.
+function onEnter(key){
+  const q = sel => document.querySelector('#inner '+sel);
+  FX.reset(); FX.ambient(S.win==='ob');
+  if (key==='ob:welcome:') FX.assemble(q('.mark'));
+  if (key==='ob:her:2') FX.later(()=>FX.burst(q('.her-face'), FX.CAT, 56, 6), 650);
+  clearInterval(meshTimer); clearInterval(showTimer);
+  if (key==='ob:her:0') FX.later(() => playShow(), 700);
+  if (S.win==='ob' && S.page==='far') playMesh();
+  if (key==='ob:far:true') ['cloud','her','you','cc','cx','gm'].forEach((n,i)=>FX.later(()=>FX.burst($('n-'+n), FX.aurora(), 16, 3.6), 200+i*110));
+  if (key==='ob:done:') { FX.later(()=>FX.confetti(), 300); FX.later(()=>FX.burst(q('.her-face'), FX.CAT, 40, 6), 520); }
+}
+function render(){
+  const cls = {ob:'ob', main:'mainw', set:'set'}[S.win], inner = $('inner');
+  const ob = {welcome:obWelcome, team:obTeam, her:obHer, far:obFar, done:obDone};
+  const html = S.win==='ob' ? ob[S.page]() : S.win==='main' ? mainWin() : setWin();
+  // The page's key: when it changes, the old content leaves and the new comes in; otherwise it is only redrawn.
+  const key = S.win==='ob' ? `ob:${S.page}:${S.page==='team'?S.found:S.page==='her'?(S.model===2?2:0):S.page==='far'?!!S.conn:''}` : S.win;
+  const resized = !win.classList.contains(cls);
+  win.className = `win ${cls}`;
+  win.dataset.step = S.win!=='ob' ? S.win : S.page==='her'&&S.model===2 ? 'awake' : S.page==='far'&&S.conn ? 'linked' : S.page;
+  win.style.setProperty('--p', {welcome:'5%', team:'28%', her:'52%', far:'76%', done:'100%'}[S.page] || '0%');
+  if (key !== lastKey) {
+    const first = lastKey === null && !inner.innerHTML; lastKey = key; pending = [html, cls];
+    clearTimeout(swapTimer); inner.classList.remove('entering'); inner.classList.add('leaving');
+    // After the window has changed its size, so that what is measured is where things end up.
+    swapTimer = setTimeout(()=>{ inner.className = `inner ${pending[1]} entering`; inner.innerHTML = pending[0]; pending = null; onEnter(key); }, first ? 0 : resized ? 520 : 180);
+  } else if (pending) pending = [html, cls];
+  else { inner.classList.remove('entering'); inner.innerHTML = html; showApply(false); }
+  $('over').innerHTML = `${S.sheet?sheetHtml():''}${S.alert?alertHtml():''}${S.toast?`<div class="toast">${S.toast}</div>`:''}`;
+  $('steps').innerHTML = SCENES.map((s,i)=>`${i===6?'<span class="gap"></span>':''}<button class="${S.scene===s[0]?'on':''}" data-scene="${s[0]}"><i>${i+1}</i>${s[1]}</button>`).join('');
+  $('cap').innerHTML = SCENES.find(s=>s[0]===S.scene)[3];
+  // Looking for the agents takes a moment, then they are found.
+  clearTimeout(teamTimer);
+  if (S.win==='ob' && S.page==='team' && !S.found) teamTimer = setTimeout(()=>{ S.found = true; render(); }, 2200);
+}
+// An entry that needs an account: while not signed in, it says so first.
+function need(what){ S.menu=false; if (S.conn) return flash(`示意：打开「${NEED[what]}」，和现在一样`); S.alert={t:`${NEED[what]}需要登录`, m:'登录 Hermesh 账号后，其他设备和 agent 才能连接这台 Mac。', ok:'登录…', act:'need-go'}; }
+const ACT = {
+  start(){ S.page='team'; S.found=false; S.scene='team'; },
+  'team-done'(){ S.page='her'; S.model=0; S.scene='her'; },
+  'way-chatgpt'(){ S.model=1; }, 'way-back'(){ S.model=0; },
+  'model-done'(){ S.model=2; },
+  'her-done'(){ S.page='far'; S.scene='far'; },
+  'far-done'(){ S.page='done'; S.scene='done'; },
+  enter(){ S.win='main'; S.menu=false; S.scene='main'; },
+  menu(){ S.menu=!S.menu; },
+  'm-grant'(){ return need('grant'); }, 'm-machine'(){ return need('machine'); }, 'm-code'(){ return need('code'); },
+  'm-settings'(){ S.menu=false; S.win='set'; S.side='general'; S.scene=S.conn?'in':'acct'; },
+  'm-acct'(){ S.menu=false; S.win='set'; S.side='acct'; S.scene=S.conn?'in':'acct'; },
+  'need-go'(){ S.alert=null; S.sheet={k:'connect',way:'official',step:'browser'}; },
+  'c-official'(){ S.sheet={k:'connect',way:'official',step:'browser'}; },
+  'c-own'(){ S.sheet={k:'connect',way:'own',step:'own'}; },
+  'c-join'(){ S.sheet={k:'connect',way:'join',step:'addr'}; },
+  'c-next'(){ connectNext(); return true; },
+  out(){ S.alert={t:'要退出登录吗？', m:'这台 Mac 上的项目、任务和 Her 都会保留。其他设备和 agent 将无法连接这台 Mac。', ok:'退出登录', act:'out-ok'}; },
+  'out-ok'(){ S.alert=null; S.conn=null; S.scene='acct'; flash('已退出登录'); return true; },
+  'alert-no'(){ S.alert=null; },
+  adv(){ S.sheet={k:'adv'}; },
+  'add-dev'(){ S.sheet={k:'dev', tab:'acct'}; },
+  'qr-done'(){ S.sheet=null; S.devs.push({name:'iPhone', direct:true}); flash('iPhone 已连接'); return true; },
+  close(){ S.sheet=null; },
+};
+win.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.sw) return b.classList.toggle('on');
+  if (b.dataset.side) { S.side = b.dataset.side; return render(); }
+  if (b.dataset.show) return playShow(+b.dataset.show);
+  if (b.dataset.tab) { S.sheet.tab = b.dataset.tab; return render(); }
+  const a = b.dataset.act; if (!a) return;
+  if (a==='toast') return flash(b.dataset.msg);
+  if (!ACT[a]()) render();
+});
+$('steps').addEventListener('click', e => { const b = e.target.closest('button[data-scene]'); if (b) goScene(b.dataset.scene); });
+render();
+</script>
+</body>
+</html>

@@ -4,6 +4,7 @@ import type { Client, Device, GetStatusResponse, Machine, PairingDetails, Projec
 import type { Session } from "@hermesh/proto/session";
 import { sessionView, unreachableMachines, withKnownState, type SessionFilter, type SessionView } from "@hermesh/core";
 import type { Peek } from "./layout";
+import { useFirstRunDone, useProgress } from "./firstrun/progress";
 import { notNow, setNotNow, startPage } from "./start";
 import { useWorld } from "./useWorld";
 import { i18n } from "../../shared/i18n";
@@ -45,7 +46,10 @@ export type Sheet =
   | { kind: "wake"; clientId: string; agent: string; wake?: Wake; code?: string; name?: string }
   | { kind: "confirm"; title: string; message: string; button: string; run: (eraseHer: boolean) => Promise<unknown>; done?: string; herData?: { name: string; offline: boolean }; safe?: boolean }
   | { kind: "erase" }
-  | { kind: "herOff"; machineId: string; machineName: string };
+  | { kind: "herOff"; machineId: string; machineName: string }
+  // Without an account (docs/cold-start-prd.md §6.2): what needs one says so first; then signing in.
+  | { kind: "needSignIn"; what: "newGrant" | "addMachine" | "enterCode" }
+  | { kind: "signIn"; way: "official" | "own" | "join" };
 
 export type Toast = { text: string; undo?: () => void; failed?: boolean; id: number };
 
@@ -195,13 +199,18 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
   }));
   const opened = useRef(ui.selection);
   const started = useRef(false);
+  // The main window's first page is chosen once the first run is over (docs/cold-start-tech.md §3.4.3).
+  const progress = useProgress();
+  const firstRunDone = useFirstRunDone();
+  const firstRun = progress !== null || !firstRunDone;
   useEffect(() => {
     const s = world.status;
-    if (started.current || location.hash.startsWith("#settings") || !world.loaded || !s || !(s.initialized || s.machineOnly)) return;
+    if (started.current || location.hash.startsWith("#settings") || !world.loaded || !s || !(s.initialized || s.machineOnly || s.localMachineEnabled)) return;
+    if (firstRun && !s.initialized && !s.machineOnly) return;
     started.current = true;
     const kind = startPage({ machines: world.machines, machineOnly: s.machineOnly, notNow: notNow(), onSession: opened.current.kind === "session" });
     if (kind) setUI((u) => (u.selection === opened.current ? { ...u, selection: { kind } } : u));
-  }, [world.loaded, world.status, world.machines]);
+  }, [world.loaded, world.status, world.machines, firstRun]);
   useEffect(() => {
     if (world.machines.some((m) => m.her?.enabled)) setNotNow(false);
   }, [world.machines]);
@@ -269,7 +278,7 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
       pairings: data.pairings.filter((p) => !ui.dismissed.includes(p.code)),
       sessions,
       sessionsUnreachable: data.projectsUnreachable,
-      sessionsLoaded: world.loaded && world.status !== undefined && (world.status.initialized || world.status.machineOnly),
+      sessionsLoaded: world.loaded && world.status !== undefined && (world.status.initialized || world.status.machineOnly || world.status.localMachineEnabled),
       moreSessions: world.next !== undefined,
       loadOlderSessions: world.loadOlder,
       workVersion: world.workVersion,

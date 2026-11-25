@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNod
 import { useTranslation } from "react-i18next";
 import type { BotSummary } from "@hermesh/her-protocol";
 import { Icon } from "../icons";
+import { useMachineTitle } from "../computer";
 import { errorText } from "../store";
 import { useHer } from "./context";
 import { BusyBubble } from "./Busy";
@@ -42,13 +43,23 @@ const subscribe = (l: () => void) => {
   return () => void listeners.delete(l);
 };
 
+/** Sets an environment's onboarding (the first run's model step drives it too, docs/cold-start-tech.md §3.4.1). */
+export function putFlow(machineId: string, f: Flow) {
+  put(machineId, f);
+}
+
+/** An environment's onboarding as it changes; null before it began. */
+export function useFlow(machineId: string): Flow | null {
+  return useSyncExternalStore(subscribe, () => flows.get(machineId) ?? null);
+}
+
 function put(machineId: string, f: Flow) {
   flows.set(machineId, f);
   for (const l of listeners) l();
 }
 
 /** Moves an environment's onboarding on, whichever environment shows. */
-function update(machineId: string, change: (f: Flow) => Flow) {
+export function update(machineId: string, change: (f: Flow) => Flow) {
   const f = flows.get(machineId);
   const next = f && change(f);
   if (next && next !== f) put(machineId, next);
@@ -97,7 +108,8 @@ export function Onboarding({ flow, bot }: { flow: Flow; bot: BotSummary }) {
   const { t, i18n } = useTranslation("her");
   const her = useHer();
   const id = her.machine.machineId;
-  const machine = her.machine.machineName;
+  // Her on this computer: by the computer's own name (as in Settings), not its machine's short one.
+  const machine = useMachineTitle(her.machine);
   const { models } = her.env;
   const lang = i18n.language;
   const provider = (id: string) => models.providers.find((x) => x.id === id);
@@ -374,7 +386,7 @@ export function SecretInput({ label, placeholder, value, onChange, disabled, aut
 }
 
 /** A provider's key, written where only her gets it (auth/set), emptied as it is saved. ↩ saves. */
-function KeyField({ name, page, busy, onSave }: { name: string; page?: string; busy: boolean; onSave: (key: string) => void }) {
+export function KeyField({ name, page, busy, onSave }: { name: string; page?: string; busy: boolean; onSave: (key: string) => void }) {
   const { t } = useTranslation("her");
   const [key, setKey] = useState("");
   const save = () => {

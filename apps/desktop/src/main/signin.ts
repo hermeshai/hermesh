@@ -17,7 +17,8 @@ import { mainWindow, showMain } from "./windows";
 // that registered the scheme and caught the link cannot use it. The
 // verifier stays here in the main process: the page never sees it.
 
-type Pending = { center: string; verifier: string; startedAt: number; code?: string };
+// owner: signing in again to the owner this device signed out of (SignIn), not setting one up.
+type Pending = { center: string; verifier: string; startedAt: number; code?: string; owner?: string };
 
 // Link codes last 15 minutes; so does a sign-in kept on disk, so the link
 // still works when the browser has to start the app again.
@@ -48,15 +49,18 @@ function current(): Pending | undefined {
   return pending;
 }
 
-/** Starts the browser sign-in at center, or opens the browser again for the one under way. */
-export async function signIn(center: string): Promise<void> {
+/**
+ * Starts the browser sign-in at center, or opens the browser again for the one under way. owner:
+ * the owner this device signed out of, to sign in to again.
+ */
+export async function signIn(center: string, owner?: string): Promise<void> {
   let p = current();
-  if (!p || p.center !== centerBase(center) || p.code) {
-    p = { center: centerBase(center), verifier: randomBytes(32).toString("base64url"), startedAt: Date.now() };
+  if (!p || p.center !== centerBase(center) || p.code || p.owner !== owner) {
+    p = { center: centerBase(center), verifier: randomBytes(32).toString("base64url"), startedAt: Date.now(), ...(owner ? { owner } : {}) };
     pending = p;
     save(p);
   }
-  await shell.openExternal(appLoginURL(p.center, await pkceChallenge(p.verifier)));
+  await shell.openExternal(appLoginURL(p.center, await pkceChallenge(p.verifier), p.owner ? [p.owner] : []));
 }
 
 export function signInPending(): boolean {
@@ -120,6 +124,18 @@ export async function completeSignIn(o: { localMachine: boolean }): Promise<void
     rootPlatform: rootPlatform(process.platform),
     localMachineName: o.localMachine ? name : "",
   });
+  cancelSignIn();
+}
+
+/**
+ * Signs this device in again to the owner it signed out of, with the link code the browser sent
+ * back (Claim with resume): no new key and no Touch ID.
+ */
+export async function completeResume(): Promise<void> {
+  const p = current();
+  if (!p?.code) throw new Error(i18n.t("main:signInExpired"));
+  const transport = createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } });
+  await createClient(LocalService, transport).signIn({ claimCode: p.code, claimVerifier: p.verifier });
   cancelSignIn();
 }
 

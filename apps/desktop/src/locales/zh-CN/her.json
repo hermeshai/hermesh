@@ -37,7 +37,7 @@
     "notNow": "以后再说"
   },
   "grant": {
-    "runs": "Her 在这台电脑上运行，电脑开着时她一直可用。",
+    "runs": "Her 在这台电脑上运行，电脑开着时一直可用。",
     "desc": "Her 可以使用你的所有电脑：在任意项目里启动编程 agent，查看并回复它们的任务。这项授权不会到期，关闭 Her 即结束。",
     "allow": "允许 Her 使用你的电脑"
   },
@@ -672,7 +672,7 @@
     "title": "进展",
     "log": "派出去的活",
     "empty": "还没有派出去的活",
-    "emptySub": "交给 Her 一件事，她分头去办的每一路都会出现在这里。",
+    "emptySub": "交给 Her 一件事，它分头去办的每一路都会出现在这里。",
     "notRead": "连上 {{name}} 后，这里会显示 Her 派出去的活。",
     "routine": "定时任务「{{name}}」",
     "earlier": "更早交代的",
@@ -933,8 +933,8 @@
     },
     "use2": "开始使用",
     "stopUsing": "停止使用",
-    "builtinWindow": "Her 在她所在的那台{{computer}}上用她自己的 {{program}} 打开网页，不带你的登录状态，会显示窗口。",
-    "builtinNoWindow": "Her 在她所在的那台{{computer}}上用她自己的 {{program}} 打开网页，不带你的登录状态，不显示窗口。",
+    "builtinWindow": "Her 在它所在的那台{{computer}}上用它自己的 {{program}} 打开网页，不带你的登录状态，会显示窗口。",
+    "builtinNoWindow": "Her 在它所在的那台{{computer}}上用它自己的 {{program}} 打开网页，不带你的登录状态，不显示窗口。",
     "noChrome": "Her 所在的那台{{computer}}上没有 Chrome。在那台电脑上装好 Google Chrome，Her 会自己找到。",
     "sites": "网站权限",
     "allSites": "所有网站",

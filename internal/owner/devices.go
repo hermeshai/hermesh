@@ -39,6 +39,7 @@ type pendingJoin struct {
 	deviceCert              *identityv1.Signed
 	machineCert             *identityv1.Signed // this device's own machine, if asked for
 	machineName             string
+	herGrant                *identityv1.Signed    // Her's grant on that machine, when Her runs there (same Touch ID)
 	label, platform         string                // RequestJoinRequest.root_label, root_platform
 	chain                   *identityv1.RootChain // once approved
 	wrong                   int                   // match codes typed wrong
@@ -101,12 +102,17 @@ func (o *Owner) RequestJoin(ctx context.Context, req *localv1.RequestJoinRequest
 		&identityv1.PairingRequest{Kind: identityv1.PairingKind_PAIRING_KIND_DEVICE, SubjectPublicKey: req.RootPublicKey, Label: req.RootLabel,
 			Hostname: host, Platform: req.RootPlatform, OwnerId: req.OwnerId, CreatedAt: timestamppb.Now()},
 		deviceCert(req.OwnerId, device, req.RootLabel)}
+	herGrant := -1 // its index in signed, when Her already runs on this device's machine
 	if req.LocalMachineName != "" {
 		nc, err := o.localMachineCert(req.OwnerId, rootPub)
 		if err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, nc)
+		if herPub := o.localMachineHerKeyIfEnabled(); len(herPub) > 0 {
+			herGrant = len(msgs)
+			msgs = append(msgs, HerGrant(req.OwnerId, nc.MachineId, SanitizeMachineName(req.LocalMachineName), herPub))
+		}
 	}
 	if running != nil {
 		msgs = append(msgs, &identityv1.MachineCert{OwnerId: req.OwnerId, MachineId: running.MachineID(), MachinePublicKey: running.PublicKeySPKI(),
@@ -124,6 +130,9 @@ func (o *Owner) RequestJoin(ctx context.Context, req *localv1.RequestJoinRequest
 	o.join = &pendingJoin{code: res.Code, relayURL: relayURL, ownerID: req.OwnerId, account: req.Account, rootPub: req.RootPublicKey, device: device, deviceCert: signed[1]}
 	if len(signed) > 2 {
 		o.join.machineCert, o.join.machineName, o.join.rebind = signed[2], req.LocalMachineName, running != nil
+	}
+	if herGrant > 0 {
+		o.join.herGrant = signed[herGrant]
 	}
 	o.mu.Unlock()
 	return &localv1.RequestJoinResponse{Code: res.Code, ExpiresAt: res.ExpiresAt,
@@ -312,23 +321,9 @@ func (o *Owner) ConfirmJoin(ctx context.Context, code string, accept bool, match
 			return nil, fmt.Errorf("this computer as a machine: %w", err)
 		}
 	} else if j.machineCert != nil {
-		herPub := o.localMachineHerKeyIfEnabled()
-		if err := o.installLocalMachine(ctx, j.machineCert, j.machineName, nil); err != nil {
+		// Her's grant was signed with the request, under the same Touch ID.
+		if err := o.installLocalMachine(ctx, j.machineCert, j.machineName, j.herGrant); err != nil {
 			return nil, fmt.Errorf("this computer as a machine: %w", err)
-		}
-		if len(herPub) > 0 {
-			if l := o.local(); l != nil {
-				hg := HerGrant(j.ownerID, l.MachineID(), l.Info().MachineName, herPub)
-				if signedHG, sErr := o.signRoot(ctx, hg); sErr == nil {
-					_ = l.SetHerGrant(signedHG[0], o.trust.RootChain())
-					if ctl, _, cErr := o.control(ctx); cErr == nil {
-						if _, pErr := ctl.PublishGrant(ctx, &relayv1.PublishGrantRequest{Grant: signedHG[0]}); pErr == nil {
-							o.st.putGrant(signedHG[0], false)
-							go o.refreshCards()
-						}
-					}
-				}
-			}
 		}
 	} else if !wasMachineOnly {
 		_ = o.st.set(kLocalMachine, []byte("0"))
@@ -813,7 +808,20 @@ func (o *Owner) SignOut(ctx context.Context) error {
 	}
 	o.mu.Lock()
 	o.signedOut = true
+	// In place: the relay connection goes, this device's machine stays with
+	// its sessions and Her, its mesh paused (docs/cold-start-tech.md §2.1).
+	if o.client != nil {
+		o.client.Close()
+		o.client = nil
+	}
+	if o.kept != nil {
+		o.kept.Close()
+		o.kept = nil
+	}
 	o.mu.Unlock()
+	o.closeDirectMachines()
+	o.rep.clear()
+	o.pauseLocalMesh(true)
 	return nil
 }
 
@@ -863,5 +871,8 @@ func (o *Owner) SignIn(ctx context.Context, req *localv1.SignInRequest) error {
 		o.account = req.Account
 	}
 	o.mu.Unlock()
+	o.pauseLocalMesh(false)
+	o.rep.kick()
+	o.wakeRelay()
 	return nil
 }

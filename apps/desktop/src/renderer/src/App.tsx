@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { DaemonInfo } from "../../shared/daemon";
 import { AboutWindow, UpdatesWindow, WhatsNewWindow } from "./update";
-import { FirstRun, useFirstRunPending } from "./FirstRun";
+import { FirstRun, useFirstRunMarks, useFirstRunPending } from "./FirstRun";
 import { Mark } from "@hermesh/ui";
 import { Join } from "./firstrun/SignIn";
 import { MainWindow } from "./MainWindow";
@@ -20,17 +20,19 @@ export function App() {
   return <HermeshProvider>{settings ? <SettingsWindow /> : <Root />}</HermeshProvider>;
 }
 
-/** First run until this device belongs to an owner and its first-run pages are done, then the main window. */
+/** The first run until it is done (an account is not needed), then the main window. */
 function Root() {
   const st = useStore();
   const firstRun = useFirstRunPending();
+  useFirstRunMarks();
   const [daemon, setDaemon] = useState<DaemonInfo | null>(null);
   useEffect(() => {
     window.hermesh?.daemonState().then(setDaemon);
     return window.hermesh?.onDaemonState(setDaemon);
   }, []);
-  // A machine only has the main window too; becoming a trusted device, the join pages.
-  const member = st.status?.initialized === true || st.status?.machineOnly === true;
+  // A machine only has the main window too; becoming a trusted device, the join pages. Without
+  // an account, this computer's own machine is enough (docs/cold-start-tech.md §3.1).
+  const member = st.status?.initialized === true || st.status?.machineOnly === true || st.status?.localMachineEnabled === true;
   const upgrading = st.upgrading && st.status?.machineOnly === true;
   const ready = member && !st.status?.removed && !firstRun && !upgrading;
   // The window takes its size once hermeshd answers, and keeps it if it stops answering later.

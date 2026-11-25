@@ -9,7 +9,8 @@ const catFace = "M46 47H74C86 47 92 55 92 65.5C92 80 82 88 60 88C38 88 28 80 28 
 const catInk = "#3c2f3a";
 const catBlush = "#ffa3be";
 
-export function Cat({ small, busy = false }: { small: boolean; busy?: boolean }) {
+/** mood: "asleep", eyes shut and breathing slowly, until she has a model; "wake", opening her eyes and hopping, once (the first run, docs/cold-start-prd.md §5.5.3). */
+export function Cat({ small, busy = false, mood }: { small: boolean; busy?: boolean; mood?: "asleep" | "wake" }) {
   const id = useId().replace(/:/g, "");
   const fill = `url(#${id}g)`;
   const soft = (n: 1 | 2 | 3) => `url(#${id}b${n})`;
@@ -27,7 +28,7 @@ export function Cat({ small, busy = false }: { small: boolean; busy?: boolean })
   );
   const apart = small ? 12.5 : 11.5;
   return (
-    <svg className={`cat ${busy ? "busy" : ""}`} viewBox="8 16 104 104" aria-hidden="true">
+    <svg className={["cat", busy && "busy", mood].filter(Boolean).join(" ")} viewBox="8 16 104 104" aria-hidden="true">
       <defs>
         <radialGradient id={`${id}g`} gradientUnits="userSpaceOnUse" cx={44} cy={50} r={72}>
           <stop offset={0} stopColor="#f1f3ff" />

@@ -563,7 +563,7 @@ func (l *localService) WatchSessions(ctx context.Context, _ *localv1.WatchSessio
 		}
 		return onlyMachineWatch(ctx, m, stream.Send)
 	}
-	if !l.o().Initialized() && !l.o().isSignedOut() {
+	if l.o().localOnly() {
 		if m := l.o().local(); m != nil {
 			return onlyMachineWatch(ctx, m, stream.Send)
 		}
