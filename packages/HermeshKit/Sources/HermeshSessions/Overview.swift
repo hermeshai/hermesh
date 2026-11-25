@@ -80,8 +80,6 @@ public struct LinkMap: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         case sender
         case environment
-        /// Where one more can be added, drawn dashed while a side has fewer than `few`.
-        case addSender, addEnvironment
         /// The ones a side has no room for.
         case more(Int)
     }
@@ -118,14 +116,11 @@ public struct LinkMap: Equatable, Sendable {
 
     /// A side shows at most this many; one more is "N more".
     public static let most = 6
-    /// With fewer than this many on a side, where one can be added is drawn.
-    public static let few = 3
     /// The owner as a sender (`Session.created_by` of a session the owner started).
     public static let owner = "owner"
 
     public static func sender(_ clientID: String) -> String { "s:" + clientID }
     public static func environment(_ machineID: String) -> String { "e:" + machineID }
-    public static let addSender = "s:+", addEnvironment = "e:+"
 
     /// Every node a picked node's sessions touch, itself included.
     public func touched(by node: String, sessions: [Session]) -> Set<String> {
@@ -191,16 +186,14 @@ public func linkMap(senders: [MapSender], environments: [MapEnvironment], team: 
         return a.offset < b.offset
     }.map(\.element)
 
-    func side(_ nodes: [LinkMap.Node], add: LinkMap.Node, more: String) -> [LinkMap.Node] {
-        if nodes.count > LinkMap.most {
-            return Array(nodes.prefix(LinkMap.most - 1)) + [LinkMap.Node(id: more, kind: .more(nodes.count - LinkMap.most + 1))]
-        }
-        return nodes.count < LinkMap.few ? nodes + [add] : nodes
+    // Adding a grant or an environment is rare: the map draws no place for one (the menu and New have them).
+    func side(_ nodes: [LinkMap.Node], more: String) -> [LinkMap.Node] {
+        guard nodes.count > LinkMap.most else { return nodes }
+        return Array(nodes.prefix(LinkMap.most - 1)) + [LinkMap.Node(id: more, kind: .more(nodes.count - LinkMap.most + 1))]
     }
-    let left = side(ranked.map { LinkMap.Node(id: LinkMap.sender($0.clientID), kind: .sender, title: $0.title) },
-                    add: LinkMap.Node(id: LinkMap.addSender, kind: .addSender), more: "s:…")
+    let left = side(ranked.map { LinkMap.Node(id: LinkMap.sender($0.clientID), kind: .sender, title: $0.title) }, more: "s:…")
     let right = side(placed.map { LinkMap.Node(id: LinkMap.environment($0.machineID), kind: .environment, title: $0.title, agents: $0.agents, offline: !$0.online) },
-                     add: LinkMap.Node(id: LinkMap.addEnvironment, kind: .addEnvironment), more: "e:…")
+                     more: "e:…")
     let shown = Set((left + right).map(\.id))
     var seen: Set<String> = []
     let lines = live.compactMap { s -> LinkMap.Line? in

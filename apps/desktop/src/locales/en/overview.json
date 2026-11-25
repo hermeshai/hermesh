@@ -51,8 +51,6 @@
     "moreMachines_other": "{{count}} more environments",
     "moreProjects_one": "{{count}} more project",
     "moreProjects_other": "{{count}} more projects",
-    "connectMore": "Connect More",
-    "addMachine": "Add Environment",
     "backToAll": "Back to all tasks",
     "encrypted": "End-to-end encrypted",
     "notSignedIn": "Not signed in",

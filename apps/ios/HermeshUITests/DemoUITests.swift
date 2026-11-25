@@ -494,6 +494,11 @@ final class DemoUITests: XCTestCase {
 
     func testReviewOverviewAndSettings() {
         enterWorkDemo()
+        // The link map draws what there is: adding an agent or an environment is rare, and has its place elsewhere.
+        XCTAssertTrue(app.descendants(matching: .any)["overview-views"].waitForExistence(timeout: 10))
+        for label in ["Connect an Agent", "Add an Environment"] {
+            XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", label)).firstMatch.exists, "no \(label) on the map")
+        }
         view(1)
         reach("filter-range")
         for range in ["30 Days", "Today", "7 Days"] { pick("filter-range", range) }
@@ -503,8 +508,11 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(group.waitForExistence(timeout: 5) && group.buttons["Agents"].isSelected, "grouped by agent to start with")
         let codex = app.buttons["usage-sessions-part-codex"]
         XCTAssertTrue(codex.waitForExistence(timeout: 5) && codex.label.hasPrefix("Codex, ") && codex.label.hasSuffix("%"), codex.label)
+        // The legend settles into its columns as the answer comes: tapped once it is still.
+        XCTAssertTrue(wait(10) { codex.isHittable }, "Codex's cell can be tapped")
         codex.tap()
         XCTAssertTrue(wait { codex.isSelected }, "Codex alone in the charts")
+        XCTAssertTrue(wait(10) { codex.isHittable }, "Codex's cell, still again")
         codex.tap()
         XCTAssertTrue(wait { !codex.isSelected })
         // A bar tapped says what it stands for: today's, over the axis's Today.
@@ -771,7 +779,11 @@ final class DemoUITests: XCTestCase {
         let line = app.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", item, item + ",")).firstMatch
         XCTAssertTrue(line.waitForExistence(timeout: 5), item)
         line.tap()
+        // A choice taken while the menu still opened can leave it up, chosen: closed by a tap on the page's title.
         let b = app.buttons[button]
+        for _ in 0 ..< 3 where !wait(3, { b.isHittable && b.label == (shows ?? item) }) {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
+        }
         XCTAssertTrue(wait { b.isHittable && b.label == (shows ?? item) }, "\(button): \(b.label)")
     }
 

@@ -40,7 +40,7 @@ struct OverviewView: View {
                                              agents: m.status.agents.filter(\.available).map(\.name))
                           },
                           team: team, owner: String(localized: "You"))
-        let about = about(list.first { $0.id == front } ?? list.first, team: team, step: step)
+        let about = about(list.first { $0.id == front } ?? list.first, team: team)
         @Bindable var stats = model.stats
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -132,7 +132,7 @@ struct OverviewView: View {
     }
 
     /// The nodes of the map a need is about, and its session's line.
-    private func about(_ need: Need?, team: TeamState, step: GuideStep?) -> (nodes: Set<String>, line: String?) {
+    private func about(_ need: Need?, team: TeamState) -> (nodes: Set<String>, line: String?) {
         switch need {
         case .question(let id), .failed(let id):
             guard let s = (team.waiting + team.failed).first(where: { $0.sessionID == id }) else { return ([], nil) }
@@ -142,8 +142,6 @@ struct OverviewView: View {
         case .limit(let agent):
             let card = agentLimits(model.machines.map { (machineID: $0.machineID, agents: $0.status.agents) }, now: model.now).first { $0.agent == agent }
             return (card.map { [LinkMap.environment($0.machineID)] } ?? [], nil)
-        case .guide:
-            return step == .connect ? ([LinkMap.addSender], nil) : step == .computer ? ([LinkMap.addEnvironment], nil) : ([], nil)
         default:
             return ([], nil)
         }
