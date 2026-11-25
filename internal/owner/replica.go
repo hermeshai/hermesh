@@ -501,12 +501,12 @@ func (r *replica) watchOwner(s *sources, answer chan struct{}, onFirst func()) (
 		if u.Pairings != nil {
 			pairings = r.o.pairingsFrom(u.Pairings)
 		}
-		var evict []string
+		var evict, probe []string
 		r.mu.Lock()
 		r.polls++
 		n := r.polls
 		if u.Machines != nil && s.machines.set(n, machines, mErr) {
-			evict = r.machinesListedLocked(s)
+			evict, probe = r.machinesListedLocked(s)
 		}
 		if u.Clients != nil {
 			s.clients.set(n, clients, nil)
@@ -518,6 +518,9 @@ func (r *replica) watchOwner(s *sources, answer chan struct{}, onFirst func()) (
 		r.mu.Unlock()
 		for _, id := range evict {
 			r.o.forgetMachine(id)
+		}
+		for _, id := range probe {
+			go r.o.probeOrForgetMachine(s.ctx, id)
 		}
 		if !received {
 			received = true
@@ -568,20 +571,23 @@ func (r *replica) poll(ctx context.Context, s *sources, machines, pairings bool)
 	if machines {
 		wg.Go(func() {
 			list, err := r.o.listedMachines(ctx)
-			var evict []string
+			var evict, probe []string
 			r.mu.Lock()
 			if !errors.Is(ctx.Err(), context.Canceled) {
 				if err != nil && s.machines.list != nil {
 					list = s.machines.list // without the relay, whether they are online is not known: as last listed
 				}
 				if s.machines.set(n, list, err) {
-					evict = r.machinesListedLocked(s)
+					evict, probe = r.machinesListedLocked(s)
 					r.kickLocked()
 				}
 			}
 			r.mu.Unlock()
 			for _, id := range evict {
 				r.o.forgetMachine(id)
+			}
+			for _, id := range probe {
+				go r.o.probeOrForgetMachine(s.ctx, id)
 			}
 		})
 		wg.Go(func() {
@@ -671,13 +677,13 @@ func (r *replica) refreshMachine(ctx context.Context, id string) {
 
 // machinesListedLocked follows the machines just listed that are online,
 // forgets those removed, and returns machine IDs whose cached tunnels should
-// be dropped after releasing r.mu (went offline, removed, or reconnected with
-// a newer relay LastSeen).
-func (r *replica) machinesListedLocked(s *sources) []string {
+// be dropped immediately (evict: went offline or removed) or probed first
+// (probe: stayed online with a newer relay LastSeen, so a dead socket after a
+// fast restart is dropped without killing a healthy tunnel on ReportStatus).
+func (r *replica) machinesListedLocked(s *sources) (evict, probe []string) {
 	listed, _ := r.o.withLocal(s.machines.list, s.machines.err)
 	authoritative := s.machines.err == nil
 	seen := map[string]bool{}
-	var evict []string
 	for _, m := range listed {
 		seen[m.MachineId] = true
 		f := s.feeds[m.MachineId]
@@ -695,7 +701,7 @@ func (r *replica) machinesListedLocked(s *sources) []string {
 					evict = append(evict, m.MachineId)
 				}
 			} else if !f.lastSeen.IsZero() && !seenAt.IsZero() && !seenAt.Equal(f.lastSeen) {
-				evict = append(evict, m.MachineId)
+				probe = append(probe, m.MachineId)
 			}
 			if !seenAt.IsZero() {
 				f.lastSeen = seenAt
@@ -717,7 +723,7 @@ func (r *replica) machinesListedLocked(s *sources) []string {
 		}
 	}
 	r.machinesChangedLocked(s)
-	return evict
+	return evict, probe
 }
 
 // follow follows one machine until its stream ends; started is closed once

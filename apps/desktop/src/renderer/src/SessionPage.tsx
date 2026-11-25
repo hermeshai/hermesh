@@ -289,7 +289,7 @@ export function SessionPage() {
               : init.projection;
             rememberProjection(activeSessionId, nextProj);
             setProjection(nextProj);
-            setFollowing(true);
+            if (!init.fromCache) setFollowing(true);
             const s = nextProj.session;
             if (!applied && s) {
               applied = true;
@@ -299,11 +299,14 @@ export function SessionPage() {
               if (s.maxRuntimeMode) setMaxCeiling(s.maxRuntimeMode);
             }
           }
+          if (init.fromCache) {
+            throw new Error("cached");
+          }
           opened = setTimeout(() => {
             open = true;
           }, 1000);
           for await (const ev of sessionApi.subscribeSession(
-            { sessionId: activeSessionId, afterSeq: init.projection?.session?.progress?.lastEventSeq ?? 0n },
+            { sessionId: activeSessionId, afterSeq: init.projection?.items.length ? (init.projection?.session?.progress?.lastEventSeq ?? 0n) : 0n },
             { signal: ctl.signal },
           )) {
             setProjection((prev) => {

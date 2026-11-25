@@ -79,3 +79,24 @@ func TestWatchResumes(t *testing.T) {
 		t.Fatalf("after a restart: reset %v, sessions %v, deleted %v", restarted.Reset_, ids(restarted.Sessions), restarted.DeletedSessionIds)
 	}
 }
+
+// ReportStatus carries only machine name and version; session lifecycle events
+// (StartSession / run completion) must not kick ReportStatus to the relay, which
+// on a clustered relay would bump LastSeen and churn owner tunnels.
+func TestStartSessionDoesNotKickRelayStatus(t *testing.T) {
+	h := newHarness(t, Limits{MaxConcurrent: 2})
+	// Drain any kick queued during harness setup.
+	select {
+	case <-h.n.statusKick:
+	default:
+	}
+
+	sid := h.start("hello")
+	h.wait(sid, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+
+	select {
+	case <-h.n.statusKick:
+		t.Fatal("StartSession / run completion must not kick relay ReportStatus")
+	default:
+	}
+}

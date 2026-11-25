@@ -310,8 +310,22 @@ func TestDirectQUICEndToEndConnectRPCAndCellularFilter(t *testing.T) {
 		t.Fatalf("GetInfo over upgraded QUIC tunnel failed: res=%v err=%v", res, err)
 	}
 
+	// Probing a live tunnel (as replica does when relay LastSeen advances while
+	// online) must keep the exact same tunnel open without interrupting it.
+	relayClient.ProbeOrForgetMachine(ctx, machID)
+	if !upMach.Alive() {
+		t.Fatal("ProbeOrForgetMachine closed a healthy live tunnel")
+	}
+	if got, err := relayClient.Machine(ctx, machID); err != nil || got != upMach {
+		t.Fatalf("Machine after healthy probe returned %p (err=%v), want same live tunnel %p", got, err, upMach)
+	}
+
 	machCancel()
 	<-machDone
+	relayClient.ProbeOrForgetMachine(ctx, machID)
+	if _, _, ok := relayClient.MachineTunnel(machID); ok {
+		t.Fatal("dead QUIC tunnel was not evicted by ProbeOrForgetMachine")
+	}
 	client.ProbeOrForgetTunnels(ctx)
 	if _, _, ok := client.MachineTunnel(machID); ok {
 		t.Fatal("dead QUIC tunnel was not evicted by ProbeOrForgetTunnels")
@@ -341,44 +355,44 @@ func TestMachinesListedEvictsTunnelOnOfflineOrReconnect(t *testing.T) {
 	t2 := t1.Add(5 * time.Second)
 	s.feeds["m_remote"] = &feed{online: true, running: true, lastSeen: t1}
 
-	// Same LastSeen while online: no eviction.
+	// Same LastSeen while online: neither eviction nor probe.
 	s.machines.list = []*localv1.Machine{{MachineId: "m_remote", MachineName: "vps", Online: true, LastSeen: timestamppb.New(t1)}}
 	s.machines.err = nil
 	r.mu.Lock()
-	evict := r.machinesListedLocked(s)
+	evict, probe := r.machinesListedLocked(s)
 	r.mu.Unlock()
-	if len(evict) != 0 {
-		t.Fatalf("unexpected eviction with unchanged LastSeen: %v", evict)
+	if len(evict) != 0 || len(probe) != 0 {
+		t.Fatalf("unexpected eviction/probe with unchanged LastSeen: evict=%v probe=%v", evict, probe)
 	}
 
-	// Non-authoritative error listing (relay unreachable): must NOT evict.
+	// Non-authoritative error listing (relay unreachable): must NOT evict or probe.
 	s.machines.list = []*localv1.Machine{{MachineId: "m_remote", MachineName: "vps", Online: false, LastSeen: timestamppb.New(t1)}}
 	s.machines.err = context.DeadlineExceeded
 	r.mu.Lock()
-	evict = r.machinesListedLocked(s)
+	evict, probe = r.machinesListedLocked(s)
 	r.mu.Unlock()
-	if len(evict) != 0 {
-		t.Fatalf("unexpected eviction on non-authoritative listing: %v", evict)
+	if len(evict) != 0 || len(probe) != 0 {
+		t.Fatalf("unexpected eviction/probe on non-authoritative listing: evict=%v probe=%v", evict, probe)
 	}
 
-	// Authoritative fast reconnect (LastSeen advanced while Online stayed true):
-	// must evict stale QUIC tunnel.
+	// Authoritative LastSeen advance while Online stayed true: must schedule a
+	// liveness probe instead of blindly killing a potentially healthy tunnel.
 	s.machines.list = []*localv1.Machine{{MachineId: "m_remote", MachineName: "vps", Online: true, LastSeen: timestamppb.New(t2)}}
 	s.machines.err = nil
 	r.mu.Lock()
-	evict = r.machinesListedLocked(s)
+	evict, probe = r.machinesListedLocked(s)
 	r.mu.Unlock()
-	if !slices.Equal(evict, []string{"m_remote"}) {
-		t.Fatalf("expected eviction on LastSeen advance, got %v", evict)
+	if len(evict) != 0 || !slices.Equal(probe, []string{"m_remote"}) {
+		t.Fatalf("expected probe (no blind evict) on LastSeen advance while online, got evict=%v probe=%v", evict, probe)
 	}
 
-	// Authoritative offline transition: must evict.
+	// Authoritative offline transition: must evict immediately.
 	s.machines.list = []*localv1.Machine{{MachineId: "m_remote", MachineName: "vps", Online: false, LastSeen: timestamppb.New(t2)}}
 	s.machines.err = nil
 	r.mu.Lock()
-	evict = r.machinesListedLocked(s)
+	evict, probe = r.machinesListedLocked(s)
 	r.mu.Unlock()
-	if !slices.Equal(evict, []string{"m_remote"}) {
-		t.Fatalf("expected eviction on offline transition, got %v", evict)
+	if !slices.Equal(evict, []string{"m_remote"}) || len(probe) != 0 {
+		t.Fatalf("expected eviction on offline transition, got evict=%v probe=%v", evict, probe)
 	}
 }

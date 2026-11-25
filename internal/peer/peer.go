@@ -1437,23 +1437,37 @@ func (c *Client) ProbeOrForgetTunnels(ctx context.Context) {
 	c.mu.Unlock()
 	var wg sync.WaitGroup
 	for _, n := range tunnels {
-		wg.Go(func() {
-			timeout := 1500 * time.Millisecond
-			if !n.direct {
-				timeout = max(timeout, 3*n.RTT())
-			}
-			pctx, cancel := context.WithTimeout(ctx, timeout)
-			defer cancel()
-			started := time.Now()
-			_, err := n.Info.GetInfo(pctx, &machinev1.GetInfoRequest{})
-			if err != nil {
-				c.ForgetMachine(n)
-				return
-			}
-			n.RecordRTT(time.Since(started))
-		})
+		wg.Go(func() { c.probeOrForget(ctx, n) })
 	}
 	wg.Wait()
+}
+
+// ProbeOrForgetMachine checks the cached tunnel for machineID with GetInfo and
+// forgets it only if the probe fails. A live tunnel (e.g. when ReportStatus
+// advances relay LastSeen without the machine restarting) stays intact.
+func (c *Client) ProbeOrForgetMachine(ctx context.Context, machineID string) {
+	c.mu.Lock()
+	n := c.machines[machineID]
+	c.mu.Unlock()
+	if n != nil {
+		c.probeOrForget(ctx, n)
+	}
+}
+
+func (c *Client) probeOrForget(ctx context.Context, n *Machine) {
+	timeout := 1500 * time.Millisecond
+	if !n.direct {
+		timeout = max(timeout, 3*n.RTT())
+	}
+	pctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	started := time.Now()
+	_, err := n.Info.GetInfo(pctx, &machinev1.GetInfoRequest{})
+	if err != nil {
+		c.ForgetMachine(n)
+		return
+	}
+	n.RecordRTT(time.Since(started))
 }
 
 // HasReplacement reports whether machineID now has a different live cached
