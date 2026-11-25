@@ -6,6 +6,10 @@
 .qx-own{margin-top:8px}
 .qx-own .field{height:32px;border-radius:10px}
 .dl.note .c{color:var(--l3)}
+.um{display:flex;flex-direction:column;align-items:flex-end}
+.um .bub{position:relative}
+.um.waiting .um-att{opacity:.72}
+.um .um-att:last-child,.um .um-att:has(+ .msg-act),.um .um-att:has(+ .um-wait){margin-bottom:0}
 
 /* The coding agent working: its own logo, breathing. */
 .live-logo{display:inline-flex;animation:live-breathe 2.4s ease-in-out infinite}

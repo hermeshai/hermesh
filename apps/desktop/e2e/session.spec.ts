@@ -379,6 +379,13 @@ test("a question waits in the control area; the owner picks an option by key and
   await app.close();
 });
 
+async function expectImageLoaded(img: Locator, timeout = 30_000): Promise<void> {
+  await expect(img).toBeVisible({ timeout });
+  await expect
+    .poll(() => img.evaluate((el) => el instanceof HTMLImageElement && el.complete && el.naturalWidth > 0), { timeout })
+    .toBe(true);
+}
+
 test("a screenshot pasted into the box is attached and goes with the message; cells copied from a spreadsheet paste as their words", async () => {
   const { app, page } = await launch();
   try {
@@ -400,6 +407,7 @@ test("a screenshot pasted into the box is attached and goes with the message; ce
     await (await uploaded).finished();
     await expect(tiles).toHaveCount(1);
     await expect(tiles.first()).toHaveAttribute("title", "image.png");
+    await expectImageLoaded(tiles.first().locator("img"));
     await expect(input).toHaveValue("images");
     // The same picture pasted again is attached once.
     uploaded = page.waitForResponse((r) => r.url().endsWith("/UploadBlob"));
@@ -407,9 +415,22 @@ test("a screenshot pasted into the box is attached and goes with the message; ce
     await (await uploaded).finished();
     await expect(tiles).toHaveCount(1);
     await snap(page, "session-pasted-picture");
-    // Sent, the agent has it: the scripted agent's `images` names the pictures its turn got.
+    // Sent, the user's own bubble shows the picture thumbnail, and the agent has it.
     await input.press("Enter");
-    await expect(page.getByRole("log").locator(".am").first()).toContainText("images: image.png", { timeout: 30_000 });
+    const log = page.getByRole("log");
+    await expectImageLoaded(log.locator(".um").first().locator(".um-att .tile.img img"));
+    await expect(log.locator(".am").first()).toContainText("images: image.png", { timeout: 30_000 });
+
+    // An attachment-only message (no text) sends and shows its thumbnail without an empty text bubble.
+    await page.getByTestId("thread-composer-input").focus();
+    uploaded = page.waitForResponse((r) => r.url().endsWith("/UploadBlob"));
+    await paste(app, page, { picture: true });
+    await (await uploaded).finished();
+    await page.getByTestId("composer-submit-btn").click();
+    const onlyPic = log.locator(".um").nth(1);
+    await expectImageLoaded(onlyPic.locator(".um-att .tile.img img"));
+    await expect(onlyPic.locator(".bub")).toHaveCount(0);
+    await snap(page, "session-sent-picture");
   } finally {
     await app.close();
   }
@@ -429,7 +450,21 @@ test("files dragged over a session's window are attached to its box when let go,
     await expect(replies.first()).toContainText("started", { timeout: 30_000 });
 
     // Over the window, the box says it takes them; let go, they are uploaded and attached.
-    const shot = await app.evaluate(({ nativeImage }) => nativeImage.createFromBitmap(Buffer.alloc(16 * 16 * 4, 0x80), { width: 16, height: 16 }).toPNG().toString("base64"));
+    const shot = await app.evaluate(({ nativeImage }) => {
+      const w = 32;
+      const h = 32;
+      const buf = Buffer.alloc(w * h * 4);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4;
+          buf[i + 0] = Math.round((x / (w - 1)) * 220 + 35); // B
+          buf[i + 1] = Math.round(((w - 1 - x) / (w - 1)) * 120 + 80); // G
+          buf[i + 2] = Math.round((y / (h - 1)) * 220 + 35); // R
+          buf[i + 3] = 0xff; // A
+        }
+      }
+      return nativeImage.createFromBitmap(buf, { width: w, height: h }).toPNG().toString("base64");
+    });
     const box = page.getByTestId("thread-composer");
     const drag = await dragFiles(page, [
       { name: "shot.png", type: "image/png", base64: shot },
@@ -443,13 +478,27 @@ test("files dragged over a session's window are attached to its box when let go,
     const tiles = box.locator(".cmp-att .tile");
     await expect(tiles).toHaveCount(2);
     await expect(tiles.nth(0)).toHaveAttribute("title", "shot.png");
+    await expectImageLoaded(tiles.nth(0).locator("img"));
     await expect(tiles.nth(1)).toHaveAttribute("title", "notes.md");
     await expect(input).toBeFocused();
-    // The next message takes them to the agent (the scripted agent's `inspect` names its turn's attachments).
+    // The next message takes them to the agent and shows both the picture thumbnail and file tile on the user's bubble.
     await input.fill("inspect");
     await input.press("Enter");
     await expect(replies.last()).toContainText("attachments=[shot.png,notes.md]", { timeout: 30_000 });
+    const sentBubble = page.getByRole("log").locator(".um").last();
+    await expectImageLoaded(sentBubble.locator('.um-att .tile.img[title="shot.png"] img'));
+    await expect(sentBubble.locator('.um-att .tile.file[title="notes.md"]')).toBeVisible();
     await expect(tiles).toHaveCount(0);
+
+    // Reloading clears the in-memory blob cache; reopening the session downloads the thumbnail via DownloadBlob.
+    await page.reload();
+    const downloaded = page.waitForResponse((r) => r.url().endsWith("/DownloadBlob"));
+    await open(page, "say started");
+    await (await downloaded).finished();
+    const reloadedBubble = page.getByRole("log").locator(".um").last();
+    await expectImageLoaded(reloadedBubble.locator('.um-att .tile.img[title="shot.png"] img'));
+    await expect(reloadedBubble.locator('.um-att .tile.file[title="notes.md"]')).toBeVisible();
+    await snap(page, "session-sent-attachments");
   } finally {
     await app.close();
   }

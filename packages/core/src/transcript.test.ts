@@ -277,3 +277,19 @@ test("the workspace step is a row of its own", () => {
   expect(workspaceTitle(swRow)).toEqual({ text: "切到了分支", code: "feat" });
   expect(workspaceDetails(swRow).map((d) => d.value)).toEqual(["原地", "feat（原来在 main）", "/repo"]);
 });
+
+test("user messages preserve their attachments in the transcript, including attachment-only prompts", () => {
+  const rows = sessionTranscript(
+    create(SessionProjectionSchema, {
+      runs: [{ runId: "r1", ordinal: 1 }],
+      items: [
+        item(1, "r1", TurnItemKind.USER_MESSAGE, {
+          text: "",
+          attachments: [{ blobSha256: "a".repeat(64), name: "shot.png", mimeType: "image/png", sizeBytes: 512n }],
+        }),
+      ],
+    }),
+  );
+  const user = rows.find((r) => r.kind === "user");
+  expect(user?.kind === "user" ? user.attachments?.map((a) => a.name) : []).toEqual(["shot.png"]);
+});

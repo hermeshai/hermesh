@@ -231,9 +231,25 @@ private func kind(_ it: TranscriptItem) -> String {
         .message(seq: 12, incoming: false, name: "c_bot", text: "halfway", queued: false),
     ])
     let askers = rows.compactMap { row -> String? in
-        if case .user(_, _, _, let asker) = row { return asker } else { return nil }
+        if case .user(_, _, _, let asker, _) = row { return asker } else { return nil }
     }
     #expect(askers == ["c_grok", "c_her"])
+
+    let att = Hermesh_Session_V1_AttachmentRef.with {
+        $0.blobSha256 = String(repeating: "a", count: 64)
+        $0.name = "Photo.jpg"
+        $0.mimeType = "image/jpeg"
+        $0.sizeBytes = 1024
+    }
+    let withAttachments = sessionTranscript(.with {
+        $0.runs = [.with { $0.runID = "r1"; $0.ordinal = 1; $0.status = .running }]
+        $0.items = [item(1, "r1", .userMessage) { $0.text = ""; $0.attachments = [att] }]
+    })
+    guard case .user(_, let text, _, _, let gotAtts) = withAttachments.last else {
+        Issue.record("expected user row with attachments")
+        return
+    }
+    #expect(text == "" && gotAtts == [att])
 }
 
 @Test func partialOutputIsAPreviewOrLongerThanTheSummary() {

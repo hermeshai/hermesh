@@ -19,11 +19,21 @@ func TestOfflineOutboxStartDispatchAndCancel(t *testing.T) {
 	svc := &ownerSessionService{d: d}
 
 	// 1. Offline StartSession creates an optimistic queued session and outbox entry.
+	up, err := svc.UploadBlob(ctx, &sessionv1.UploadBlobRequest{
+		MachineId: "m_remote_offline",
+		Name:      "photo.jpg",
+		MimeType:  "image/jpeg",
+		Data:      []byte("jpeg-bytes"),
+	})
+	if err != nil || up.GetAttachment().GetBlobSha256() == "" {
+		t.Fatalf("UploadBlob: %v %+v", err, up)
+	}
 	started, err := svc.StartSession(ctx, &sessionv1.StartSessionRequest{
 		MachineId:     "m_remote_offline",
 		ProjectId:     "demo",
 		Title:         "Offline task",
 		InitialPrompt: "implement auth",
+		Attachments:   []*sessionv1.AttachmentRef{up.Attachment},
 	})
 	if err != nil {
 		t.Fatalf("offline StartSession: %v", err)
@@ -32,6 +42,16 @@ func TestOfflineOutboxStartDispatchAndCancel(t *testing.T) {
 		t.Fatalf("expected queued_offline=true, got %+v", started)
 	}
 	tempID := started.Session.SessionId
+
+	// Local DownloadBlob serves the uploaded attachment immediately even while the target machine is offline.
+	dl, err := svc.DownloadBlob(ctx, &sessionv1.DownloadBlobRequest{
+		MachineId:  "m_remote_offline",
+		SessionId:  tempID,
+		BlobSha256: up.Attachment.BlobSha256,
+	})
+	if err != nil || string(dl.GetData()) != "jpeg-bytes" {
+		t.Fatalf("offline DownloadBlob: %v %+v", err, dl)
+	}
 
 	// 2. Follow-up DispatchMessage on offline-queued session appends to outbox and cached projection.
 	disp, err := svc.DispatchMessage(ctx, &sessionv1.DispatchMessageRequest{

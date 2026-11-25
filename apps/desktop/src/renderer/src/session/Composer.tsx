@@ -22,6 +22,7 @@ import { Icon } from "../icons";
 import { MenuButton } from "../her/menus";
 import { Tile, useFileDrop } from "../her/Composer";
 import { pastedFiles } from "../her/attachments";
+import { attachmentUrl } from "./attachments";
 import "../her/her.css";
 
 // The composer (docs/thread-composer.md §16, §17), a new session's and a
@@ -135,7 +136,7 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
       {attachments.length > 0 && (
         <div className="cmp-att">
           {attachments.map((a) => (
-            <Tile key={a.blobSha256} name={a.name} onRemove={() => onRemove(a.blobSha256)} />
+            <Tile key={a.blobSha256} name={a.name} src={attachmentUrl(a)} onRemove={() => onRemove(a.blobSha256)} />
           ))}
         </div>
       )}

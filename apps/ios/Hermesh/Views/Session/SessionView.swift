@@ -1,5 +1,6 @@
 import HermeshProto
 import HermeshSessions
+import QuickLook
 import SwiftUI
 
 // Shared conversation row, ending, scroll-follow, toolbar, and failure components used by
@@ -70,12 +71,14 @@ struct StepView: View {
                     .padding(.top, 8)
                     .accessibilityIdentifier("turn-time-line")
             }
-        case .user(_, let text, let at, let asker):
+        case .user(_, let text, let at, let asker, let attachments):
             // Who asked for the turn speaks on the right: the owner in the blue bubble, with nothing over it; another
             // of the owner's agents (Her, a granted one) in a quiet bubble with its face on the corner. Each turn says
             // its own: a session Her started can hold the owner's words too.
             // Queued on this iPhone while its machine is offline: faded, and said under it, with Discard.
-            PromptBubble(text: text, sent: at, from: sender(asker.isEmpty ? session.createdBy : asker), faded: session.offlineQueued,
+            PromptBubble(text: text, sent: at, from: sender(asker.isEmpty ? session.createdBy : asker),
+                         attachments: attachments, sessionID: session.sessionID, machineID: session.machineID,
+                         faded: session.offlineQueued,
                          note: session.offlineQueued ? PromptNote(kind: .waiting(machine: model.machineName(session.machineID)) {
                              Task { _ = await model.delete(session) }
                          }) : nil) { EmptyView() }
@@ -157,35 +160,171 @@ struct PromptSender {
     let client: Client?
 }
 
+/// Keeps decoded user-message attachment thumbnails and preview files on the main actor so a photo just sent in the
+/// composer shows in the bubble at 0 ms with no flash, and attachments from earlier or remote turns load once by sha256.
+@MainActor @Observable final class SessionAttachmentStore {
+    static let shared = SessionAttachmentStore()
+
+    private let maxEntries = 64
+    private(set) var pictures: [String: UIImage?] = [:]
+    @ObservationIgnored private var order: [String] = []
+    @ObservationIgnored private var inFlight: Set<String> = []
+
+    func keep(sha256: String, name: String, data: Data, picture: UIImage?) {
+        guard !sha256.isEmpty else { return }
+        if let img = picture ?? UIImage(data: data) {
+            store(sha256: sha256, picture: img)
+        }
+        _ = try? writeTemp(sha256: sha256, name: name, data: data)
+    }
+
+    func loadPicture(api: AppAPI?, sessionID: String, machineID: String, ref: Hermesh_Session_V1_AttachmentRef) async {
+        let sha = ref.blobSha256
+        guard !sha.isEmpty, pictures[sha] == nil, !inFlight.contains(sha), let api else { return }
+        inFlight.insert(sha)
+        defer { inFlight.remove(sha) }
+        do {
+            let data = try await api.downloadBlob(sessionID, sha256: sha, machineID: machineID)
+            _ = try? writeTemp(sha256: sha, name: ref.name, data: data)
+            store(sha256: sha, picture: UIImage(data: data))
+        } catch {
+            store(sha256: sha, picture: nil)
+        }
+    }
+
+    func previewURL(api: AppAPI?, sessionID: String, machineID: String, ref: Hermesh_Session_V1_AttachmentRef) async -> URL? {
+        let sha = ref.blobSha256
+        guard !sha.isEmpty else { return nil }
+        let existing = tempURL(sha256: sha, name: ref.name)
+        if FileManager.default.fileExists(atPath: existing.path) { return existing }
+        guard let api, let data = try? await api.downloadBlob(sessionID, sha256: sha, machineID: machineID) else { return nil }
+        return try? writeTemp(sha256: sha, name: ref.name, data: data)
+    }
+
+    private func store(sha256: String, picture: UIImage?) {
+        pictures.updateValue(picture, forKey: sha256)
+        order.removeAll { $0 == sha256 }
+        order.append(sha256)
+        while order.count > maxEntries {
+            let old = order.removeFirst()
+            pictures.removeValue(forKey: old)
+        }
+    }
+
+    private func tempURL(sha256: String, name: String) -> URL {
+        let base = fileBaseName(name)
+        let safe = base.isEmpty ? "attachment" : base
+        return FileManager.default.temporaryDirectory
+            .appendingPathComponent("Session Attachments/\(sha256)", isDirectory: true)
+            .appendingPathComponent(safe)
+    }
+
+    private func writeTemp(sha256: String, name: String, data: Data) throws -> URL {
+        let url = tempURL(sha256: sha256, name: name)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try data.write(to: url, options: .atomic)
+        }
+        return url
+    }
+}
+
+func isSessionImageAttachment(_ ref: Hermesh_Session_V1_AttachmentRef) -> Bool {
+    ref.mimeType.lowercased().hasPrefix("image/") || fileView(ref.name) == .image
+}
+
 /// What was sent to the agent, on the right, under `sender`; a long press copies it. The owner's is a blue bubble;
 /// one another of the owner's agents sent (`from`) is a quiet one with that agent's face on its corner.
 struct PromptBubble<Sender: View>: View {
+    @Environment(AppModel.self) private var model
     let text: String
     let sent: Date?
     var from: PromptSender?
+    var attachments: [Hermesh_Session_V1_AttachmentRef] = []
+    var sessionID = ""
+    var machineID = ""
     /// Not in the conversation yet (on its way, or waiting for its machine): the bubble faded, as Her's are.
     var faded = false
     /// Under it, where it is while it is not in the conversation, or why it was not sent.
     var note: PromptNote?
     @ViewBuilder let sender: () -> Sender
+    @State private var preview: URL?
+    @State private var opening: String?
 
     var body: some View {
+        let store = SessionAttachmentStore.shared
+        let hasText = !text.isEmpty || attachments.isEmpty
         VStack(alignment: .trailing, spacing: 5) {
             sender()
-            Text(text)
-                .lineSpacing(3)
-                .foregroundStyle(from == nil ? Palette.bubbleText : Color.primary)
-                .padding(.horizontal, 14).padding(.vertical, 9)
-                .background(from == nil ? Palette.bubble : Palette.fill2, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .contextMenu { CopyMenu(text: text, sent: sent, from: from?.name) }
-                .overlay(alignment: .topLeading) { if let from { badge(from).offset(x: -10, y: -10) } }
-                .opacity(faded ? 0.62 : 1)
+            VStack(alignment: .trailing, spacing: 6) {
+                if !attachments.isEmpty {
+                    HerWrap(spacing: 6) {
+                        ForEach(attachments, id: \.blobSha256) { att in
+                            attachmentView(att, store: store)
+                        }
+                    }
+                    .overlay(alignment: .topLeading) { if !hasText, let from { badge(from).offset(x: -10, y: -10) } }
+                }
+                if hasText {
+                    Text(text)
+                        .lineSpacing(3)
+                        .foregroundStyle(from == nil ? Palette.bubbleText : Color.primary)
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .background(from == nil ? Palette.bubble : Palette.fill2, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .contextMenu { CopyMenu(text: text, sent: sent, from: from?.name) }
+                        .overlay(alignment: .topLeading) { if let from { badge(from).offset(x: -10, y: -10) } }
+                }
+            }
+            .opacity(faded ? 0.62 : 1)
             if let note { note }
         }
         .padding(.leading, 48)
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.top, from == nil ? 8 : 14).padding(.bottom, 8)
+        .quickLookPreview($preview)
+    }
+
+    @ViewBuilder private func attachmentView(_ att: Hermesh_Session_V1_AttachmentRef, store: SessionAttachmentStore) -> some View {
+        let name = fileBaseName(att.name)
+        let cached = store.pictures[att.blobSha256]
+        let unreadable = if case .some(nil) = cached { true } else { false }
+        if isSessionImageAttachment(att) && !unreadable {
+            Button { open(att) } label: {
+                Group {
+                    if let picture = cached ?? nil {
+                        Image(uiImage: picture)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Palette.fill2.overlay { ProgressView().controlSize(.small) }
+                    }
+                }
+                .frame(width: 72, height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(name)
+            .accessibilityIdentifier("prompt-attachment-\(name)")
+            .task(id: att.blobSha256) {
+                await store.loadPicture(api: model.api, sessionID: sessionID, machineID: machineID, ref: att)
+            }
+        } else {
+            Button { open(att) } label: {
+                HerChip(name: name, busy: opening == att.blobSha256)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("prompt-attachment-\(name)")
+        }
+    }
+
+    private func open(_ att: Hermesh_Session_V1_AttachmentRef) {
+        guard opening == nil else { return }
+        opening = att.blobSha256
+        Task {
+            preview = await SessionAttachmentStore.shared.previewURL(api: model.api, sessionID: sessionID, machineID: machineID, ref: att)
+            opening = nil
+        }
     }
 
     /// The sender's face on the bubble's corner: its grant's avatar (Her's cat, an app's logo, an initial), ringed by the page.

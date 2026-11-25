@@ -587,8 +587,11 @@ function SendingBubble({ item, line }: { item: SendingItem; line: ReactNode }) {
     <>
       {line}
       <div className={`um ${item.refused === null ? "waiting" : ""}`} data-testid="her-sending">
-        {(item.files.length > 0 || item.images.length > 0) && (
+        {(item.images.length > 0 || item.files.length > 0) && (
           <div className="um-att">
+            {item.images.map((im, i) => (
+              <Tile key={i} name={t("chat.image")} src={`data:${im.mime_type};base64,${im.data}`} />
+            ))}
             {item.files.map((f) => (
               <Tile key={f} name={f} />
             ))}
@@ -864,7 +867,7 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
       id,
       botId: bot.id,
       text: sent.text.trim(),
-      files: sent.attachments.map((a) => a.name),
+      files: sent.attachments.flatMap((a) => (a.kind === "file" ? [a.name] : [])),
       images: sent.attachments.flatMap((a) => (a.kind === "image" ? [{ mime_type: a.mime_type, data: a.data }] : [])),
       ts: Date.now(),
       refused: null,

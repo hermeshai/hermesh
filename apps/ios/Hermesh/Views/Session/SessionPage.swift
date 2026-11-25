@@ -348,7 +348,8 @@ struct SessionPage: View {
                     Text(line).font(.caption).foregroundStyle(.tertiary).frame(maxWidth: .infinity)
                         .padding(.top, 8)
                 }
-                PromptBubble(text: text, sent: st.at, faded: st.refused == nil, note: note) { EmptyView() }
+                PromptBubble(text: text, sent: st.at, attachments: st.request.attachments, machineID: st.request.machineID,
+                             faded: st.refused == nil, note: note) { EmptyView() }
             }
             .padding(.horizontal, 20)
             .padding(.top, 13).padding(.bottom, 21)
@@ -513,7 +514,7 @@ struct SessionPage: View {
                 Text("Queue (\(queued.count))").font(.caption).foregroundStyle(.secondary)
                 ForEach(Array(queued.enumerated()), id: \.element.runID) { i, run in
                     HStack {
-                        Text(verbatim: run.prompt).font(.subheadline).lineLimit(1)
+                        Text(verbatim: run.prompt.isEmpty ? run.attachments.map(\.name).joined(separator: ", ") : run.prompt).font(.subheadline).lineLimit(1)
                         Spacer()
                         Button("Steer Now") { manage(run, .promoteToSteer) }.font(.footnote).tint(.accentColor)
                         Button("Remove", systemImage: "xmark") { manage(run, .cancel) }.labelStyle(.iconOnly).font(.footnote).tint(.secondary)
@@ -652,7 +653,8 @@ struct SessionPage: View {
                     if scoped { url.stopAccessingSecurityScopedResource() }
                     if let data {
                         let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-                        await upload(name: url.lastPathComponent, mime: mime, data: data, picture: nil)
+                        let picture = (mime.lowercased().hasPrefix("image/") || fileView(url.lastPathComponent) == .image) ? UIImage(data: data) : nil
+                        await upload(name: url.lastPathComponent, mime: mime, data: data, picture: picture)
                     } else {
                         model.show(String(localized: "Couldn’t read \(url.lastPathComponent)"))
                     }
@@ -674,6 +676,7 @@ struct SessionPage: View {
         guard let api = model.api else { return }
         do {
             let ref = try await api.uploadBlob(machineID: effectiveMachineID, name: name, mimeType: mime, data: data).attachment
+            SessionAttachmentStore.shared.keep(sha256: ref.blobSha256, name: name, data: data, picture: picture)
             if !attached.contains(where: { $0.id == ref.blobSha256 }) { attached.append(Attached(ref: ref, picture: picture)) }
         } catch { model.report(error) }
     }

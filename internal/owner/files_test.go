@@ -218,10 +218,33 @@ func TestResolveFilesKeptForFinishedTurn(t *testing.T) {
 		t.Fatalf("live after write = %+v, err=%v", liveAfter, err)
 	}
 
+	// A blob stored on the remote machine is downloadable by session_id alone (as iPhone and Mac
+	// user-message thumbnails ask for it) and kept locally afterwards.
+	blobRef, err := eng.Store().PutBlob("shot.png", "image/png", []byte("png-data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dl, err := svc.DownloadBlob(ctx, &sessionv1.DownloadBlobRequest{
+		SessionId:  sid,
+		BlobSha256: blobRef.BlobSha256,
+	})
+	if err != nil || string(dl.GetData()) != "png-data" || dl.GetMimeType() != "image/png" {
+		t.Fatalf("remote DownloadBlob by session_id = %+v, err=%v", dl, err)
+	}
+
 	// Remove the session on the STILL-ONLINE machine: if Owner dials the machine again for run_1,
 	// the machine returns NotFound instead of an offline error; kept finished-turn answers must win locally.
 	if err := eng.DeleteSession(ctx, kernel.OwnerPrincipal(ownerID, "Owner"), sid); err != nil {
 		t.Fatal(err)
+	}
+
+	// Once downloaded, small attachment blobs stay readable from local sessions_blobs without re-dialing.
+	dlCached, err := svc.DownloadBlob(ctx, &sessionv1.DownloadBlobRequest{
+		SessionId:  sid,
+		BlobSha256: blobRef.BlobSha256,
+	})
+	if err != nil || string(dlCached.GetData()) != "png-data" {
+		t.Fatalf("cached DownloadBlob = %+v, err=%v", dlCached, err)
 	}
 
 	cachedHit, err := svc.ResolveFiles(ctx, &sessionv1.ResolveFilesRequest{
