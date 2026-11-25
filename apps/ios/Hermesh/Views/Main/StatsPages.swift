@@ -347,8 +347,9 @@ struct MeasureCard: View {
         let top = max(values.max() ?? 0, 1)
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                big.font(.system(size: 48, weight: .bold)).monospacedDigit().contentTransition(.numericText())
-                unit.foregroundStyle(.secondary)
+                // Whole on its line however large: smaller before it breaks.
+                big.font(.system(size: 48, weight: .bold)).monospacedDigit().contentTransition(.numericText()).lineLimit(1).minimumScaleFactor(0.5)
+                unit.foregroundStyle(.secondary).lineLimit(1).fixedSize()
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("\(id)-big")
@@ -395,7 +396,7 @@ struct MeasureCard: View {
                 ForEach(facts.indices, id: \.self) { i in
                     VStack(alignment: .leading, spacing: 2) {
                         facts[i].0.font(.caption).foregroundStyle(.secondary)
-                        facts[i].1.font(.callout.weight(.semibold)).monospacedDigit()
+                        facts[i].1.font(.callout.weight(.semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityElement(children: .combine)
@@ -443,47 +444,80 @@ struct MeasureCard: View {
         }
     }
 
-    /// The parts in two columns (one at the largest type): each its colour, short name, number and share. Many:
-    /// the busiest and Other, which opens in place to every part; those in it are grey.
+    /// One cell of the legend: a part, Other, or the line that folds Other's parts away again.
+    private enum Entry: Identifiable {
+        case part(MeasureParts.Row), other(MeasureParts.Row), less
+        var id: String {
+            switch self {
+            case .part(let p): "part-" + p.id
+            case .other: "other"
+            case .less: "less"
+            }
+        }
+    }
+
+    /// The parts with their number and share: two columns while every cell fits half the card whole (its name and
+    /// its number on one line), else a row a part, as at the largest type. Many: the busiest and Other, which opens in
+    /// place to every part; those in it are grey.
     private func legend(_ parts: MeasureParts) -> some View {
         let other = parts.drawn.first { $0.id == UsagePart.other }
-        let cells = other != nil && opened ? parts.all : parts.drawn.filter { $0.id != UsagePart.other }
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: typeSize.isAccessibilitySize ? 1 : 2), spacing: 2) {
-            ForEach(cells) { p in
-                Button { onSolo(p.id) } label: { cell(p, name: Text(verbatim: p.short), on: parts.solo == p.id) }
-                    .buttonStyle(.plain)
-                    .opacity(parts.solo != nil && parts.solo != p.id ? 0.4 : 1)
-                    .accessibilityLabel(Text(verbatim: "\(p.name), \(said(p.value)), \(share(p.value))"))
-                    .accessibilityAddTraits(parts.solo == p.id ? .isSelected : [])
-                    .accessibilityIdentifier("\(id)-part-\(p.id)")
-            }
-            if let other {
-                Button { withAnimation(.smooth) { opened.toggle() } } label: {
-                    if opened {
-                        HStack(spacing: 4) { Text("Show Less"); Image(systemName: "chevron.up").font(.caption2.weight(.semibold)) }
-                            .foregroundStyle(Color.accentColor).frame(maxWidth: .infinity, minHeight: 34)
-                    } else {
-                        cell(other, name: Text("\(parts.folded) others"), on: false, more: true)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("\(id)-others")
-            }
+        let shown = other != nil && opened ? parts.all : parts.drawn.filter { $0.id != UsagePart.other }
+        let entries = shown.map(Entry.part) + (other.map { opened ? [Entry.less] : [Entry.other($0)] } ?? [])
+        return ViewThatFits(in: .horizontal) {
+            if !typeSize.isAccessibilitySize { grid(entries, columns: 2, parts: parts) }
+            grid(entries, columns: 1, parts: parts)
         }
         .font(.subheadline)
         .padding(.horizontal, -8)
     }
 
+    private func grid(_ entries: [Entry], columns n: Int, parts: MeasureParts) -> some View {
+        let rows = stride(from: 0, to: entries.count, by: n).map { Array(entries[$0 ..< min($0 + n, entries.count)]) }
+        return Grid(alignment: .leading, horizontalSpacing: 6, verticalSpacing: 2) {
+            ForEach(rows.indices, id: \.self) { r in
+                GridRow {
+                    ForEach(rows[r]) { entry($0, parts: parts) }
+                    if rows[r].count < n { Color.clear.gridCellUnsizedAxes([.horizontal, .vertical]) }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func entry(_ e: Entry, parts: MeasureParts) -> some View {
+        switch e {
+        case .part(let p):
+            Button { onSolo(p.id) } label: { cell(p, name: Text(verbatim: p.short), on: parts.solo == p.id) }
+                .buttonStyle(.plain)
+                .opacity(parts.solo != nil && parts.solo != p.id ? 0.4 : 1)
+                .accessibilityLabel(Text(verbatim: "\(p.name), \(said(p.value)), \(share(p.value))"))
+                .accessibilityAddTraits(parts.solo == p.id ? .isSelected : [])
+                .accessibilityIdentifier("\(id)-part-\(p.id)")
+        case .other(let o):
+            Button { withAnimation(.smooth) { opened = true } } label: { cell(o, name: Text("\(parts.folded) others"), on: false, more: true) }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("\(id)-others")
+        case .less:
+            Button { withAnimation(.smooth) { opened = false } } label: {
+                HStack(spacing: 4) { Text("Show Less"); Image(systemName: "chevron.up").font(.caption2.weight(.semibold)) }
+                    .foregroundStyle(Color.accentColor).frame(maxWidth: .infinity, minHeight: 34)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("\(id)-others")
+        }
+    }
+
+    /// A part's cell: its colour, its name (cut short before anything else), its number and its share, which never wrap.
     private func cell(_ p: MeasureParts.Row, name: Text, on: Bool, more: Bool = false) -> some View {
         HStack(spacing: 6) {
             RoundedRectangle(cornerRadius: 2.5, style: .continuous).fill(p.color).frame(width: 9, height: 9)
             name.lineLimit(1)
-            Spacer(minLength: 2)
-            Text(verbatim: text(p.value)).fontWeight(.semibold).monospacedDigit()
-            Text(verbatim: share(p.value)).font(.caption).foregroundStyle(.secondary).monospacedDigit().frame(minWidth: 30, alignment: .trailing)
+            // Other opens in place: its sign beside its name, so the numbers stay in one column with the others'.
             if more { Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary) }
+            Spacer(minLength: 2)
+            Text(verbatim: text(p.value)).fontWeight(.semibold).monospacedDigit().lineLimit(1).fixedSize()
+            Text(verbatim: share(p.value)).font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).fixedSize().frame(minWidth: 30, alignment: .trailing)
         }
-        .padding(.horizontal, 8).frame(minHeight: 34)
+        .padding(.horizontal, 8).frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
         .background(on ? Color(.tertiarySystemFill) : .clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .contentShape(Rectangle())
     }
