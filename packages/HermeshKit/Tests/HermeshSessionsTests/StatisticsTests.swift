@@ -101,8 +101,54 @@ private func agent(_ name: String, available: Bool = true, said: Date? = nil, pl
     #expect(cards[1].plan == "pro" && cards[1].windows.map(\.left) == [39] && cards[1].windows[0].timeLeft == 25)
     #expect(cards[2].machineID == "" && cards[2].observedAt == nil && cards[2].windows.isEmpty && !cards[2].stale, "available and never said")
     #expect(lowLimits(cards).map(\.agent) == ["claude"])
-    #expect(needs(team: teamState([], requests: 0), pairings: [], limits: ["claude"], expiring: ["g"], guide: false, herOff: false, notificationsOff: false,
-                  secondDevice: false).map(\.id) == ["l:claude", "g:g"], "after what failed, before grants about to end")
+    #expect(hasUnseenLowLimits(cards, seen: [:], now: today))
+    let seen = markLowLimitsSeen(cards, seen: [:], now: today)
+    #expect(!hasUnseenLowLimits(cards, seen: seen, now: today))
+}
+
+@Test func lowLimitSeenStaysQuietUntilResetOrAnotherLowWindow() {
+    let min = { (n: Double) in today.addingTimeInterval(n * 60) }
+    let initial = agentLimits([
+        (machineID: "mac", agents: [
+            agent("claude", said: min(-2), windows: [(300, 86, min(140)), (10080, 82, min(5000))]),
+            agent("codex", said: min(-2), windows: [(300, 30, min(120))]),
+        ]),
+    ], now: today)
+    let seen = markLowLimitsSeen(initial, seen: [:], now: today)
+    #expect(!hasUnseenLowLimits(initial, seen: seen, now: today))
+
+    // Same window drops further and resetsAt drifts slightly: still quiet.
+    let lower = agentLimits([
+        (machineID: "mac", agents: [
+            agent("claude", said: min(5), windows: [(300, 93, min(142)), (10080, 85, min(5000))]),
+            agent("codex", said: min(-2), windows: [(300, 30, min(120))]),
+        ]),
+    ], now: min(5))
+    #expect(!hasUnseenLowLimits(lower, seen: seen, now: min(5)))
+
+    // Another agent drops low: unseen again.
+    let another = agentLimits([
+        (machineID: "mac", agents: [
+            agent("claude", said: min(5), windows: [(300, 93, min(142)), (10080, 85, min(5000))]),
+            agent("codex", said: min(6), windows: [(300, 88, min(120))]),
+        ]),
+    ], now: min(6))
+    #expect(hasUnseenLowLimits(another, seen: seen, now: min(6)))
+
+    // After the 5-hour window resets, weekly is still seen until its own reset.
+    let afterFiveReset = agentLimits([
+        (machineID: "mac", agents: [agent("claude", said: min(150), windows: [(300, 20, min(450)), (10080, 85, min(5000))])]),
+    ], now: min(150))
+    #expect(!hasUnseenLowLimits(afterFiveReset, seen: seen, now: min(150)))
+
+    // Next 5-hour cycle drops low again: unseen again, and marking updates its reset deadline.
+    let nextCycleLow = agentLimits([
+        (machineID: "mac", agents: [agent("claude", said: min(200), windows: [(300, 90, min(450)), (10080, 85, min(5000))])]),
+    ], now: min(200))
+    #expect(hasUnseenLowLimits(nextCycleLow, seen: seen, now: min(200)))
+    let seenAgain = markLowLimitsSeen(nextCycleLow, seen: seen, now: min(200))
+    #expect(!hasUnseenLowLimits(nextCycleLow, seen: seenAgain, now: min(200)))
+    #expect(seenAgain["claude//300"] == min(450).timeIntervalSince1970)
 }
 
 @Test func anAgentThatCountsGroupsOfModelsApartKeepsThemInItsOrder() {

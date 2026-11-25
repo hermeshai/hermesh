@@ -15,8 +15,6 @@ public enum Need: Hashable, Identifiable, Sendable {
     case pairing(String)
     /// A session's last turn failed.
     case failed(String)
-    /// A coding agent's rate limit is nearly used up, by its name.
-    case limit(String)
     /// A grant about to end, by its id.
     case expiring(String)
     /// The guide put off has a step left.
@@ -32,7 +30,6 @@ public enum Need: Hashable, Identifiable, Sendable {
         case .question(let id): "q:" + id
         case .pairing(let code): "p:" + code
         case .failed(let id): "f:" + id
-        case .limit(let agent): "l:" + agent
         case .expiring(let id): "g:" + id
         case .guide: "guide"
         case .herOff: "her"
@@ -44,12 +41,11 @@ public enum Need: Hashable, Identifiable, Sendable {
 
 /// What needs the owner, the most pressing first: someone or something that
 /// waits (questions, the latest first; then requests to connect), what went
-/// wrong, then reminders (limits nearly used up, the least left first, by
-/// their agents' names; then the rest).
-public func needs(team: TeamState, pairings: [String], limits: [String] = [], expiring: [String], guide: Bool, herOff: Bool, notificationsOff: Bool,
+/// wrong, then reminders.
+public func needs(team: TeamState, pairings: [String], expiring: [String], guide: Bool, herOff: Bool, notificationsOff: Bool,
                   secondDevice: Bool) -> [Need] {
     team.waiting.map { .question($0.sessionID) } + pairings.map(Need.pairing) + team.failed.map { .failed($0.sessionID) }
-        + limits.map(Need.limit) + expiring.map(Need.expiring) + (guide ? [.guide] : []) + (herOff ? [.herOff] : [])
+        + expiring.map(Need.expiring) + (guide ? [.guide] : []) + (herOff ? [.herOff] : [])
         + (notificationsOff ? [.notificationsOff] : []) + (secondDevice ? [.secondDevice] : [])
 }
 

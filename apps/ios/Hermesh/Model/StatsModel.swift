@@ -20,6 +20,8 @@ final class StatsModel {
     var filter = UsageFilter()
     /// What the bars are in parts of (§6.9): the agents to start with.
     var group: UsageGroup = .agent
+    /// Low-limit windows already seen by the owner, mapped to the epoch seconds when each resets.
+    private(set) var seenLowLimits: [String: TimeInterval] = [:]
     private(set) var answers: [String: Hermesh_Local_V1_QueryWorkResponse] = [:]
     /// The page's last answer shown, while a new state's is asked.
     private(set) var lastPage: Hermesh_Local_V1_QueryWorkResponse?
@@ -29,10 +31,21 @@ final class StatsModel {
 
     /// At most this many answers are kept.
     static let kept = 16
+    private static let seenLimitsKey = "seenLowLimits"
 
     init(isDemo: Bool) {
         self.isDemo = isDemo
-        if !isDemo, let p = UserDefaults.standard.string(forKey: "workPeriod").flatMap(WorkPeriod.init) { period = p }
+        if !isDemo {
+            if let p = UserDefaults.standard.string(forKey: "workPeriod").flatMap(WorkPeriod.init) { period = p }
+            if let saved = UserDefaults.standard.dictionary(forKey: Self.seenLimitsKey) as? [String: TimeInterval] { seenLowLimits = saved }
+        }
+    }
+
+    func markLowLimitsSeen(_ cards: [AgentLimitsCard], now: Date) {
+        let next = HermeshSessions.markLowLimitsSeen(cards, seen: seenLowLimits, now: now)
+        guard next != seenLowLimits else { return }
+        seenLowLimits = next
+        if !isDemo { UserDefaults.standard.set(next, forKey: Self.seenLimitsKey) }
     }
 
     func pageRequest(_ now: Date) -> Hermesh_Local_V1_QueryWorkRequest { usagePageRequest(period, filter: filter, group: group, now: now) }

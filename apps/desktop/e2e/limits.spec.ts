@@ -5,18 +5,25 @@ import { cli, launch, snap } from "./app";
 // rate limits. The fixture's limits-mac ran a session in which its agent (the fake, as gemini) said five hours 86%
 // used and a week 52%, on Pro; agy-mac's Antigravity (as the agy CLI) was asked its quota, two groups of models,
 // none low; the others never said any.
-test("额度 shows what each agent last said, the least left first; a window running low needs the owner", async () => {
+test("额度 shows what each agent last said, the least left first; a low window puts a dot on the 额度 tab that clears on click", async () => {
   const { app, page } = await launch();
   try {
-    // Live: the window at 14% is under 需要你处理, and 查看 opens 额度.
+    // Live: a low window is no longer a heavy card under 需要你处理; instead, 额度 carries a warning dot.
     const needs = page.getByRole("region", { name: "需要你处理" });
-    const row = needs.getByRole("listitem").filter({ hasText: "额度剩" });
-    await expect(row).toHaveCount(1);
-    await expect(row).toContainText("Gemini CLI 的 5 小时额度剩 14%");
-    // It resets five hours from when it was said (today, or tomorrow at night): how long is left, to the minute.
-    await expect(row).toContainText(/limits-mac 上报 · (刚刚|\d+ 分钟前) · (周. )?\d\d:\d\d 重置 · 还有 (5 小时|4 小时 \d+ 分)/);
-    await row.getByRole("button", { name: "查看" }).click();
-    await expect(page.getByRole("tab", { name: "额度" })).toHaveAttribute("aria-selected", "true");
+    await expect(needs.getByRole("listitem").filter({ hasText: "额度剩" })).toHaveCount(0);
+    const limitsTab = page.getByRole("tab", { name: "额度" });
+    const liveTab = page.getByRole("tab", { name: "实时" });
+    await expect(limitsTab.getByTestId("limits-low-dot")).toBeVisible();
+
+    // Clicking 额度 opens it and clears the dot; going back to 实时 keeps the dot gone.
+    await limitsTab.click();
+    await expect(limitsTab).toHaveAttribute("aria-selected", "true");
+    await expect(limitsTab.getByTestId("limits-low-dot")).toHaveCount(0);
+    await liveTab.click();
+    await expect(liveTab).toHaveAttribute("aria-selected", "true");
+    await expect(limitsTab.getByTestId("limits-low-dot")).toHaveCount(0);
+    await limitsTab.click();
+    await expect(limitsTab).toHaveAttribute("aria-selected", "true");
 
     const limits = page.getByRole("region", { name: "额度" });
     const cards = limits.getByRole("group").filter({ has: page.locator(".lim-id") });
@@ -55,10 +62,13 @@ test("额度 shows what each agent last said, the least left first; a window run
     await expect(limits).toContainText("Hermesh 只转述，不读取账号");
     await snap(page, "overview-limits");
 
-    // The agent says them again, lower: the page has it as the machine tells it.
+    // The agent says them again, lower: the page has it as the machine tells it, and the dot stays dismissed for the same window.
     await cli("session", "start", "--project", "limits-mac/quota", "-o", "json", "--agent", "gemini", "--title", "再用掉一些", "--prompt", "limits 300:93,10080:55,plan=pro\nsay 好了", "--wait");
     await expect(five.locator(".lim-left")).toHaveText("7%剩余", { timeout: 30_000 });
     await expect(week.locator(".lim-left")).toHaveText("45%剩余");
+    await liveTab.click();
+    await expect(limitsTab.getByTestId("limits-low-dot")).toHaveCount(0);
+    await limitsTab.click();
 
     // In a narrow window the windows go under the name, and nothing runs off the side.
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(900, 900));

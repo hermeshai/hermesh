@@ -262,7 +262,7 @@ public func usageChoices(_ res: Hermesh_Local_V1_QueryWorkResponse?, filter f: U
 
 // MARK: Limits
 
-/// Left of a window at or below this is a thing that needs the owner.
+/// Left of a window at or below this is flagged as low on the overview's Limits tab.
 public let limitLow = 20
 
 /// A window as the page shows it: how long, how much is left of it and of its time, and when it starts again; and
@@ -323,7 +323,36 @@ public func agentLimits(_ machines: [(machineID: String, agents: [Hermesh_Machin
     return order.compactMap { cards[$0] }.enumerated().sorted { (least($0.element), $0.offset) < (least($1.element), $1.offset) }.map(\.element)
 }
 
-/// The cards whose least left is at or below limitLow: what needs the owner.
+/// The cards whose least left is at or below limitLow.
 public func lowLimits(_ cards: [AgentLimitsCard]) -> [AgentLimitsCard] {
     cards.filter { ($0.least?.left ?? 101) <= limitLow }
+}
+
+private func lowWindowKey(_ agent: String, _ w: LimitShown) -> String {
+    "\(agent)/\(w.group)/\(w.minutes)"
+}
+
+private func lowWindowUntil(_ w: LimitShown, now: Date) -> TimeInterval {
+    (w.resetsAt ?? now.addingTimeInterval(Double(w.minutes) * 60)).timeIntervalSince1970
+}
+
+/// Whether any window at or below limitLow has not been seen yet since its last reset.
+public func hasUnseenLowLimits(_ cards: [AgentLimitsCard], seen: [String: TimeInterval], now: Date) -> Bool {
+    let t = now.timeIntervalSince1970
+    return cards.contains { card in
+        card.windows.contains { w in w.left <= limitLow && (seen[lowWindowKey(card.agent, w)] ?? 0) <= t }
+    }
+}
+
+/// Records every currently low window as seen until it resets, dropping entries that have already reset.
+public func markLowLimitsSeen(_ cards: [AgentLimitsCard], seen: [String: TimeInterval], now: Date) -> [String: TimeInterval] {
+    let t = now.timeIntervalSince1970
+    var next = seen.filter { $0.value > t }
+    for card in cards {
+        for w in card.windows where w.left <= limitLow {
+            let k = lowWindowKey(card.agent, w)
+            next[k] = max(next[k] ?? 0, lowWindowUntil(w, now: now))
+        }
+    }
+    return next
 }

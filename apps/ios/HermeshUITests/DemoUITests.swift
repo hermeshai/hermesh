@@ -445,19 +445,17 @@ final class DemoUITests: XCTestCase {
         any["needs"].firstMatch.swipeRight()
         XCTAssertTrue(wait { front.label.hasPrefix("1 / ") }, front.label)
 
-        // A limit nearly used up is a card: View opens Limits.
-        for _ in 0 ..< 8 where !any["limit-claude"].firstMatch.isHittable {
-            tap("needs-next")
-            _ = wait(1) { any["limit-claude"].firstMatch.isHittable }
-        }
-        XCTAssertTrue(any["limit-claude"].firstMatch.isHittable, "the limit card")
-        checkpoint("overview-limit-card")
-        tap("limit-view")
-        XCTAssertTrue(any["limit-claude-300"].firstMatch.waitForExistence(timeout: 5), "Limits, from the card: the overview's view")
+        // A limit nearly used up puts a dot on the Limits tab (no heavy card in the deck); tapping Limits clears it.
+        XCTAssertFalse(any["limit-claude"].firstMatch.exists, "no heavy limit card in the deck")
+        XCTAssertTrue(any["limits-low-dot"].firstMatch.waitForExistence(timeout: 5), "the orange dot on the Limits tab")
+        checkpoint("overview-limit-dot")
+        view(2)
+        XCTAssertTrue(any["limit-claude-300"].firstMatch.waitForExistence(timeout: 5), "Limits: the overview's view")
+        XCTAssertFalse(any["limits-low-dot"].firstMatch.exists, "dot disappears once Limits is tapped")
         XCTAssertFalse(map.exists, "in place of Live")
         view(0)
         XCTAssertTrue(map.waitForExistence(timeout: 10))
-        for _ in 0 ..< 8 where !front.label.hasPrefix("1 / ") { tap("needs-next") } // round to the first card
+        XCTAssertFalse(any["limits-low-dot"].firstMatch.exists, "dot stays gone back on Live")
 
         // A node picked: every session through it, in place of what runs and what finished.
         tap("map-Mac mini")

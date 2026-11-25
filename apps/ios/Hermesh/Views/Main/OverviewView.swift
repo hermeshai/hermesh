@@ -31,8 +31,10 @@ struct OverviewView: View {
     var body: some View {
         let team = teamState(model.sessions, requests: 0)
         let step = guide == Guide.later ? GuideStep.next(model) : nil
-        let low = lowLimits(agentLimits(model.machines.map { (machineID: $0.machineID, agents: $0.status.agents) }, now: model.now))
-        let list = needs(team: team, pairings: model.pairings.map(\.code), limits: low.map(\.agent), expiring: model.expiringClients.map(\.grantID), guide: step != nil,
+        let limitCards = agentLimits(model.machines.map { (machineID: $0.machineID, agents: $0.status.agents) }, now: model.now)
+        let hasUnseenLow = hasUnseenLowLimits(limitCards, seen: model.stats.seenLowLimits, now: model.now)
+        let showLimitDot = model.stats.segment != .limits && hasUnseenLow
+        let list = needs(team: team, pairings: model.pairings.map(\.code), expiring: model.expiringClients.map(\.grantID), guide: step != nil,
                          herOff: herEnvironments(model.machines).isEmpty, notificationsOff: notificationsOff, secondDevice: onlyDevice)
         let map = linkMap(senders: model.clients.filter { !$0.revoked }.map { MapSender(clientID: $0.clientID, title: model.senderName($0.clientID)) },
                           environments: model.machines.map { m in
@@ -50,8 +52,28 @@ struct OverviewView: View {
                     Text("Limits").tag(StatsModel.Segment.limits)
                 }
                 .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
                 .accessibilityIdentifier("overview-views")
+                .overlay {
+                    if showLimitDot {
+                        HStack(spacing: 0) {
+                            Color.clear.frame(maxWidth: .infinity)
+                            Color.clear.frame(maxWidth: .infinity)
+                            HStack(spacing: 4) {
+                                Text("Limits").font(.subheadline.weight(.medium)).hidden()
+                                Circle()
+                                    .fill(.orange)
+                                    .frame(width: 7, height: 7)
+                                    .accessibilityElement()
+                                    .accessibilityLabel(Text("Limits"))
+                                    .accessibilityIdentifier("limits-low-dot")
+                            }
+                            .offset(x: 5.5)
+                            .frame(maxWidth: .infinity)
+                        }
+                        .allowsHitTesting(false)
+                    }
+                }
+                .padding(.horizontal, 16)
                 switch stats.segment {
                 case .usage: UsagePage().padding(.horizontal, 16)
                 case .limits: LimitsPage().padding(.horizontal, 16)
@@ -102,6 +124,10 @@ struct OverviewView: View {
         .onChange(of: guide == Guide.later && step == nil, initial: true) { _, over in
             if over { guide = Guide.done }
         }
+        // Tapping Limits (or receiving a new low limit while already viewing it) clears the dot until the window resets.
+        .onChange(of: stats.segment == .limits && hasUnseenLow, initial: true) { _, mark in
+            if mark { stats.markLowLimitsSeen(limitCards, now: model.now) }
+        }
     }
 
     /// Live: what needs the owner, the map, what runs and what finished (or, a node picked, what goes through it).
@@ -139,9 +165,6 @@ struct OverviewView: View {
             return ([LinkMap.sender(s.createdBy), LinkMap.environment(s.machineID)], id)
         case .expiring(let id):
             return (Set(model.clients.filter { $0.grantID == id }.map { LinkMap.sender($0.clientID) }), nil)
-        case .limit(let agent):
-            let card = agentLimits(model.machines.map { (machineID: $0.machineID, agents: $0.status.agents) }, now: model.now).first { $0.agent == agent }
-            return (card.map { [LinkMap.environment($0.machineID)] } ?? [], nil)
         default:
             return ([], nil)
         }

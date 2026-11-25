@@ -669,17 +669,13 @@ struct LimitsCard: View {
     }
 }
 
-/// "5-Hour Window", "Weekly Window"; short: "5-hour", "weekly".
-func windowName(_ minutes: Int, short: Bool = false) -> String {
-    switch (minutes, short) {
-    case (300, false): String(localized: "5-Hour Window")
-    case (300, true): String(localized: "5-hour")
-    case (10080, false): String(localized: "Weekly Window")
-    case (10080, true): String(localized: "weekly")
-    case (let m, false) where m < 1440: String(localized: "\(m / 60)-Hour Window")
-    case (let m, true) where m < 1440: String(localized: "\(m / 60)-hour")
-    case (let m, false): String(localized: "\(m / 1440)-Day Window")
-    case (let m, true): String(localized: "\(m / 1440)-day")
+/// "5-Hour Window", "Weekly Window".
+func windowName(_ minutes: Int) -> String {
+    switch minutes {
+    case 300: String(localized: "5-Hour Window")
+    case 10080: String(localized: "Weekly Window")
+    case let m where m < 1440: String(localized: "\(m / 60)-Hour Window")
+    case let m: String(localized: "\(m / 1440)-Day Window")
     }
 }
 
