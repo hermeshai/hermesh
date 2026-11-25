@@ -115,18 +115,13 @@ struct SessionPage: View {
         sessionID = ""
         askedMachine = machineID
         askedProject = projectID
-        _files = State(initialValue: SessionFilesModel(sessionID: ""))
     }
 
     init(sessionID: String) {
         self.sessionID = sessionID
         askedMachine = ""
         askedProject = ""
-        _files = State(initialValue: SessionFilesModel(sessionID: sessionID))
     }
-
-    /// Which of the paths its replies write are files, and opening them (SessionFiles.swift).
-    @State private var files: SessionFilesModel
 
     private var isNew: Bool { sessionID.isEmpty }
     private var listedSession: Session? { isNew ? nil : model.session(sessionID) }
@@ -196,6 +191,7 @@ struct SessionPage: View {
                     .onChange(of: s.status) { was, now in
                         guard [.queued, .preparing, .running, .waitingInput].contains(was), now == .idle || now == .crashed,
                               let cur = currentSession else { return }
+                        model.sessionFiles.model(s.sessionID, api: model.api).refreshLive()
                         if cur.isFailed { Haptic.error.play() } else if !cur.progress.hasLastFailure { Haptic.success.play() }
                     }
             } else {
@@ -382,6 +378,7 @@ struct SessionPage: View {
         let activeProj = activeProjection
         let grant = model.grantLabel(s)
         let steps = groupSteps(sessionTranscript(activeProj))
+        let files = model.sessionFiles.model(s.sessionID, api: model.api)
         return ScrollView {
             VStack(alignment: .leading, spacing: 13) {
                 if s.status == .archived { ArchivedNote(session: s) }
@@ -391,11 +388,9 @@ struct SessionPage: View {
                 .environment(\.sessionFiles, files)
                 .environment(\.openURL, OpenURLAction { url in
                     guard let route = FileRefLink.route(url, session: s.sessionID) else { return .systemAction }
-                    files.api = model.api
                     model.path.append(route)
                     return .handled
                 })
-                .onAppear { files.api = model.api; files.sessionID = s.sessionID }
                 workLine(activeProj).frame(maxWidth: .infinity, alignment: .leading)
                 if let f = sessionFailure(currentSession) {
                     FailedView(session: s, failure: f, grant: grant)

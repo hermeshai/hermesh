@@ -35,46 +35,114 @@ extension EnvironmentValues {
     @Entry var filesRun: String = ""
 }
 
-/// What the session's machine said the paths its replies wrote are, asked a reply at a time.
+/// Keeps recent sessions' resolved file tags in memory across page opens, as `Conversations` keeps projections.
+@MainActor final class SessionFilesCache {
+    private let keeps = 20
+    private var held: [String: SessionFilesModel] = [:]
+    private var order: [String] = []
+
+    func model(_ sessionID: String, api: AppAPI?) -> SessionFilesModel {
+        if sessionID.isEmpty { return SessionFilesModel(sessionID: "", api: api) }
+        let m = held[sessionID] ?? SessionFilesModel(sessionID: sessionID, api: api)
+        m.api = api
+        held[sessionID] = m
+        order.removeAll { $0 == sessionID }
+        order.append(sessionID)
+        while order.count > keeps { held[order.removeFirst()] = nil }
+        return m
+    }
+
+    func forget(_ sessionID: String) {
+        held[sessionID] = nil
+        order.removeAll { $0 == sessionID }
+    }
+
+    func forgetAll() {
+        held = [:]
+        order = []
+    }
+}
+
+/// What the session's machine said the paths its replies wrote are, asked a frame's worth at a time and concurrently per turn.
 @MainActor @Observable final class SessionFilesModel {
     @ObservationIgnored var sessionID: String
     @ObservationIgnored var api: AppAPI?
     private(set) var known: [String: Hermesh_Session_V1_ResolvedFile] = [:]
-    @ObservationIgnored private var asked: Set<String> = []
+    @ObservationIgnored private var askedAt: [String: ContinuousClock.Instant] = [:]
     @ObservationIgnored private var pending: [String: Set<String>] = [:]
-    @ObservationIgnored private var flushing: Task<Void, Never>?
+    @ObservationIgnored private var order: [String] = []
+    @ObservationIgnored private var scheduled = false
 
-    init(sessionID: String) { self.sessionID = sessionID }
+    /// A path read before its turn had a checkpoint (`turn == 0`) may be asked again after this long, as on the Mac.
+    private static let nowTTL: Duration = .seconds(10)
+
+    init(sessionID: String, api: AppAPI? = nil) {
+        self.sessionID = sessionID
+        self.api = api
+    }
 
     private func key(_ run: String, _ path: String) -> String { "\(run)\u{0}\(path)" }
 
     func info(run: String, path: String) -> Hermesh_Session_V1_ResolvedFile? { known[key(run, path)] }
 
     func want(run: String, paths: [String]) {
-        for p in paths where !asked.contains(key(run, p)) {
-            asked.insert(key(run, p))
+        guard !paths.isEmpty else { return }
+        let now = ContinuousClock.now
+        var added = false
+        for p in paths {
+            let k = key(run, p)
+            if let had = known[k], had.turn > 0 || (askedAt[k].map { now - $0 < Self.nowTTL } ?? false) { continue }
+            if known[k] == nil, let at = askedAt[k], now - at < Self.nowTTL { continue }
+            askedAt[k] = now
+            if pending[run] == nil { order.append(run) }
             pending[run, default: []].insert(p)
+            added = true
         }
-        guard !pending.isEmpty, flushing == nil else { return }
-        flushing = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(30))
-            await self?.flush()
+        guard added, !scheduled else { return }
+        scheduled = true
+        Task { [weak self] in
+            await Task.yield()
+            self?.flush()
         }
     }
 
-    private func flush() async {
+    /// Re-asks paths that were resolved before their turn captured a checkpoint, once the turn ends.
+    func refreshLive() {
+        var retry: [String: [String]] = [:]
+        for (k, f) in known where f.turn == 0 {
+            let parts = k.split(separator: "\u{0}", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+            guard parts.count == 2, !parts[0].isEmpty else { continue }
+            askedAt[k] = nil
+            retry[parts[0], default: []].append(parts[1])
+        }
+        for (run, paths) in retry { want(run: run, paths: paths) }
+    }
+
+    private func flush() {
+        let runs = order
         let batch = pending
+        order = []
         pending = [:]
-        flushing = nil
-        guard let api else { return }
-        for (run, set) in batch {
+        scheduled = false
+        guard let api, !sessionID.isEmpty else {
+            for (run, set) in batch { for p in set { askedAt[key(run, p)] = nil } }
+            return
+        }
+        let sid = sessionID
+        // Newest replies first (the end of the conversation is in view), all turns in flight concurrently.
+        for run in runs.reversed() {
+            guard let set = batch[run], !set.isEmpty else { continue }
             let paths = Array(set)
-            do {
-                let res = try await api.resolveFiles(sessionID, run: run, paths: paths)
-                for (i, f) in res.files.enumerated() where i < paths.count { known[key(run, paths[i])] = f }
-            } catch {
-                // The machine away: the paths are asked again next time the reply shows.
-                for p in paths { asked.remove(key(run, p)) }
+            Task { [weak self] in
+                do {
+                    let res = try await api.resolveFiles(sid, run: run, paths: paths)
+                    guard let self else { return }
+                    for (i, f) in res.files.enumerated() where i < paths.count { self.known[self.key(run, paths[i])] = f }
+                } catch {
+                    // The machine away: explicit links stay tappable, and paths are asked again next time.
+                    guard let self else { return }
+                    for p in paths { self.askedAt[self.key(run, p)] = nil }
+                }
             }
         }
     }
@@ -123,22 +191,27 @@ enum FileRefLink {
     }
 }
 
-/// A line of a reply with its file tags: the name in the link's colour on a grey ground, grey when there is nothing
-/// there; math drawn as `mathText` draws it. No symbol before the name, as the Mac has: an image in a Text moves its
-/// links' places for VoiceOver (and the tests) by the image's width in characters.
+/// A line of a reply with its file tags: explicit links show as clickable tags at once (grey once the machine says
+/// nothing is there), inline code becomes a tag once found; math drawn as `mathText` draws it. No symbol before the
+/// name, as the Mac has: an image in a Text moves its links' places for VoiceOver (and the tests) by the image's width.
 func fileText(_ text: AttributedString, files: SessionFilesModel, run: String, size: CGFloat, code: Font) -> Text {
     var out = AttributedString()
     for r in text.runs {
         var part = AttributedString(text[r.range])
-        guard let mark = r[FileRefAttribute.self], let info = files.info(run: run, path: mark.path) else {
+        guard let mark = r[FileRefAttribute.self] else {
             out += part
             continue
         }
-        let found = info.kind == .file || info.kind == .folder
+        let info = files.info(run: run, path: mark.path)
+        let found = info?.kind == .file || info?.kind == .folder
         if mark.code && !found {
             out += part
             continue
         }
+        let gone = info?.kind == .missing || info?.kind == .outside
+        let opens = info == nil ? !mark.code : found
+        let folder = info.map { $0.kind == .folder } ?? (mark.path.hasSuffix("/") || mark.path.hasSuffix("\\"))
+        let path = if let info, !gone, !info.path.isEmpty { info.path } else { mark.path }
         if let line = mark.line, !mark.code {
             var l = AttributedString(":\(line)" + (mark.endLine.map { "-\($0)" } ?? ""))
             l.font = code
@@ -147,8 +220,8 @@ func fileText(_ text: AttributedString, files: SessionFilesModel, run: String, s
         }
         var label = AttributedString("\u{2009}") + part + AttributedString("\u{2009}")
         label.backgroundColor = Palette.fill2
-        label.foregroundColor = found ? Color.accentColor : Color.secondary
-        if found, let url = FileRefLink.url(run: run, path: info.path, line: mark.line, endLine: mark.endLine, folder: info.kind == .folder) { label.link = url }
+        label.foregroundColor = opens ? Color.accentColor : Color.secondary
+        if opens, let url = FileRefLink.url(run: run, path: path, line: mark.line, endLine: mark.endLine, folder: folder) { label.link = url }
         if let line = mark.line, !mark.code, let at = label.range(of: ":\(line)") { label[at.lowerBound...].foregroundColor = .secondary }
         out += label
     }
@@ -228,11 +301,12 @@ struct SessionFilePage: View {
         case .failure(let e)?:
             FileCard(name: name, text: errorText(e))
         case .success(let res)?:
+            let filePath = res.path.isEmpty ? path : res.path
             if view == .page && !source {
-                SessionPageWeb(api: model.api, sessionID: sessionID, run: run, path: path).id(run)
+                SessionPageWeb(api: model.api, sessionID: sessionID, run: run, path: filePath).id(run)
             } else if quickLooks || view == .svg && !source {
                 if view == .svg, !source {
-                    SessionPageWeb(api: model.api, sessionID: sessionID, run: run, path: path).id(run)
+                    SessionPageWeb(api: model.api, sessionID: sessionID, run: run, path: filePath).id(run)
                 } else if let local {
                     HerQuickLook(url: local).ignoresSafeArea(edges: .bottom).accessibilityIdentifier("file-quicklook")
                 } else {
@@ -272,15 +346,16 @@ struct SessionFilePage: View {
         do {
             let res = try await api.readFile(sessionID, run: run, path: path)
             read = .success(res)
-            if quickLooks { local = try await fetch(api) }
+            if quickLooks { local = try await fetch(api, resolved: res.path) }
         } catch {
             read = .failure(error)
         }
     }
 
     /// The file in a folder of its own on this iPhone, for Quick Look and Share.
-    private func fetch(_ api: AppAPI) async throws -> URL {
-        let got = try await api.readWholeFile(sessionID, run: run, path: path)
+    private func fetch(_ api: AppAPI, resolved: String = "") async throws -> URL {
+        let target = resolved.isEmpty ? ((try? read?.get().path).flatMap { $0.isEmpty ? nil : $0 } ?? path) : resolved
+        let got = try await api.readWholeFile(sessionID, run: run, path: target)
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("Session Files/\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent(name.isEmpty ? "file" : name)
@@ -396,7 +471,7 @@ struct SessionFolderPage: View {
                         Text("The workspace was released; these are the files as turn \(res.turn) left them").font(.footnote).foregroundStyle(.secondary)
                     }
                     ForEach(res.entries, id: \.name) { e in
-                        let path = dir.isEmpty ? e.name : "\(dir)/\(e.name)"
+                        let path = res.dir.isEmpty ? e.name : "\(res.dir)/\(e.name)"
                         Button {
                             model.path.append(e.dir ? .sessionFolder(sessionID, path) : .sessionFile(sessionID, "", path, 0, 0))
                         } label: {

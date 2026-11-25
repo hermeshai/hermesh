@@ -16,6 +16,7 @@ import (
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/paths"
 	"github.com/hermeshai/hermesh/internal/runtime/acp"
 	"github.com/hermeshai/hermesh/internal/shellenv"
@@ -676,7 +677,12 @@ func otherMacFiles(t *testing.T, f desktopFixture) int {
 		s = firstSession(w.cli(2*time.Minute, "session", "start", "--project", "files-mac/site", "-o", "json", "--agent", "gemini", "--title", "文件预览", "--prompt", prompt, "--wait").stdout)
 		return s.SessionID != ""
 	})
-	if s2, r := w.send(2*time.Minute, s.SessionID, "write docs/demo.html <html><body><p id=t>第二版</p></body></html>\nsay 改好了"); s2.Status != "idle" {
+	resolved, err := w.app.sessions.ResolveFiles(ctx, &sessionv1.ResolveFilesRequest{SessionId: s.SessionID})
+	if err != nil || resolved.Folder == "" {
+		t.Fatalf("resolve folder: %+v %v", resolved, err)
+	}
+	turn2 := "write docs/demo.html <html><body><p id=t>第二版</p></body></html>\nsay 改好了：[新版](file://" + filepath.ToSlash(filepath.Join(resolved.Folder, "docs", "demo.html")) + ")"
+	if s2, r := w.send(2*time.Minute, s.SessionID, turn2); s2.Status != "idle" {
 		t.Fatalf("second turn: %+v", r)
 	}
 	f.Sessions["文件预览"] = s.SessionID
