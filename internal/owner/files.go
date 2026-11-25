@@ -107,12 +107,47 @@ func filesCall[Res proto.Message](ctx context.Context, o *Owner, sessionID, mach
 	return zero, err
 }
 
+func resolvedAtTurn(res *sessionv1.ResolveFilesResponse) bool {
+	for _, f := range res.GetFiles() {
+		if f.GetTurn() > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (o *Owner) runHasCheckpoint(sessionID, runID string) bool {
+	if runID == "" {
+		return false
+	}
+	proj := o.cachedProjectionOnly(sessionID)
+	if proj == nil {
+		return false
+	}
+	for _, cp := range proj.GetCheckpoints() {
+		if cp.GetRunId() == runID && cp.GetGitTreeOid() != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *ownerSessionService) ResolveFiles(ctx context.Context, req *sessionv1.ResolveFilesRequest) (*sessionv1.ResolveFilesResponse, error) {
 	o := s.o()
-	return filesCall(ctx, o, req.SessionId, req.MachineId,
-		func(m string) string {
-			return filesKey("resolve", m, req.SessionId, req.RunId, strings.Join(req.Paths, "\x01"))
-		},
+	joined := strings.Join(req.Paths, "\x01")
+	key := func(m string) string { return filesKey("resolve", m, req.SessionId, req.RunId, joined) }
+	doneKey := func(m string) string { return filesKey("resolve.turn", m, req.SessionId, req.RunId, joined) }
+	// A finished turn's ResolveFiles answer is fixed once its checkpoint exists: serve locally without asking.
+	if req.RunId != "" {
+		if eng, machineID, err := o.resolveMachineForSession(ctx, req.SessionId); err == nil && eng == nil {
+			kept := &sessionv1.ResolveFilesResponse{}
+			if o.keptFiles(doneKey(machineID), kept) || (o.keptFiles(key(machineID), kept) && resolvedAtTurn(kept)) {
+				return kept, nil
+			}
+		}
+	}
+	settled := req.RunId != "" && o.runHasCheckpoint(req.SessionId, req.RunId)
+	res, err := filesCall(ctx, o, req.SessionId, req.MachineId, key,
 		func(eng *kernel.Engine) (*sessionv1.ResolveFilesResponse, error) {
 			return eng.ResolveFiles(ctx, o.ownerPrincipal(), req)
 		},
@@ -120,6 +155,12 @@ func (s *ownerSessionService) ResolveFiles(ctx context.Context, req *sessionv1.R
 			return pm.Session.ResolveFiles(ctx, req)
 		},
 		func() *sessionv1.ResolveFilesResponse { return &sessionv1.ResolveFilesResponse{} })
+	if err == nil && req.RunId != "" && (settled || resolvedAtTurn(res)) {
+		if eng, machineID, mErr := o.resolveMachineForSession(ctx, req.SessionId); mErr == nil && eng == nil {
+			o.keepFiles(doneKey(machineID), req.SessionId, res)
+		}
+	}
+	return res, err
 }
 
 func (s *ownerSessionService) ListFiles(ctx context.Context, req *sessionv1.ListFilesRequest) (*sessionv1.ListFilesResponse, error) {

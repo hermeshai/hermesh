@@ -179,6 +179,8 @@ final class AppModel {
     var networkKind = ""
     /// The last conversations opened.
     @ObservationIgnored let conversations: Conversations
+    /// Resolved file tags of recent sessions, so reopening one needs no second wait.
+    @ObservationIgnored let sessionFiles = SessionFilesCache()
     /// Sessions opened right after Send on what it knew (SessionPage): their page reads them whole once.
     @ObservationIgnored var seededSessions: Set<String> = []
     /// The Her entry: the environment shown, and each one's chat.
@@ -616,6 +618,7 @@ final class AppModel {
         UserDefaults.standard.removeObject(forKey: Guide.key) // the guide is the owner's
         UserDefaults.standard.removeObject(forKey: Guide.stepKey)
         conversations.forgetAll()
+        sessionFiles.forgetAll()
     }
 
     /// Set up or joined: show the app.
@@ -839,6 +842,7 @@ final class AppModel {
             her.reloadKept()
         }
         r.deletedSessionIds.forEach(conversations.forget)
+        r.deletedSessionIds.forEach(sessionFiles.forget)
         if watched { saveSoon() }
         // Status-only snapshots before joining know no machines yet. Choose from the initialized owner's first
         // snapshot: with none, Work has the way to a first machine. Enabled Her wins over an old Not Now choice.
@@ -1018,6 +1022,7 @@ final class AppModel {
             try await api.delete(s.sessionID)
             heldSessions = mergeSessions(heldSessions, [], deleted: [s.sessionID])
             conversations.forget(s.sessionID)
+            sessionFiles.forget(s.sessionID)
             path.removeAll { $0 == .session(s.sessionID) }
             if case .session(let id) = root, id == s.sessionID { root = .overview }
             show(String(localized: "Deleted “\(s.displayTitle)”"))

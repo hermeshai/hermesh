@@ -13,9 +13,14 @@ extension HermeshUITests {
         openSession("文件预览")
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "原型")).firstMatch.waitForExistence(timeout: 60), "the reply")
 
-        // The page, as turn 1 left it: it runs, its script beside it read too.
+        // Explicit links are clickable tags on the first frame, before ResolveFiles answers; inline code joins once it
+        // does, and missing or outside links drop theirs.
         let page = tag("docs/demo.html")
-        XCTAssertTrue(page.waitForExistence(timeout: 30), "demo.html is a tag")
+        let fileURLTag = app.links.containing(NSPredicate(format: "label CONTAINS %@", "新版")).firstMatch
+        XCTAssertTrue(page.exists, "demo.html is a clickable tag at once")
+        XCTAssertTrue(fileURLTag.exists, "a file:// link is a clickable tag at once")
+        let lines = tag("src/lines.txt", line: 30)
+        XCTAssertTrue(lines.waitForExistence(timeout: 20), "inline code that is a file is a tag")
         XCTAssertFalse(tag("gone.md").exists, "a link to nothing is no link")
         XCTAssertFalse(tag("/etc/hosts").exists, "a file outside the session's folder is no link")
         shot("files-tags")
@@ -37,8 +42,11 @@ extension HermeshUITests {
         XCTAssertTrue(app.descendants(matching: .any)["file-version"].staticTexts["这是当前版本"].waitForExistence(timeout: 5))
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
-        // Code, at the line the reply named, in view.
-        let lines = tag("src/lines.txt", line: 30)
+        // Turn 2's file:// link opens the page too; code opens at the line the reply named, in view.
+        fileURLTag.tap()
+        XCTAssertTrue(app.webViews.firstMatch.staticTexts["第二版"].waitForExistence(timeout: 30), "the file:// page")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
         XCTAssertTrue(lines.waitForExistence(timeout: 20), "inline code that is a file is a tag")
         lines.tap()
         let line = app.staticTexts["line 30"].firstMatch
