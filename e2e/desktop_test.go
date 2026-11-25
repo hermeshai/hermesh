@@ -80,12 +80,12 @@ type freshOwner struct {
 // windowsSpecs are the specs that run on Windows too (docs/windows.md §14);
 // the others are the Mac's (its menu bar, Touch ID, moving to
 // Applications, the process limit).
-var windowsSpecs = map[string]bool{"windows": true, "shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true, "sessionlist": true, "thread-v2": true}
+var windowsSpecs = map[string]bool{"windows": true, "shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true, "sessionlist": true, "thread-v2": true, "title-i18n": true}
 
 // linuxSpecs are the specs that run on Linux too (docs/linux.md §7.1), under
 // a display such as Xvfb's and an init that reaps orphans (docker --init).
 var linuxSpecs = map[string]bool{"shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true, "sessionlist": true,
-	"conversation": true, "model-catalogs": true, "onboarding": true, "language": true, "menus": true, "frame": true, "health": true, "team": true, "thread-v2": true}
+	"conversation": true, "model-catalogs": true, "onboarding": true, "language": true, "menus": true, "frame": true, "health": true, "team": true, "thread-v2": true, "title-i18n": true}
 
 // These specs read back what they copied. The clipboard is the whole
 // computer's, so they run one at a time, before the specs that run side by
@@ -146,7 +146,7 @@ func TestDesktop(t *testing.T) {
 			if !clipboardSpecs[name] {
 				t.Parallel()
 			}
-			f := desktopWorld(t, name == "onboarding", name == "health", name == "settings")
+			f := desktopWorld(t, name == "onboarding", name == "health", name == "settings", name == "title-i18n")
 			if name == "session" {
 				f.OtherMac = otherMacSession(t, f)
 				inPlaceSessions(t, f)
@@ -487,7 +487,7 @@ func desktopHerWorld(t *testing.T) desktopFixture {
 // (health.spec.ts takes them). wake: its relay runs the MCP gateway, which
 // keeps agents' doorbells, and may call webhooks on this computer
 // (settings.spec.ts sets one up).
-func desktopWorld(t *testing.T, fresh, limited, wake bool) desktopFixture {
+func desktopWorld(t *testing.T, fresh, limited, wake bool, titleGen ...bool) desktopFixture {
 	fake := filepath.Join(binaries(t), "fakeacp")
 	// Codex installed, not logged in, offering fakecodex's models: the same
 	// whatever this machine has.
@@ -495,6 +495,9 @@ func desktopWorld(t *testing.T, fresh, limited, wake bool) desktopFixture {
 	os.WriteFile(codex, []byte(fmt.Sprintf("#!/bin/sh\ncase \"$1\" in --version) echo \"codex-cli 0.48.0\";; login) echo \"Not logged in\"; exit 1;; app-server) exec %q;; esac\n",
 		filepath.Join(binaries(t), "fakecodex"))), 0o755)
 	env := []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "FAKE_ACP_MODELS=gemini-3-pro", "HERMESH_INCLUDE_SCRIPTED=1"}
+	if len(titleGen) > 0 && titleGen[0] {
+		env = append(env, "HERMESH_FAKE_TITLE_GEN=1")
+	}
 	// Not this machine's Claude Code and Antigravity, which would tell its
 	// owner's limits: not installed, as on CI.
 	missing := filepath.Join(t.TempDir(), "not-installed")

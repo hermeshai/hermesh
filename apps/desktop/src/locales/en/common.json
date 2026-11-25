@@ -85,6 +85,7 @@
   "sessionMenu": {
     "open": "Open",
     "rename": "Rename",
+    "regenerateTitle": "Regenerate Title",
     "archive": "Archive",
     "unarchive": "Unarchive",
     "copyId": "Copy Task ID",

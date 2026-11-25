@@ -179,6 +179,29 @@ type Titler interface {
 	SetTitle(ctx context.Context, title string) error
 }
 
+type TitleGenRequest struct {
+	Prompt    string
+	Images    []TurnAttachment
+	ModelHint string
+}
+
+type TitleGenResult struct {
+	Title       string `json:"title"`
+	Provisional bool   `json:"provisional"`
+}
+
+// TitleGenerator is optionally implemented by Drivers that can run a fast,
+// tool-free structured title generation pass without polluting user sessions.
+type TitleGenerator interface {
+	GenerateTitle(ctx context.Context, cfg *sessionv1.ProviderInstanceConfig, req TitleGenRequest) (TitleGenResult, error)
+}
+
+// TitleGeneratorEnabled is optionally implemented by test/fake TitleGenerators
+// whose title generation is gated on configuration or environment.
+type TitleGeneratorEnabled interface {
+	TitleGeneratorEnabled() bool
+}
+
 // Archiver is implemented by a Driver that mirrors archive/unarchive state into
 // the provider's native thread list (e.g. Codex app-server thread/archive).
 type Archiver interface {

@@ -410,6 +410,52 @@ public nonisolated enum Hermesh_Session_V1_QuestionResolution: SwiftProtobuf.Enu
 
 }
 
+public nonisolated enum Hermesh_Session_V1_TitleState: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case seed // = 1
+  case provisional // = 2
+  case final // = 3
+  case locked // = 4
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .seed
+    case 2: self = .provisional
+    case 3: self = .final
+    case 4: self = .locked
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .seed: return 1
+    case .provisional: return 2
+    case .final: return 3
+    case .locked: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Hermesh_Session_V1_TitleState] = [
+    .unspecified,
+    .seed,
+    .provisional,
+    .final,
+    .locked,
+  ]
+
+}
+
 public nonisolated enum Hermesh_Session_V1_SessionView: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
   case unspecified // = 0
@@ -2259,6 +2305,26 @@ public nonisolated struct Hermesh_Session_V1_Session: @unchecked Sendable {
     set {_uniqueStorage()._activeDaemonCount = newValue}
   }
 
+  public var titleLocale: String {
+    get {_storage._titleLocale}
+    set {_uniqueStorage()._titleLocale = newValue}
+  }
+
+  public var titleGenerating: Bool {
+    get {_storage._titleGenerating}
+    set {_uniqueStorage()._titleGenerating = newValue}
+  }
+
+  public var titleState: Hermesh_Session_V1_TitleState {
+    get {_storage._titleState}
+    set {_uniqueStorage()._titleState = newValue}
+  }
+
+  public var titleSeq: UInt64 {
+    get {_storage._titleSeq}
+    set {_uniqueStorage()._titleSeq = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -3609,6 +3675,11 @@ public nonisolated struct Hermesh_Session_V1_StartSessionRequest: @unchecked Sen
     set {_uniqueStorage()._conversation = newValue}
   }
 
+  public var locale: String {
+    get {_storage._locale}
+    set {_uniqueStorage()._locale = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -3844,6 +3915,8 @@ public nonisolated struct Hermesh_Session_V1_DispatchMessageRequest: Sendable {
   public var hasQuestionTimeoutSeconds: Bool {self._questionTimeoutSeconds != nil}
   /// Clears the value of `questionTimeoutSeconds`. Subsequent reads from it will return its default value.
   public mutating func clearQuestionTimeoutSeconds() {self._questionTimeoutSeconds = nil}
+
+  public var locale: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -4106,6 +4179,10 @@ public nonisolated struct Hermesh_Session_V1_UpdateSessionRequest: Sendable {
 
   public var pinned: Bool = false
 
+  public var regenerateTitle: Bool = false
+
+  public var locale: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -4363,6 +4440,8 @@ public nonisolated struct Hermesh_Session_V1_ForkSessionRequest: Sendable {
   public var hasModelSelection: Bool {self._modelSelection != nil}
   /// Clears the value of `modelSelection`. Subsequent reads from it will return its default value.
   public mutating func clearModelSelection() {self._modelSelection = nil}
+
+  public var locale: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -4802,6 +4881,10 @@ nonisolated extension Hermesh_Session_V1_CompatibilityStatus: SwiftProtobuf._Pro
 
 nonisolated extension Hermesh_Session_V1_QuestionResolution: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0QUESTION_RESOLUTION_UNSPECIFIED\0\u{1}QUESTION_RESOLUTION_ANSWERED\0\u{1}QUESTION_RESOLUTION_DECLINED\0\u{1}QUESTION_RESOLUTION_TIMED_OUT\0\u{1}QUESTION_RESOLUTION_CANCELLED\0")
+}
+
+nonisolated extension Hermesh_Session_V1_TitleState: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0TITLE_STATE_UNSPECIFIED\0\u{1}TITLE_STATE_SEED\0\u{1}TITLE_STATE_PROVISIONAL\0\u{1}TITLE_STATE_FINAL\0\u{1}TITLE_STATE_LOCKED\0")
 }
 
 nonisolated extension Hermesh_Session_V1_SessionView: SwiftProtobuf._ProtoNameProviding {
@@ -6511,7 +6594,7 @@ nonisolated extension Hermesh_Session_V1_SessionProgress: SwiftProtobuf.Message,
 
 nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Session"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}machine_id\0\u{3}project_id\0\u{1}agent\0\u{2}\u{2}status\0\u{3}created_by\0\u{1}progress\0\u{3}provider_session_ref\0\u{3}created_at\0\u{3}updated_at\0\u{1}error\0\u{1}branch\0\u{1}workspace\0\u{1}result\0\u{1}title\0\u{3}created_as\0\u{1}model\0\u{1}effort\0\u{3}title_renamed\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}effective_runtime_mode\0\u{3}max_runtime_mode\0\u{3}interaction_mode\0\u{3}workspace_strategy\0\u{3}active_provider_session_id\0\u{1}actor\0\u{1}lineage\0\u{3}queue_held\0\u{3}queued_run_count\0\u{3}active_run_id\0\u{3}pending_request_id\0\u{3}context_usage\0\u{1}pinned\0\u{3}offline_queued\0\u{3}archived_at\0\u{3}active_background_count\0\u{3}active_daemon_count\0\u{b}preset\0\u{c}\u{5}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}machine_id\0\u{3}project_id\0\u{1}agent\0\u{2}\u{2}status\0\u{3}created_by\0\u{1}progress\0\u{3}provider_session_ref\0\u{3}created_at\0\u{3}updated_at\0\u{1}error\0\u{1}branch\0\u{1}workspace\0\u{1}result\0\u{1}title\0\u{3}created_as\0\u{1}model\0\u{1}effort\0\u{3}title_renamed\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}effective_runtime_mode\0\u{3}max_runtime_mode\0\u{3}interaction_mode\0\u{3}workspace_strategy\0\u{3}active_provider_session_id\0\u{1}actor\0\u{1}lineage\0\u{3}queue_held\0\u{3}queued_run_count\0\u{3}active_run_id\0\u{3}pending_request_id\0\u{3}context_usage\0\u{1}pinned\0\u{3}offline_queued\0\u{3}archived_at\0\u{3}active_background_count\0\u{3}active_daemon_count\0\u{3}title_locale\0\u{3}title_generating\0\u{3}title_state\0\u{3}title_seq\0\u{b}preset\0\u{c}\u{5}\u{1}")
 
   fileprivate class _StorageClass {
     var _sessionID: String = String()
@@ -6552,6 +6635,10 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
     var _archivedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
     var _activeBackgroundCount: UInt32 = 0
     var _activeDaemonCount: UInt32 = 0
+    var _titleLocale: String = String()
+    var _titleGenerating: Bool = false
+    var _titleState: Hermesh_Session_V1_TitleState = .unspecified
+    var _titleSeq: UInt64 = 0
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -6600,6 +6687,10 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
       _archivedAt = source._archivedAt
       _activeBackgroundCount = source._activeBackgroundCount
       _activeDaemonCount = source._activeDaemonCount
+      _titleLocale = source._titleLocale
+      _titleGenerating = source._titleGenerating
+      _titleState = source._titleState
+      _titleSeq = source._titleSeq
     }
   }
 
@@ -6656,6 +6747,10 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
         case 37: try { try decoder.decodeSingularMessageField(value: &_storage._archivedAt) }()
         case 38: try { try decoder.decodeSingularUInt32Field(value: &_storage._activeBackgroundCount) }()
         case 39: try { try decoder.decodeSingularUInt32Field(value: &_storage._activeDaemonCount) }()
+        case 40: try { try decoder.decodeSingularStringField(value: &_storage._titleLocale) }()
+        case 41: try { try decoder.decodeSingularBoolField(value: &_storage._titleGenerating) }()
+        case 42: try { try decoder.decodeSingularEnumField(value: &_storage._titleState) }()
+        case 43: try { try decoder.decodeSingularUInt64Field(value: &_storage._titleSeq) }()
         default: break
         }
       }
@@ -6782,6 +6877,18 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
       if _storage._activeDaemonCount != 0 {
         try visitor.visitSingularUInt32Field(value: _storage._activeDaemonCount, fieldNumber: 39)
       }
+      if !_storage._titleLocale.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._titleLocale, fieldNumber: 40)
+      }
+      if _storage._titleGenerating != false {
+        try visitor.visitSingularBoolField(value: _storage._titleGenerating, fieldNumber: 41)
+      }
+      if _storage._titleState != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._titleState, fieldNumber: 42)
+      }
+      if _storage._titleSeq != 0 {
+        try visitor.visitSingularUInt64Field(value: _storage._titleSeq, fieldNumber: 43)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -6829,6 +6936,10 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
         if _storage._archivedAt != rhs_storage._archivedAt {return false}
         if _storage._activeBackgroundCount != rhs_storage._activeBackgroundCount {return false}
         if _storage._activeDaemonCount != rhs_storage._activeDaemonCount {return false}
+        if _storage._titleLocale != rhs_storage._titleLocale {return false}
+        if _storage._titleGenerating != rhs_storage._titleGenerating {return false}
+        if _storage._titleState != rhs_storage._titleState {return false}
+        if _storage._titleSeq != rhs_storage._titleSeq {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -8987,7 +9098,7 @@ nonisolated extension Hermesh_Session_V1_RemoveProviderInstanceResponse: SwiftPr
 
 nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".StartSessionRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}command_id\0\u{3}machine_id\0\u{3}project_id\0\u{1}title\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}interaction_mode\0\u{1}workspace\0\u{3}initial_prompt\0\u{1}attachments\0\u{3}parent_session_id\0\u{3}question_timeout_seconds\0\u{1}conversation\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}command_id\0\u{3}machine_id\0\u{3}project_id\0\u{1}title\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}interaction_mode\0\u{1}workspace\0\u{3}initial_prompt\0\u{1}attachments\0\u{3}parent_session_id\0\u{3}question_timeout_seconds\0\u{1}conversation\0\u{1}locale\0")
 
   fileprivate class _StorageClass {
     var _commandID: String = String()
@@ -9003,6 +9114,7 @@ nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Mess
     var _parentSessionID: String = String()
     var _questionTimeoutSeconds: UInt32? = nil
     var _conversation: String = String()
+    var _locale: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -9026,6 +9138,7 @@ nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Mess
       _parentSessionID = source._parentSessionID
       _questionTimeoutSeconds = source._questionTimeoutSeconds
       _conversation = source._conversation
+      _locale = source._locale
     }
   }
 
@@ -9057,6 +9170,7 @@ nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Mess
         case 11: try { try decoder.decodeSingularStringField(value: &_storage._parentSessionID) }()
         case 12: try { try decoder.decodeSingularUInt32Field(value: &_storage._questionTimeoutSeconds) }()
         case 13: try { try decoder.decodeSingularStringField(value: &_storage._conversation) }()
+        case 14: try { try decoder.decodeSingularStringField(value: &_storage._locale) }()
         default: break
         }
       }
@@ -9108,6 +9222,9 @@ nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Mess
       if !_storage._conversation.isEmpty {
         try visitor.visitSingularStringField(value: _storage._conversation, fieldNumber: 13)
       }
+      if !_storage._locale.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._locale, fieldNumber: 14)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -9130,6 +9247,7 @@ nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Mess
         if _storage._parentSessionID != rhs_storage._parentSessionID {return false}
         if _storage._questionTimeoutSeconds != rhs_storage._questionTimeoutSeconds {return false}
         if _storage._conversation != rhs_storage._conversation {return false}
+        if _storage._locale != rhs_storage._locale {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -9492,7 +9610,7 @@ nonisolated extension Hermesh_Session_V1_SubscribeSessionRequest: SwiftProtobuf.
 
 nonisolated extension Hermesh_Session_V1_DispatchMessageRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".DispatchMessageRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}command_id\0\u{3}machine_id\0\u{3}session_id\0\u{1}text\0\u{1}attachments\0\u{1}intent\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}interaction_mode\0\u{1}conversation\0\u{3}question_timeout_seconds\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}command_id\0\u{3}machine_id\0\u{3}session_id\0\u{1}text\0\u{1}attachments\0\u{1}intent\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}interaction_mode\0\u{1}conversation\0\u{3}question_timeout_seconds\0\u{1}locale\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -9511,6 +9629,7 @@ nonisolated extension Hermesh_Session_V1_DispatchMessageRequest: SwiftProtobuf.M
       case 9: try { try decoder.decodeSingularEnumField(value: &self.interactionMode) }()
       case 10: try { try decoder.decodeSingularStringField(value: &self.conversation) }()
       case 11: try { try decoder.decodeSingularUInt32Field(value: &self._questionTimeoutSeconds) }()
+      case 12: try { try decoder.decodeSingularStringField(value: &self.locale) }()
       default: break
       }
     }
@@ -9554,6 +9673,9 @@ nonisolated extension Hermesh_Session_V1_DispatchMessageRequest: SwiftProtobuf.M
     try { if let v = self._questionTimeoutSeconds {
       try visitor.visitSingularUInt32Field(value: v, fieldNumber: 11)
     } }()
+    if !self.locale.isEmpty {
+      try visitor.visitSingularStringField(value: self.locale, fieldNumber: 12)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -9569,6 +9691,7 @@ nonisolated extension Hermesh_Session_V1_DispatchMessageRequest: SwiftProtobuf.M
     if lhs.interactionMode != rhs.interactionMode {return false}
     if lhs.conversation != rhs.conversation {return false}
     if lhs._questionTimeoutSeconds != rhs._questionTimeoutSeconds {return false}
+    if lhs.locale != rhs.locale {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -9990,7 +10113,7 @@ nonisolated extension Hermesh_Session_V1_ManageQueueResponse: SwiftProtobuf.Mess
 
 nonisolated extension Hermesh_Session_V1_UpdateSessionRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".UpdateSessionRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}command_id\0\u{3}machine_id\0\u{3}session_id\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}interaction_mode\0\u{1}title\0\u{3}has_archived\0\u{1}archived\0\u{3}has_pinned\0\u{1}pinned\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}command_id\0\u{3}machine_id\0\u{3}session_id\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}interaction_mode\0\u{1}title\0\u{3}has_archived\0\u{1}archived\0\u{3}has_pinned\0\u{1}pinned\0\u{3}regenerate_title\0\u{1}locale\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -10009,6 +10132,8 @@ nonisolated extension Hermesh_Session_V1_UpdateSessionRequest: SwiftProtobuf.Mes
       case 9: try { try decoder.decodeSingularBoolField(value: &self.archived) }()
       case 10: try { try decoder.decodeSingularBoolField(value: &self.hasPinned_p) }()
       case 11: try { try decoder.decodeSingularBoolField(value: &self.pinned) }()
+      case 12: try { try decoder.decodeSingularBoolField(value: &self.regenerateTitle) }()
+      case 13: try { try decoder.decodeSingularStringField(value: &self.locale) }()
       default: break
       }
     }
@@ -10052,6 +10177,12 @@ nonisolated extension Hermesh_Session_V1_UpdateSessionRequest: SwiftProtobuf.Mes
     if self.pinned != false {
       try visitor.visitSingularBoolField(value: self.pinned, fieldNumber: 11)
     }
+    if self.regenerateTitle != false {
+      try visitor.visitSingularBoolField(value: self.regenerateTitle, fieldNumber: 12)
+    }
+    if !self.locale.isEmpty {
+      try visitor.visitSingularStringField(value: self.locale, fieldNumber: 13)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -10067,6 +10198,8 @@ nonisolated extension Hermesh_Session_V1_UpdateSessionRequest: SwiftProtobuf.Mes
     if lhs.archived != rhs.archived {return false}
     if lhs.hasPinned_p != rhs.hasPinned_p {return false}
     if lhs.pinned != rhs.pinned {return false}
+    if lhs.regenerateTitle != rhs.regenerateTitle {return false}
+    if lhs.locale != rhs.locale {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -10505,7 +10638,7 @@ nonisolated extension Hermesh_Session_V1_GetDiffResponse: SwiftProtobuf.Message,
 
 nonisolated extension Hermesh_Session_V1_ForkSessionRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ForkSessionRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}command_id\0\u{3}machine_id\0\u{3}source_session_id\0\u{3}up_to_run_ordinal\0\u{1}title\0\u{1}workspace\0\u{3}model_selection\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}command_id\0\u{3}machine_id\0\u{3}source_session_id\0\u{3}up_to_run_ordinal\0\u{1}title\0\u{1}workspace\0\u{3}model_selection\0\u{1}locale\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -10520,6 +10653,7 @@ nonisolated extension Hermesh_Session_V1_ForkSessionRequest: SwiftProtobuf.Messa
       case 5: try { try decoder.decodeSingularStringField(value: &self.title) }()
       case 6: try { try decoder.decodeSingularMessageField(value: &self._workspace) }()
       case 7: try { try decoder.decodeSingularMessageField(value: &self._modelSelection) }()
+      case 8: try { try decoder.decodeSingularStringField(value: &self.locale) }()
       default: break
       }
     }
@@ -10551,6 +10685,9 @@ nonisolated extension Hermesh_Session_V1_ForkSessionRequest: SwiftProtobuf.Messa
     try { if let v = self._modelSelection {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
     } }()
+    if !self.locale.isEmpty {
+      try visitor.visitSingularStringField(value: self.locale, fieldNumber: 8)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -10562,6 +10699,7 @@ nonisolated extension Hermesh_Session_V1_ForkSessionRequest: SwiftProtobuf.Messa
     if lhs.title != rhs.title {return false}
     if lhs._workspace != rhs._workspace {return false}
     if lhs._modelSelection != rhs._modelSelection {return false}
+    if lhs.locale != rhs.locale {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

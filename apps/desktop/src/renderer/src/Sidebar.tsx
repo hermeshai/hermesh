@@ -2,7 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type Keybo
 import { useTranslation } from "react-i18next";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import {
-  bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime, needsAttention,
+  bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, language, listTime, needsAttention,
   sessionSections, statusTitle, teamState, updatedDate, type SessionBucket, type SessionSection, type SessionView,
   SCRATCH_PROJECT,
 } from "@hermesh/core";
@@ -55,6 +55,10 @@ export function archive(st: Store, s: Session) {
 
 export function unarchive(st: Store, s: Session, done?: string) {
   return st.run(() => setSessionArchived(s.sessionId, false), done);
+}
+
+export function regenerateTitle(st: Store, s: Session) {
+  return st.run(() => sessionApi.updateSession({ sessionId: s.sessionId, regenerateTitle: true, locale: language() }));
 }
 
 /** Delete, once confirmed: what goes for good, what stays (the branch), and that a turn in progress is interrupted. */
@@ -450,6 +454,7 @@ async function sessionMenu(st: Store, s: Session) {
     { id: "open", label: i18n.t("common:sessionMenu.open") },
     { separator: true },
     { id: "rename", label: i18n.t("common:sessionMenu.rename") },
+    { id: "regenerateTitle", label: i18n.t("common:sessionMenu.regenerateTitle"), enabled: !s.titleGenerating },
     { id: archived ? "unarchive" : "archive", label: i18n.t(archived ? "common:sessionMenu.unarchive" : "common:sessionMenu.archive"), enabled: archived || isArchivable(s) },
     { separator: true },
     { id: "copy", label: i18n.t("common:sessionMenu.copyId") },
@@ -461,6 +466,8 @@ async function sessionMenu(st: Store, s: Session) {
       return st.select(s.sessionId);
     case "rename":
       return st.set({ renaming: s.sessionId });
+    case "regenerateTitle":
+      return regenerateTitle(st, s);
     case "archive":
       return archive(st, s);
     case "unarchive":
@@ -473,8 +480,8 @@ async function sessionMenu(st: Store, s: Session) {
 }
 
 /**
- * A row's ⋯ menu: rename, archive (or unarchive), and delete after a
- * separator. Drawn like the view menu, right-aligned under its button;
+ * A row's ⋯ menu: rename, regenerate title, archive (or unarchive), and delete
+ * after a separator. Drawn like the view menu, right-aligned under its button;
  * clicks stay in the menu, not the row.
  */
 function RowMenu({ s, at, store, onClose }: { s: Session; at: { x: number; y: number; key: boolean }; store: RefObject<Store>; onClose: () => void }) {
@@ -484,6 +491,7 @@ function RowMenu({ s, at, store, onClose }: { s: Session; at: { x: number; y: nu
   const archived = s.status === SessionStatus.ARCHIVED;
   const items: ({ id: string; label: string; run: () => void; disabled?: boolean; danger?: boolean } | null)[] = [
     { id: "rename", label: t("sessionMenu.rename"), run: () => store.current.set({ renaming: s.sessionId }) },
+    { id: "regenerateTitle", label: t("sessionMenu.regenerateTitle"), run: () => regenerateTitle(store.current, s), disabled: s.titleGenerating },
     archived
       ? { id: "unarchive", label: t("sessionMenu.unarchive"), run: () => unarchive(store.current, s) }
       : { id: "archive", label: t("sessionMenu.archive"), run: () => archive(store.current, s), disabled: !isArchivable(s) },
@@ -545,7 +553,7 @@ function RowMenu({ s, at, store, onClose }: { s: Session; at: { x: number; y: nu
 /** A row's title; while it runs (and nothing needs the owner), a fainter band crosses it left to right (app.css .stitle.run). */
 function RowTitle({ s }: { s: Session }) {
   const title = displayTitle(s);
-  const run = isActive(s) && !needsAttention(s);
+  const run = (isActive(s) && !needsAttention(s)) || s.titleGenerating;
   return (
     <span className={`stitle ${run ? "run" : ""}`} title={title}>
       {title}

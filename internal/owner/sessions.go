@@ -27,6 +27,7 @@ import (
 	"github.com/hermeshai/hermesh/internal/kernel/policy"
 	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/internal/peer"
+	"github.com/hermeshai/hermesh/internal/runtime"
 )
 
 const legacyThreadV2Migrations = `
@@ -754,15 +755,10 @@ func (s *ownerSessionService) StartSession(ctx context.Context, req *sessionv1.S
 	}
 
 	tempID := "s_" + kernel.SessionPrefix(targetMachine) + "_" + strings.ToLower(ulid.Make().String())
-	title := strings.TrimSpace(req.Title)
+	titleLocale := runtime.ResolveLocale(req.Locale)
+	title := runtime.CleanTitle(req.Title)
 	if title == "" {
-		title = strings.TrimSpace(req.InitialPrompt)
-		if i := strings.IndexByte(title, '\n'); i >= 0 {
-			title = strings.TrimSpace(title[:i])
-		}
-		if title == "" {
-			title = "New Session"
-		}
+		title, _ = runtime.DeriveSeedTitle(req.InitialPrompt, req.Attachments, titleLocale)
 	}
 	now := timestamppb.Now()
 	agent := req.GetModelSelection().GetInstanceId()
@@ -778,6 +774,7 @@ func (s *ownerSessionService) StartSession(ctx context.Context, req *sessionv1.S
 		MachineId:            targetMachine,
 		ProjectId:            cmp.Or(req.ProjectId, kernel.ScratchProjectID),
 		Title:                title,
+		TitleLocale:          titleLocale,
 		Status:               sessionv1.SessionStatus_SESSION_STATUS_QUEUED,
 		Agent:                agent,
 		ModelSelection:       req.ModelSelection,

@@ -156,6 +156,9 @@ type state struct {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "exec" {
+		os.Exit(1)
+	}
 	if mb := envInt("FAKE_CODEX_BALLAST_MB", 0); mb > 0 {
 		ballast = make([]byte, mb<<20)
 		for i := 0; i < len(ballast); i += 4096 {

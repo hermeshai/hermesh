@@ -991,6 +991,7 @@ struct SessionPage: View {
                 r.machineID = machineID
                 r.projectID = projectID
                 r.initialPrompt = text
+                r.locale = AppLocale.current
                 r.attachments = files.map(\.ref)
                 if !selection.instanceID.isEmpty { r.modelSelection = selection }
                 r.runtimeMode = clamped
@@ -1010,6 +1011,7 @@ struct SessionPage: View {
         r.commandID = UUID().uuidString
         r.sessionID = sessionID
         r.text = text
+        r.locale = AppLocale.current
         r.attachments = files.map(\.ref)
         r.intent = .queue
         if !selection.instanceID.isEmpty { r.modelSelection = selection }
