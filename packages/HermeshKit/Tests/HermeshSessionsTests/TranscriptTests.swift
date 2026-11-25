@@ -54,6 +54,7 @@ private func kind(_ it: TranscriptItem) -> String {
     case .turnEnd: "turnEnd"
     case .error: "error"
     case .message: "message"
+    case .workspace: "workspace"
     }
 }
 
@@ -260,4 +261,46 @@ private func kind(_ it: TranscriptItem) -> String {
     f.message = "interrupted by owner"
     #expect(interrupter(f) == nil)
     #expect(interrupter(nil) == nil)
+}
+
+/// A first turn's WORKSPACE item is a row of its own, never in a group of tools; a failed one says why itself, so the
+/// run's own error is not shown again.
+@Test func workspaceStepIsARowOfItsOwn() {
+    var p = Hermesh_Session_V1_SessionProjection()
+    p.session.sessionID = "s"
+    p.runs = [.with { $0.runID = "r1"; $0.ordinal = 1 }]
+    let ws = Hermesh_Session_V1_WorkspaceStep.with {
+        $0.mode = .worktree; $0.action = .create; $0.branch = "hermesh/s"; $0.baseRef = "main"; $0.path = "/wt/s"
+    }
+    p.items = [
+        .with { $0.itemID = "u"; $0.runID = "r1"; $0.seq = 1; $0.kind = .userMessage; $0.text = "hi" },
+        .with { $0.itemID = "w"; $0.runID = "r1"; $0.seq = 2; $0.kind = .workspace; $0.status = "running"; $0.workspace = ws },
+        .with { $0.itemID = "t"; $0.runID = "r1"; $0.seq = 3; $0.kind = .commandExecution; $0.status = "completed"; $0.command = "ls" },
+    ]
+    var steps = groupSteps(sessionTranscript(p))
+    guard case .item(.workspace(let row)) = steps[2] else { Issue.record("\(steps)"); return }
+    #expect(row.state == .running && row.title.code == "main")
+    #expect(steps.count == 4, "the tool after it is a group of its own")
+
+    p.items[1].status = "completed"
+    steps = groupSteps(sessionTranscript(p))
+    guard case .item(.workspace(let done)) = steps[2] else { Issue.record("\(steps)"); return }
+    #expect(done.state == .done && done.title.code == "hermesh/s")
+    #expect(done.details.map(\.value) == ["Separate worktree", "hermesh/s", "main", "/wt/s"])
+
+    // Failed: the row says why, and the run's error item is not a row too.
+    p.items = [p.items[0], p.items[1], .with { $0.itemID = "e"; $0.runID = "r1"; $0.seq = 3; $0.kind = .error; $0.text = "no main" }]
+    p.items[1].status = "failed"
+    p.items[1].failure = .with { $0.message = "no main" }
+    let rows = sessionTranscript(p)
+    #expect(!rows.contains { if case .error = $0 { true } else { false } })
+    guard case .workspace(let failed) = rows.last else { Issue.record("\(rows)"); return }
+    #expect(failed.state == .failed && failed.details.map(\.value) == ["no main"])
+    #expect(workspaceFailedRun(p) == "r1")
+
+    // A switch says where the folder was.
+    var sw = ws
+    sw.mode = .inPlace; sw.action = .switch; sw.branch = "feat"; sw.previousBranch = "main"; sw.baseRef = ""
+    let row2 = WorkspaceRow(seq: 1, state: .done, step: sw)
+    #expect(row2.title.code == "feat" && row2.details.map(\.value) == ["In place", "feat (was main)", "/wt/s"])
 }

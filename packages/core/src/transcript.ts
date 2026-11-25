@@ -1,4 +1,5 @@
 import { create } from "@bufbuild/protobuf";
+import { Workspace } from "@hermesh/proto/identity";
 import {
   ActorKind,
   AnswerSchema,
@@ -17,6 +18,7 @@ import {
   ToolResultSchema,
   TurnCompletedSchema,
   TurnItemKind,
+  WorkspaceAction,
   type Actor,
   type ErrorEvent,
   type Failure,
@@ -30,6 +32,7 @@ import {
   type ToolResult,
   type TurnCompleted,
   type TurnItem,
+  type WorkspaceStep,
 } from "@hermesh/proto/session";
 import { t } from "./i18n";
 import { dateOf } from "./sessions";
@@ -50,7 +53,51 @@ export type TranscriptItem =
   | { kind: "question"; seq: bigint; question: Question; resolution: QuestionResolved | undefined }
   | { kind: "turnEnd"; seq: bigint; end: TurnCompleted }
   | { kind: "error"; seq: bigint; error: ErrorEvent }
-  | { kind: "message"; seq: bigint; direction: "in" | "out"; name: string; address: string; text: string; delivered: string };
+  | { kind: "message"; seq: bigint; direction: "in" | "out"; name: string; address: string; text: string; delivered: string }
+  /** Where the session works, set up by its first turn: a worktree made, a branch switched to, or the folder kept. */
+  | WorkspaceRow;
+
+/** A session's first turn setting its folder up (a WORKSPACE item), as its row shows it. failure: why, as the machine said. */
+export type WorkspaceRow = { kind: "workspace"; seq: bigint; state: "running" | "done" | "failed"; step: WorkspaceStep; failure: string };
+
+/** Its words, then the part in code: "New branch from main" `hermesh/s_…`, "Switching to branch" `feature/login`. */
+export function workspaceTitle(row: WorkspaceRow): { text: string; code: string } {
+  const { baseRef: base, branch, action } = row.step;
+  const st = row.state;
+  switch (action) {
+    case WorkspaceAction.FETCH:
+      return { text: t(st === "running" ? "workspace.fetching" : "workspace.fetchFailed"), code: base };
+    case WorkspaceAction.CREATE:
+      if (st === "running") return { text: t("workspace.creating"), code: base };
+      if (st === "done") return { text: t("workspace.created", { base }), code: branch };
+      return { text: t("workspace.createFailed"), code: "" };
+    case WorkspaceAction.SWITCH:
+      return { text: t(st === "running" ? "workspace.switching" : st === "done" ? "workspace.switched" : "workspace.switchFailed"), code: branch };
+    default:
+      return { text: t("workspace.kept"), code: branch };
+  }
+}
+
+/** Its details, opened: how, the branch, its base, the folder; or why it failed. */
+export function workspaceDetails(row: WorkspaceRow): { label: string; value: string }[] {
+  // Stopped while it was under way: no failure of its own.
+  if (row.state === "failed") return [{ label: t("workspace.why"), value: row.failure || t("workspace.stopped") }];
+  const s = row.step;
+  const worktree = s.mode === Workspace.WORKTREE;
+  const out = [{ label: t("workspace.where"), value: t(worktree ? "workspace.worktree" : "workspace.inPlace") }];
+  if (s.branch) {
+    const was = s.action === WorkspaceAction.SWITCH && s.previousBranch;
+    out.push({ label: t("workspace.branch"), value: was ? t("workspace.was", { branch: s.branch, previous: s.previousBranch }) : s.branch });
+  }
+  if (worktree && s.baseRef) out.push({ label: t("workspace.from"), value: s.baseRef });
+  if (s.path) out.push({ label: t("workspace.folder"), value: s.path });
+  return out;
+}
+
+/** The run whose first turn could not set its folder up: its row says so, so the run's own error is not a row too (the session's failure card still says what to do). */
+export function workspaceFailedRun(proj: SessionProjection | null | undefined): string | undefined {
+  return proj?.items.findLast((it) => it.kind === TurnItemKind.WORKSPACE && it.status === "failed")?.runId;
+}
 
 const itemSeq = (it: TurnItem) => it.seq * 4n;
 
@@ -140,6 +187,7 @@ export function sessionTranscript(proj: SessionProjection | null | undefined): T
   const runs = new Map(proj.runs.map((r) => [r.runId, r]));
   const reqs = new Map(proj.requests.map((r) => [r.requestId, r]));
   const activeBgItems = activeBackgroundItemIdsOf(proj);
+  const setupFailed = workspaceFailedRun(proj);
   const out: TranscriptItem[] = [];
   const items = proj.items;
   items.forEach((it, i) => {
@@ -221,7 +269,14 @@ export function sessionTranscript(proj: SessionProjection | null | undefined): T
           delivered: "",
         });
         break;
+      case TurnItemKind.WORKSPACE:
+        if (it.workspace) {
+          const state = it.status === "completed" ? "done" : it.status === "running" ? "running" : "failed";
+          out.push({ kind: "workspace", seq, state, step: it.workspace, failure: it.failure?.message || it.text });
+        }
+        break;
       case TurnItemKind.ERROR:
+        if (it.runId === setupFailed) break;
         out.push({
           kind: "error",
           seq,

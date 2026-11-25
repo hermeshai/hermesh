@@ -10,6 +10,7 @@ import {
   RuntimeRequestStatus,
   SessionProjectionSchema,
   SessionStatus,
+  TurnItemKind,
   type BackgroundTask,
   type ModelCatalogEntry,
   type ModelSelection,
@@ -74,10 +75,16 @@ export function isSessionRunningOrWaiting(s?: Session): boolean {
   );
 }
 
+/**
+ * Runs waiting for a turn, in their order. One whose message is in the conversation already (a session kept on this
+ * device for its offline machine shows its first message) is that bubble, not the queue's; a machine writes a queued
+ * run's message only once it starts.
+ */
 export function queuedRunsOf(proj?: SessionProjection | null): Run[] {
   if (!proj) return [];
+  const shown = new Set(proj.items.filter((it) => it.kind === TurnItemKind.USER_MESSAGE).map((it) => it.runId));
   return proj.runs
-    .filter((r) => r.status === RunStatus.QUEUED)
+    .filter((r) => r.status === RunStatus.QUEUED && !shown.has(r.runId))
     .sort((a, b) => a.queueOrder - b.queueOrder);
 }
 

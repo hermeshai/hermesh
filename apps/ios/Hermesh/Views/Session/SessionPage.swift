@@ -107,6 +107,8 @@ struct SessionPage: View {
     @State private var showingBackgroundTasks = false
     /// Messages to a session go out one after another, in the order sent.
     @State private var lastSend: Task<Void, Never>?
+    /// A new session's first message, from Send until its machine answers.
+    @State private var starting: Starting?
     @FocusState private var focused: Bool
 
     init(machineID: String, projectID: String) {
@@ -179,7 +181,9 @@ struct SessionPage: View {
 
     var body: some View {
         Group {
-            if isNew {
+            if isNew, let starting {
+                startingPage(starting)
+            } else if isNew {
                 newSession.navigationTitle(String(localized: "New Session")).rootToolbar(sync: false)
             } else if let s = displaySession {
                 session(s)
@@ -328,10 +332,41 @@ struct SessionPage: View {
             .accessibilityIdentifier("thread-machine")
         }
         .padding(.horizontal, 28)
-        .overlay(alignment: .bottom) {
-            Delayed(active: sending) { WorkLine(text: Text("Starting…")) }
-                .alignmentGuide(.bottom) { $0[.top] - 28 }
+    }
+
+    // MARK: A session starting
+
+    /// Shown from Send until the machine answers, as the session's page will be: its title, the time, the owner's message
+    /// faded with where it is under it ("Sending…" once that takes 400 ms), or why it was not sent, with Try Again and Edit.
+    private func startingPage(_ st: Starting) -> some View {
+        let text = st.request.initialPrompt
+        let note = st.refused.map { why in PromptNote(kind: .refused(why: why, retry: retryStart, edit: editStart)) } ?? PromptNote(kind: .sending)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 13) {
+                if let line = turnTimeLine(st.at, previous: nil, now: model.now) {
+                    Text(line).font(.caption).foregroundStyle(.tertiary).frame(maxWidth: .infinity)
+                        .padding(.top, 8)
+                }
+                PromptBubble(text: text, sent: st.at, faded: st.refused == nil, note: note) { EmptyView() }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 13).padding(.bottom, 21)
         }
+        .keyboardAwayOnTap()
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                ConnectionCapsule(machine: machine, linkUp: reachable)
+                box
+            }
+            .padding(.bottom, 4)
+        }
+        .sessionBar(nil, renaming: $renaming, deleting: $deleting,
+                    starting: .init(title: firstLine(text), place: "\(machine?.machineName ?? "")/\(projectID)"))
+        .accessibilityIdentifier("session-starting")
+    }
+
+    private func firstLine(_ text: String) -> String {
+        text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.first { !$0.isEmpty } ?? String(localized: "New Session")
     }
 
     // MARK: A session under way
@@ -381,7 +416,6 @@ struct SessionPage: View {
                         }
                         backgroundBar
                         queue(activeProj)
-                        offlineNote
                         box
                     }
                 }
@@ -488,7 +522,7 @@ struct SessionPage: View {
     @ViewBuilder private func workLine(_ activeProj: Hermesh_Session_V1_SessionProjection?) -> some View {
         switch currentSession?.status {
         case .preparing: WorkLine(text: Text("Starting…"))
-        case .queued: WorkLine(text: Text(statusTitle(.queued)))
+        case .queued where currentSession?.offlineQueued != true: WorkLine(text: Text(statusTitle(.queued)))
         case .running:
             let run = activeProj?.runs.first { $0.runID == currentSession?.activeRunID }
             let text = switch sessionWork(activeProj) {
@@ -509,7 +543,7 @@ struct SessionPage: View {
     }
 
     private var box: some View {
-        let ready = !sending && uploading == 0 && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attached.isEmpty)
+        let ready = !sending && starting == nil && uploading == 0 && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attached.isEmpty)
         let open = boxOpen
         let ends = HStack(spacing: 8) {
             if running {
@@ -561,7 +595,7 @@ struct SessionPage: View {
             }
             HStack(alignment: .bottom, spacing: 8) {
                 if !open { plusButton }
-                TextField(isNew ? String(localized: "Describe what to build, debug or plan") : running ? String(localized: "Say more; it goes to the next turn") : String(localized: "Keep going"),
+                TextField(isNew && starting == nil ? String(localized: "Describe what to build, debug or plan") : running ? String(localized: "Say more; it goes to the next turn") : String(localized: "Keep going"),
                           text: $draft, axis: .vertical)
                     .lineLimit(open ? 2 ... 6 : 1 ... 6)
                     .focused($focused)
@@ -747,22 +781,6 @@ struct SessionPage: View {
         }
     }
 
-    @ViewBuilder private var offlineNote: some View {
-        if currentSession?.offlineQueued == true {
-            HStack {
-                Text("Queued Offline").font(.footnote).foregroundStyle(.orange)
-                Spacer()
-                Button("Cancel", role: .destructive) {
-                    if let s = currentSession { Task { _ = await model.delete(s) } }
-                }
-                .font(.footnote)
-                .accessibilityIdentifier("cancel-offline-session")
-            }
-            .padding(.horizontal, 22)
-            .accessibilityIdentifier("thread-offline-queued")
-        }
-    }
-
     private var m_icon: String { machine?.local == true ? "laptopcomputer" : "server.rack" }
     private var clamped: Hermesh_Identity_V1_RuntimeMode { clampRuntimeMode(mode, ceiling: ceiling) }
 
@@ -845,6 +863,8 @@ struct SessionPage: View {
     private func followSession() async {
         guard let api = model.api else { return }
         var applied = projection != nil
+        // Opened right after Send on what it knew: read the whole session once, not only what comes after it.
+        var seeded = model.seededSessions.remove(sessionID) != nil
         if projection == nil,
            let cached = try? await api.getSession(sessionID, cachedOnly: true),
            cached.hasProjection, cached.projection.hasSession {
@@ -855,8 +875,9 @@ struct SessionPage: View {
         var failures = 0
         while !Task.isCancelled {
             do {
-                if projection == nil || failures > 0 {
+                if projection == nil || failures > 0 || seeded {
                     let first = try await api.getSession(sessionID)
+                    seeded = false
                     if !applied && first.projection.hasSession {
                         applied = true
                         apply(first.projection.session)
@@ -948,9 +969,7 @@ struct SessionPage: View {
         guard !text.isEmpty || !attached.isEmpty, let api = model.api else { return }
         let files = attached
         if isNew {
-            sending = true
-            Task {
-                defer { sending = false }
+            do {
                 var r = Hermesh_Session_V1_StartSessionRequest()
                 r.commandID = UUID().uuidString
                 r.machineID = machineID
@@ -961,13 +980,11 @@ struct SessionPage: View {
                 r.runtimeMode = clamped
                 r.interactionMode = plan ? .plan : .code
                 r.workspace = projectID == scratchProject ? .with { $0.mode = .inPlace } : place.workspace(branches)
-                do {
-                    let res = try await api.startSession(r)
-                    SessionChoices.remember(machine: machineID, project: projectID, selection: selection, mode: clamped)
-                    draft = ""
-                    attached = []
-                    model.open(.session(res.session.sessionID))
-                } catch { model.report(error) }
+                let st = Starting(request: r, files: files)
+                draft = ""
+                attached = []
+                starting = st
+                Task { await begin(st, api) }
             }
             return
         }
@@ -991,6 +1008,64 @@ struct SessionPage: View {
                 if attached.isEmpty { attached = files }
             }
         }
+    }
+
+    /// Starts the session: once its machine answers (or the core keeps it for a machine offline), its page opens with the
+    /// message already in it; refused, the message stays with why. The same command id each time, so a retry after an
+    /// answer lost on the way makes no second session.
+    private func begin(_ st: Starting, _ api: AppAPI) async {
+        sending = true
+        defer { sending = false }
+        let began = Date.now
+        do {
+            let res = try await api.startSession(st.request)
+            SessionChoices.remember(machine: st.request.machineID, project: st.request.projectID, selection: selection, mode: clamped)
+            // "Sending…", once shown (at 400 ms), stays half a second.
+            let took = Date.now.timeIntervalSince(began)
+            if took > 0.4 && took < 0.9 { try? await Task.sleep(for: .seconds(0.9 - took)) }
+            let id = res.session.sessionID
+            model.conversations.keep(id, startedProjection(res, st))
+            model.seededSessions.insert(id)
+            starting = nil
+            model.open(.session(id))
+        } catch {
+            guard starting?.request.commandID == st.request.commandID else { return }
+            starting?.refused = (error as? APIError)?.message ?? error.localizedDescription
+        }
+    }
+
+    private func retryStart() {
+        guard var st = starting, let api = model.api else { return }
+        st.refused = nil
+        starting = st
+        Task { await begin(st, api) }
+    }
+
+    private func editStart() {
+        guard let st = starting else { return }
+        draft = st.request.initialPrompt
+        attached = st.files
+        starting = nil
+    }
+
+    /// What the session's page shows until it reads the session: the session, its first run, and the message in it.
+    private func startedProjection(_ res: Hermesh_Session_V1_StartSessionResponse, _ st: Starting) -> Hermesh_Session_V1_SessionProjection {
+        var p = Hermesh_Session_V1_SessionProjection()
+        p.session = res.session
+        p.session.progress.lastEventSeq = 0
+        if res.hasInitialRun { p.runs = [res.initialRun] }
+        p.items = [.with {
+            $0.itemID = "starting"
+            $0.sessionID = res.session.sessionID
+            $0.runID = res.initialRun.runID
+            $0.seq = 1
+            $0.kind = .userMessage
+            $0.status = "completed"
+            $0.text = st.request.initialPrompt
+            $0.attachments = st.request.attachments
+            $0.createdAt = .init(date: st.at)
+        }]
+        return p
     }
 
     private func stop() {
@@ -1050,6 +1125,14 @@ private struct WorkLine: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("thread-working")
     }
+}
+
+/// A new session's first message on its way: what was asked, the files with it, when, and why it was refused if it was.
+private struct Starting {
+    let request: Hermesh_Session_V1_StartSessionRequest
+    let files: [Attached]
+    let at = Date.now
+    var refused: String?
 }
 
 private struct Attached: Identifiable {

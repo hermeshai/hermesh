@@ -285,12 +285,12 @@ func TestForkAndReleasedWorktreeRestoreCheckpointFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitForSessionStatus(t, eng, owner, l.Session.SessionId, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+	// The worktree is made by the first turn.
+	wtPath := waitForSessionStatus(t, eng, owner, l.Session.SessionId, sessionv1.SessionStatus_SESSION_STATUS_IDLE).Session.WorkspaceStrategy.WorktreePath
 	f, err := eng.ForkSession(ctx, owner, &sessionv1.ForkSessionRequest{SourceSessionId: l.Session.SessionId})
 	if err != nil {
 		t.Fatal(err)
 	}
-	wtPath := l.Session.WorkspaceStrategy.WorktreePath
 	if _, err := os.Stat(filepath.Join(f.Session.WorkspaceStrategy.WorktreePath, "feature.txt")); err != nil {
 		t.Errorf("forked session's workspace is missing the source session's file changes: %v", err)
 	}

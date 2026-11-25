@@ -627,6 +627,8 @@ enum TurnItemKind {
   TURN_ITEM_KIND_ERROR = 14;
   TURN_ITEM_KIND_MESSAGE_RECEIVED = 15;
   TURN_ITEM_KIND_MESSAGE_SENT = 16;
+  // Where the session works, set up at its first turn (TurnItem.workspace).
+  TURN_ITEM_KIND_WORKSPACE = 17;
 }
 
 message TodoStep {
@@ -672,6 +674,34 @@ message TurnItem {
   Failure failure = 34;
   google.protobuf.Timestamp created_at = 35;
   google.protobuf.Timestamp updated_at = 36;
+  WorkspaceStep workspace = 37;
+}
+
+// What a session's first turn did to the project's folder before the agent started: a
+// worktree made (after fetching its base, if asked), a branch switched to in the folder
+// itself, or the folder kept as it is. The item's status is "running", "completed" or
+// "failed"; a failure is its `failure` and `text`.
+message WorkspaceStep {
+  hermesh.identity.v1.Workspace mode = 1;
+  WorkspaceAction action = 2;
+  // The branch the session works on: the worktree's own, or the folder's.
+  string branch = 3;
+  // A worktree's base, as resolved ("origin/main" once fetched).
+  string base_ref = 4;
+  // The folder's branch before a switch.
+  string previous_branch = 5;
+  // The folder the agent works in.
+  string path = 6;
+}
+
+enum WorkspaceAction {
+  WORKSPACE_ACTION_UNSPECIFIED = 0;
+  // Fetching a worktree's base from origin; followed by CREATE.
+  WORKSPACE_ACTION_FETCH = 1;
+  WORKSPACE_ACTION_CREATE = 2;
+  WORKSPACE_ACTION_SWITCH = 3;
+  // In place, on the branch the folder is on.
+  WORKSPACE_ACTION_KEEP = 4;
 }
 
 // Value types used by UI conversation step reducers.

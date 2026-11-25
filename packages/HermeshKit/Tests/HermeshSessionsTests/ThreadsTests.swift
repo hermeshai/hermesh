@@ -104,6 +104,10 @@ import Testing
         .with { $0.checkpointID = "cp_2"; $0.runOrdinal = 2 },
     ]
     #expect(queuedRuns(of: state).map(\.runID) == ["q_a", "q_b"])
+    // A queued run whose message is in the conversation (kept on this device for an offline machine) is its bubble.
+    var kept = state
+    kept.items.append(.with { $0.itemID = "u"; $0.runID = "q_a"; $0.seq = 6; $0.kind = .userMessage; $0.text = "hi" })
+    #expect(queuedRuns(of: kept).map(\.runID) == ["q_b"])
 
     var rbEv = Hermesh_Session_V1_SessionEvent()
     rbEv.sessionID = "s_mac_1"

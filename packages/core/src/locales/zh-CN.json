@@ -158,5 +158,25 @@
       "count_other": "拒绝了 {{count}} 个操作"
     },
     "separator": "、"
+  },
+  "workspace": {
+    "fetching": "取回远程的",
+    "fetchFailed": "没能取回远程的",
+    "creating": "新建 worktree，基于",
+    "created": "从 {{base}} 新建了分支",
+    "createFailed": "没能新建 worktree",
+    "switching": "切换到分支",
+    "switched": "切到了分支",
+    "switchFailed": "没能切到分支",
+    "kept": "原地工作，分支",
+    "why": "原因",
+    "where": "方式",
+    "worktree": "独立 worktree",
+    "inPlace": "原地",
+    "branch": "分支",
+    "was": "{{branch}}（原来在 {{previous}}）",
+    "from": "基于",
+    "folder": "目录",
+    "stopped": "没做完就停止了"
   }
 }

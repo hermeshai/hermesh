@@ -74,7 +74,13 @@ struct StepView: View {
             // Who asked for the turn speaks on the right: the owner in the blue bubble, with nothing over it; another
             // of the owner's agents (Her, a granted one) in a quiet bubble with its face on the corner. Each turn says
             // its own: a session Her started can hold the owner's words too.
-            PromptBubble(text: text, sent: at, from: sender(asker.isEmpty ? session.createdBy : asker)) { EmptyView() }
+            // Queued on this iPhone while its machine is offline: faded, and said under it, with Discard.
+            PromptBubble(text: text, sent: at, from: sender(asker.isEmpty ? session.createdBy : asker), faded: session.offlineQueued,
+                         note: session.offlineQueued ? PromptNote(kind: .waiting(machine: model.machineName(session.machineID)) {
+                             Task { _ = await model.delete(session) }
+                         }) : nil) { EmptyView() }
+        case .workspace(let row):
+            WorkspaceLine(row: row)
         case .agent(_, let text):
             MarkdownText(text: text)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -156,6 +162,10 @@ struct PromptBubble<Sender: View>: View {
     let text: String
     let sent: Date?
     var from: PromptSender?
+    /// Not in the conversation yet (on its way, or waiting for its machine): the bubble faded, as Her's are.
+    var faded = false
+    /// Under it, where it is while it is not in the conversation, or why it was not sent.
+    var note: PromptNote?
     @ViewBuilder let sender: () -> Sender
 
     var body: some View {
@@ -169,6 +179,8 @@ struct PromptBubble<Sender: View>: View {
                 .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .contextMenu { CopyMenu(text: text, sent: sent, from: from?.name) }
                 .overlay(alignment: .topLeading) { if let from { badge(from).offset(x: -10, y: -10) } }
+                .opacity(faded ? 0.62 : 1)
+            if let note { note }
         }
         .padding(.leading, 48)
         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -185,6 +197,43 @@ struct PromptBubble<Sender: View>: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("Sent by \(from.name)"))
         .accessibilityIdentifier("prompt-sender")
+    }
+}
+
+/// Under the owner's message while it is not in the conversation, in Her's words for hers (HerConversation): on its way
+/// (said once that takes 400 ms), waiting for its machine to come back, or not sent and why, with what can be done.
+struct PromptNote: View {
+    enum Kind {
+        case sending
+        case waiting(machine: String, discard: () -> Void)
+        case refused(why: String, retry: () -> Void, edit: () -> Void)
+    }
+
+    let kind: Kind
+
+    var body: some View {
+        HStack(spacing: 8) {
+            switch kind {
+            case .sending:
+                Delayed(active: true) { Text("Sending…") }
+            case .waiting(let machine, let discard):
+                Text("Delivered when \(machine) is back")
+                Button("Discard", action: discard)
+                    .fontWeight(.semibold).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("prompt-discard")
+            case .refused(let why, let retry, let edit):
+                Label("Not delivered: \(why)", systemImage: "exclamationmark.triangle").lineLimit(2)
+                Button("Try Again", action: retry)
+                    .fontWeight(.semibold).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("prompt-retry")
+                Button("Edit", action: edit)
+                    .fontWeight(.semibold).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("prompt-edit")
+            }
+        }
+        .font(.caption).foregroundStyle(.tertiary)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("prompt-note")
     }
 }
 
@@ -219,10 +268,17 @@ struct SessionBar: View {
     @Binding var deleting: Bool
     /// A thread's background tasks, when it has any: a button beside ⋯ while one runs, and always an entry in ⋯.
     var backgroundTasks: BackgroundTasks?
+    /// A session being started, before its machine has answered: its title and where it runs, in the same capsule.
+    var starting: Starting?
 
     struct BackgroundTasks {
         let running: Bool
         let open: () -> Void
+    }
+
+    struct Starting {
+        let title: String
+        let place: String
     }
 
     /// The title capsule's width on every session, in points: a long title ends in …, and Session Info says it whole.
@@ -246,7 +302,7 @@ struct SessionBar: View {
             }
             .frame(width: side, alignment: .leading)
             Spacer(minLength: 0)
-            if let session { title(session).layoutPriority(1) }
+            if let session { title(session).layoutPriority(1) } else if let starting { capsule(starting.title, starting.place).layoutPriority(1) }
             Spacer(minLength: 0)
             HStack(spacing: 8) {
                 if let session, !sideBars {
@@ -273,25 +329,29 @@ struct SessionBar: View {
 
     private func title(_ s: Session) -> some View {
         Button { model.sheet = .sessionInfo(s.sessionID) } label: {
-            VStack(spacing: 1) {
-                Text(s.displayTitle).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
-                if sync && model.shownSync != nil {
-                    SyncLine(small: true)
-                } else {
-                    Text(verbatim: "\(model.machineName(s.machineID))/\(s.projectID)").font(.caption2).foregroundStyle(.secondary)
-                }
-            }
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .padding(.horizontal, 16)
-            .frame(maxWidth: Self.titleWidth)
-            .frame(height: 44)
-            .glassEffect(.regular.interactive(), in: .capsule)
-            .contentShape(.capsule)
+            capsule(s.displayTitle, "\(model.machineName(s.machineID))/\(s.projectID)")
         }
         .buttonStyle(.plain)
         .accessibilityHint(Text("Session Info"))
         .accessibilityIdentifier("session-info")
+    }
+
+    private func capsule(_ title: String, _ place: String) -> some View {
+        VStack(spacing: 1) {
+            Text(verbatim: title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+            if sync && model.shownSync != nil {
+                SyncLine(small: true)
+            } else {
+                Text(verbatim: place).font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .lineLimit(1)
+        .truncationMode(.tail)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: Self.titleWidth)
+        .frame(height: 44)
+        .glassEffect(.regular.interactive(), in: .capsule)
+        .contentShape(.capsule)
     }
 }
 
@@ -358,8 +418,9 @@ private struct SessionSideItems: ToolbarContent {
 
 extension View {
     /// A session page's top: its own bar (SessionBar) over what scrolls in this view, the system's bar hidden.
-    func sessionBar(_ session: Session?, renaming: Binding<Bool>, deleting: Binding<Bool>, backgroundTasks: SessionBar.BackgroundTasks? = nil) -> some View {
-        modifier(SessionBarTop(session: session, renaming: renaming, deleting: deleting, backgroundTasks: backgroundTasks))
+    func sessionBar(_ session: Session?, renaming: Binding<Bool>, deleting: Binding<Bool>, backgroundTasks: SessionBar.BackgroundTasks? = nil,
+                    starting: SessionBar.Starting? = nil) -> some View {
+        modifier(SessionBarTop(session: session, renaming: renaming, deleting: deleting, backgroundTasks: backgroundTasks, starting: starting))
     }
 }
 
@@ -369,6 +430,7 @@ private struct SessionBarTop: ViewModifier {
     @Binding var renaming: Bool
     @Binding var deleting: Bool
     let backgroundTasks: SessionBar.BackgroundTasks?
+    let starting: SessionBar.Starting?
 
     func body(content: Content) -> some View {
         content
@@ -376,7 +438,7 @@ private struct SessionBarTop: ViewModifier {
             // choose, iOS 27 draws a bar of its own the hard one (a band with a line under it); iOS 26 the soft.
             .scrollEdgeEffectStyle(.soft, for: .top)
             .safeAreaBar(edge: .top) {
-                SessionBar(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
+                SessionBar(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks, starting: starting)
             }
             .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
             .background { if !sideBars { SwipesBack() } }

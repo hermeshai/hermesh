@@ -167,5 +167,25 @@
       "count_other": "Denied {{count}} actions"
     },
     "separator": " · "
+  },
+  "workspace": {
+    "fetching": "Fetching from the remote",
+    "fetchFailed": "Couldn’t fetch from the remote",
+    "creating": "Making a worktree from",
+    "created": "New branch from {{base}}",
+    "createFailed": "Couldn’t make the worktree",
+    "switching": "Switching to branch",
+    "switched": "Switched to branch",
+    "switchFailed": "Couldn’t switch to branch",
+    "kept": "Working in place, on branch",
+    "why": "Why",
+    "where": "Where",
+    "worktree": "Separate worktree",
+    "inPlace": "In place",
+    "branch": "Branch",
+    "was": "{{branch}} (was {{previous}})",
+    "from": "From",
+    "folder": "Folder",
+    "stopped": "Stopped before it was done"
   }
 }

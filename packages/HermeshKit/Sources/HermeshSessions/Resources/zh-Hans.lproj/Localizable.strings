@@ -144,3 +144,23 @@
 "Checkpoints" = "检查点";
 "Changes" = "代码变更";
 "Rewind Files" = "回滚聊天与代码";
+
+/* Where a session works, set up by its first turn (WorkspaceRow) */
+"Fetching from the remote" = "取回远程的";
+"Couldn’t fetch from the remote" = "没能取回远程的";
+"Making a worktree from" = "新建 worktree，基于";
+"New branch from %@" = "从 %@ 新建了分支";
+"Couldn’t make the worktree" = "没能新建 worktree";
+"Switching to branch" = "切换到分支";
+"Switched to branch" = "切到了分支";
+"Couldn’t switch to branch" = "没能切到分支";
+"Working in place, on branch" = "原地工作，分支";
+"Why" = "原因";
+"Where" = "方式";
+"Separate worktree" = "独立 worktree";
+"In place" = "原地";
+"%@ (was %@)" = "%1$@（原来在 %2$@）";
+"Branch" = "分支";
+"From" = "基于";
+"Folder" = "目录";
+"Stopped before it was done" = "没做完就停止了";

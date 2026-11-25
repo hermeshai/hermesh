@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { clone, create } from "@bufbuild/protobuf";
+import { clone, create, type MessageInitShape } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { RuntimeMode, Workspace } from "@hermesh/proto/identity";
 import type { Project } from "@hermesh/proto/local";
@@ -9,13 +9,17 @@ import {
   InteractionMode,
   ModelSelectionSchema,
   QueueOperation,
+  SessionProjectionSchema,
   SessionSchema,
   SessionStatus,
+  TurnItemKind,
   WorkspaceStrategySchema,
   type AttachmentRef,
   type ModelSelection,
   type ProviderInstance,
   type SessionProjection,
+  StartSessionRequestSchema,
+  type StartSessionResponse,
 } from "@hermesh/proto/session";
 import {
   SCRATCH_PROJECT,
@@ -52,7 +56,7 @@ import { keys, ownKeys } from "./platform";
 import { grantLabel, unarchive } from "./Sidebar";
 import { errorText, useNow, useStore } from "./store";
 import { Background, BackgroundLine } from "./session/Background";
-import { ChatFrame, Failed, Row, Stale, Unread, rowHeights, rowsOf } from "./session/Chat";
+import { ChatFrame, Failed, PromptNote, Row, Stale, Unread, UserBubble, rowHeights, rowsOf, type ChatRow } from "./session/Chat";
 import { ComposerPlace, LaunchAsk, ModelButtons, ThreadComposer, type Branches, type Place } from "./session/Composer";
 import { Inspector } from "./session/Inspector";
 import { SessionRequest } from "./session/Request";
@@ -77,6 +81,21 @@ function workspaceFor(place: Place | undefined, branches: Branches | undefined) 
  */
 const keptProjections = new Map<string, SessionProjection>();
 const keepAtMost = 10;
+
+/** A new session's first message, from Send until its machine answers: what was asked, when, and why it was refused. */
+type Starting = { req: MessageInitShape<typeof StartSessionRequestSchema>; files: AttachmentRef[]; at: Date; refused?: string };
+
+/** What a session's page shows until it reads the session: the session, its first run, and the message in it. */
+function startedProjection(res: StartSessionResponse, st: Starting): SessionProjection {
+  const runId = res.initialRun?.runId ?? "";
+  return create(SessionProjectionSchema, {
+    session: res.session,
+    runs: res.initialRun ? [res.initialRun] : [],
+    items: [{ itemId: "starting", sessionId: res.session?.sessionId, runId, seq: 1n, kind: TurnItemKind.USER_MESSAGE, status: "completed", text: st.req.initialPrompt, attachments: st.req.attachments }],
+  });
+}
+
+const firstLine = (text: string) => text.split("\n").map((l) => l.trim()).find((l) => l) ?? "";
 
 function rememberProjection(id: string, proj: SessionProjection) {
   if (!id || proj.items.length === 0) return;
@@ -137,6 +156,7 @@ export function SessionPage() {
   const [attachments, setAttachments] = useState<AttachmentRef[]>([]);
   const [slashOpen, setSlashOpen] = useState<boolean>(false);
   const [busySend, setBusySend] = useState<boolean>(false);
+  const [starting, setStarting] = useState<Starting | null>(null);
   const [stopRequestedRun, setStopRequestedRun] = useState<string>("");
 
   // Queue edit state
@@ -400,29 +420,51 @@ export function SessionPage() {
       }
       return;
     }
+    const req = {
+      machineId: effectiveMachineId,
+      projectId,
+      modelSelection: modelSel.instanceId ? modelSel : undefined,
+      runtimeMode: clampedMode,
+      interactionMode,
+      workspace: create(WorkspaceStrategySchema, workspaceFor(projectId === SCRATCH_PROJECT ? undefined : place, branches)),
+      initialPrompt: text,
+      attachments,
+      commandId: crypto.randomUUID(),
+    };
+    setPrompt("");
+    setAttachments([]);
+    void begin({ req, files: attachments, at: new Date() });
+  };
+
+  // Starts the session: once its machine answers (or the core keeps it for a machine offline), its page opens with the
+  // message already in it; refused, the message stays with why. The same command id each time, so a retry after an
+  // answer lost on the way makes no second session.
+  const begin = async (start: Starting) => {
+    setStarting(start);
     setBusySend(true);
+    const began = Date.now();
     try {
-      const res = await sessionApi.startSession({
-        machineId: effectiveMachineId,
-        projectId,
-        modelSelection: modelSel.instanceId ? modelSel : undefined,
-        runtimeMode: clampedMode,
-        interactionMode,
-        workspace: create(WorkspaceStrategySchema, workspaceFor(projectId === SCRATCH_PROJECT ? undefined : place, branches)),
-        initialPrompt: text,
-        attachments,
-      });
-      remember(effectiveMachineId, { projectId, sel: modelSel, mode: clampedMode });
-      setPrompt("");
-      setAttachments([]);
+      const res = await sessionApi.startSession(start.req);
+      remember(start.req.machineId ?? "", { projectId: start.req.projectId ?? "", sel: modelSel, mode: clampedMode });
+      // "Sending…", once shown (at 400 ms), stays half a second.
+      const took = Date.now() - began;
+      if (took > 400 && took < 900) await new Promise((r) => setTimeout(r, 900 - took));
       if (res.session) {
+        rememberProjection(res.session.sessionId, startedProjection(res, start));
         st.set({ selection: { kind: "session", id: res.session.sessionId } });
       }
+      setStarting(null);
     } catch (e) {
-      st.show(errorText(e));
+      setStarting((cur) => (cur?.req.commandId === start.req.commandId ? { ...start, refused: errorText(e) } : cur));
     } finally {
       setBusySend(false);
     }
+  };
+  const editStart = () => {
+    if (!starting) return;
+    setPrompt(starting.req.initialPrompt ?? "");
+    setAttachments(starting.files);
+    setStarting(null);
   };
 
   const handleStop = async () => {
@@ -618,7 +660,7 @@ export function SessionPage() {
   const activeRun = activeProjection?.runs.find((r) => r.runId === currentSession?.activeRunId);
   const workLine =
     currentSession?.status === SessionStatus.PREPARING ? <WorkLine text={t("work.starting")} />
-    : currentSession?.status === SessionStatus.QUEUED ? <WorkLine text={statusTitle(SessionStatus.QUEUED)} />
+    : currentSession?.status === SessionStatus.QUEUED && !currentSession.offlineQueued ? <WorkLine text={statusTitle(SessionStatus.QUEUED)} />
     : currentSession?.status === SessionStatus.RUNNING ? <WorkLine text={t(`work.${sessionWork(activeProjection)}`)} since={dateOf(activeRun?.startedAt)} />
     : null;
   const writing = useMemo(() => sessionLiveReplies(activeProjection), [activeProjection]);
@@ -627,6 +669,14 @@ export function SessionPage() {
     [steps, ends, failure?.message, writing],
   );
   const grant = session ? grantLabel(st, session) : "";
+  // Discarding a session kept here for its offline machine deletes it, as Her's waiting messages are.
+  const discardOffline = () => {
+    if (!activeSessionId) return;
+    void st.run(async () => {
+      await sessionApi.deleteSession({ sessionId: activeSessionId });
+      st.set({ selection: { kind: "overview" } });
+    });
+  };
   const archived = currentSession?.status === SessionStatus.ARCHIVED;
   const unread = steps.length === 0 && (currentSession?.progress?.lastEventSeq ?? 0n) > 0n && !currentSession?.offlineQueued;
   const behind = (activeProjection?.session?.progress?.lastEventSeq ?? 0n) < (listedSession?.progress?.lastEventSeq ?? 0n);
@@ -635,31 +685,12 @@ export function SessionPage() {
     <>
       <div className="ctool drag">
         <div className="ctitle">
-          <h2 data-testid="thread-title">{activeSessionId ? (currentSession ? displayTitle(currentSession) : "…") : t("launch.title")}</h2>
+          <h2 data-testid="thread-title">{activeSessionId ? (currentSession ? displayTitle(currentSession) : "…") : starting ? firstLine(starting.req.initialPrompt ?? "") : t("launch.title")}</h2>
           {activeSessionId && currentSession && (
             <span className="th-where" data-testid="session-where">
               <Icon name={targetMachine?.local ? "laptop" : "server"} />
               {targetMachine?.machineName ?? currentSession.machineId} · {currentSession.projectId === SCRATCH_PROJECT ? t("launch.scratch") : currentSession.projectId}
             </span>
-          )}
-          {currentSession?.offlineQueued && activeSessionId && (
-            <>
-              <span className="th-badge" data-testid="offline-badge">
-                {t("header.offlineQueued")}
-              </span>
-              <button
-                className="btn th-qbtn"
-                data-testid="cancel-offline-session-btn"
-                onClick={() =>
-                  void st.run(async () => {
-                    await sessionApi.deleteSession({ sessionId: activeSessionId });
-                    st.set({ selection: { kind: "overview" } });
-                  })
-                }
-              >
-                {t("request.cancel")}
-              </button>
-            </>
           )}
         </div>
         {activeSessionId && allBgTasks.length > 0 && (
@@ -688,7 +719,49 @@ export function SessionPage() {
           </button>
         )}
       </div>
-      {!activeSessionId ? (
+      {!activeSessionId && starting ? (
+        // From Send until the machine answers, as the session's page will be: the owner's message, faded, with where it
+        // is under it ("Sending…" once that takes 400 ms), or why it was not sent, with Try Again and Edit.
+        <div className="dwrap th" data-testid="thread-page">
+          <div className="dmain" data-testid="session-starting">
+            <ChatFrame
+              key="starting"
+              rows={[startingRow(starting)]}
+              initial={rowHeights}
+              label={ts("chat.log")}
+              follow={undefined}
+              row={() => (
+                <UserBubble
+                  text={starting.req.initialPrompt ?? ""}
+                  at={starting.at}
+                  waiting={!starting.refused}
+                  note={starting.refused
+                    ? <PromptNote kind="refused" why={starting.refused} onRetry={() => void begin({ ...starting, refused: undefined })} onEdit={editStart} />
+                    : <PromptNote kind="sending" />}
+                />
+              )}
+              control={(onHeight) => (
+                <ComposerZone onHeight={onHeight}>
+                  <ConnectionCapsule machine={targetMachine} linkUp={reachable} />
+                  <ThreadComposer
+                    {...composerProps}
+                    value={prompt}
+                    onChange={setPrompt}
+                    onSend={() => {}}
+                    running={false}
+                    sending
+                    placeholder={t("composer.placeholderIdle")}
+                    attachments={attachments}
+                    onAttach={handleAttachFiles}
+                    onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
+                    offline={!machineOnline}
+                  />
+                </ComposerZone>
+              )}
+            />
+          </div>
+        </div>
+      ) : !activeSessionId ? (
         <div className="dwrap th" data-testid="thread-page">
           <div className="dmain" data-testid="thread-launch-card">
             {ask}
@@ -728,7 +801,14 @@ export function SessionPage() {
                 label={ts("chat.log")}
                 follow={currentSession?.status}
                 unread={unread && session ? <Unread s={session} /> : undefined}
-                row={(r) => <Row it={r.it} rowKey={r.key} end={r.end} live={r.live} sessionId={activeSessionId} clients={st.clients} starter={session?.createdBy ?? "owner"} previous={r.previous} />}
+                row={(r) =>
+                  currentSession?.offlineQueued && r.it.kind === "user" ? (
+                    // Queued here while its machine is offline: faded, and said under it, with Discard.
+                    <UserBubble text={r.it.text} at={r.it.at} waiting note={<PromptNote kind="waiting" machine={targetMachine?.machineName ?? currentSession.machineId} onDiscard={discardOffline} />} />
+                  ) : (
+                    <Row it={r.it} rowKey={r.key} end={r.end} live={r.live} sessionId={activeSessionId} clients={st.clients} starter={session?.createdBy ?? "owner"} previous={r.previous} />
+                  )
+                }
                 head={
                   archived && session && (
                     <div className="anote">
@@ -782,6 +862,12 @@ export function SessionPage() {
       )}
     </>
   );
+}
+
+/** The one row of a session starting: the owner's message. */
+function startingRow(st: Starting): ChatRow {
+  const it = { kind: "user" as const, seq: 1n, text: st.req.initialPrompt ?? "", at: st.at, asker: "owner" };
+  return { key: "starting", kind: "user", it, end: false, live: false, previous: undefined };
 }
 
 /** A session at work, in a line at the end of its conversation (as the iPhone's): the mark, its beams lighting up in turn, what it does and, while the agent works, for how long. */

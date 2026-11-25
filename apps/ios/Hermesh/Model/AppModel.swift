@@ -177,6 +177,8 @@ final class AppModel {
     var networkKind = ""
     /// The last conversations opened.
     @ObservationIgnored let conversations: Conversations
+    /// Sessions opened right after Send on what it knew (SessionPage): their page reads them whole once.
+    @ObservationIgnored var seededSessions: Set<String> = []
     /// The Her entry: the environment shown, and each one's chat.
     let her: HerPlace
     let isDemo: Bool

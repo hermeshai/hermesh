@@ -120,7 +120,24 @@ extension HermeshUITests {
 
         // Start it: the session's own page, on work-mac in the project. The agent got the photo.
         send("say hello_from_work_mac\ninspect")
+        // At once, as the session will be: the message, under its title, with no wait for the machine on the composer.
+        let first = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'say hello_from_work_mac'")).firstMatch
+        XCTAssertTrue(first.waitForExistence(timeout: 5), "the message shows at once")
+        XCTAssertFalse(app.descendants(matching: .any)["new-session-title"].exists, "no longer the composer")
+        // Its first turn makes the worktree, on a line of its own under the message; opened, how and where.
+        let workspace = app.buttons["thread-workspace"]
+        XCTAssertTrue(workspace.waitForExistence(timeout: 30), "where it works")
+        XCTAssertTrue(waitUntil(timeout: 30) { workspace.label.contains("新建了分支") && workspace.label.contains("hermesh/") }, workspace.label)
+        XCTAssertGreaterThan(workspace.frame.minY, first.frame.maxY, "under the message")
         XCTAssertTrue(reply("hello_from_work_mac").waitForExistence(timeout: 60), "the first turn's reply")
+        XCTAssertGreaterThan(reply("hello_from_work_mac").frame.minY, workspace.frame.maxY, "before the agent's work")
+        workspace.tap()
+        let details = app.descendants(matching: .any)["thread-workspace-details"].firstMatch
+        XCTAssertTrue(details.waitForExistence(timeout: 10), "opened")
+        XCTAssertTrue(text("独立 worktree").waitForExistence(timeout: 5), "how it works")
+        shot("composer-workspace")
+        workspace.tap()
+        XCTAssertTrue(details.waitForNonExistence(timeout: 10), "closed")
         XCTAssertTrue(reply("attachments=[照片.jpg]").waitForExistence(timeout: 10), "the photo, with the first message")
         XCTAssertFalse(app.descendants(matching: .any)["thread-attached"].exists, "sent: the box holds nothing")
         XCTAssertTrue(text("work-mac/fresh-app").waitForExistence(timeout: 10), "where it runs, under the title")
@@ -238,6 +255,22 @@ extension HermeshUITests {
         app.navigationBars["连接诊断"].buttons["完成"].tap()
         _ = try control("machine?up=1", method: "POST")
         XCTAssertTrue(capsule.waitForNonExistence(timeout: 120), "gone once owner-mac is back")
+
+        // Sent while owner-mac is offline: the session's page at once, the message faded and, under it, that it goes
+        // once owner-mac is back, with Discard; nothing at work at the end, nothing over the box.
+        _ = try control("machine?up=0", method: "POST")
+        XCTAssertTrue(waitUntil(timeout: 120) { capsule.exists && capsule.label.contains("owner-mac 离线") }, "offline again")
+        send("say while_offline")
+        let waiting = app.descendants(matching: .any)["prompt-note"].firstMatch
+        XCTAssertTrue(waiting.waitForExistence(timeout: 30), "said under the message")
+        XCTAssertTrue(text("等 owner-mac 在线后送达").waitForExistence(timeout: 30), "it goes once owner-mac is back")
+        XCTAssertFalse(app.descendants(matching: .any)["thread-queued-0"].exists, "the message is its bubble, not the queue's")
+        XCTAssertFalse(app.descendants(matching: .any)["thread-working"].exists, "nothing at work")
+        XCTAssertFalse(app.descendants(matching: .any)["thread-offline-queued"].exists, "nothing more over the box")
+        shot("composer-offline-message")
+        tap("prompt-discard")
+        XCTAssertTrue(toast(containing: "已删除"), "discarded")
+        _ = try control("machine?up=1", method: "POST")
     }
 
     /// Drags the thinking track's glass from where it is to a place along it (0 the start, 1 the end), as a finger does.
