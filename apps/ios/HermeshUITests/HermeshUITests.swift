@@ -407,6 +407,7 @@ final class HermeshUITests: XCTestCase {
         row.press(forDuration: 1.2)
         XCTAssertTrue(app.buttons["删除…"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["归档"].exists)
+        XCTAssertFalse(app.buttons["重新生成标题"].exists)
         app.buttons["重命名"].tap()
         let field = app.alerts.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5))

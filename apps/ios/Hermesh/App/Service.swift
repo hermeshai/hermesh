@@ -273,15 +273,6 @@ extension AppAPI {
         return try await updateSession(r).session
     }
 
-    func regenerateTitle(_ sessionID: String) async throws -> Hermesh_Session_V1_Session {
-        var r = Hermesh_Session_V1_UpdateSessionRequest()
-        r.commandID = UUID().uuidString
-        r.sessionID = sessionID
-        r.regenerateTitle = true
-        r.locale = AppLocale.current
-        return try await updateSession(r).session
-    }
-
     func diff(_ sessionID: String) async throws -> String {
         var r = Hermesh_Session_V1_GetDiffRequest()
         r.sessionID = sessionID
