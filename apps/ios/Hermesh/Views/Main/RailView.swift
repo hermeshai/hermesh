@@ -81,7 +81,7 @@ struct RailView: View {
                 button(label(agentTitle(g.agent), g.sessions), id: "rail-agent-\(g.agent)", current: current) {
                     model.open(.session(g.sessions[0].sessionID))
                 } icon: {
-                    AgentLogo(id: g.agent, size: 24).shimmer(atWork(g.sessions))
+                    AgentLogo(id: g.agent, size: 24, running: atWork(g.sessions))
                 } mark: {
                     marks(g.sessions)
                 }
@@ -96,7 +96,7 @@ struct RailView: View {
                         }
                     }
                 } label: {
-                    tile(current: current) { AgentLogo(id: g.agent, size: 24).shimmer(atWork(g.sessions)) } mark: { marks(g.sessions) }
+                    tile(current: current) { AgentLogo(id: g.agent, size: 24, running: atWork(g.sessions)) } mark: { marks(g.sessions) }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(label(agentTitle(g.agent), g.sessions))
@@ -128,7 +128,7 @@ struct RailView: View {
         }
     }
 
-    /// Without a dot, while any runs: the logo shimmers.
+    /// Without a dot, while any runs: a brand-blue light orbits the logo.
     private func atWork(_ sessions: [Session]) -> Bool {
         !sessions.contains { $0.status == .waitingInput || $0.isFailed } && sessions.contains(where: \.isActive)
     }

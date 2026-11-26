@@ -19,6 +19,11 @@ struct AgentLogo: View {
     var size: CGFloat = 28
     /// Its initial even when id names an app (a grant whose owner chose its initial).
     var initialOnly = false
+    /// At work in the sidebar or rail: a brand-blue light orbits its rounded square.
+    var running = false
+    /// While no one sees it (the menu closed): the orbit does not draw.
+    var paused = false
+    @Environment(\.accessibilityReduceMotion) private var still
 
     /// The logo asset for a coding agent id or a personal agent's name.
     static func asset(_ id: String) -> String? {
@@ -49,7 +54,8 @@ struct AgentLogo: View {
     }
 
     var body: some View {
-        Group {
+        let r = size * 0.26
+        let tile = Group {
             if !initialOnly, let a = Self.asset(id) {
                 Image("Logos/\(a)").resizable().interpolation(.high)
             } else {
@@ -57,8 +63,44 @@ struct AgentLogo: View {
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.26, style: .continuous))
-        .accessibilityHidden(true)
+        .clipShape(RoundedRectangle(cornerRadius: r, style: .continuous))
+
+        if running {
+            tile.scaleEffect(0.80)
+                .overlay { orbit(cornerRadius: r + 2).padding(-2) }
+                .accessibilityHidden(true)
+        } else {
+            tile.accessibilityHidden(true)
+        }
+    }
+
+    @ViewBuilder private func orbit(cornerRadius: CGFloat) -> some View {
+        let ring = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        if still {
+            ring.strokeBorder(Color.accentColor.opacity(0.75), lineWidth: 1.7)
+        } else {
+            TimelineView(.animation(paused: paused)) { timeline in
+                let deg = (timeline.date.timeIntervalSinceReferenceDate / 1.35).truncatingRemainder(dividingBy: 1) * 360
+                ring.strokeBorder(Color.primary.opacity(0.14), lineWidth: 1.7)
+                    .overlay {
+                        ring.strokeBorder(
+                            AngularGradient(
+                                stops: [
+                                    .init(color: .clear, location: 0),
+                                    .init(color: .clear, location: 0.57),
+                                    .init(color: .accentColor, location: 0.76),
+                                    .init(color: Color(red: 0.52, green: 0.61, blue: 1), location: 0.90),
+                                    .init(color: .accentColor, location: 0.985),
+                                    .init(color: .clear, location: 1),
+                                ],
+                                center: .center,
+                                angle: .degrees(deg)
+                            ),
+                            lineWidth: 1.7
+                        )
+                    }
+            }
+        }
     }
 
     /// A color for a name without a logo, the same every time.

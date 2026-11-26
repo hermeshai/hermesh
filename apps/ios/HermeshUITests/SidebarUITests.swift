@@ -70,7 +70,8 @@ final class SidebarUITests: XCTestCase {
         attach(XCUIScreen.main.screenshot(), name: "overview-connection-notice")
     }
 
-    /// A running session has no spinner: its title in the menu, and its step at work in the session, shimmer instead.
+    /// A running session has no trailing spinner: a brand-blue light orbits its leading logo, and its title in the
+    /// menu and its step at work in the session shimmer.
     func testRunningSessionShimmersWithoutSpinner() {
         launchDemo(["-DemoSidebarActivity", "YES"])
         openDrawer()
@@ -78,7 +79,14 @@ final class SidebarUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 10), "the running demo session in the menu")
         usleep(400_000)
         let menuShot = XCUIScreen.main.screenshot()
+        usleep(380_000)
+        let menuShot2 = XCUIScreen.main.screenshot()
         attach(menuShot, name: "sidebar-running-row")
+        // Leading logo: a brand-blue squircle orbit is visible and moves over time.
+        let leading = CGRect(x: row.frame.minX + 10, y: row.frame.midY - 15, width: 36, height: 30)
+        let orbit = blueOrbitStats(first: menuShot.image, second: menuShot2.image, rectInPoints: leading)
+        XCTAssertGreaterThan(orbit.bluePixels, 8, "expected brand-blue orbit pixels around running provider icon (got \(orbit.bluePixels))")
+        XCTAssertGreaterThan(orbit.changedPixels, 6, "expected running provider icon orbit to animate over time (got \(orbit.changedPixels))")
         // The title is short: the row's trailing end is empty, where the spinner was.
         let trailing = CGRect(x: row.frame.maxX - 44, y: row.frame.midY - 10, width: 32, height: 20)
         let stats = contrastStats(in: menuShot.image, rectInPoints: trailing)
@@ -277,5 +285,36 @@ final class SidebarUITests: XCTestCase {
         let bgL = luminances[luminances.count / 2]
         let contrastPixels = luminances.reduce(0) { $0 + (abs($1 - bgL) > 0.25 ? 1 : 0) }
         return (maxL - minL, contrastPixels)
+    }
+
+    private func blueOrbitStats(first: UIImage, second: UIImage, rectInPoints: CGRect) -> (bluePixels: Int, changedPixels: Int) {
+        func rgbaBytes(_ image: UIImage) -> [UInt8]? {
+            guard let cg = image.cgImage else { return nil }
+            let scale = CGFloat(cg.width) / max(1, image.size.width)
+            let pixelRect = CGRect(
+                x: floor(rectInPoints.minX * scale),
+                y: floor(rectInPoints.minY * scale),
+                width: floor(rectInPoints.width * scale),
+                height: floor(rectInPoints.height * scale)
+            ).intersection(CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+            guard let cropped = cg.cropping(to: pixelRect), cropped.width > 0, cropped.height > 0 else { return nil }
+            var buf = [UInt8](repeating: 0, count: cropped.width * cropped.height * 4)
+            guard let ctx = CGContext(
+                data: &buf, width: cropped.width, height: cropped.height, bitsPerComponent: 8,
+                bytesPerRow: cropped.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return nil }
+            ctx.draw(cropped, in: CGRect(x: 0, y: 0, width: cropped.width, height: cropped.height))
+            return buf
+        }
+        guard let a = rgbaBytes(first), let b = rgbaBytes(second), a.count == b.count else { return (0, 0) }
+        var blue = 0, changed = 0
+        for i in stride(from: 0, to: a.count, by: 4) {
+            let r1 = Int(a[i]), g1 = Int(a[i + 1]), b1 = Int(a[i + 2])
+            let r2 = Int(b[i]), g2 = Int(b[i + 1]), b2 = Int(b[i + 2])
+            if b1 > 140 && b1 - max(r1, g1) > 35 { blue += 1 }
+            if abs(r1 - r2) + abs(g1 - g2) + abs(b1 - b2) > 45 { changed += 1 }
+        }
+        return (blue, changed)
     }
 }

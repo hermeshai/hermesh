@@ -115,7 +115,14 @@ test("long titles are cut, each row is the agent's logo, its title and one mark,
   await expect(mark("选颜色")).toHaveClass("dot-w");
   await expect(mark("限流")).toHaveClass("dot-r");
   await expect(mark("崩溃")).toHaveAccessibleName("已崩溃");
-  await expect(running.locator(".smeta .busy")).toHaveAccessibleName("运行中");
+  await expect(running.locator(".smeta [role=img]")).toHaveCount(0);
+  await expect(running.locator(".slogo")).toHaveClass(/\brun\b/);
+  await expect(running.locator(".slogo")).toHaveAccessibleName("运行中");
+  await expect(running.locator(".slogo .slogo-orbit")).toBeVisible();
+  expect(await running.locator(".slogo .slogo-orbit").evaluate((e) => e.getAnimations({ subtree: true }).map((a) => (a as CSSAnimation).animationName))).toEqual(["slogo-orbit"]);
+  await expect(list.getByRole("listitem").filter({ hasText: "写 hello" }).locator(".slogo")).not.toHaveClass(/\brun\b/);
+  await expect(list.getByRole("listitem").filter({ hasText: "写 hello" }).locator(".slogo-orbit")).toHaveCount(0);
+  await expect(list.getByRole("listitem").filter({ hasText: "选颜色" }).locator(".slogo")).not.toHaveClass(/\brun\b/);
   await expect(mark("写 hello")).toHaveCount(0);
   // The running title shimmers, as on the iPhone: two moving copies over it, which screen readers skip; the title still reads as written.
   await expect(running.locator(".stitle")).toHaveClass(/\brun\b/);

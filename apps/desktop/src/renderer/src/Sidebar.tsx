@@ -214,15 +214,6 @@ function NewInProject({ sec }: { sec: SessionSection }) {
   );
 }
 
-/** A small ring that turns: something is at work. */
-export function Ring({ label }: { label: string }) {
-  return (
-    <span className="busy" role="img" aria-label={label}>
-      <i aria-hidden="true" />
-    </span>
-  );
-}
-
 /**
  * Every session, as the view lays them out (docs/her-team.md §16): grouped, each group collapsible, older ones
  * loaded as the end comes into view; archived ones on request.
@@ -429,9 +420,9 @@ export function AccountMenu() {
 }
 
 /**
- * A session in the sidebar (docs/her-team.md §16): the coding agent's logo, the title, and one mark (an orange dot
- * while it waits for the owner, a red one when it failed, a ring while it runs, its title shimmering as on the
- * iPhone); with metadata, who sent the work
+ * A session in the sidebar (docs/her-team.md §16): the coding agent's logo (with a brand-blue orbit while it runs),
+ * the title (shimmering while it runs), and one mark (an orange dot while it waits for the owner, a red one when it
+ * failed); with metadata, who sent the work
  * to which agent, the project and the time. ⋯ in the mark's place on hover; right-click for the native menu.
  */
 export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renaming, store }: {
@@ -439,6 +430,8 @@ export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renam
 }) {
   const { t } = useTranslation("common");
   const archived = s.status === SessionStatus.ARCHIVED;
+  const running = isActive(s) && !needsAttention(s);
+  const runLabel = running ? t(s.status === SessionStatus.QUEUED ? "status.queued" : s.status === SessionStatus.PREPARING ? "status.preparing" : "status.running") : undefined;
   // Where the ⋯ menu opens (under its button), while it is open.
   const [menu, setMenu] = useState<{ x: number; y: number; key: boolean } | null>(null);
   const [pendingTitle, setPendingTitle] = useState<string | null>(null);
@@ -458,7 +451,10 @@ export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renam
         sessionMenu(store.current, s);
       }}
     >
-      <span className="slogo"><AgentLogo agent={s.agent} size={16} /></span>
+      <span className={`slogo ${running ? "run" : ""}`} role={runLabel ? "img" : undefined} aria-label={runLabel}>
+        {running && <i className="slogo-orbit" aria-hidden="true" />}
+        <AgentLogo agent={s.agent} size={16} />
+      </span>
       <div className="smain">
         <div className="sl1">
           {renaming ? (
@@ -677,12 +673,11 @@ export function TitleInput({
   );
 }
 
-/** A row's one mark, its state in words for screen readers; an idle or archived session has none. */
+/** A row's one mark, its state in words for screen readers; a running, idle or archived session has none. */
 function RowMark({ s }: { s: Session }) {
   const { t } = useTranslation("common");
   if (s.status === SessionStatus.WAITING_INPUT) return <span className="dot-w" role="img" aria-label={t("status.waiting")} />;
   if (isFailed(s)) return <span className="dot-r" role="img" aria-label={t(s.status === SessionStatus.CRASHED ? "status.crashed" : "status.failed")} />;
-  if (isActive(s)) return <Ring label={t(s.status === SessionStatus.QUEUED ? "status.queued" : s.status === SessionStatus.PREPARING ? "status.preparing" : "status.running")} />;
   // Its machine cannot be read now: say so, there is no mark for it.
   if (s.status === SessionStatus.UNSPECIFIED) return <>{statusTitle(s.status)}</>;
   return null;
