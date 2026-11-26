@@ -10,12 +10,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	goruntime "runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -315,9 +318,17 @@ type Driver struct {
 	OutOfTurnDebounce     time.Duration
 	OutOfTurnQuietLimit   time.Duration
 	BusyPromptRetryDelay  time.Duration
+	TaskLogPollInterval   time.Duration
 
 	mu        sync.Mutex
 	providers map[string]*Provider
+}
+
+func (d *Driver) taskLogPollInterval() time.Duration {
+	if d != nil && d.TaskLogPollInterval > 0 {
+		return d.TaskLogPollInterval
+	}
+	return 750 * time.Millisecond
 }
 
 func (d *Driver) mergeWindow() time.Duration {
@@ -693,6 +704,7 @@ type acpToolState struct {
 	started         bool
 	asyncLaunch     bool
 	asyncAgentID    string
+	asyncLogPath    string
 }
 
 type rpcRes struct {
@@ -761,17 +773,19 @@ func (at *acpAgentTerm) flushCarry() {
 }
 
 type acpBgTask struct {
-	taskID      string
-	itemID      string
-	agentID     string
-	kind        sessionv1.BackgroundTaskKind
-	title       string
-	command     string
-	output      string
-	awaited     bool
-	asyncLaunch bool
-	stopScope   sessionv1.BackgroundTaskStopScope
-	running     bool
+	taskID       string
+	itemID       string
+	agentID      string
+	logPath      string
+	kind         sessionv1.BackgroundTaskKind
+	title        string
+	command      string
+	output       string
+	awaited      bool
+	asyncLaunch  bool
+	launchedTurn uint64
+	stopScope    sessionv1.BackgroundTaskStopScope
+	running      bool
 }
 
 type session struct {
@@ -804,6 +818,9 @@ type session struct {
 	agentTerms         map[string]*acpAgentTerm
 	tools              map[string]*acpToolState
 	bgTasks            map[string]*acpBgTask
+	agyMessagesDir     string
+	seenTaskMsgs       map[string]bool
+	turnSeq            uint64
 	turnCtx            context.Context
 	inPrompt           bool
 	awaitingMerge      bool
@@ -874,6 +891,7 @@ func (s *session) noteWakeActivityLocked(opensReply bool) {
 	}
 	if !s.outOfTurnActive {
 		s.outOfTurnActive = true
+		s.turnSeq++
 		s.outOfTurnSawReply = false
 		s.outOfTurnSawUsage = false
 		if s.msgItemID == "" {
@@ -920,17 +938,23 @@ func (s *session) settleOutOfTurn() {
 		return
 	}
 	sawReply := s.outOfTurnSawReply
+	wokeTurn := s.turnSeq
 	s.outOfTurnActive = false
 	s.outOfTurnReplyOpen = false
 	s.outOfTurnSawReply = false
 	s.outOfTurnSawUsage = false
 	s.outOfTurnTimer = nil
 
-	var autoSettled []runtime.Event
+	autoSettled := s.syncAntigravityCompletionsLocked()
 	if sawReply {
 		for _, bg := range s.bgTasks {
-			if bg.running && bg.awaited && bg.asyncLaunch {
+			trackedByMsgs := bg.messagesDir() != "" || (s.agyMessagesDir != "" && bg.agentID != "")
+			if bg.running && bg.awaited && bg.asyncLaunch && bg.launchedTurn < wokeTurn && !trackedByMsgs {
 				bg.running = false
+				if st := s.tools[bg.itemID]; st != nil {
+					st.status = "completed"
+				}
+				kept, _ := runtime.KeepOutput(bg.output)
 				autoSettled = append(autoSettled,
 					runtime.Event{
 						Kind:                runtime.EventBackgroundTask,
@@ -953,7 +977,7 @@ func (s *session) settleOutOfTurn() {
 						Command:     bg.command,
 						ExitCode:    0,
 						HasExitCode: true,
-						Output:      bg.output,
+						Output:      kept,
 					},
 				)
 			}
@@ -1160,7 +1184,9 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 	}
 	s.mu.Lock()
 	s.stopTimersLocked()
+	settledBeforeTurn := s.syncAntigravityCompletionsLocked()
 	s.inPrompt = true
+	s.turnSeq++
 	s.awaitingMerge = false
 	s.outOfTurnActive = false
 	s.outOfTurnReplyOpen = false
@@ -1177,6 +1203,9 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 	}
 	s.tools = keptTools
 	s.mu.Unlock()
+	for _, ev := range settledBeforeTurn {
+		s.emit(ev)
+	}
 
 	prompt := []any{map[string]any{"type": "text", "text": in.Prompt}}
 	for _, a := range in.Attachments {
@@ -1239,18 +1268,84 @@ func (s *session) sendPromptWithBusyRetry(turnCtx context.Context, prompt []any,
 	})
 }
 
-func detectACPAsyncLaunch(rawInput, meta json.RawMessage) (isAsync bool, agentID string) {
+var (
+	agyBgTaskIDRE  = regexp.MustCompile(`(?m)^Tool is running as a background task with task id:\s*(\S+)`)
+	agyBgLogURIRE  = regexp.MustCompile(`(?m)^Task logs are available at:\s*(file://[^\r\n]+)`)
+	claudeBgIDRE   = regexp.MustCompile(`(?i)Command running in background with ID:\s*([A-Za-z0-9_./:-]+)`)
+	agyExitCodeRE  = regexp.MustCompile(`(?m)^Command exited with code (-?\d+)\.`)
+	subagentConvRE = regexp.MustCompile(`"conversationId"\s*:\s*"([^"]+)"|(?m)^conversationId:\s*(\S+)`)
+)
+
+func validAntigravityTaskLogPath(rawURI string) string {
+	rawURI = strings.TrimSpace(rawURI)
+	if !strings.HasPrefix(rawURI, "file://") {
+		return ""
+	}
+	u, err := url.Parse(rawURI)
+	if err != nil || u.Path == "" {
+		return ""
+	}
+	p := u.Path
+	if goruntime.GOOS == "windows" && len(p) >= 3 && p[0] == '/' && p[2] == ':' {
+		p = p[1:]
+	}
+	clean := filepath.Clean(p)
+	slashed := filepath.ToSlash(clean)
+	if !strings.Contains(slashed, "/.system_generated/tasks/") || !strings.HasSuffix(slashed, ".log") {
+		return ""
+	}
+	if st, err := os.Lstat(clean); err == nil && !st.Mode().IsRegular() {
+		return ""
+	}
+	return clean
+}
+
+func stripAntigravityAsyncWrapper(out string) string {
+	cleaned := out
+	if idx := strings.Index(cleaned, "\nYOU MUST TAKE ONE OF THE FOLLOWING TWO ACTIONS:"); idx >= 0 {
+		cleaned = cleaned[:idx]
+	} else if strings.HasPrefix(cleaned, "YOU MUST TAKE ONE OF THE FOLLOWING TWO ACTIONS:") {
+		cleaned = ""
+	}
+	if idx := strings.Index(cleaned, "\nLog output:\n"); idx >= 0 {
+		cleaned = cleaned[idx+len("\nLog output:\n"):]
+	} else if strings.HasPrefix(cleaned, "Tool is running as a background task with task id:") {
+		cleaned = ""
+	}
+	return strings.TrimSpace(cleaned)
+}
+
+func detectACPAsyncLaunch(rawInput, meta json.RawMessage, outText string) (isAsync bool, agentID string, logPath string, cleanedOut string) {
+	cleanedOut = outText
+	syncCompleted := strings.Contains(outText, "Command exited with code ") || strings.Contains(outText, "\nCompleted At: ")
 	if len(rawInput) > 0 {
 		var in struct {
-			RunInBackground      *bool `json:"run_in_background"`
-			RunInBackgroundCamel *bool `json:"runInBackground"`
-			Background           *bool `json:"background"`
+			RunInBackground      *bool  `json:"run_in_background"`
+			RunInBackgroundCamel *bool  `json:"runInBackground"`
+			Background           *bool  `json:"background"`
+			IsDaemon             *bool  `json:"IsDaemon"`
+			IsDaemonSnake        *bool  `json:"is_daemon"`
+			Persistent           *bool  `json:"persistent"`
+			CronExpression       string `json:"CronExpression"`
+			DurationSeconds      int64  `json:"DurationSeconds"`
+			TypeName             string `json:"TypeName"`
+			Role                 string `json:"Role"`
 		}
 		if json.Unmarshal(rawInput, &in) == nil {
 			if (in.RunInBackground != nil && *in.RunInBackground) ||
 				(in.RunInBackgroundCamel != nil && *in.RunInBackgroundCamel) ||
 				(in.Background != nil && *in.Background) {
 				isAsync = true
+			}
+			if !syncCompleted {
+				if (in.IsDaemon != nil && *in.IsDaemon) ||
+					(in.IsDaemonSnake != nil && *in.IsDaemonSnake) ||
+					(in.Persistent != nil && *in.Persistent) ||
+					strings.TrimSpace(in.CronExpression) != "" ||
+					in.DurationSeconds > 0 ||
+					(strings.TrimSpace(in.TypeName) != "" && strings.TrimSpace(in.Role) != "") {
+					isAsync = true
+				}
 			}
 		}
 	}
@@ -1280,7 +1375,336 @@ func detectACPAsyncLaunch(rawInput, meta json.RawMessage) (isAsync bool, agentID
 			}
 		}
 	}
-	return isAsync, agentID
+	if m := agyBgTaskIDRE.FindStringSubmatch(outText); len(m) == 2 {
+		isAsync = true
+		if agentID == "" {
+			agentID = strings.TrimSpace(m[1])
+		}
+		if lm := agyBgLogURIRE.FindStringSubmatch(outText); len(lm) == 2 {
+			logPath = validAntigravityTaskLogPath(lm[1])
+		}
+		cleanedOut = stripAntigravityAsyncWrapper(outText)
+	} else if m := claudeBgIDRE.FindStringSubmatch(outText); len(m) == 2 {
+		isAsync = true
+		if agentID == "" {
+			agentID = strings.TrimSpace(m[1])
+		}
+	} else if isAsync && agentID == "" {
+		if m := subagentConvRE.FindStringSubmatch(outText); len(m) == 3 {
+			agentID = strings.TrimSpace(m[1])
+			if agentID == "" {
+				agentID = strings.TrimSpace(m[2])
+			}
+		}
+	}
+	return isAsync, agentID, logPath, cleanedOut
+}
+
+func detectACPTaskKill(rawInput json.RawMessage) (killAllSubagents bool, targetIDs []string) {
+	if len(rawInput) == 0 {
+		return false, nil
+	}
+	var in struct {
+		Action          string   `json:"Action"`
+		ActionLower     string   `json:"action"`
+		TaskID          string   `json:"TaskId"`
+		TaskIDLower     string   `json:"task_id"`
+		ConversationIDs []string `json:"ConversationIds"`
+	}
+	if json.Unmarshal(rawInput, &in) != nil {
+		return false, nil
+	}
+	act := strings.ToLower(strings.TrimSpace(in.Action))
+	if act == "" {
+		act = strings.ToLower(strings.TrimSpace(in.ActionLower))
+	}
+	switch act {
+	case "kill_all":
+		return true, nil
+	case "kill", "stop", "cancel":
+		for _, id := range append([]string{in.TaskID, in.TaskIDLower}, in.ConversationIDs...) {
+			if t := strings.TrimSpace(id); t != "" {
+				targetIDs = append(targetIDs, t)
+			}
+		}
+	}
+	return false, targetIDs
+}
+
+func readFileTailUTF8(path string, maxBytes int64) (string, int64, time.Time, error) {
+	st, err := os.Lstat(path)
+	if err != nil {
+		return "", 0, time.Time{}, err
+	}
+	if !st.Mode().IsRegular() {
+		return "", 0, time.Time{}, errors.New("not a regular file")
+	}
+	size := st.Size()
+	if size == 0 {
+		return "", 0, st.ModTime(), nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return "", 0, time.Time{}, err
+	}
+	defer f.Close()
+	offset := int64(0)
+	if size > maxBytes {
+		offset = size - maxBytes
+	}
+	if offset > 0 {
+		if _, err := f.Seek(offset, io.SeekStart); err != nil {
+			return "", 0, time.Time{}, err
+		}
+	}
+	buf, err := io.ReadAll(io.LimitReader(f, maxBytes))
+	if err != nil {
+		return "", 0, time.Time{}, err
+	}
+	start := 0
+	if offset > 0 {
+		for start < len(buf) && !utf8.RuneStart(buf[start]) {
+			start++
+		}
+	}
+	return string(buf[start:]), size, st.ModTime(), nil
+}
+
+func (bg *acpBgTask) messagesDir() string {
+	if bg == nil || bg.logPath == "" {
+		return ""
+	}
+	tasksDir := filepath.Dir(bg.logPath)
+	if filepath.Base(tasksDir) != "tasks" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(tasksDir), "messages")
+}
+
+type agyTaskCompletion struct {
+	exitCode int32
+	content  string
+}
+
+// syncAntigravityCompletionsLocked inspects unread .system_generated/messages/*.json files
+// once each and settles any matching running acpBgTask with its real exit code and final log tail.
+func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
+	dirs := map[string]bool{}
+	if s.agyMessagesDir != "" {
+		dirs[s.agyMessagesDir] = true
+	}
+	byKey := map[string]*acpBgTask{}
+	for _, bg := range s.bgTasks {
+		if bg.running {
+			if d := bg.messagesDir(); d != "" {
+				dirs[d] = true
+				if s.agyMessagesDir == "" {
+					s.agyMessagesDir = d
+				}
+			}
+			if bg.agentID != "" {
+				byKey[bg.agentID] = bg
+			}
+			if bg.taskID != "" {
+				byKey[bg.taskID] = bg
+			}
+			if bg.itemID != "" {
+				byKey[bg.itemID] = bg
+			}
+		}
+	}
+	if len(dirs) == 0 || len(byKey) == 0 {
+		return nil
+	}
+	if s.seenTaskMsgs == nil {
+		s.seenTaskMsgs = map[string]bool{}
+	}
+	done := map[*acpBgTask]agyTaskCompletion{}
+	for dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, ent := range entries {
+			name := ent.Name()
+			if ent.IsDir() || name == "read.json" || !strings.HasSuffix(name, ".json") {
+				continue
+			}
+			full := filepath.Join(dir, name)
+			if s.seenTaskMsgs[full] {
+				continue
+			}
+			raw, rErr := os.ReadFile(full)
+			if rErr != nil {
+				continue
+			}
+			var msg struct {
+				Sender         string `json:"sender"`
+				Content        string `json:"content"`
+				SourceMetadata struct {
+					Tool struct {
+						ToolCall struct {
+							ID string `json:"id"`
+						} `json:"toolCall"`
+					} `json:"tool"`
+				} `json:"sourceMetadata"`
+			}
+			if json.Unmarshal(raw, &msg) != nil {
+				continue
+			}
+			s.seenTaskMsgs[full] = true
+			bg := byKey[msg.Sender]
+			if bg == nil && msg.SourceMetadata.Tool.ToolCall.ID != "" {
+				bg = byKey[msg.SourceMetadata.Tool.ToolCall.ID]
+			}
+			if bg == nil {
+				continue
+			}
+			isSubagentReply := bg.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT && msg.Sender != "" && msg.Sender == bg.agentID
+			if !strings.Contains(msg.Content, "finished with result:") && !isSubagentReply {
+				continue
+			}
+			code := int32(0)
+			if m := agyExitCodeRE.FindStringSubmatch(msg.Content); len(m) == 2 {
+				if n, pErr := strconv.Atoi(m[1]); pErr == nil {
+					code = int32(n)
+				}
+			}
+			done[bg] = agyTaskCompletion{exitCode: code, content: msg.Content}
+		}
+	}
+	var out []runtime.Event
+	for bg, comp := range done {
+		if bg == nil || !bg.running {
+			continue
+		}
+		bg.running = false
+		if bg.logPath != "" {
+			if tail, _, _, err := readFileTailUTF8(bg.logPath, 16384); err == nil && tail != "" {
+				bg.output = tail
+			}
+		} else if comp.content != "" {
+			bg.output = tailUTF8(comp.content, 16384)
+		}
+		if st := s.tools[bg.itemID]; st != nil {
+			if comp.exitCode != 0 {
+				st.status = "failed"
+			} else {
+				st.status = "completed"
+			}
+			if bg.output != "" {
+				st.output = bg.output
+			}
+		}
+		bgStatus := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+		if comp.exitCode != 0 {
+			bgStatus = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+		}
+		kept, _ := runtime.KeepOutput(bg.output)
+		out = append(out,
+			runtime.Event{
+				Kind:                runtime.EventBackgroundTask,
+				TaskID:              bg.taskID,
+				ItemID:              bg.itemID,
+				ToolName:            bg.title,
+				Command:             bg.command,
+				Output:              bg.output,
+				ExitCode:            comp.exitCode,
+				HasExitCode:         true,
+				BackgroundKind:      bg.kind,
+				BackgroundStatus:    bgStatus,
+				BackgroundStopScope: bg.stopScope,
+				BackgroundAwaited:   bg.awaited,
+			},
+			runtime.Event{
+				Kind:        runtime.EventToolCompleted,
+				ItemID:      bg.itemID,
+				ToolName:    bg.title,
+				Command:     bg.command,
+				ExitCode:    comp.exitCode,
+				HasExitCode: true,
+				Output:      kept,
+			},
+		)
+	}
+	return out
+}
+
+func (s *session) startTaskLogPoller(taskID, logPath string) {
+	if logPath == "" {
+		return
+	}
+	interval := s.drv.taskLogPollInterval()
+	go func() {
+		var lastSize int64 = -1
+		var lastMod time.Time
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-s.sessionCtx.Done():
+				return
+			case <-ticker.C:
+			}
+			if !s.Alive() {
+				return
+			}
+			tail, size, mod, err := readFileTailUTF8(logPath, 16384)
+			s.mu.Lock()
+			bg := s.bgTasks[taskID]
+			if bg == nil || !bg.running {
+				s.mu.Unlock()
+				return
+			}
+			var evs []runtime.Event
+			if err == nil && (size != lastSize || !mod.Equal(lastMod)) {
+				lastSize, lastMod = size, mod
+				if tail != "" && tail != bg.output {
+					bg.output = tail
+					if st := s.tools[bg.itemID]; st != nil {
+						st.output = tail
+					}
+					evs = append(evs, runtime.Event{
+						Kind:                runtime.EventBackgroundTask,
+						TaskID:              bg.taskID,
+						ItemID:              bg.itemID,
+						ToolName:            bg.title,
+						Command:             bg.command,
+						Output:              bg.output,
+						BackgroundKind:      bg.kind,
+						BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+						BackgroundStopScope: bg.stopScope,
+						BackgroundAwaited:   bg.awaited,
+					})
+				}
+			}
+			settled := s.syncAntigravityCompletionsLocked()
+			stillRunning := bg.running
+			s.mu.Unlock()
+
+			if len(settled) > 0 {
+				for _, ev := range settled {
+					s.emit(ev)
+				}
+			} else {
+				for _, ev := range evs {
+					s.emit(ev)
+				}
+			}
+			if !stillRunning {
+				return
+			}
+		}
+	}()
+}
+
+func isGenericACPBackgroundTitle(t string) bool {
+	switch strings.ToLower(strings.TrimSpace(t)) {
+	case "", "run_command", "bash", "terminal", "execute", "command", "invoke_subagent", "subagent", "task", "agent", "schedule":
+		return true
+	default:
+		return false
+	}
 }
 
 func classifyACPBackgroundTool(st *acpToolState) (kind sessionv1.BackgroundTaskKind, title string, cmd string, awaited bool, ok bool) {
@@ -1299,6 +1723,8 @@ func classifyACPBackgroundTool(st *acpToolState) (kind sessionv1.BackgroundTaskK
 		Role             string `json:"Role"`
 		TypeName         string `json:"TypeName"`
 		SubagentType     string `json:"subagent_type"`
+		Prompt           string `json:"Prompt"`
+		PromptLower      string `json:"prompt"`
 		CronExpression   string `json:"CronExpression"`
 		DurationSeconds  int64  `json:"DurationSeconds"`
 	}
@@ -1313,8 +1739,16 @@ func classifyACPBackgroundTool(st *acpToolState) (kind sessionv1.BackgroundTaskK
 			cmd = strings.TrimSpace(c)
 		}
 	}
-	title = strings.TrimSpace(st.title)
-	for _, cand := range []string{in.ToolSummary, in.Description, in.Role, in.SubagentType, cmd} {
+	rawTitle := strings.TrimSpace(st.title)
+	lowerRawTitle := strings.ToLower(rawTitle)
+	promptText := strings.TrimSpace(in.Prompt)
+	if promptText == "" {
+		promptText = strings.TrimSpace(in.PromptLower)
+	}
+	if !isGenericACPBackgroundTitle(rawTitle) {
+		title = rawTitle
+	}
+	for _, cand := range []string{in.ToolSummary, in.Description, in.Role, in.SubagentType, promptText, cmd, rawTitle} {
 		if title == "" && strings.TrimSpace(cand) != "" {
 			title = strings.TrimSpace(cand)
 		}
@@ -1328,13 +1762,19 @@ func classifyACPBackgroundTool(st *acpToolState) (kind sessionv1.BackgroundTaskK
 			return sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON, title, cmd, false, true
 		}
 		return sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND, title, cmd, true, true
-	case strings.Contains(lowerTitle, "schedule") || in.CronExpression != "" || in.DurationSeconds > 0:
-		if isDaemon {
-			return sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON, title, cmd, false, true
+	case strings.Contains(lowerTitle, "schedule") || strings.Contains(lowerRawTitle, "schedule") || in.CronExpression != "" || in.DurationSeconds > 0:
+		schedSpec := strings.TrimSpace(in.CronExpression)
+		if schedSpec == "" && in.DurationSeconds > 0 {
+			schedSpec = fmt.Sprintf("%ds", in.DurationSeconds)
 		}
-		return sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE, title, cmd, true, true
-	case strings.Contains(lowerTitle, "subagent") || strings.Contains(lowerTitle, "agent") || lowerKind == "agent" || in.Role != "" || in.TypeName != "" || in.SubagentType != "" || st.asyncLaunch:
-		return sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT, title, cmd, true, true
+		if isDaemon {
+			return sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON, title, schedSpec, false, true
+		}
+		return sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE, title, schedSpec, true, true
+	case strings.Contains(lowerTitle, "subagent") || strings.Contains(lowerTitle, "agent") ||
+		strings.Contains(lowerRawTitle, "subagent") || strings.Contains(lowerRawTitle, "agent") ||
+		lowerKind == "agent" || in.Role != "" || in.TypeName != "" || in.SubagentType != "" || st.asyncLaunch:
+		return sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT, title, promptText, true, true
 	default:
 		return 0, "", "", false, false
 	}
@@ -1342,7 +1782,7 @@ func classifyACPBackgroundTool(st *acpToolState) (kind sessionv1.BackgroundTaskK
 
 func (s *session) promoteOpenBackgroundWork() (newEvents []runtime.Event, hasAwaited bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	var pollers [][2]string
 
 	for id, st := range s.tools {
 		kind, title, cmd, awaited, ok := classifyACPBackgroundTool(st)
@@ -1352,19 +1792,24 @@ func (s *session) promoteOpenBackgroundWork() (newEvents []runtime.Event, hasAwa
 		bg := s.bgTasks[id]
 		if bg == nil {
 			bg = &acpBgTask{
-				taskID:      id,
-				itemID:      id,
-				agentID:     st.asyncAgentID,
-				kind:        kind,
-				title:       title,
-				command:     cmd,
-				output:      tailUTF8(st.output, 16384),
-				awaited:     awaited,
-				asyncLaunch: st.asyncLaunch,
-				stopScope:   sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
-				running:     true,
+				taskID:       id,
+				itemID:       id,
+				agentID:      st.asyncAgentID,
+				logPath:      st.asyncLogPath,
+				kind:         kind,
+				title:        title,
+				command:      cmd,
+				output:       tailUTF8(st.output, 16384),
+				awaited:      awaited,
+				asyncLaunch:  st.asyncLaunch,
+				launchedTurn: s.turnSeq,
+				stopScope:    sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+				running:      true,
 			}
 			s.bgTasks[id] = bg
+			if bg.logPath != "" {
+				pollers = append(pollers, [2]string{bg.taskID, bg.logPath})
+			}
 			newEvents = append(newEvents, runtime.Event{
 				Kind:                runtime.EventBackgroundTask,
 				TaskID:              bg.taskID,
@@ -1476,6 +1921,10 @@ func (s *session) promoteOpenBackgroundWork() (newEvents []runtime.Event, hasAwa
 		if bg.running && bg.awaited {
 			hasAwaited = true
 		}
+	}
+	s.mu.Unlock()
+	for _, p := range pollers {
+		s.startTaskLogPoller(p[0], p[1])
 	}
 	return newEvents, hasAwaited
 }
@@ -2087,7 +2536,18 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		contentOut, diffPath, diffNewText, refTermID := s.extractACPToolContent(u.Content)
 		rawOut := extractACPRawOutput(u.RawOutput)
 		inCmd, inPath := extractACPRawInput(u.RawInput)
-		isAsyncIn, asyncAgentID := detectACPAsyncLaunch(u.RawInput, u.Meta)
+		candOut := contentOut
+		if candOut == "" {
+			candOut = rawOut
+		}
+		isAsyncIn, asyncAgentID, asyncLogPath, cleanedCandOut := detectACPAsyncLaunch(u.RawInput, u.Meta, candOut)
+		if isAsyncIn && candOut != "" {
+			if contentOut != "" {
+				contentOut = cleanedCandOut
+			} else {
+				rawOut = cleanedCandOut
+			}
+		}
 
 		s.mu.Lock()
 		st := s.tools[id]
@@ -2119,6 +2579,9 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		if asyncAgentID != "" {
 			st.asyncAgentID = asyncAgentID
 		}
+		if asyncLogPath != "" {
+			st.asyncLogPath = asyncLogPath
+		}
 		if len(u.Locations) > 0 && u.Locations[0].Path != "" {
 			st.filePath = u.Locations[0].Path
 		} else if diffPath != "" && st.filePath == "" {
@@ -2126,8 +2589,11 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		} else if inPath != "" && st.filePath == "" {
 			st.filePath = inPath
 		}
-		if contentOut != "" {
+		if contentOut != "" || (isAsyncIn && candOut != "") {
 			st.output = contentOut
+			if st.output == "" && rawOut != "" {
+				st.output = rawOut
+			}
 		} else if rawOut != "" {
 			st.output = rawOut
 		}
@@ -2136,6 +2602,21 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		}
 		if trimmedIn := bytes.TrimSpace(u.RawInput); len(trimmedIn) > 0 && string(trimmedIn) != "null" && string(trimmedIn) != "{}" {
 			st.rawInput = append(st.rawInput[:0], trimmedIn...)
+		}
+		// Re-evaluate async launch with accumulated st.rawInput + st.output when rawInput arrived in an earlier chunk.
+		if !st.asyncLaunch && len(st.rawInput) > 0 {
+			if combAsync, combAgent, combLog, combOut := detectACPAsyncLaunch(st.rawInput, u.Meta, candOut); combAsync {
+				st.asyncLaunch = true
+				if combAgent != "" && st.asyncAgentID == "" {
+					st.asyncAgentID = combAgent
+				}
+				if combLog != "" && st.asyncLogPath == "" {
+					st.asyncLogPath = combLog
+				}
+				if candOut != "" {
+					st.output = combOut
+				}
+			}
 		}
 		toolName, cmd, filePath := mapACPToolFields(st, s.spec.Workdir)
 		wasStarted := st.started
@@ -2146,7 +2627,10 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 
 		bg := s.bgTasks[id]
 		var bgEv *runtime.Event
-		// When an async-launch tool (`run_in_background: true` / `_meta...isAsync: true`)
+		var killedEvs []runtime.Event
+		var startPoller [2]string
+		// When an async-launch tool (`run_in_background: true`, `_meta...isAsync: true`,
+		// or Antigravity's `Tool is running as a background task with task id: ...`)
 		// immediately reports `status: "completed"`, that event is only the launch ack:
 		// keep its transcript item running and register the live BackgroundTask right away.
 		isLaunchAck := bg == nil && st.asyncLaunch && status == "completed"
@@ -2154,20 +2638,34 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			st.status = "in_progress"
 			status = "in_progress"
 			if kind, bgTitle, bgCmd, awaited, ok := classifyACPBackgroundTool(st); ok {
+				if st.asyncLogPath != "" {
+					if tail, _, _, err := readFileTailUTF8(st.asyncLogPath, 16384); err == nil && tail != "" {
+						outText = tail
+						st.output = tail
+					}
+				}
 				bg = &acpBgTask{
-					taskID:      id,
-					itemID:      id,
-					agentID:     st.asyncAgentID,
-					kind:        kind,
-					title:       bgTitle,
-					command:     bgCmd,
-					output:      tailUTF8(outText, 16384),
-					awaited:     awaited,
-					asyncLaunch: true,
-					stopScope:   sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
-					running:     true,
+					taskID:       id,
+					itemID:       id,
+					agentID:      st.asyncAgentID,
+					logPath:      st.asyncLogPath,
+					kind:         kind,
+					title:        bgTitle,
+					command:      bgCmd,
+					output:       tailUTF8(outText, 16384),
+					awaited:      awaited,
+					asyncLaunch:  true,
+					launchedTurn: s.turnSeq,
+					stopScope:    sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+					running:      true,
 				}
 				s.bgTasks[id] = bg
+				if d := bg.messagesDir(); d != "" && s.agyMessagesDir == "" {
+					s.agyMessagesDir = d
+				}
+				if bg.logPath != "" {
+					startPoller = [2]string{bg.taskID, bg.logPath}
+				}
 				bgEv = &runtime.Event{
 					Kind:                runtime.EventBackgroundTask,
 					TaskID:              bg.taskID,
@@ -2181,7 +2679,51 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					BackgroundAwaited:   bg.awaited,
 				}
 			}
-		} else if bg != nil && bg.running {
+		} else if status == "completed" && len(st.rawInput) > 0 {
+			if killAll, targetIDs := detectACPTaskKill(st.rawInput); killAll || len(targetIDs) > 0 {
+				for _, cand := range s.bgTasks {
+					if !cand.running {
+						continue
+					}
+					matched := (killAll && cand.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT) ||
+						slices.Contains(targetIDs, cand.agentID) ||
+						slices.Contains(targetIDs, cand.taskID)
+					if !matched {
+						continue
+					}
+					cand.running = false
+					if tst := s.tools[cand.itemID]; tst != nil {
+						tst.status = "completed"
+					}
+					kept, _ := runtime.KeepOutput(cand.output)
+					killedEvs = append(killedEvs,
+						runtime.Event{
+							Kind:                runtime.EventBackgroundTask,
+							TaskID:              cand.taskID,
+							ItemID:              cand.itemID,
+							ToolName:            cand.title,
+							Command:             cand.command,
+							Output:              cand.output,
+							Text:                "stopped by agent",
+							BackgroundKind:      cand.kind,
+							BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+							BackgroundStopScope: cand.stopScope,
+							BackgroundAwaited:   cand.awaited,
+						},
+						runtime.Event{
+							Kind:        runtime.EventToolCompleted,
+							ItemID:      cand.itemID,
+							ToolName:    cand.title,
+							Command:     cand.command,
+							ExitCode:    0,
+							HasExitCode: true,
+							Output:      kept,
+						},
+					)
+				}
+			}
+		}
+		if !isLaunchAck && bg != nil && bg.running {
 			bg.output = tailUTF8(outText, 16384)
 			if cmd != "" && bg.command == "" {
 				bg.command = cmd
@@ -2230,8 +2772,23 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		}
 		s.mu.Unlock()
 
+		if startPoller[0] != "" {
+			s.startTaskLogPoller(startPoller[0], startPoller[1])
+		}
+		if status != "completed" && status != "failed" && (!wasStarted || u.SessionUpdate == "tool_call" || isLaunchAck || toolName != "" || cmd != "" || filePath != "") {
+			s.emit(runtime.Event{
+				Kind:     runtime.EventToolStarted,
+				ItemID:   id,
+				ToolName: toolName,
+				Command:  cmd,
+				FilePath: filePath,
+			})
+		}
 		if bgEv != nil {
 			s.emit(*bgEv)
+		}
+		for _, kev := range killedEvs {
+			s.emit(kev)
 		}
 		if status == "completed" || status == "failed" {
 			exit := int32(0)
@@ -2261,14 +2818,6 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					s.mu.Unlock()
 				}
 			}
-		} else if !wasStarted || u.SessionUpdate == "tool_call" || isLaunchAck || toolName != "" || cmd != "" || filePath != "" {
-			s.emit(runtime.Event{
-				Kind:     runtime.EventToolStarted,
-				ItemID:   id,
-				ToolName: toolName,
-				Command:  cmd,
-				FilePath: filePath,
-			})
 		}
 	case "plan":
 		s.mu.Lock()
