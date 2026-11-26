@@ -154,3 +154,14 @@ pictures the owner sent with a prompt, on its bubble and, on the Mac, in the com
   `DownloadBlob` once.
 - **Not pictures** (a `.html`, `.md` …) on a bubble are unchanged for now: nothing on the Mac, Quick Look on the iPhone.
 - Her's own conversation keeps Her's `Lightbox`.
+
+## 6. Every picture of the app, and pictures that cannot be read (2026-11-27)
+
+- **Her's pictures too.** Her's conversation used a Lightbox of its own (`her/Composer.tsx`, now gone) on the Mac
+  and Quick Look on the iPhone. Both now open the session Lightbox: the Mac's has a third source (`pictures`: a
+  picture already in the app, with ⋯ › 存储到“下载” when Her sent it), mounted once for the window (`MainWindow`);
+  the iPhone's has `LightboxItem.picture` (Save to Photos and Share… when Her sent it). The owner's own pictures
+  there, as in a session, have no menu.
+- **A prompt's picture that could not be read** opens in the Lightbox all the same, which says why: its machine
+  away (「<machine> 离线 · 连上后自动显示」, asked again by itself once it is back), or not there; with 重试 / Retry.
+  Read at last, the bubble's thumbnail shows too. Before, the Mac's bubble showed a file tile that did nothing.

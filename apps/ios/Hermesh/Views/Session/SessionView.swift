@@ -320,7 +320,8 @@ struct PromptBubble<Sender: View>: View {
                 await store.loadPicture(api: model.api, sessionID: sessionID, machineID: machineID, ref: att)
             }
         } else {
-            Button { open(att) } label: {
+            // A picture that could not be read still opens large: the viewer says why, and tries again.
+            Button { isSessionImageAttachment(att) ? openPicture(att) : open(att) } label: {
                 HerChip(name: name, busy: opening == att.blobSha256)
             }
             .buttonStyle(.plain)
@@ -328,19 +329,25 @@ struct PromptBubble<Sender: View>: View {
         }
     }
 
-    /// The bubble's pictures in the Lightbox, from the one tapped; those that could not be read stay out, as chips.
+    /// The bubble's pictures in the Lightbox, from the one tapped; one that could not be read says why there.
     private func openPicture(_ att: Hermesh_Session_V1_AttachmentRef) {
-        let store = SessionAttachmentStore.shared
-        let pictures = attachments.filter { a in
-            guard isSessionImageAttachment(a) else { return false }
-            if case .some(nil) = store.pictures[a.blobSha256] { return false }
-            return true
-        }
+        let pictures = attachments.filter(isSessionImageAttachment)
         lightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: machineID, run: "", items: pictures.map(LightboxItem.attachment),
                                                initialIndex: pictures.firstIndex(of: att) ?? 0)
     }
 
     private func open(_ att: Hermesh_Session_V1_AttachmentRef) {
+        // A page, Markdown, code or text: shown by the app, as a reply's file is (a tab of the side panel on a wide
+        // screen, a page of its own on a narrow one); the rest in Quick Look.
+        if attachmentOpensInApp(att) {
+            if model.wide != nil, !sessionID.isEmpty {
+                model.sessionFiles.model(sessionID, api: model.api).openTab(run: "", path: att.name, attachment: att)
+                model.menuRail = true
+            } else {
+                model.path.append(.sessionAttachment(sessionID, machineID, att))
+            }
+            return
+        }
         guard opening == nil else { return }
         opening = att.blobSha256
         Task {
@@ -448,8 +455,11 @@ struct SessionBar: View {
 
     var body: some View {
         let running = backgroundTasks.flatMap { $0.running ? $0 : nil }
+        // A wide screen: the side panel's button (docs/session-files.md §15).
+        let wide = model.wide != nil && session != nil
         // As wide on the left as on the right, so the title is in the middle.
-        let side: CGFloat = sideBars ? 0 : running == nil ? 44 : 96
+        let buttons = 1 + (running == nil ? 0 : 1) + (wide ? 1 : 0)
+        let side: CGFloat = sideBars ? 0 : CGFloat(buttons) * 44 + CGFloat(buttons - 1) * 8
         HStack(spacing: 8) {
             HStack(spacing: 8) {
                 if sideBars {
@@ -474,6 +484,7 @@ struct SessionBar: View {
                             .accessibilityLabel("Background Tasks")
                             .accessibilityIdentifier("thread-background-tasks")
                     }
+                    if wide { SidePanelButton(sessionID: session.sessionID) }
                     Menu {
                         SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
                     } label: {
@@ -528,6 +539,39 @@ private struct BarIcon: View {
     }
 }
 
+/// A wide screen's side panel, shown or put away: opened, the menu shrinks to its rail to give it room, and an empty
+/// panel starts with 项目文件.
+private struct SidePanelButton: View {
+    @Environment(AppModel.self) private var model
+    let sessionID: String
+
+    var body: some View {
+        let files = model.sessionFiles.model(sessionID, api: model.api)
+        Button {
+            withAnimation(.snappy) {
+                if files.panelOpen {
+                    files.panelOpen = false
+                    files.panelMax = false
+                } else if files.tabs.isEmpty {
+                    files.openProject()
+                } else {
+                    files.panelOpen = true
+                }
+            }
+            if files.panelOpen { model.menuRail = true }
+        } label: {
+            Image(systemName: "sidebar.right").font(.body.weight(.medium)).foregroundStyle(files.panelOpen ? Color.accentColor : .primary)
+                .frame(width: 44, height: 44)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(files.panelOpen ? String(localized: "Hide Side Panel") : String(localized: "Show Side Panel"))
+        .accessibilityAddTraits(files.panelOpen ? .isSelected : [])
+        .accessibilityIdentifier("session-side-panel")
+    }
+}
+
 /// What a session's ⋯ opens.
 private struct SessionMore: View {
     @Environment(AppModel.self) private var model
@@ -537,12 +581,21 @@ private struct SessionMore: View {
     let backgroundTasks: SessionBar.BackgroundTasks?
 
     var body: some View {
+        // The session's folder (docs/session-files.md §4, §15): a level at a time on a narrow screen; on a wide one,
+        // 项目文件 in the side panel.
+        Button("Project Files", systemImage: "folder") {
+            if model.wide != nil {
+                model.sessionFiles.model(session.sessionID, api: model.api).openProject()
+                model.menuRail = true
+            } else {
+                model.path.append(.sessionFolder(session.sessionID, ""))
+            }
+        }
+        .accessibilityIdentifier("session-files")
         if let tasks = backgroundTasks {
             Button("Background Tasks", systemImage: "terminal", action: tasks.open)
         }
-        // The session's folder, a level at a time (docs/session-files.md §4), as the Mac's file panel's tree.
-        Button("Project Files", systemImage: "folder") { model.path.append(.sessionFolder(session.sessionID, "")) }
-            .accessibilityIdentifier("session-files")
+
         Button("Copy Session ID", systemImage: "doc.on.doc") {
             UIPasteboard.general.string = session.sessionID
             model.show(String(localized: "Copied the session ID"))

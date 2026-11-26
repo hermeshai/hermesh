@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -792,7 +793,26 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		if say == "" {
 			say = "好"
 		}
-		s, res := w.startSession(2*time.Minute, "--agent", "gemini", "--title", title, "--prompt", "say "+say, "--wait")
+		args := []string{"--agent", "gemini", "--title", title, "--prompt", "say " + say, "--wait"}
+		// Files sent with the prompt, by name: a page that refers to a script beside it, Markdown, a picture.
+		for _, name := range r.URL.Query()["file"] {
+			f := filepath.Join(t.TempDir(), filepath.Base(name))
+			body := []byte("text\n")
+			switch filepath.Ext(name) {
+			case ".html":
+				body = []byte(`<html><body><p id="t">附件页</p><script src="page.js"></script></body></html>`)
+			case ".md":
+				body = []byte("# Notes\n")
+			case ".png":
+				body, _ = base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOwjf4PRAwQCgApigZdCqHXxgAAAABJRU5ErkJggg==")
+			}
+			if err := os.WriteFile(f, body, 0o644); err != nil {
+				http.Error(rw, err.Error(), 500)
+				return
+			}
+			args = append(args, "-f", f)
+		}
+		s, res := w.startSession(2*time.Minute, args...)
 		if s.SessionID == "" {
 			t.Logf("start session %q failed: exit=%d stdout=%s stderr=%s", title, res.code, res.stdout, res.stderr)
 			http.Error(rw, "start: "+res.stdout+res.stderr, 500)

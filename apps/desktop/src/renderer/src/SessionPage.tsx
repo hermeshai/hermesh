@@ -65,7 +65,6 @@ import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, r
 import { ContentScope, SessionRunContext, type SessionCodeActions } from "./session/scope";
 import { stripTerminalEscapes } from "./session/terminalText";
 import { FilesHomeContext, type FilesHome } from "./session/files/files";
-import { ImageLightboxHost } from "./session/files/ImageLightbox";
 import { SidePanel } from "./session/files/SidePanel";
 import { setOpen as setPanelOpen, usePanel } from "./session/files/panel";
 import "./session/composer.css";
@@ -898,8 +897,6 @@ export function SessionPage() {
             </div>
           </div>
         </div>
-        {/* The composer's pictures open here. */}
-        <ImageLightboxHost />
       </>
     );
   }
@@ -1036,8 +1033,6 @@ export function SessionPage() {
         )}
       </div>
       {activeSessionId && filesHome && <SidePanel home={filesHome} running={running} />}
-      {/* A starting prompt's pictures open here too. */}
-      <ImageLightboxHost />
     </div>
   );
 }

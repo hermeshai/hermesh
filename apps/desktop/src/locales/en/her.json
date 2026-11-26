@@ -320,9 +320,7 @@
     "dropTitle": "Drop to add to the chat",
     "dropHint": "Files or pictures",
     "remove": "Remove {{name}}",
-    "view": "View {{name}}",
-    "prevImage": "Previous image",
-    "nextImage": "Next image"
+    "view": "View {{name}}"
   },
   "model": {
     "model": "Model",

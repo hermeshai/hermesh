@@ -15,7 +15,7 @@ export type Target = { line: number; endLine?: number; seq: number };
  * What a tab shows. "files": a file at a turn ("" for as it is now), the tree beside it or not; with no
  * path, the tree alone (项目文件). "page": a .html running. Another kind (a terminal) is another tab.
  */
-export type TabKind = "files" | "page";
+export type TabKind = "files" | "page" | "attachment";
 
 export type Tab = {
   /** Its own, for as long as it is open: a files tab goes from file to file. */
@@ -32,6 +32,8 @@ export type Tab = {
   replyRun: string;
   /** The tree beside the file (a files tab). */
   tree: boolean;
+  /** An attachment's size, as sent. */
+  size?: bigint;
 };
 
 /** A folder of the tree: its entries once read. */
@@ -122,7 +124,7 @@ function add(p: Panel, kind: TabKind, file: SessionFile, tree: boolean): Tab {
   const tab: Tab = { key: `t${++tabs}`, kind, file, name: baseName(file.path), read: null, target: null, preview: true, replyRun: file.run, tree };
   const at = p.tabs.findIndex((t) => t.key === p.active);
   p.tabs.splice(at < 0 ? p.tabs.length : at + 1, 0, tab);
-  if (file.path) void read(p, tab);
+  if (file.path && kind !== "attachment") void read(p, tab);
   return tab;
 }
 
@@ -152,6 +154,16 @@ export function openFromTree(p: Panel, path: string) {
 function go(p: Panel, tab: Tab, file: SessionFile) {
   Object.assign(tab, { file, name: baseName(file.path), read: null, target: null, preview: true });
   void read(p, tab);
+}
+
+/** A file the owner sent with a prompt (`file.blob`), in a tab of its own; the tab it already has comes forward. */
+export function openAttachment(file: SessionFile, size: bigint) {
+  const p = panelOf(file.session);
+  const tab = p.tabs.find((t) => t.kind === "attachment" && t.file.blob?.sha === file.blob?.sha) ?? add(p, "attachment", file, false);
+  tab.size = size;
+  p.active = tab.key;
+  p.open = true;
+  changed(p);
 }
 
 /** 项目文件: the tree alone, a tab of the files kind with no file yet. */

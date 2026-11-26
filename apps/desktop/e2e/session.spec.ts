@@ -692,6 +692,7 @@ test("files dragged over a session's window are attached to its box when let go,
     const drag = await dragFiles(page, [
       { name: "shot.png", type: "image/png", base64: shot },
       { name: "notes.md", type: "text/markdown", base64: Buffer.from("# Notes\n").toString("base64") },
+      { name: "page.html", type: "text/html", base64: Buffer.from('<html><body><p id="t">附件页</p><script src="page.js"></script></body></html>').toString("base64") },
     ]);
     await expect(box).toHaveClass(/\bdropping\b/);
     await expect(box.locator(".cmp-drop")).toContainText("松手添加附件");
@@ -699,7 +700,7 @@ test("files dragged over a session's window are attached to its box when let go,
     await drag.drop();
     await expect(box).not.toHaveClass(/\bdropping\b/);
     const tiles = box.locator(".cmp-att .tile");
-    await expect(tiles).toHaveCount(2);
+    await expect(tiles).toHaveCount(3);
     await expect(tiles.nth(0)).toHaveAttribute("title", "shot.png");
     await expectImageLoaded(tiles.nth(0).locator("img"));
     await expect(tiles.nth(1)).toHaveAttribute("title", "notes.md");
@@ -707,7 +708,7 @@ test("files dragged over a session's window are attached to its box when let go,
     // The next message takes them to the agent and shows both the picture thumbnail and file tile on the user's bubble.
     await input.fill("inspect");
     await input.press("Enter");
-    await expect(replies.last()).toContainText("attachments=[shot.png,notes.md]", { timeout: 30_000 });
+    await expect(replies.last()).toContainText("attachments=[shot.png,notes.md,page.html]", { timeout: 30_000 });
     const sentBubble = page.getByRole("log").locator(".um").last();
     await expectImageLoaded(sentBubble.locator('.um-att .tile.img[title="shot.png"] img'));
     await expect(sentBubble.locator('.um-att .tile.file[title="notes.md"]')).toBeVisible();
@@ -729,6 +730,29 @@ test("files dragged over a session's window are attached to its box when let go,
     await expect(lb.getByTestId("lightbox-prev")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(lb).toHaveCount(0);
+
+    // What opens shows the hand: a picture and a file on the bubble alike.
+    await expect(reloadedBubble.locator('.um-att .tile.img[title="shot.png"] .tile-open')).toHaveCSS("cursor", "pointer");
+    await expect(reloadedBubble.locator('.um-att .tile.file[title="page.html"] .tile-open')).toHaveCSS("cursor", "pointer");
+    // A file that is not a picture opens in a tab of the side panel, read from its blob: Markdown as it reads...
+    const panel = page.getByTestId("side-panel");
+    await reloadedBubble.locator('.um-att .tile.file[title="notes.md"] .tile-open').click();
+    await expect(panel.locator(".sfp-tab.on")).toHaveText("notes.md");
+    await expect(panel.locator(".sfp-tab.on")).toHaveAttribute("data-kind", "attachment");
+    await expect(panel.getByTestId("attachment-bar")).toContainText("附件 ·");
+    await expect(panel.getByTestId("file-markdown").getByRole("heading", { name: "Notes" })).toBeVisible();
+    // ...and a page running, on its own: the script it refers to was not sent, and the bar under it says so.
+    await reloadedBubble.locator('.um-att .tile.file[title="page.html"] .tile-open').click();
+    await expect(panel.getByRole("tab")).toHaveCount(2);
+    await expect(panel.getByTestId("panel-page")).toBeVisible();
+    await expect(panel.getByTestId("attachment-alone")).toContainText("只发送了这一个文件");
+    await expect
+      .poll(() => app.evaluate(async ({ webContents }) => {
+        const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith("hermesh-file://blob/") && !w.isLoading());
+        return wc ? wc.executeJavaScript("document.getElementById('t')?.textContent ?? ''") : "";
+      }), { timeout: 20_000 })
+      .toBe("附件页");
+    await snap(page, "session-attachment-page");
   } finally {
     await app.close();
   }

@@ -104,6 +104,91 @@ extension EnvironmentValues {
         lightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: machineID, run: run, items: list.map(LightboxItem.file), initialIndex: idx)
     }
 
+    // MARK: The folder's tree, as it is now (the drawer on a file's page, the side panel's tree)
+
+    /// A folder's entries once read, or why not.
+    private(set) var dirs: [String: Result<Hermesh_Session_V1_ListFilesResponse, Error>] = [:]
+    /// The folders opened in the tree.
+    var expanded: Set<String> = []
+
+    func listDir(_ dir: String) async {
+        guard let api, !sessionID.isEmpty else { return }
+        do { dirs[dir] = .success(try await api.listFiles(sessionID, run: "", dir: dir)) } catch { dirs[dir] = .failure(error) }
+    }
+
+    func toggleDir(_ dir: String) {
+        if expanded.remove(dir) == nil {
+            expanded.insert(dir)
+            if dirs[dir] == nil { Task { await listDir(dir) } }
+        }
+    }
+
+    /// The tree opened down to a file: every folder above it.
+    func reveal(_ path: String) {
+        let parts = path.split(separator: "/").dropLast()
+        for i in parts.indices {
+            let dir = parts[...i].joined(separator: "/")
+            expanded.insert(dir)
+            if dirs[dir] == nil { Task { await listDir(dir) } }
+        }
+        if dirs[""] == nil { Task { await listDir("") } }
+    }
+
+    // MARK: The side panel, on a wide screen (docs/session-files.md §15)
+
+    /// Shown beside the conversation; taking the page whole.
+    var panelOpen = false
+    var panelMax = false
+    var tabs: [PanelTab] = []
+    var activeTab: UUID?
+
+    /// Opens a file a reply names, or an attachment, in a tab of its own; the tab it already has comes forward.
+    func openTab(run: String, path: String, line: Int? = nil, endLine: Int? = nil, attachment: Hermesh_Session_V1_AttachmentRef? = nil) {
+        let kind: PanelTab.Kind = attachment == nil && fileView(path) == .page ? .page : attachment == nil ? .files : .attachment
+        if let i = tabs.firstIndex(where: { $0.kind == kind && $0.run == run && $0.path == path && $0.attachment == attachment }) {
+            if line != nil { tabs[i].line = line; tabs[i].endLine = endLine }
+            activeTab = tabs[i].id
+        } else {
+            add(PanelTab(kind: kind, run: run, path: path, line: line, endLine: endLine, replyRun: run, attachment: attachment))
+        }
+        if attachment == nil, !path.isEmpty { reveal(path) }
+        panelOpen = true
+    }
+
+    /// 项目文件: the tree alone, a files tab with no file yet.
+    func openProject() {
+        if let t = tabs.first(where: { $0.kind == .files && $0.path.isEmpty }) { activeTab = t.id } else { add(PanelTab(kind: .files, tree: true)) }
+        reveal("")
+        panelOpen = true
+    }
+
+    /// A file picked in the tree: in the tab the tree is in, as a browser goes to a page; a .html is a page, its own tab.
+    func openFromTree(_ path: String) {
+        guard fileView(path) != .page, let i = tabs.firstIndex(where: { $0.id == activeTab }), tabs[i].kind == .files else {
+            return openTab(run: "", path: path)
+        }
+        tabs[i].path = path
+        tabs[i].run = ""
+        tabs[i].replyRun = ""
+        tabs[i].line = nil
+        tabs[i].endLine = nil
+        tabs[i].source = false
+    }
+
+    func closeTab(_ id: UUID) {
+        guard let i = tabs.firstIndex(where: { $0.id == id }) else { return }
+        tabs.remove(at: i)
+        if activeTab == id { activeTab = tabs.indices.contains(i) ? tabs[i].id : tabs.last?.id }
+        // The last one closed, the panel goes.
+        if tabs.isEmpty { panelOpen = false; panelMax = false }
+    }
+
+    private func add(_ tab: PanelTab) {
+        let at = tabs.firstIndex(where: { $0.id == activeTab }).map { $0 + 1 } ?? tabs.count
+        tabs.insert(tab, at: at)
+        activeTab = tab.id
+    }
+
     func want(run: String, paths: [String]) {
         guard !paths.isEmpty else { return }
         let now = ContinuousClock.now
@@ -189,6 +274,23 @@ func fileRefPaths(_ blocks: [MarkdownBlock]) -> [String] {
     return out
 }
 
+/// A tab of the side panel: a file at a turn ("" for as it is now), the tree beside it or not (with no path, the tree
+/// alone: 项目文件); a .html running; a file the owner sent with a prompt.
+struct PanelTab: Identifiable, Equatable {
+    enum Kind { case files, page, attachment }
+    let id = UUID()
+    var kind: Kind
+    var run = ""
+    var path = ""
+    var line: Int?
+    var endLine: Int?
+    /// The turn of the reply it was opened from: where "Show Version at Reply" goes back to.
+    var replyRun = ""
+    var tree = false
+    var source = false
+    var attachment: Hermesh_Session_V1_AttachmentRef?
+}
+
 /// Where a tag goes when tapped: the session page's openURL takes it.
 enum FileRefLink {
     static let scheme = "hermesh-file-ref"
@@ -249,37 +351,28 @@ func fileText(_ text: AttributedString, files: SessionFilesModel, run: String, s
     return mathText(out, size: size, code: code)
 }
 
-// MARK: The file's page
+// MARK: A file's content, and its page
 
-/// What a file's page shows it as (HermeshSessions' fileView): its own code and text, Markdown as it reads, a page
-/// as it runs, the rest in Quick Look.
-struct SessionFilePage: View {
+/// What a file shows as (HermeshSessions' fileView): its own code and text, Markdown as it reads, a page as it runs,
+/// the rest in Quick Look; at its foot, the bar that says when a reply's file is as its turn left it. A file's page on
+/// a narrow screen and a side panel's tab on a wide one both show it.
+struct SessionFileContent: View {
     @Environment(AppModel.self) private var model
     let sessionID: String
-    /// The reply's turn; "" for as it is now.
-    let turnRun: String
     let path: String
     let line: Int?
     let endLine: Int?
-    @State private var run: String
+    /// The reply's turn; "" when it was opened from the tree.
+    let turnRun: String
+    @Binding var run: String
+    let source: Bool
+    /// The session's folder, once the machine named it: for Copy Path.
+    var onFolder: (String) -> Void = { _ in }
     @State private var read: Result<Hermesh_Session_V1_ReadFileResponse, Error>?
-    @State private var source = false
     @State private var local: URL?
-    @State private var sharing: URL?
-
-    init(sessionID: String, run: String, path: String, line: Int, endLine: Int) {
-        self.sessionID = sessionID
-        turnRun = run
-        self.path = path
-        self.line = line > 0 ? line : nil
-        self.endLine = endLine > 0 ? endLine : nil
-        _run = State(initialValue: run)
-    }
 
     private var name: String { fileBaseName(path) }
     private var view: FileView { fileView(path) }
-    /// A page is what it runs as: no source to switch to.
-    private var sourceable: Bool { view == .markdown || view == .svg }
     private var quickLooks: Bool { [.image, .pdf, .media, .office, .other].contains(view) }
 
     var body: some View {
@@ -288,31 +381,7 @@ struct SessionFilePage: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if case .success(let res)? = read { VersionBar(res: res, run: $run, turnRun: turnRun) }
             }
-            .navigationTitle(name)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if sourceable {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button { source.toggle() } label: { Image(systemName: source ? "eye" : "chevron.left.forwardslash.chevron.right") }
-                            .accessibilityLabel(source ? String(localized: "Preview") : String(localized: "Source"))
-                            .accessibilityIdentifier("file-source")
-                    }
-                }
-                // Beside the expanded menu (a wide screen), the page takes the menu's room, as a session's does; an
-                // iPhone's page is the screen's already.
-                if model.menuInView { ToolbarItem(placement: .topBarLeading) { WidenPageButton() } }
-                ToolbarItem(placement: .primaryAction) {
-                    Button { Task { await share() } } label: { Image(systemName: "square.and.arrow.up") }
-                        .accessibilityLabel(String(localized: "Share"))
-                        .accessibilityIdentifier("file-share")
-                }
-            }
-            .sheet(item: $sharing) { HerShareSheet(url: $0).presentationDetents([.medium, .large]) }
-
-            .task(id: run) { await load() }
-            // A container, so what is in it keeps its own identifiers (the bar, the code).
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("session-file-page")
+            .task(id: "\(run)\u{0}\(path)") { await load() }
     }
 
     @ViewBuilder private var content: some View {
@@ -323,7 +392,7 @@ struct SessionFilePage: View {
             FileCard(name: name, text: errorText(e))
         case .success(let res)?:
             let filePath = res.path.isEmpty ? path : res.path
-            if view == .page && !source {
+            if view == .page {
                 SessionPageWeb(api: model.api, sessionID: sessionID, run: run, path: filePath).id(run)
             } else if quickLooks || view == .svg && !source {
                 if view == .svg, !source {
@@ -367,27 +436,177 @@ struct SessionFilePage: View {
         do {
             let res = try await api.readFile(sessionID, run: run, path: path)
             read = .success(res)
-            if quickLooks { local = try await fetch(api, resolved: res.path) }
+            onFolder(res.folder)
+            if quickLooks { local = try await sessionFileCopy(api, sessionID: sessionID, run: run, path: res.path.isEmpty ? path : res.path) }
         } catch {
             read = .failure(error)
         }
     }
+}
 
-    /// The file in a folder of its own on this iPhone, for Quick Look and Share.
-    private func fetch(_ api: AppAPI, resolved: String = "") async throws -> URL {
-        let target = resolved.isEmpty ? ((try? read?.get().path).flatMap { $0.isEmpty ? nil : $0 } ?? path) : resolved
-        let got = try await api.readWholeFile(sessionID, run: run, path: target)
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("Session Files/\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent(name.isEmpty ? "file" : name)
-        try got.data.write(to: url)
-        return url
+/// A session's file in a folder of its own on this iPhone, for Quick Look and Share.
+func sessionFileCopy(_ api: AppAPI, sessionID: String, run: String, path: String) async throws -> URL {
+    let got = try await api.readWholeFile(sessionID, run: run, path: path)
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("Session Files/\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let name = fileBaseName(path)
+    let url = dir.appendingPathComponent(name.isEmpty ? "file" : name)
+    try got.data.write(to: url)
+    return url
+}
+
+/// Share… and Copy Path, the menu a file's ⋯ opens on its page and on its tab.
+struct SessionFileMenu: View {
+    @Environment(AppModel.self) private var model
+    let sessionID: String
+    let run: String
+    let path: String
+    /// The session's folder, for the whole path; "" until the file was read.
+    let folder: String
+    @Binding var sharing: URL?
+
+    var body: some View {
+        Button("Share…", systemImage: "square.and.arrow.up") {
+            Task {
+                guard let api = model.api, let url = try? await sessionFileCopy(api, sessionID: sessionID, run: run, path: path) else { return }
+                sharing = url
+            }
+        }
+        .accessibilityIdentifier("file-share")
+        Button("Copy Path", systemImage: "doc.on.doc") {
+            UIPasteboard.general.string = SessionImageStore.fullPath(folder: folder, path: path)
+            model.show(String(localized: "Copied"))
+        }
+        .accessibilityIdentifier("file-copy-path")
+    }
+}
+
+/// A file's page, pushed (a narrow screen): the file, its name at the top (and, for a page, its folder under it, as
+/// it has no tree), ⋯ with Share… and Copy Path; at the foot, the bar that pulls the folder's tree up (not for a page).
+/// A file picked in the tree opens here, as the Mac's tab goes to it; a page picked there is pushed.
+struct SessionFilePage: View {
+    @Environment(AppModel.self) private var model
+    let sessionID: String
+    @State private var path: String
+    @State private var line: Int?
+    @State private var endLine: Int?
+    @State private var turnRun: String
+    @State private var run: String
+    @State private var source = false
+    @State private var folder = ""
+    @State private var sharing: URL?
+    @State private var drawer = false
+    @State private var lightbox: SessionLightboxPresentation?
+
+    init(sessionID: String, run: String, path: String, line: Int, endLine: Int) {
+        self.sessionID = sessionID
+        _path = State(initialValue: path)
+        _line = State(initialValue: line > 0 ? line : nil)
+        _endLine = State(initialValue: endLine > 0 ? endLine : nil)
+        _turnRun = State(initialValue: run)
+        _run = State(initialValue: run)
     }
 
-    private func share() async {
-        if let local { sharing = local; return }
-        guard let api = model.api, let url = try? await fetch(api) else { return }
-        sharing = url
+    private var name: String { fileBaseName(path) }
+    private var view: FileView { fileView(path) }
+    private var dir: String { path.contains("/") ? String(path[..<path.lastIndex(of: "/")!]) : "" }
+    /// A page is what it runs as: no source to switch to.
+    private var sourceable: Bool { view == .markdown || view == .svg }
+
+    var body: some View {
+        SessionFileContent(sessionID: sessionID, path: path, line: line, endLine: endLine, turnRun: turnRun, run: $run, source: source) { folder = $0 }
+            .id(path)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if view != .page { drawerBar }
+            }
+            .navigationTitle(name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // A page has no tree under it: where it is, under its name.
+                if view == .page {
+                    ToolbarItem(placement: .principal) {
+                        VStack(spacing: 1) {
+                            Text(verbatim: name).font(.subheadline.weight(.semibold))
+                            if !dir.isEmpty { Text(verbatim: "\(dir)/").font(.caption2).foregroundStyle(.secondary) }
+                        }
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                    }
+                }
+                // Beside the expanded menu (a wide screen), the page takes the menu's room, as a session's does; an
+                // iPhone's page is the screen's already.
+                if model.menuInView { ToolbarItem(placement: .topBarLeading) { WidenPageButton() } }
+                if sourceable {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { source.toggle() } label: { Image(systemName: source ? "eye" : "chevron.left.forwardslash.chevron.right") }
+                            .accessibilityLabel(source ? String(localized: "Preview") : String(localized: "Source"))
+                            .accessibilityIdentifier("file-source")
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        SessionFileMenu(sessionID: sessionID, run: run, path: path, folder: folder, sharing: $sharing)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                    .accessibilityLabel(String(localized: "More"))
+                    .accessibilityIdentifier("file-more")
+                }
+            }
+            .sheet(item: $sharing) { HerShareSheet(url: $0).presentationDetents([.medium, .large]) }
+            .sheet(isPresented: $drawer) {
+                SessionTreeSheet(sessionID: sessionID, activePath: path) { picked in
+                    drawer = false
+                    open(picked)
+                }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
+            .fullScreenCover(item: $lightbox) { SessionImageLightbox(presentation: $0) }
+            // A container, so what is in it keeps its own identifiers (the bar, the code).
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("session-file-page")
+    }
+
+    /// The folder's tree, a pull away: the bar at the page's foot says where the file is.
+    private var drawerBar: some View {
+        let project = model.session(sessionID)?.projectID ?? ""
+        let place = [project, dir].filter { !$0.isEmpty }.joined(separator: "/")
+        return Button { drawer = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "list.bullet.indent").foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Project Files").font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                    if !place.isEmpty { Text(verbatim: place).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head) }
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.up").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 18)
+            .frame(height: 54)
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 4)
+        .accessibilityIdentifier("file-drawer")
+    }
+
+    /// A file picked in the tree: in place, the folder as it is now; a page is pushed; a picture, the Lightbox.
+    private func open(_ picked: String) {
+        if isSessionImage(picked) {
+            lightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: model.session(sessionID)?.machineID ?? "", run: "",
+                                                   items: [.file(ReplyImageItem(path: picked, caption: ""))], initialIndex: 0)
+        } else if fileView(picked) == .page {
+            model.path.append(.sessionFile(sessionID, "", picked, 0, 0))
+        } else {
+            path = picked
+            run = ""
+            turnRun = ""
+            line = nil
+            endLine = nil
+            source = false
+        }
     }
 }
 
@@ -427,7 +646,7 @@ private struct VersionBar: View {
 }
 
 /// Why a file is not shown.
-private struct FileCard: View {
+struct FileCard: View {
     let name: String
     let text: String
 
@@ -444,7 +663,7 @@ private struct FileCard: View {
 }
 
 /// Code in numbered lines, the lines a reply pointed at marked and brought into view.
-private struct CodePage: View {
+struct CodePage: View {
     let text: String
     let name: String
     let target: ClosedRange<Int>?

@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import { imageRatio, imageRows, readSent, type BotFile, type RpcClient } from "@hermesh/her-client";
 import { errorText, useStore } from "../store";
 import { Markdown } from "../session/Markdown";
-import { Lightbox, Tile } from "./Composer";
+import { openPictureLightbox } from "../session/files/ImageLightbox";
+import { Tile } from "./Composer";
 import { useHer } from "./context";
 import { sizeText } from "./format";
 import { FilePreview, previews } from "./preview/FilePreview";
@@ -66,7 +67,7 @@ export function SentFiles({ scope, files, text }: { scope: FileScope; files: Bot
           <Markdown text={text} />
         </div>
       )}
-      {images.length > 0 && <ImageGroup files={images} pictures={pictures} />}
+      {images.length > 0 && <ImageGroup files={images} pictures={pictures} onSave={(f) => void save(f.path, f.name, f.snapshot)} />}
       {others.length > 0 && (
         <div className="bfiles">
           {others.map((f, i) => (
@@ -83,9 +84,14 @@ export function SentFiles({ scope, files, text }: { scope: FileScope; files: Bot
  * One picture with its own proportions, or several in rows of two or three: one height in a row,
  * so a chart keeps its axes. Its size is known before the picture is read, so nothing moves.
  */
-function ImageGroup({ files, pictures }: { files: BotFile[]; pictures: Record<string, string | null> }) {
+function ImageGroup({ files, pictures, onSave }: { files: BotFile[]; pictures: Record<string, string | null>; onSave: (f: BotFile) => void }) {
   const { t } = useTranslation("her");
-  const [large, setLarge] = useState<number | null>(null);
+  // Large in the app's one picture viewer, the group's pictures stepping together; Her's files can be kept.
+  const open = (at: number) => {
+    const shown = files.filter((f) => pictures[f.path]);
+    const items = shown.map((f) => ({ src: pictures[f.path]!, name: f.name, save: () => onSave(f) }));
+    openPictureLightbox(items, Math.max(0, shown.indexOf(files[at]!)));
+  };
   const alone = files.length === 1;
   let at = 0;
   const rows = imageRows(files.length).map((count) => {
@@ -93,27 +99,17 @@ function ImageGroup({ files, pictures }: { files: BotFile[]; pictures: Record<st
     at += count;
     return row;
   });
-  const shown = large === null ? undefined : files[large];
-  const picture = shown && pictures[shown.path];
   return (
     <div className={`bims ${alone ? "one" : ""}`} style={alone ? ({ "--r": imageRatio(files[0], true), "--w": files[0].width ? `${files[0].width}px` : "480px" } as CSSProperties) : undefined}>
       {rows.map((row) => (
         <div key={row.from} className="bims-r">
           {row.files.map((f, i) => (
-            <button key={i} className="bim" style={{ "--r": imageRatio(f, alone) } as CSSProperties} title={f.name} aria-label={t("composer.view", { name: f.name })} onClick={() => setLarge(row.from + i)}>
+            <button key={i} className="bim" style={{ "--r": imageRatio(f, alone) } as CSSProperties} title={f.name} aria-label={t("composer.view", { name: f.name })} onClick={() => open(row.from + i)}>
               {pictures[f.path] && <img src={pictures[f.path]!} alt="" draggable={false} />}
             </button>
           ))}
         </div>
       ))}
-      {shown && picture && (
-        <Lightbox
-          src={picture}
-          caption={alone ? shown.name : `${large! + 1} / ${files.length}  ·  ${shown.name}`}
-          onStep={alone ? undefined : (d) => setLarge(((large ?? 0) + d + files.length) % files.length)}
-          onClose={() => setLarge(null)}
-        />
-      )}
     </div>
   );
 }

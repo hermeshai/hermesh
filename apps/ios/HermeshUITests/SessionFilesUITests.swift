@@ -3,8 +3,10 @@ import XCTest
 /// A coding session's files on the iPhone (docs/session-files.md §4), as the Mac shows them (session-files.spec.ts),
 /// against files-mac, another machine over the relay (otherMacFiles in e2e/desktop_test.go): the files a reply links
 /// are tags; a page opens on a page of its own and runs, as the reply's turn left it, the current one a tap away;
-/// code opens at the line the reply named; a link to nothing is no link; the session's folder, from ⋯, a level at a time;
-/// on a wide screen the page takes the menu's room, as a session's does. Run it on an iPhone Pro and a Pro Max.
+/// code opens at the line the reply named; a link to nothing is no link; a file's page pulls the folder's tree up from its
+/// foot, and a file picked there opens in its place; the session's folder, from ⋯, a level at a time; on a wide screen the
+/// page takes the menu's room, as a session's does, and the session has the side panel's tabs (docs/session-files.md
+/// §15). Run it on an iPhone Pro and a Pro Max.
 ///
 ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testSessionFiles go test ./e2e -run TestIPhone -v -timeout 40m
 extension HermeshUITests {
@@ -34,8 +36,9 @@ extension HermeshUITests {
         XCTAssertTrue(bar.waitForExistence(timeout: 10))
         XCTAssertTrue(bar.staticTexts["这是第 1 轮结束时的版本，之后改过"].exists, "the version bar")
         shot("files-page-turn")
-        // No source to switch to; an iPhone's page is the screen's already: no button to widen it.
+        // No source to switch to; an iPhone's page is the screen's already: no button to widen it. A page has no tree.
         XCTAssertFalse(app.buttons["file-source"].exists, "a page has no source button")
+        XCTAssertFalse(app.buttons["file-drawer"].exists, "a page has no tree under it")
         XCTAssertFalse(app.descendants(matching: .any)["menu-hide"].exists, "nothing to widen upright")
         bar.buttons["查看当前版本"].tap()
         XCTAssertTrue(app.webViews.firstMatch.staticTexts["第二版"].waitForExistence(timeout: 30), "the current version")
@@ -53,7 +56,26 @@ extension HermeshUITests {
         XCTAssertTrue(line.waitForExistence(timeout: 20), "the file's code")
         XCTAssertTrue(line.isHittable, "line 30 in view")
         shot("files-code-line")
+        // ⋯: Share… and Copy Path.
+        tap("file-more")
+        XCTAssertTrue(app.buttons["file-share"].waitForExistence(timeout: 5), "Share…")
+        tap("file-copy-path")
+        // The tree at the page's foot, pulled up: the file marked; a file picked there opens in this page.
+        let treeBar = app.buttons["file-drawer"]
+        XCTAssertTrue(treeBar.waitForExistence(timeout: 5), "the tree's bar at the foot")
+        XCTAssertGreaterThan(treeBar.frame.minY, app.frame.height * 0.8, "at the page's foot")
+        treeBar.tap()
+        let sheet = app.descendants(matching: .any)["file-tree-sheet"].firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "the tree, pulled up")
+        XCTAssertTrue(app.buttons["tree-src/lines.txt"].waitForExistence(timeout: 20), "opened to the file")
+        XCTAssertTrue(app.buttons["tree-src/lines.txt"].isSelected, "the file marked")
+        shot("files-drawer")
+        tap("tree-README.md", timeout: 20)
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 10), "the tree goes back down")
+        XCTAssertTrue(app.navigationBars["README.md"].waitForExistence(timeout: 20), "README.md in the same page")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "site")).firstMatch.waitForExistence(timeout: 20), "its words")
         app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(tag("docs/demo.html").waitForExistence(timeout: 10), "one page back: the conversation")
 
         // Turn 3's external simulator screenshot renders inline once while its file:// link stays a clickable tag,
         // before/after PNGs sit side-by-side in one row, and tapping opens the full-screen blurred Lightbox.
@@ -118,6 +140,42 @@ extension HermeshUITests {
             XCTAssertGreaterThan(app.webViews.firstMatch.frame.width, before + 100, "the page takes the menu's room")
             XCTAssertFalse(widen.exists, "the rail expands it again, not the page")
             shot("files-page-widened")
+
+            // The session's side panel: its button beside ⋯; opened empty, 项目文件 with sizes.
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            tap("session-side-panel", timeout: 10)
+            let panel = app.descendants(matching: .any)["side-panel"].firstMatch
+            XCTAssertTrue(panel.waitForExistence(timeout: 10), "the side panel beside the conversation")
+            XCTAssertTrue(app.descendants(matching: .any)["rail"].firstMatch.exists, "the menu as its rail")
+            let tabs = app.descendants(matching: .any).matching(identifier: "side-panel-tab")
+            XCTAssertEqual(tabs.count, 1)
+            XCTAssertTrue(app.buttons["tree-README.md"].waitForExistence(timeout: 20), "项目文件: the tree alone")
+            // A reply's page: a tab of its own, running.
+            tag("docs/demo.html").tap()
+            XCTAssertTrue(panel.webViews.firstMatch.staticTexts["第一版"].waitForExistence(timeout: 30), "the page, in its tab")
+            XCTAssertEqual(tabs.count, 2)
+            XCTAssertTrue(tag("docs/demo.html").isHittable, "the conversation beside it")
+            shot("files-panel-page")
+            // Code at its line, in a tab of its own, the tree hidden; shown, a file picked there opens in this tab.
+            tag("src/lines.txt", line: 30).tap()
+            XCTAssertTrue(app.staticTexts["line 30"].firstMatch.waitForExistence(timeout: 20), "code at its line")
+            XCTAssertEqual(tabs.count, 3)
+            XCTAssertFalse(app.buttons["tree-src/lines.txt"].exists, "the tree hidden at first")
+            tap("file-tree-toggle")
+            XCTAssertTrue(app.buttons["tree-src/lines.txt"].waitForExistence(timeout: 10), "the tree beside the file")
+            shot("files-panel-code-tree")
+            tap("tree-README.md")
+            XCTAssertTrue(app.descendants(matching: .any)["side-panel-path"].firstMatch.waitForExistence(timeout: 10))
+            XCTAssertTrue(waitUntil(timeout: 10) { app.descendants(matching: .any)["side-panel-path"].firstMatch.label == "README.md" }, "README.md in the same tab")
+            XCTAssertEqual(tabs.count, 3)
+            // Enlarged, it takes the page; shrunk, the conversation is back.
+            tap("side-panel-max")
+            XCTAssertTrue(waitUntil(timeout: 5) { !tag("docs/demo.html").isHittable }, "the panel takes the page")
+            shot("files-panel-max")
+            tap("side-panel-max")
+            XCTAssertTrue(waitUntil(timeout: 5) { tag("docs/demo.html").isHittable }, "beside the conversation again")
+            tap("session-side-panel")
+            XCTAssertTrue(panel.waitForNonExistence(timeout: 5), "put away")
         } else {
             XCTAssertFalse(widen.exists, "no wide screen here: nothing to widen")
         }
@@ -129,7 +187,8 @@ extension HermeshUITests {
     }
 
     private func shot(_ name: String) {
-        let a = XCTAttachment(screenshot: app.screenshot())
+        // The whole screen: on its side, the app's own screenshot comes out turned and cut.
+        let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         a.name = name
         a.lifetime = .keepAlways
         add(a)

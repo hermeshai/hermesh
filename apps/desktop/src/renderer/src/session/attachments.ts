@@ -1,3 +1,5 @@
+import { Code, ConnectError } from "@connectrpc/connect";
+import { fileView } from "@hermesh/her-client";
 import type { AttachmentRef } from "@hermesh/proto/session";
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|ico|heic|tiff?|svg)$/i;
@@ -7,10 +9,38 @@ let snapshot: Record<string, string | null> = {};
 const order: string[] = [];
 const listeners = new Set<() => void>();
 const inFlight = new Set<string>();
+/** Why a picture could not be read: its machine away (it may come back), or not there. */
+const failures = new Map<string, "offline" | "missing">();
+
+export function attachmentFailure(sha256: string): "offline" | "missing" | undefined {
+  return failures.get(sha256);
+}
+
+/** Forgets a picture that could not be read, so the next look asks for it again. */
+export function retryAttachment(sha256: string) {
+  if (snapshot[sha256] !== null) return;
+  delete snapshot[sha256];
+  failures.delete(sha256);
+  notify();
+}
 
 function notify() {
   snapshot = { ...snapshot };
   for (const l of listeners) l();
+}
+
+/** A file sent with a prompt the app shows itself (a page, SVG, Markdown, code, text); the rest go to Quick Look. */
+export function opensInApp(name: string): boolean {
+  return ["page", "svg", "markdown", "code", "text"].includes(fileView(name));
+}
+
+/**
+ * Whether an attached page refers to files beside it (a script, a style sheet, a picture by a relative address):
+ * only the page was sent, so those are not there.
+ */
+export function refersToOwnFiles(html: string): boolean {
+  const refs = [...html.matchAll(/\b(?:src|href)\s*=\s*["']([^"']*)["']/gi), ...html.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)].map((m) => m[1]!.trim());
+  return refs.some((r) => r !== "" && !/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(r));
 }
 
 export function isImageAttachment(att: Pick<AttachmentRef, "name" | "mimeType">): boolean {
@@ -82,7 +112,9 @@ export function loadAttachmentBlob(
         storeUrl(sha, null);
       }
     })
-    .catch(() => {
+    .catch((e: unknown) => {
+      const code = ConnectError.from(e).code;
+      failures.set(sha, code === Code.Unavailable || code === Code.DeadlineExceeded ? "offline" : "missing");
       storeUrl(sha, null);
     })
     .finally(() => {

@@ -165,6 +165,9 @@ test("a reply's files are tags opening side panel tabs; a page runs there offlin
   const shotTag = shotReply.locator('[data-testid=file-tag][data-path$="ios_simulator_screenshot.png"]');
   await expect(shotCard).toBeVisible();
   await expect(shotCard.locator("img")).toBeVisible();
+  // A picture and a file's tag in a reply show the hand: they open.
+  await expect(shotCard).toHaveCSS("cursor", "pointer");
+  await expect(shotTag).toHaveCSS("cursor", "pointer");
   await expect(shotTag).toBeVisible();
   await expect(shotTag).not.toHaveClass(/\bgone\b/);
   await expect(shotReply.getByTestId("session-image-row").getByTestId("session-image")).toHaveCount(2);

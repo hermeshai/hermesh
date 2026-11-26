@@ -90,6 +90,8 @@ struct SessionPage: View {
     @State private var draft = ""
     @State private var sending = false
     @State private var attached: [Attached] = []
+    /// A picture in the box, large (the session's Lightbox).
+    @State private var boxLightbox: SessionLightboxPresentation?
     @State private var uploading = 0
     @State private var attaching = false
     @State private var pickingPhotos = false
@@ -207,6 +209,7 @@ struct SessionPage: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(item: $boxLightbox) { SessionImageLightbox(presentation: $0) }
         .task(id: sessionID) { await start() }
         // Keep following while not background-paused; quick app switches (< 15 s) stay live with zero reconnect.
         .task(id: "\(sessionID)/\(!model.isBackgroundPaused)") {
@@ -388,7 +391,13 @@ struct SessionPage: View {
         let steps = groupSteps(sessionTranscript(activeProj))
         let files = model.sessionFiles.model(s.sessionID, api: model.api)
         let codeActions = codeActions(for: s)
-        return ScrollView {
+        // A wide screen: the side panel beside the conversation (docs/session-files.md §15), or taking the page.
+        let panel = model.wide != nil && files.panelOpen
+        // Enlarged, the panel covers the conversation, which keeps its width and place underneath.
+        return GeometryReader { geo in
+        let panelWidth = min(470, geo.size.width * 0.56)
+        ZStack(alignment: .trailing) {
+        ScrollView {
             VStack(alignment: .leading, spacing: 13) {
                 if s.status == .archived { ArchivedNote(session: s) }
                 ForEach(Array(steps.enumerated()), id: \.element.id) { i, step in
@@ -400,6 +409,19 @@ struct SessionPage: View {
                     guard let route = FileRefLink.route(url, session: s.sessionID) else { return .systemAction }
                     if case .sessionFile(_, let r, let p, let line, _) = route, isSessionImage(p, line: line > 0 ? line : nil) {
                         files.openLightbox(run: r, path: p, machineID: s.machineID)
+                        return .handled
+                    }
+                    // A wide screen: a tab of the side panel, the menu shrinking to its rail to give it room.
+                    if model.wide != nil {
+                        switch route {
+                        case .sessionFile(_, let r, let p, let line, let end):
+                            files.openTab(run: r, path: p, line: line > 0 ? line : nil, endLine: end > 0 ? end : nil)
+                        case .sessionFolder(_, let dir):
+                            files.reveal("\(dir)/x")
+                            files.openProject()
+                        default: model.path.append(route)
+                        }
+                        model.menuRail = true
                         return .handled
                     }
                     model.path.append(route)
@@ -437,6 +459,17 @@ struct SessionPage: View {
         .sessionBar(s, renaming: $renaming, deleting: $deleting,
                     backgroundTasks: allBgTasks.isEmpty ? nil : .init(running: !activeBgTasks.isEmpty) { showingBackgroundTasks = true })
         .sessionDialogs(s, renaming: $renaming, deleting: $deleting)
+        .padding(.trailing, panel ? panelWidth : 0)
+        if panel {
+            HStack(spacing: 0) {
+                Divider().ignoresSafeArea()
+                SessionSidePanel(files: files)
+            }
+            .frame(width: files.panelMax ? geo.size.width : panelWidth)
+            .transition(.move(edge: .trailing))
+        }
+        }
+        }
         .fullScreenCover(item: Binding(get: { files.lightbox }, set: { files.lightbox = $0 })) {
             SessionImageLightbox(presentation: $0)
         }
@@ -604,8 +637,13 @@ struct SessionPage: View {
                         ForEach(attached) { a in
                             if let picture = a.picture {
                                 ZStack(alignment: .topTrailing) {
-                                    Image(uiImage: picture).resizable().scaledToFill().frame(width: 56, height: 56)
-                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    Button { openAttached(a) } label: {
+                                        Image(uiImage: picture).resizable().scaledToFill().frame(width: 56, height: 56)
+                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel(Text(verbatim: a.ref.name))
+                                    .accessibilityIdentifier("thread-attached-\(a.ref.name)")
                                     Button { attached.removeAll { $0.id == a.id } } label: {
                                         Image(systemName: "xmark.circle.fill").symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.55))
                                     }
@@ -614,6 +652,10 @@ struct SessionPage: View {
                                 }
                             } else {
                                 HerChip(name: a.ref.name) { attached.removeAll { $0.id == a.id } }
+                                    .contentShape(.capsule)
+                                    .onTapGesture { openAttached(a) }
+                                    .accessibilityAddTraits(attachmentOpensInApp(a.ref) ? .isButton : [])
+                                    .accessibilityIdentifier("thread-attached-\(a.ref.name)")
                             }
                         }
                         ForEach(0 ..< uploading, id: \.self) { _ in
@@ -1243,6 +1285,20 @@ private struct Starting {
     let files: [Attached]
     let at = Date.now
     var refused: String?
+}
+
+extension SessionPage {
+    /// A file in the box, before it is sent: a picture large, with the box's other pictures; a page, Markdown or code on
+    /// its page. Its bytes are on this iPhone already.
+    fileprivate func openAttached(_ a: Attached) {
+        if a.picture != nil {
+            let pictures = attached.filter { $0.picture != nil }
+            boxLightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: effectiveMachineID, run: "", items: pictures.map { .attachment($0.ref) },
+                                                      initialIndex: pictures.firstIndex { $0.id == a.id } ?? 0)
+        } else if attachmentOpensInApp(a.ref) {
+            model.path.append(.sessionAttachment(sessionID, effectiveMachineID, a.ref))
+        }
+    }
 }
 
 private struct Attached: Identifiable {
