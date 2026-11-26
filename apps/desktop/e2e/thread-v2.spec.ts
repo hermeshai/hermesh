@@ -85,10 +85,11 @@ test("launches a supervised v2 thread, handles live tool approval, and shows it 
     // The conversation as a session's: the message on the right, the reply across, the steps as one folded line.
     await expect(conversation(page).locator(".um .bub")).toContainText("write ui_v2.txt");
     await expect(replies(page)).toContainText("ui_turn_complete");
-    const steps = conversation(page).locator(".tgroup, :not([data-testid=thread-workspace]) > .tool").first();
-    await steps.locator("button").first().click();
-    await expect(conversation(page)).toContainText("ui_v2.txt");
-    await expect(conversation(page)).toContainText("+hello_from_v2_ui");
+    // The one step, the edit, is its own folded line; opened, its diff is under it.
+    const edit = conversation(page).getByRole("button", { name: /^已编辑\s*ui_v2\.txt/ });
+    await edit.click();
+    await expect(edit).toHaveAttribute("aria-expanded", "true");
+    await expect(edit.locator("..").locator(".out")).toContainText("+hello_from_v2_ui");
     // The owner sent it: a soft cool-grey bubble with graphite words, nothing on its corner. A turn that went well ends without a line of its own.
     await expect(conversation(page).locator(".um").first()).not.toHaveClass(/\bfrom\b/);
     expect(await conversation(page).locator(".um .bub").first().evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color])).toEqual([
