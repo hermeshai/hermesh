@@ -55,7 +55,7 @@ import { ConnectionCapsule } from "./ConnectionCapsule";
 import { Icon } from "./icons";
 import { layoutOf, setCard } from "./layout";
 import { keys, ownKeys } from "./platform";
-import { grantLabel, unarchive } from "./Sidebar";
+import { TitleInput, grantLabel, unarchive } from "./Sidebar";
 import { errorText, useNow, useStore } from "./store";
 import { Background, BackgroundLine } from "./session/Background";
 import { ChatFrame, Failed, PromptNote, Row, Stale, Unread, UserBubble, rowHeights, rowsOf, type ChatRow } from "./session/Chat";
@@ -171,6 +171,9 @@ export function SessionPage() {
   // Queue edit state
   const [editingRunId, setEditingRunId] = useState<string>("");
   const [editingText, setEditingText] = useState<string>("");
+  // Top-bar session title inline rename state
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [pendingTitle, setPendingTitle] = useState<{ id: string; title: string } | null>(null);
 
   // Each time a new session opens (and once the machines are known): the machine and project its entry
   // named, else those used last; a machine that is gone falls back to this Mac.
@@ -734,12 +737,56 @@ export function SessionPage() {
   const archived = currentSession?.status === SessionStatus.ARCHIVED;
   const unread = steps.length === 0 && (currentSession?.progress?.lastEventSeq ?? 0n) > 0n && !currentSession?.offlineQueued;
   const behind = (activeProjection?.session?.progress?.lastEventSeq ?? 0n) < (listedSession?.progress?.lastEventSeq ?? 0n);
+  const shownSessionTitle =
+    currentSession
+      ? (pendingTitle?.id === currentSession.sessionId ? pendingTitle.title : displayTitle(currentSession))
+      : "…";
+  const renamingHeaderTitle = Boolean(activeSessionId && currentSession && renamingSessionId === currentSession.sessionId);
 
   return (
     <>
       <div className="ctool drag">
         <div className="ctitle">
-          <h2 data-testid="thread-title">{activeSessionId ? (currentSession ? displayTitle(currentSession) : "…") : starting ? (firstLine(starting.req.initialPrompt ?? "") || t("launch.title")) : t("launch.title")}</h2>
+          {renamingHeaderTitle && currentSession ? (
+            <TitleInput
+              key={currentSession.sessionId}
+              initial={shownSessionTitle}
+              className="crename"
+              testId="thread-title-input"
+              onDone={(title) => {
+                const sid = currentSession.sessionId;
+                setRenamingSessionId((cur) => (cur === sid ? null : cur));
+                if (!title) return;
+                setPendingTitle({ id: sid, title });
+                void st
+                  .run(async () => {
+                    const res = await sessionApi.updateSession({ sessionId: sid, title });
+                    if (res.session) {
+                      setProjection((prev) => {
+                        if (!prev || prev.session?.sessionId !== sid) return prev;
+                        const next = { ...prev, session: res.session };
+                        rememberProjection(sid, next);
+                        return next;
+                      });
+                    }
+                  })
+                  .finally(() => setPendingTitle((cur) => (cur?.id === sid ? null : cur)));
+              }}
+            />
+          ) : activeSessionId && currentSession ? (
+            <h2
+              className="no-drag"
+              data-testid="thread-title"
+              title={shownSessionTitle}
+              onDoubleClick={() => setRenamingSessionId(currentSession.sessionId)}
+            >
+              {shownSessionTitle}
+            </h2>
+          ) : (
+            <h2 data-testid="thread-title">
+              {activeSessionId ? "…" : starting ? (firstLine(starting.req.initialPrompt ?? "") || t("launch.title")) : t("launch.title")}
+            </h2>
+          )}
           {activeSessionId && currentSession && (
             <span className="th-where" data-testid="session-where">
               <Icon name={targetMachine?.local ? "laptop" : "server"} />

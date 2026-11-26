@@ -441,15 +441,19 @@ export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renam
   const archived = s.status === SessionStatus.ARCHIVED;
   // Where the ⋯ menu opens (under its button), while it is open.
   const [menu, setMenu] = useState<{ x: number; y: number; key: boolean } | null>(null);
+  const [pendingTitle, setPendingTitle] = useState<string | null>(null);
+  const shownTitle = pendingTitle ?? displayTitle(s);
   return (
     <div
-      className={`srow has-act ${sel ? "sel" : ""} ${menu ? "menu-open" : ""} ${archived ? "arch" : ""}`}
+      className={`srow ${renaming ? "renaming" : "has-act"} ${sel ? "sel" : ""} ${menu ? "menu-open" : ""} ${archived ? "arch" : ""}`}
       role="listitem"
       aria-current={sel || undefined}
       tabIndex={0}
       onClick={() => !renaming && store.current.select(s.sessionId)}
+      onDoubleClick={() => !renaming && store.current.set({ renaming: s.sessionId })}
       onKeyDown={(e) => !renaming && e.key === "Enter" && store.current.select(s.sessionId)}
       onContextMenu={(e) => {
+        if (renaming) return;
         e.preventDefault();
         sessionMenu(store.current, s);
       }}
@@ -457,22 +461,39 @@ export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renam
       <span className="slogo"><AgentLogo agent={s.agent} size={16} /></span>
       <div className="smain">
         <div className="sl1">
-          {renaming ? <RenameField s={s} store={store} /> : <RowTitle s={s} />}
-          <span className="smeta"><RowMark s={s} /></span>
-          <button
-            className="rowact"
-            title={t("sessionMenu.more")}
-            aria-label={t("sessionMenu.more")}
-            aria-haspopup="menu"
-            aria-expanded={!!menu}
-            onClick={(e) => {
-              e.stopPropagation();
-              const r = e.currentTarget.getBoundingClientRect();
-              setMenu(menu ? null : { x: r.right, y: r.bottom + 4, key: e.detail === 0 });
-            }}
-          >
-            <Icon name="more" className="sm" />
-          </button>
+          {renaming ? (
+            <TitleInput
+              initial={shownTitle}
+              className="srename"
+              onDone={(title) => {
+                const st = store.current;
+                st.set({ renaming: null });
+                if (!title) return;
+                setPendingTitle(title);
+                void st.run(() => sessionApi.updateSession({ sessionId: s.sessionId, title })).finally(() => setPendingTitle(null));
+              }}
+            />
+          ) : (
+            <RowTitle s={s} title={shownTitle} />
+          )}
+          {!renaming && <span className="smeta"><RowMark s={s} /></span>}
+          {!renaming && (
+            <button
+              className="rowact"
+              title={t("sessionMenu.more")}
+              aria-label={t("sessionMenu.more")}
+              aria-haspopup="menu"
+              aria-expanded={!!menu}
+              onDoubleClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                const r = e.currentTarget.getBoundingClientRect();
+                setMenu(menu ? null : { x: r.right, y: r.bottom + 4, key: e.detail === 0 });
+              }}
+            >
+              <Icon name="more" className="sm" />
+            </button>
+          )}
           {menu && <RowMenu s={s} at={menu} store={store} onClose={() => setMenu(null)} />}
         </div>
         {meta && (
@@ -567,7 +588,7 @@ function RowMenu({ s, at, store, onClose }: { s: Session; at: { x: number; y: nu
     }
   };
   return (
-    <div className="vmenu" role="menu" aria-label={t("sessionMenu.more")} tabIndex={-1} ref={ref} style={pos} onClick={(e) => e.stopPropagation()} onKeyDown={onKeyDown} onContextMenu={(e) => e.stopPropagation()}>
+    <div className="vmenu" role="menu" aria-label={t("sessionMenu.more")} tabIndex={-1} ref={ref} style={pos} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onKeyDown={onKeyDown} onContextMenu={(e) => e.stopPropagation()}>
       {items.map((it, i) =>
         it ? (
           <button
@@ -590,8 +611,7 @@ function RowMenu({ s, at, store, onClose }: { s: Session; at: { x: number; y: nu
 }
 
 /** A row's title; while it runs (and nothing needs the owner), a fainter band crosses it left to right (app.css .stitle.run). */
-function RowTitle({ s }: { s: Session }) {
-  const title = displayTitle(s);
+function RowTitle({ s, title }: { s: Session; title: string }) {
   const run = (isActive(s) && !needsAttention(s)) || s.titleGenerating;
   return (
     <span className={`stitle ${run ? "run" : ""}`} title={title}>
@@ -606,34 +626,51 @@ function RowTitle({ s }: { s: Session }) {
   );
 }
 
-/** A row's title, edited in place: ↩ or leaving the field keeps it, Esc puts it back. */
-function RenameField({ s, store }: { s: Session; store: RefObject<Store> }) {
+/** A session's title edited in place: ↩ or leaving the field keeps what is written, Esc puts it back. */
+export function TitleInput({
+  initial,
+  className,
+  testId,
+  onDone,
+}: {
+  initial: string;
+  className: string;
+  testId?: string;
+  onDone: (title: string | null) => void;
+}) {
   const { t } = useTranslation("common");
-  const [value, setValue] = useState(displayTitle(s));
+  const [value, setValue] = useState(initial);
   const done = useRef(false);
   const finish = (keep: boolean) => {
     if (done.current) return;
     done.current = true;
-    const st = store.current;
-    st.set({ renaming: null });
     const title = value.trim();
-    if (keep && title && title !== displayTitle(s))
-      st.run(() => sessionApi.updateSession({ sessionId: s.sessionId, title }));
+    onDone(keep && title && title !== initial ? title : null);
   };
   return (
     <input
-      className="srename"
+      className={className}
       aria-label={t("sessionMenu.renameLabel")}
+      data-testid={testId}
       autoFocus
+      spellCheck={false}
+      placeholder={initial}
       value={value}
       onFocus={(e) => e.currentTarget.select()}
       onChange={(e) => setValue(e.target.value)}
       onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         e.stopPropagation();
-        if (e.nativeEvent.isComposing) return;
-        if (e.key === "Enter") finish(true);
-        else if (e.key === "Escape") finish(false);
+        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+        if (e.key === "Enter") {
+          e.preventDefault();
+          finish(true);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          finish(false);
+        }
       }}
       onBlur={() => finish(true)}
     />

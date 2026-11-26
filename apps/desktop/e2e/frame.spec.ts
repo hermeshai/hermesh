@@ -373,23 +373,47 @@ test("a row's ⋯ menu renames in place, archives, and deletes once confirmed, i
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
 
-  // Rename in place: Esc keeps the title, ↩ saves the new one.
-  menu = await more("改个名字");
-  await menu.getByRole("menuitem", { name: "重命名" }).click();
+  // Double-clicking a row renames in place without shifting its text or height; Esc cancels, ↩ saves and updates the header too.
+  const targetRow = row("改个名字");
+  const beforeRow = (await targetRow.boundingBox())!;
+  const beforeTitle = (await targetRow.locator(".stitle").boundingBox())!;
+  await targetRow.dblclick();
   const field = list.getByRole("textbox", { name: "任务标题" });
   await expect(field).toBeFocused();
   await expect(field).toHaveValue("改个名字");
+  expect(await field.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd])).toEqual([0, 4]);
+  const duringRow = (await list.locator(".srow.renaming").boundingBox())!;
+  const fieldBox = (await field.boundingBox())!;
+  expect(duringRow.height).toBe(beforeRow.height);
+  expect(Math.abs(fieldBox.x + 4 - beforeTitle.x)).toBeLessThanOrEqual(1);
+  await expect(list.locator(".srow.renaming .rowact")).toHaveCount(0);
   await field.fill("不要这个");
   await field.press("Escape");
   await expect(field).toHaveCount(0);
   await expect(row("改个名字")).toBeVisible();
-  menu = await more("改个名字");
+
+  await row("改个名字").dblclick();
+  await expect(field).toBeFocused();
+  await field.fill("双击改好的名字");
+  await snap(page, "row-dblclick-rename");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await snap(page, "row-dblclick-rename-dark");
+  await page.emulateMedia({ colorScheme: "light" });
+  await field.press("Enter");
+  await expect(row("双击改好的名字")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "双击改好的名字" })).toBeVisible();
+  await expect(row("改个名字")).toHaveCount(0);
+
+  // Rename from ⋯ works the same way: ↩ saves the new one.
+  menu = await more("双击改好的名字");
   await menu.getByRole("menuitem", { name: "重命名" }).click();
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue("双击改好的名字");
   await field.fill("新的名字");
   await snap(page, "row-rename");
   await field.press("Enter");
   await expect(row("新的名字")).toBeVisible();
-  await expect(row("改个名字")).toHaveCount(0);
+  await expect(row("双击改好的名字")).toHaveCount(0);
 
   // Delete asks first; canceling keeps it.
   menu = await more("新的名字");
