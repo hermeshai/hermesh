@@ -1,4 +1,4 @@
-import { useContext, useMemo, useState, type ReactNode } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { MenuItem } from "../../../shared/bridge";
 import { i18n } from "../../../shared/i18n";
@@ -6,20 +6,32 @@ import { Icon } from "../icons";
 import { useStore, type Store } from "../store";
 import { fileOfCode, fileOfLink } from "@hermesh/her-client";
 import { Code } from "./Code";
+import {
+  markInlineRunSent,
+  startInlineRun,
+  stopInlineRun,
+  toggleInlineRunFold,
+  useInlineRun,
+  type InlineRunState,
+} from "./codeBlockRuns";
 import { FileTag } from "./files/FileTag";
 import { FilesHomeContext, type FilesHome } from "./files/files";
-import { DraftContext, SessionRunContext, type SessionShellRunner } from "./scope";
+import { DraftContext, SessionRunContext, type SessionCodeActions } from "./scope";
 import {
   cleanShellCommand,
   effectiveCodeLang,
   findSecretSpans,
   hiddenChars,
+  inspectRunnableShell,
   maskSecrets,
-  runnableShellCommand,
+  parseTerminalLines,
+  stripTerminalEscapes,
+  type AnsiSpanStyle,
+  type RunnableShellPlan,
 } from "./terminalText";
 
 // What a reply's links, inline code and code blocks show, and their native menus. Nothing here
-// reaches the network or reads a file; links open in the default browser, http and https only.
+// reaches the network or reads a file directly; links open in the default browser, http and https only.
 
 const t = i18n.getFixedT(null, "session");
 
@@ -45,19 +57,19 @@ async function popup(st: Store, items: MenuItem[]): Promise<string | null> {
   return id ?? null;
 }
 
-/** A code block's menu: copy (prompt-stripped for shells), run in session, or copy & open local terminal in the session's worktree. */
+/** A code block's context menu: copy (prompt-stripped for shells), run in place, or copy & open local terminal. */
 async function codeMenu(
   st: Store,
   copyTarget: string,
   shell: boolean,
-  runnableCmd: string | null,
-  runInSession: SessionShellRunner | null,
+  plan: RunnableShellPlan | null,
+  onTriggerRun: (() => void) | null,
   home: FilesHome | null,
 ) {
   const items: MenuItem[] = [
     { id: "copy", label: t(shell ? "content.copyCommand" : "content.copyCode") },
   ];
-  if (runnableCmd && runInSession) {
+  if (plan && onTriggerRun) {
     items.push({ id: "run", label: t("content.runInSession") });
   }
   if (shell && home?.local && home.session) {
@@ -65,7 +77,7 @@ async function codeMenu(
   }
   const id = await popup(st, items);
   if (id === "copy") copy(st, copyTarget, t("content.copied"));
-  else if (id === "run" && runnableCmd && runInSession) runInSession(runnableCmd);
+  else if (id === "run" && onTriggerRun) onTriggerRun();
   else if (id === "terminal" && home?.session) {
     void copyText(copyTarget).then(() => {
       st.show(t("content.copiedAndOpenedTerminal"));
@@ -120,37 +132,230 @@ export function InlineCode({ children }: { children?: ReactNode }) {
   );
 }
 
+function formatSec(ms: number): string {
+  const s = Math.max(0, ms) / 1000;
+  return s < 10 ? `${s.toFixed(1)}s` : `${Math.round(s)}s`;
+}
+
+function spanClass(s: AnsiSpanStyle | undefined): string | undefined {
+  if (!s) return undefined;
+  const cls: string[] = [];
+  if (s.fgClass) cls.push(s.fgClass);
+  if (s.bold) cls.push("ansi-b");
+  if (s.dim) cls.push("ansi-d");
+  if (s.italic) cls.push("ansi-i");
+  if (s.underline) cls.push("ansi-u");
+  return cls.length > 0 ? cls.join(" ") : undefined;
+}
+
+function useRunningElapsed(startedAt: number, running: boolean): string {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(id);
+  }, [running, startedAt]);
+  return formatSec(now - startedAt);
+}
+
 /**
- * A fenced block: a bar with its language (a shell's with a terminal mark, auto-sniffed when untagged),
- * secret masking toggle, 1-click Run in session workspace, and prompt-clean Copy.
+ * Attached bottom terminal output window inside a CodeBlock:
+ * - Left status area (`▾ ● 退出码 0 · 0.1s`) folds/unfolds the output body;
+ * - Right actions hold only `↑ 发入对话` (Send to Chat) and an icon-only Copy Output button.
+ */
+function InlineTerminalDrawer({
+  run,
+  elapsed,
+  actions,
+  blockText,
+}: {
+  run: InlineRunState;
+  elapsed: string;
+  actions: SessionCodeActions;
+  blockText: string;
+}) {
+  const { t } = useTranslation("session");
+  const bodyRef = useRef<HTMLPreElement>(null);
+  const stickRef = useRef(true);
+  const [copied, setCopied] = useState(false);
+
+  const isRunning = run.status === "running";
+  const lines = useMemo(() => (run.output ? parseTerminalLines(run.output) : []), [run.output]);
+
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (el && isRunning && stickRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [run.output, isRunning]);
+
+  const durText = isRunning ? elapsed : formatSec(run.durationMs);
+  let dotCls = "running";
+  let statusCls = "";
+  let statusLabel = t("content.termRunning", { time: durText });
+
+  if (run.status === "stopped") {
+    dotCls = "stop";
+    statusCls = "stop";
+    statusLabel = t("content.termStopped", { time: durText });
+  } else if (run.status === "error") {
+    dotCls = "err";
+    statusCls = "err";
+    statusLabel = run.errorMessage || t("content.termFailed");
+  } else if (run.status === "done") {
+    if (run.timedOut) {
+      dotCls = "err";
+      statusCls = "err";
+      statusLabel = t("content.termTimedOut", { time: durText });
+    } else if (run.exitCode === 0) {
+      dotCls = "ok";
+      statusCls = "ok";
+      statusLabel = t("content.termExitOk", { time: durText });
+    } else {
+      dotCls = "err";
+      statusCls = "err";
+      statusLabel = t("content.termExitErr", { code: run.exitCode, time: durText });
+    }
+  }
+
+  const canSend = run.status === "done" || run.status === "stopped";
+  const copyOut = () => {
+    const plain = stripTerminalEscapes(run.output || run.errorMessage || "");
+    void copyText(plain).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  return (
+    <div className={`cb-term ${run.folded ? "folded" : ""}`} data-testid="codeblock-terminal-drawer">
+      <div className="cb-term-bar">
+        <button
+          type="button"
+          className="term-toggle"
+          data-testid="codeblock-term-toggle"
+          aria-expanded={!run.folded}
+          onClick={() => toggleInlineRunFold(actions.sessionId, blockText)}
+          title={t(run.folded ? "content.expandOutput" : "content.collapseOutput")}
+        >
+          <Icon name="caret" className="term-chev" />
+          <span className={`status-dot ${dotCls}`} />
+          <span className={`term-exit ${statusCls}`}>{statusLabel}</span>
+        </button>
+        <span className="term-acts">
+          {canSend && (
+            <button
+              type="button"
+              className={`term-ask ${run.sentToChat ? "sent" : ""}`}
+              data-testid="codeblock-send-to-chat"
+              disabled={run.sentToChat}
+              onClick={() => {
+                markInlineRunSent(actions.sessionId, blockText);
+                actions.sendOutputToChat(run.command, run.exitCode, run.output, run.status === "stopped");
+              }}
+            >
+              <Icon name={run.sentToChat ? "check" : "arrowUp"} />
+              <span>{t(run.sentToChat ? "content.sentToChat" : "content.sendToChat")}</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className={`term-icon-btn ${copied ? "copied" : ""}`}
+            data-testid="codeblock-copy-output"
+            onClick={copyOut}
+            title={t("content.copyOutput")}
+            aria-label={t("content.copyOutput")}
+          >
+            <Icon name={copied ? "check" : "copy"} />
+          </button>
+        </span>
+      </div>
+      {!run.folded && (
+        <pre
+          ref={bodyRef}
+          className="cb-term-body sel-text"
+          data-testid="codeblock-term-body"
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            stickRef.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 40;
+          }}
+        >
+          {lines.length > 0 ? (
+            lines.map((line, i) => (
+              <span key={i} className={line.diff ? `tline diff-${line.diff}` : "tline"}>
+                {i > 0 && "\n"}
+                {line.spans.map((sp, j) => {
+                  const cls = spanClass(sp.style);
+                  const color = sp.style?.fgColor;
+                  return cls || color ? (
+                    <span key={j} className={cls} style={color ? { color } : undefined}>
+                      {sp.text}
+                    </span>
+                  ) : (
+                    sp.text
+                  );
+                })}
+              </span>
+            ))
+          ) : (
+            <span className="ansi-gray">
+              {isRunning ? t("content.waitingOutput") : run.errorMessage || t("content.noOutput")}
+            </span>
+          )}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A fenced block: keeps the original code/script intact on top, morphs Run -> Spinner/Stop -> Rerun,
+ * guards destructive scripts with an inline confirmation strip, and opens an attached terminal output drawer below.
  */
 export function CodeBlock({ lang, text }: { lang: string; text: string }) {
   const { t } = useTranslation("session");
   const st = useStore();
   const draft = useContext(DraftContext);
   const home = useContext(FilesHomeContext);
-  const runInSession = useContext(SessionRunContext);
+  const actions = useContext(SessionRunContext);
   const [done, setDone] = useState(false);
   const [revealed, setRevealed] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   const eff = useMemo(() => effectiveCodeLang(lang, text), [lang, text]);
   const hasSecrets = useMemo(() => findSecretSpans(text).length > 0, [text]);
   const shownText = useMemo(() => (hasSecrets && !revealed ? maskSecrets(text) : text), [text, hasSecrets, revealed]);
   const copyTarget = useMemo(() => (eff.shell ? cleanShellCommand(text) : text), [eff.shell, text]);
-  const runnable = useMemo(
-    () => (!hasSecrets || revealed ? runnableShellCommand(lang, text) : null),
+  const plan = useMemo(
+    () => (!hasSecrets || revealed ? inspectRunnableShell(lang, text) : null),
     [lang, text, hasSecrets, revealed],
   );
+
+  const runState = useInlineRun(actions?.sessionId ?? "", text);
+  const isRunning = runState?.status === "running";
+  const elapsed = useRunningElapsed(runState?.startedAt ?? 0, isRunning);
+
+  const triggerRun = () => {
+    if (!actions || !plan) return;
+    if (plan.destructive) {
+      setConfirming(true);
+      return;
+    }
+    setConfirming(false);
+    startInlineRun(actions.sessionId, text, plan.command);
+  };
+
   const copyBlock = () => void copyText(copyTarget).then(() => (setDone(true), setTimeout(() => setDone(false), 1500)));
 
   return (
     <div
-      className="cblock"
+      className={`cblock ${isRunning ? "is-running" : ""}`}
       onContextMenu={(e) => {
         if (draft) return;
         e.preventDefault();
         e.stopPropagation();
-        void codeMenu(st, copyTarget, eff.shell, runnable, runInSession, home);
+        void codeMenu(st, copyTarget, eff.shell, plan, actions && plan ? triggerRun : null, home);
       }}
     >
       <div className="cb-h">
@@ -180,18 +385,39 @@ export function CodeBlock({ lang, text }: { lang: string; text: string }) {
                 <Icon name={revealed ? "eyeOff" : "eye"} />
               </button>
             )}
-            {runnable && runInSession && (
+            {actions && isRunning ? (
               <button
                 type="button"
-                className="cb-b run"
-                data-testid="codeblock-run-btn"
-                onClick={() => runInSession(runnable)}
-                title={t("content.runTip")}
-                aria-label={t("content.run")}
+                className="cb-b running"
+                data-testid="codeblock-stop-btn"
+                onClick={() => stopInlineRun(actions.sessionId, text)}
+                title={t("content.stop")}
+                aria-label={t("content.stop")}
               >
-                <Icon name="play" />
-                {t("content.run")}
+                <span className="spin-view">
+                  <span className="cb-ring" aria-hidden="true" />
+                  <span>{elapsed}</span>
+                </span>
+                <span className="stop-view">
+                  <Icon name="stop" />
+                  <span>{t("content.stop")}</span>
+                </span>
               </button>
+            ) : (
+              actions &&
+              plan && (
+                <button
+                  type="button"
+                  className={`cb-b ${plan.destructive && !runState ? "warn" : "run"}`}
+                  data-testid="codeblock-run-btn"
+                  onClick={triggerRun}
+                  title={t(plan.destructive ? "content.runConfirmTip" : "content.runTip")}
+                  aria-label={t(runState ? "content.rerun" : "content.run")}
+                >
+                  <Icon name={runState ? "retry" : "play"} />
+                  <span>{t(runState ? "content.rerun" : plan.destructive ? "content.runConfirm" : "content.run")}</span>
+                </button>
+              )
             )}
             <button type="button" className="cb-b" onClick={copyBlock} aria-label={t("content.copy")}>
               <Icon name={done ? "check" : "copy"} />
@@ -205,6 +431,30 @@ export function CodeBlock({ lang, text }: { lang: string; text: string }) {
           {eff.lang ? <Code text={shownText} lang={eff.lang} /> : shownText}
         </code>
       </pre>
+      {confirming && actions && plan && (
+        <div className="cb-confirm" data-testid="codeblock-confirm-bar">
+          <span>{t("content.confirmDestructive")}</span>
+          <span className="cb-confirm-acts">
+            <button type="button" className="cb-confirm-cancel" onClick={() => setConfirming(false)}>
+              {t("content.cancel")}
+            </button>
+            <button
+              type="button"
+              className="cb-confirm-go"
+              data-testid="codeblock-confirm-run"
+              onClick={() => {
+                setConfirming(false);
+                startInlineRun(actions.sessionId, text, plan.command);
+              }}
+            >
+              {t("content.confirmRun")}
+            </button>
+          </span>
+        </div>
+      )}
+      {runState && actions && (
+        <InlineTerminalDrawer run={runState} elapsed={elapsed} actions={actions} blockText={text} />
+      )}
     </div>
   );
 }

@@ -1765,6 +1765,32 @@ func (s *ownerSessionService) ListOutbox(_ context.Context, req *sessionv1.ListO
 	return &sessionv1.ListOutboxResponse{Entries: out}, nil
 }
 
+func (s *ownerSessionService) RunCommand(ctx context.Context, req *sessionv1.RunCommandRequest, stream *connect.ServerStream[sessionv1.RunCommandEvent]) error {
+	o := s.o()
+	eng, machineID, err := o.resolveMachineForSession(ctx, req.SessionId)
+	if err != nil {
+		return err
+	}
+	if eng != nil {
+		return eng.RunCommand(ctx, o.ownerPrincipal(), req, stream.Send)
+	}
+	pm, err := o.dialRemoteSessionMachine(ctx, machineID)
+	if err != nil {
+		return err
+	}
+	rStream, err := pm.Session.RunCommand(ctx, req)
+	if err != nil {
+		return err
+	}
+	defer rStream.Close()
+	for rStream.Receive() {
+		if err := stream.Send(rStream.Msg()); err != nil {
+			return err
+		}
+	}
+	return rStream.Err()
+}
+
 // broadcastLocalSessionChange notifies WatchSessions and Watch screens when an
 // offline-queued session changes locally.
 func (r *replica) broadcastLocalSessionChange(sessions []*sessionv1.Session, deleted []string) {

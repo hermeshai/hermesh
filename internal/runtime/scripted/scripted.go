@@ -351,7 +351,7 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 		cmdLine, rest, _ := strings.Cut(after, "\n")
 		exitLine, _, _ := strings.Cut(rest, "\n")
 		lines = []string{"say Reviewed `" + strings.TrimSpace(cmdLine) + "` (" + strings.TrimSpace(exitLine) + ")"}
-	} else if len(lines) == 1 && !isDirective(lines[0]) {
+	} else if !slices.ContainsFunc(lines, isDirective) {
 		if strings.Contains(strings.ToLower(lines[0]), "single word: ready") {
 			lines = []string{"say ready"}
 		} else {

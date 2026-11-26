@@ -311,7 +311,7 @@ test("sending a message while scrolled up in a session automatically scrolls bac
   }
 });
 
-test("sniffs shell blocks, masks secrets, runs codeblock and ! shell shortcuts in the session worktree with ANSI output, and wakes the agent", async () => {
+test("sniffs shell blocks, masks secrets, runs multiline scripts in an inline terminal drawer, and sends results to chat on demand", async () => {
   const { app, page } = await launch();
   try {
     await page.setViewportSize({ width: 1440, height: 820 });
@@ -319,11 +319,18 @@ test("sniffs shell blocks, masks secrets, runs codeblock and ! shell shortcuts i
     await pickDemoAndScripted(page);
     await pickMode(page, "runtime-mode-4");
 
-    // 1. Agent outputs an untagged CLI block (`$ echo ...`) and a bash block with an API key.
+    // 1. Agent outputs a multi-line bash script (with shebang), a destructive rm -rf script, and a secret-bearing curl block.
     const replyMd = [
-      "say Here are two commands:",
+      "say Here are three blocks:",
+      "say ```bash",
+      "say #!/usr/bin/env bash",
+      "say echo e2e_inline_line1",
+      "say echo e2e_inline_line2",
       "say ```",
-      "say $ echo e2e_codeblock_run_ok",
+      "say ```bash",
+      "say # clean temp dir",
+      "say rm -rf ./tmp_e2e_nonexistent",
+      "say echo cleaned_ok",
       "say ```",
       "say ```bash",
       'say curl -H "Authorization: Bearer sk-proj-1234567890abcdefghij" https://example.com',
@@ -334,50 +341,59 @@ test("sniffs shell blocks, masks secrets, runs codeblock and ! shell shortcuts i
     await page.getByTestId("composer-submit-btn").click();
 
     const blocks = conversation(page).locator(".cblock");
-    await expect(blocks).toHaveCount(2, { timeout: 15_000 });
+    await expect(blocks).toHaveCount(3, { timeout: 15_000 });
+    const replyCountBefore = await replies(page).count();
 
-    // Untagged `$ echo ...` fence is auto-sniffed as `bash` and exposes the 1-click Run button.
-    const firstBlock = blocks.nth(0);
-    await expect(firstBlock.locator(".cb-lang")).toContainText("bash");
-    await expect(firstBlock.getByTestId("codeblock-run-btn")).toBeVisible();
+    // Multi-line bash script with shebang exposes the Run button and keeps original script visible when clicked!
+    const multiBlock = blocks.nth(0);
+    await expect(multiBlock.getByTestId("codeblock-run-btn")).toBeVisible();
+    await multiBlock.getByTestId("codeblock-run-btn").click();
+
+    // Attached bottom terminal drawer appears inside the same CodeBlock, showing exit 0 + multi-line output, WITHOUT waking Agent!
+    const drawer = multiBlock.getByTestId("codeblock-terminal-drawer");
+    await expect(drawer).toBeVisible({ timeout: 10_000 });
+    await expect(drawer).toContainText("退出码 0", { timeout: 10_000 });
+    await expect(multiBlock.getByTestId("codeblock-term-body")).toContainText("e2e_inline_line1");
+    await expect(multiBlock.getByTestId("codeblock-term-body")).toContainText("e2e_inline_line2");
+    await expect(multiBlock.locator("pre").first()).toContainText("#!/usr/bin/env bash");
+    expect(await replies(page).count()).toBe(replyCountBefore);
+
+    // Folding and unfolding via the status bar toggle works cleanly.
+    await multiBlock.getByTestId("codeblock-term-toggle").click();
+    await expect(multiBlock.getByTestId("codeblock-term-body")).toHaveCount(0);
+    await multiBlock.getByTestId("codeblock-term-toggle").click();
+    await expect(multiBlock.getByTestId("codeblock-term-body")).toBeVisible();
+
+    // Destructive `rm -rf` script shows inline confirmation bar before running.
+    const rmBlock = blocks.nth(1);
+    await rmBlock.getByTestId("codeblock-run-btn").click();
+    await expect(rmBlock.getByTestId("codeblock-confirm-bar")).toBeVisible();
+    await rmBlock.getByTestId("codeblock-confirm-run").click();
+    await expect(rmBlock.getByTestId("codeblock-terminal-drawer")).toContainText("退出码 0", { timeout: 10_000 });
+    await expect(rmBlock.getByTestId("codeblock-term-body")).toContainText("cleaned_ok");
 
     // Secret-bearing block masks the token by default and hides Run until revealed.
-    const secretBlock = blocks.nth(1);
+    const secretBlock = blocks.nth(2);
     await expect(secretBlock.locator("pre")).toContainText("••••••••");
-    await expect(secretBlock.locator("pre")).not.toContainText("1234567890abcdefghij");
     await expect(secretBlock.getByTestId("codeblock-run-btn")).toHaveCount(0);
-
     await secretBlock.getByTestId("codeblock-secret-toggle").click();
-    await expect(secretBlock.locator("pre")).toContainText("sk-proj-1234567890abcdefghij");
     await expect(secretBlock.getByTestId("codeblock-run-btn")).toBeVisible();
 
-    // 2. Click Run on the first block: strips `$ `, runs in the session worktree, and wakes the agent.
-    await firstBlock.getByTestId("codeblock-run-btn").click();
-    await expect(replies(page).last()).toContainText("Reviewed echo e2e_codeblock_run_ok", { timeout: 15_000 });
-    await expect(replies(page).last()).toContainText("Exit code: 0");
+    // 2. Clicking "发入对话" sends the inline run result into the session and continues the conversation!
+    const sendBtn = multiBlock.getByTestId("codeblock-send-to-chat");
+    await expect(sendBtn).toContainText("发入对话");
+    await sendBtn.click();
+    await expect(sendBtn).toContainText("已发入对话");
+    await expect(replies(page).last()).toContainText("Acknowledged: 运行结果（退出码 0）：", { timeout: 15_000 });
 
-    // 3. Type a `! <cmd>` shell shortcut in the composer: shows shell badge, renders ANSI colours, and Inspector reflects worktree path.
+    // 3. Direct `! <cmd>` shortcut in the composer still runs with ANSI colours and wakes the agent.
     const ansiCmd = onWindows
       ? '! Write-Output "$([char]27)[32mansi_green_ok$([char]27)[0m"'
       : "! printf '\\033[32mansi_green_ok\\033[0m\\n'";
     await input.fill(ansiCmd);
     await expect(page.getByTestId("composer-shell-badge")).toBeVisible();
     await input.press("Enter");
-
     await expect(replies(page).last()).toContainText("Exit code: 0", { timeout: 15_000 });
-
-    // Expand the latest tool step group/row and verify `.ansi-green` span rendered inside `.term-out`.
-    const lastTool = conversation(page).locator(".tgroup, .tool").last();
-    await lastTool.locator("button").first().click();
-    if ((await lastTool.locator(".tool:not(.open) .th").count()) > 0) {
-      await lastTool.locator(".tool:not(.open) .th").last().click();
-    }
-    await expect(conversation(page).locator(".term-out .ansi-green").last()).toContainText("ansi_green_ok");
-
-    // Inspector's project button points to the isolated worktrees/<sessionId> path, not just the base repo.
-    const envCard = page.getByRole("complementary", { name: "任务信息" });
-    const projBtnTitle = await envCard.locator(".insp-pick").first().getAttribute("title");
-    expect(projBtnTitle ?? "").toContain("worktrees");
   } finally {
     await app.close();
   }

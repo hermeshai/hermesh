@@ -123,6 +123,10 @@ func (s *Service) ReadFileBytes(ctx context.Context, req *sessionv1.ReadFileByte
 	return s.engine.ReadFileBytes(ctx, s.principal(ctx), req)
 }
 
+func (s *Service) RunCommand(ctx context.Context, req *sessionv1.RunCommandRequest, stream *connect.ServerStream[sessionv1.RunCommandEvent]) error {
+	return s.engine.RunCommand(ctx, s.principal(ctx), req, stream.Send)
+}
+
 func (s *Service) ForkSession(ctx context.Context, req *sessionv1.ForkSessionRequest) (*sessionv1.ForkSessionResponse, error) {
 	return s.engine.ForkSession(ctx, s.principal(ctx), req)
 }

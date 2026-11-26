@@ -112,6 +112,9 @@ const (
 	// SessionServiceReadFileBytesProcedure is the fully-qualified name of the SessionService's
 	// ReadFileBytes RPC.
 	SessionServiceReadFileBytesProcedure = "/hermesh.session.v1.SessionService/ReadFileBytes"
+	// SessionServiceRunCommandProcedure is the fully-qualified name of the SessionService's RunCommand
+	// RPC.
+	SessionServiceRunCommandProcedure = "/hermesh.session.v1.SessionService/RunCommand"
 )
 
 // SessionServiceClient is a client for the hermesh.session.v1.SessionService service.
@@ -147,6 +150,10 @@ type SessionServiceClient interface {
 	ListFiles(context.Context, *v1.ListFilesRequest) (*v1.ListFilesResponse, error)
 	ReadFile(context.Context, *v1.ReadFileRequest) (*v1.ReadFileResponse, error)
 	ReadFileBytes(context.Context, *v1.ReadFileBytesRequest) (*v1.ReadFileBytesResponse, error)
+	// Runs an owner-initiated shell command or script in the session's workspace and
+	// streams its live output without creating a turn or waking the coding agent.
+	// Cancelling the stream terminates the command's process group immediately.
+	RunCommand(context.Context, *v1.RunCommandRequest) (*connect.ServerStreamForClient[v1.RunCommandEvent], error)
 }
 
 // NewSessionServiceClient constructs a client for the hermesh.session.v1.SessionService service. By
@@ -322,6 +329,12 @@ func NewSessionServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(sessionServiceMethods.ByName("ReadFileBytes")),
 			connect.WithClientOptions(opts...),
 		),
+		runCommand: connect.NewClient[v1.RunCommandRequest, v1.RunCommandEvent](
+			httpClient,
+			baseURL+SessionServiceRunCommandProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("RunCommand")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -354,6 +367,7 @@ type sessionServiceClient struct {
 	listFiles              *connect.Client[v1.ListFilesRequest, v1.ListFilesResponse]
 	readFile               *connect.Client[v1.ReadFileRequest, v1.ReadFileResponse]
 	readFileBytes          *connect.Client[v1.ReadFileBytesRequest, v1.ReadFileBytesResponse]
+	runCommand             *connect.Client[v1.RunCommandRequest, v1.RunCommandEvent]
 }
 
 // ListProviders calls hermesh.session.v1.SessionService.ListProviders.
@@ -591,6 +605,11 @@ func (c *sessionServiceClient) ReadFileBytes(ctx context.Context, req *v1.ReadFi
 	return nil, err
 }
 
+// RunCommand calls hermesh.session.v1.SessionService.RunCommand.
+func (c *sessionServiceClient) RunCommand(ctx context.Context, req *v1.RunCommandRequest) (*connect.ServerStreamForClient[v1.RunCommandEvent], error) {
+	return c.runCommand.CallServerStream(ctx, connect.NewRequest(req))
+}
+
 // SessionServiceHandler is an implementation of the hermesh.session.v1.SessionService service.
 type SessionServiceHandler interface {
 	ListProviders(context.Context, *v1.ListProvidersRequest) (*v1.ListProvidersResponse, error)
@@ -624,6 +643,10 @@ type SessionServiceHandler interface {
 	ListFiles(context.Context, *v1.ListFilesRequest) (*v1.ListFilesResponse, error)
 	ReadFile(context.Context, *v1.ReadFileRequest) (*v1.ReadFileResponse, error)
 	ReadFileBytes(context.Context, *v1.ReadFileBytesRequest) (*v1.ReadFileBytesResponse, error)
+	// Runs an owner-initiated shell command or script in the session's workspace and
+	// streams its live output without creating a turn or waking the coding agent.
+	// Cancelling the stream terminates the command's process group immediately.
+	RunCommand(context.Context, *v1.RunCommandRequest, *connect.ServerStream[v1.RunCommandEvent]) error
 }
 
 // NewSessionServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -795,6 +818,12 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 		connect.WithSchema(sessionServiceMethods.ByName("ReadFileBytes")),
 		connect.WithHandlerOptions(opts...),
 	)
+	sessionServiceRunCommandHandler := connect.NewServerStreamHandlerSimple(
+		SessionServiceRunCommandProcedure,
+		svc.RunCommand,
+		connect.WithSchema(sessionServiceMethods.ByName("RunCommand")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.session.v1.SessionService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SessionServiceListProvidersProcedure:
@@ -851,6 +880,8 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 			sessionServiceReadFileHandler.ServeHTTP(w, r)
 		case SessionServiceReadFileBytesProcedure:
 			sessionServiceReadFileBytesHandler.ServeHTTP(w, r)
+		case SessionServiceRunCommandProcedure:
+			sessionServiceRunCommandHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -966,4 +997,8 @@ func (UnimplementedSessionServiceHandler) ReadFile(context.Context, *v1.ReadFile
 
 func (UnimplementedSessionServiceHandler) ReadFileBytes(context.Context, *v1.ReadFileBytesRequest) (*v1.ReadFileBytesResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.ReadFileBytes is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) RunCommand(context.Context, *v1.RunCommandRequest, *connect.ServerStream[v1.RunCommandEvent]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.RunCommand is not implemented"))
 }

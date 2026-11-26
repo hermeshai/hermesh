@@ -165,22 +165,61 @@ export function maskSecrets(text: string): string {
   return out;
 }
 
+const DESTRUCTIVE_PATTERNS: RegExp[] = [
+  /\brm\s+(?:-[A-Za-z]*[rf][A-Za-z]*\b|--recursive\b|--force\b)/,
+  /(?:^|[;&|\n]\s*)sudo\s+/,
+  /\bgit\s+(?:reset\s+--hard\b|clean\s+-[A-Za-z]*f|push\s+(?:--force|-f)\b|checkout\s+--\s*\.)/,
+  /\b(?:mkfs(?:\.\w+)?|fdisk|dd\s+if=|diskutil\s+erase\w*)\b/,
+  /\b(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba|z|k)?sh\b/,
+];
+
+export type RunnableShellPlan = {
+  command: string;
+  destructive: boolean;
+};
+
+export function isDestructiveShell(command: string): boolean {
+  const activeLines = command
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "" && !l.startsWith("#"))
+    .join("\n");
+  return DESTRUCTIVE_PATTERNS.some((re) => re.test(activeLines));
+}
+
 /**
- * 5-gate runnable check: returns the single-line shell command when safe to run non-interactively
- * in the session's workspace, or null otherwise.
+ * Evaluates whether a shell block (single-line or multi-line script, including shebangs/comments)
+ * can run non-interactively in the session's workspace, and whether it warrants an inline confirmation.
  */
-export function runnableShellCommand(lang: string, text: string): string | null {
+export function inspectRunnableShell(lang: string, text: string): RunnableShellPlan | null {
   const eff = effectiveCodeLang(lang, text);
   if (!eff.shell) return null;
   if (hiddenChars(text)) return null;
   const clean = cleanShellCommand(text);
-  if (!clean || clean.length > 500 || clean.includes("\n") || clean.startsWith("#")) return null;
-  const head = firstCommandToken(clean);
-  if (!head || INTERACTIVE_TUIS.has(head)) return null;
-  // Bare REPLs with no flags or script arguments hang waiting on stdin.
-  const rest = clean.replace(/^[$%]\s+/, "").trim().slice(head.length).trim();
-  if (BARE_REPLS.has(head) && rest === "") return null;
-  return clean;
+  if (!clean || clean.length > 4000) return null;
+
+  const execLines = clean
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "" && !l.startsWith("#"));
+  if (execLines.length === 0) return null;
+
+  for (const line of execLines) {
+    const head = firstCommandToken(line);
+    if (!head) continue;
+    if (INTERACTIVE_TUIS.has(head)) return null;
+    const rest = line.replace(/^[$%]\s+/, "").trim().slice(head.length).trim();
+    if (BARE_REPLS.has(head) && rest === "") return null;
+  }
+
+  return {
+    command: clean,
+    destructive: isDestructiveShell(clean),
+  };
+}
+
+export function runnableShellCommand(lang: string, text: string): string | null {
+  return inspectRunnableShell(lang, text)?.command ?? null;
 }
 
 // --- Lightweight ANSI SGR + Unified Diff Output Parser ---

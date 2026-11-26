@@ -169,3 +169,93 @@ func TestOwnerShellShortcutInterruptKillsProcessAndSkipsAgent(t *testing.T) {
 		}
 	}
 }
+
+func TestRunCommandStreamsMultilineScriptSilentlyAndCancelsCleanly(t *testing.T) {
+	if stdruntime.GOOS == "windows" {
+		t.Skip("uses POSIX sh script")
+	}
+	ctx := context.Background()
+	eng, _, _ := openTestEngine(t, t.TempDir(), time.Minute)
+	defer eng.Close()
+
+	repo := initGitProject(t)
+	if err := eng.SyncWorkspace("rcproj", repo, "main", identityv1.Workspace_WORKSPACE_WORKTREE, "RunCommand repo", nil); err != nil {
+		t.Fatal(err)
+	}
+	owner := OwnerPrincipal("dev_owner", "Owner")
+
+	launched, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ProjectId:     "rcproj",
+		InitialPrompt: "say ready",
+	})
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	sid := launched.Session.SessionId
+	before := waitForSessionStatus(t, eng, owner, sid, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+	runsBefore := len(before.Runs)
+	itemsBefore := len(before.Items)
+
+	// 1. Multi-line script with shebang runs in worktree, streams output, and adds zero Runs or TurnItems!
+	script := "#!/usr/bin/env bash\ndir=\"${1:-.}\"\nif [ ! -d \"$dir\" ]; then exit 1; fi\nprintf 'inline_multiline_ok\\n'"
+	var out strings.Builder
+	var doneEv *sessionv1.RunCommandEvent
+	err = eng.RunCommand(ctx, owner, &sessionv1.RunCommandRequest{
+		SessionId: sid,
+		Command:   script,
+	}, func(ev *sessionv1.RunCommandEvent) error {
+		out.WriteString(ev.OutputDelta)
+		if ev.Done {
+			doneEv = ev
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("RunCommand failed: %v", err)
+	}
+	if doneEv == nil || !doneEv.Done || doneEv.ExitCode != 0 || !strings.Contains(out.String(), "inline_multiline_ok") {
+		t.Fatalf("unexpected RunCommand result: done=%+v out=%q", doneEv, out.String())
+	}
+
+	after, _ := eng.GetSession(ctx, owner, sid)
+	if len(after.Runs) != runsBefore || len(after.Items) != itemsBefore {
+		t.Fatalf("RunCommand must not create Runs or TurnItems! runs %d->%d, items %d->%d", runsBefore, len(after.Runs), itemsBefore, len(after.Items))
+	}
+
+	// 2. Non-owner grant is denied.
+	grant := &Principal{Actor: &sessionv1.Actor{Kind: sessionv1.ActorKind_ACTOR_KIND_EXTERNAL_AGENT, Id: "ext"}}
+	if err := eng.RunCommand(ctx, grant, &sessionv1.RunCommandRequest{SessionId: sid, Command: "echo nope"}, func(*sessionv1.RunCommandEvent) error { return nil }); err == nil {
+		t.Fatalf("expected non-owner RunCommand to be denied")
+	}
+
+	// 3. Cancelling stream context kills long-running child process promptly.
+	cCtx, cancel := context.WithCancel(ctx)
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- eng.RunCommand(cCtx, owner, &sessionv1.RunCommandRequest{
+			SessionId: sid,
+			Command:   "echo started_stream && sleep 30",
+		}, func(ev *sessionv1.RunCommandEvent) error {
+			if strings.Contains(ev.OutputDelta, "started_stream") {
+				select {
+				case <-started:
+				default:
+					close(started)
+				}
+			}
+			return nil
+		})
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timed out waiting for first chunk")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("RunCommand did not terminate promptly on stream cancel")
+	}
+}
