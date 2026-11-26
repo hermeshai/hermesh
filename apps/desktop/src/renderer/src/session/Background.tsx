@@ -9,6 +9,7 @@ import {
 import { dateOf } from "@hermesh/core";
 import { i18n } from "../../../shared/i18n";
 import { Icon } from "../icons";
+import { TitleShine } from "../runningMotion";
 import { useNow, useStore } from "../store";
 import { formatTaskTiming, stripAnsi, taskLabel, taskSecondary, type TimeTranslate } from "./backgroundModel";
 import { Markdown } from "./Markdown";
@@ -182,12 +183,7 @@ function Row({
         <span className="sl1">
           <span className={`stitle ${isRunning ? "run" : ""}`}>
             {label}
-            {isRunning && (
-              <>
-                <span className="shine" data-t={label} aria-hidden="true" />
-                <span className="shine band" data-t={label} aria-hidden="true" />
-              </>
-            )}
+            {isRunning && <TitleShine text={label} />}
           </span>
           <Meta bt={bt} now={now} />
           {isRunning && (

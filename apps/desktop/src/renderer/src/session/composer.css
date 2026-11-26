@@ -20,7 +20,7 @@
 .th-todo-row.in_progress .th-todo-ic{color:var(--l2)}
 .th-todo-row.completed .th-todo-ic{color:var(--accent-t)}
 .th-todo-row.failed .th-todo-ic{color:var(--red)}
-.th-todo-spin{animation:spin 3.2s linear infinite}
+.th-todo-spin{display:inline-flex;will-change:transform;transform-origin:center;animation:spin 3.2s linear infinite}
 .th-todo-text{flex:1;min-width:0;overflow-wrap:anywhere}
 .wake-h{max-width:100%;min-width:0;cursor:pointer}
 .wake-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -159,8 +159,7 @@
 .bgc .srow{align-items:center;padding:7px 9px;font-size:13.5px;color:var(--l1)}
 .bgc .srow .sdot{width:6px;height:6px}
 .bgc .stitle.run{flex:0 1 auto;margin-right:auto}
-.bgc .stitle .shine::before{color:var(--l1)}
-.bgc .stitle .shine.band::before{color:var(--l3)}
+.bgc .stitle .shine{color:var(--l1)}
 .bgc .smeta{font-size:12px;line-height:16px}
 .bgc .smeta:empty{display:none}
 .bgc .smeta.w{color:var(--orange)}

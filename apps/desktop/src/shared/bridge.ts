@@ -80,6 +80,8 @@ export type Bridge = {
   onSettingsTab(cb: (tab: string) => void): () => void;
   /** Whether this window has the focus: now, and whenever it changes. */
   onWindowFocus(cb: (focused: boolean) => void): () => void;
+  /** Whether this window is visible on screen (not hidden or minimized): now, and whenever it changes. */
+  onWindowVisible?(cb: (visible: boolean) => void): () => void;
   /** Shows the main window with its session list narrowed to a grant (its client id) or a machine. */
   showInMain(filter: { grant: string } | { machine: string }): void;
   /** Shows the main window joining the owner as a trusted device (a machine only becoming one). */

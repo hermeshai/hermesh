@@ -119,7 +119,10 @@ func RunCommand(ctx context.Context, bin string, args []string, dir string, env 
 		return nil, nil, err
 	}
 	if hs := spawnHelpers.Load(); hs != nil && len(*hs) > 0 {
-		return runSpawned(ctx, *hs, bin, args, dir, env)
+		return runSpawned(ctx, bin, args, dir, env)
+	}
+	if hasSpawnPool() {
+		return runSpawned(ctx, bin, args, dir, env)
 	}
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir, cmd.Env = dir, env
@@ -144,14 +147,129 @@ func RunCommand(ctx context.Context, bin string, args []string, dir string, env 
 }
 
 // spawnHelpers, when set, create agent processes in turn (see spawn.Helper;
-// each serves one spawn at a time).
+// each serves one spawn at a time). Production daemons configure a lazy pool
+// (ConfigureSpawnHelperPool) so zero helper processes run until a session
+// actually spawns, scaling up to limit only under concurrent spawns.
 var (
 	spawnHelpers atomic.Pointer[[]*spawn.Helper]
 	spawnNext    atomic.Uint64
+
+	spawnPoolMu    sync.Mutex
+	spawnPoolLimit int
+	spawnPoolStart func() (*spawn.Helper, error)
+	spawnPoolSlots []*spawnSlot
 )
+
+type spawnSlot struct {
+	h    *spawn.Helper
+	busy atomic.Bool
+}
 
 // UseSpawnHelpers makes StartProc spawn through hs (none: in-process).
 func UseSpawnHelpers(hs ...*spawn.Helper) { spawnHelpers.Store(&hs) }
+
+// ConfigureSpawnHelperPool configures an on-demand pool of up to limit spawn
+// helpers created via start. The returned function closes all started helpers.
+func ConfigureSpawnHelperPool(limit int, start func() (*spawn.Helper, error)) func() {
+	spawnPoolMu.Lock()
+	spawnPoolLimit = limit
+	spawnPoolStart = start
+	spawnPoolSlots = nil
+	spawnPoolMu.Unlock()
+	return func() {
+		spawnPoolMu.Lock()
+		slots := spawnPoolSlots
+		spawnPoolSlots = nil
+		spawnPoolLimit = 0
+		spawnPoolStart = nil
+		spawnPoolMu.Unlock()
+		for _, s := range slots {
+			s.h.Close()
+		}
+	}
+}
+
+func hasSpawnPool() bool {
+	spawnPoolMu.Lock()
+	ok := spawnPoolLimit > 0 && spawnPoolStart != nil
+	spawnPoolMu.Unlock()
+	return ok
+}
+
+func acquireSpawnHelper() (*spawn.Helper, func(dead bool)) {
+	if hs := spawnHelpers.Load(); hs != nil && len(*hs) > 0 {
+		h := (*hs)[spawnNext.Add(1)%uint64(len(*hs))]
+		return h, func(bool) {}
+	}
+	spawnPoolMu.Lock()
+	for _, s := range spawnPoolSlots {
+		if s.busy.CompareAndSwap(false, true) {
+			h := s.h
+			spawnPoolMu.Unlock()
+			return h, func(dead bool) {
+				s.busy.Store(false)
+				if dead {
+					evictSpawnSlot(s)
+				}
+			}
+		}
+	}
+	canGrow := spawnPoolStart != nil && len(spawnPoolSlots) < spawnPoolLimit
+	start := spawnPoolStart
+	var fallback *spawnSlot
+	if !canGrow && len(spawnPoolSlots) > 0 {
+		fallback = spawnPoolSlots[spawnNext.Add(1)%uint64(len(spawnPoolSlots))]
+	}
+	spawnPoolMu.Unlock()
+
+	if canGrow {
+		h, err := start()
+		if err == nil && h != nil {
+			slot := &spawnSlot{h: h}
+			slot.busy.Store(true)
+			spawnPoolMu.Lock()
+			if spawnPoolStart == nil {
+				spawnPoolMu.Unlock()
+				h.Close()
+				return nil, func(bool) {}
+			}
+			spawnPoolSlots = append(spawnPoolSlots, slot)
+			spawnPoolMu.Unlock()
+			return h, func(dead bool) {
+				slot.busy.Store(false)
+				if dead {
+					evictSpawnSlot(slot)
+				}
+			}
+		}
+		spawnPoolMu.Lock()
+		if len(spawnPoolSlots) > 0 {
+			fallback = spawnPoolSlots[spawnNext.Add(1)%uint64(len(spawnPoolSlots))]
+		}
+		spawnPoolMu.Unlock()
+	}
+	if fallback != nil {
+		return fallback.h, func(dead bool) {
+			if dead {
+				evictSpawnSlot(fallback)
+			}
+		}
+	}
+	return nil, func(bool) {}
+}
+
+func evictSpawnSlot(target *spawnSlot) {
+	spawnPoolMu.Lock()
+	for i, s := range spawnPoolSlots {
+		if s == target {
+			spawnPoolSlots = append(spawnPoolSlots[:i], spawnPoolSlots[i+1:]...)
+			spawnPoolMu.Unlock()
+			target.h.Close()
+			return
+		}
+	}
+	spawnPoolMu.Unlock()
+}
 
 // afterExit runs once the agent exited: it kills what is left of its
 // process group, lets stderr (waitStderr) and the stdout reader reach the

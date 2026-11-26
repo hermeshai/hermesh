@@ -9,6 +9,7 @@ import { chooseLanguage } from "./language";
 import { setAppMenu } from "./menu";
 import { applyAppearance, migrateStayOnline, posted, stayOnlineListeners, watch } from "./notify";
 import { dataDir, socketPath } from "./paths";
+import { collectDesktopSnapshot, startPerfServer } from "./perf";
 import { platform } from "./platform";
 import { keepSignerRunning } from "./signer";
 import { receiveLink } from "./signin";
@@ -93,7 +94,11 @@ app.whenReady().then(async () => {
   setAppMenu();
   watch();
   const stopSigner = keepSignerRunning(socketPath());
-  app.on("will-quit", stopSigner);
+  const stopPerf = startPerfServer();
+  app.on("will-quit", () => {
+    stopPerf();
+    stopSigner();
+  });
   started = true;
   const url = linkArg(process.argv);
   if (url) receiveLink(url);
@@ -116,5 +121,6 @@ Object.assign(globalThis, {
     notifications: () => posted,
     tray: trayState,
     daemon: () => ({ info: daemonInfo(), start: startBackgroundService, stop: stopBackgroundService }),
+    perfSnapshot: collectDesktopSnapshot,
   },
 });

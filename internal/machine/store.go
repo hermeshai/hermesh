@@ -195,6 +195,13 @@ func OpenStore(path string) (*Store, error) {
 		return nil, err
 	}
 	walOnce.Do(func() {
+		metrics.Default.GaugeFunc("hermesh_machine_db_bytes", func() int64 {
+			st, err := os.Stat(path)
+			if err != nil {
+				return 0
+			}
+			return st.Size()
+		})
 		metrics.Default.GaugeFunc("hermesh_machine_wal_bytes", func() int64 {
 			st, err := os.Stat(path + "-wal")
 			if err != nil {

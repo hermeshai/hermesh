@@ -14,6 +14,7 @@ import { sessions as sessionApi } from "./api";
 import { AppMenuButton } from "./MainWindow";
 import { Icon } from "./icons";
 import { setSidebar } from "./layout";
+import { TitleShine } from "./runningMotion";
 import { unreadCount } from "./her/environments";
 import { expiringClients } from "./overview/Attention";
 import { keys, ownKeys } from "./platform";
@@ -924,12 +925,7 @@ function RowTitle({ s, title }: { s: Session; title: string }) {
   return (
     <span className={`stitle ${run ? "run" : ""}`} title={title}>
       {title}
-      {run && (
-        <>
-          <span className="shine" data-t={title} aria-hidden="true" />
-          <span className="shine band" data-t={title} aria-hidden="true" />
-        </>
-      )}
+      {run && <TitleShine text={title} />}
     </span>
   );
 }
