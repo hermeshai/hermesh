@@ -545,6 +545,12 @@
       "$ref": "#/definitions/ModelsShowParams"
     },
     {
+      "$ref": "#/definitions/ModelsTitleParams"
+    },
+    {
+      "$ref": "#/definitions/ModelsTitleResult"
+    },
+    {
       "$ref": "#/definitions/Op"
     },
     {
@@ -15519,6 +15525,57 @@
       ],
       "type": "object"
     },
+    "ModelsTitleImage": {
+      "additionalProperties": false,
+      "description": "An inline base64 image passed to `models/title`.",
+      "properties": {
+        "data": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "data",
+        "mime_type"
+      ],
+      "type": "object"
+    },
+    "ModelsTitleParams": {
+      "additionalProperties": false,
+      "description": "`models/title`: stateless, tool-free completion on the smallest available chat model.",
+      "properties": {
+        "images": {
+          "items": {
+            "$ref": "#/definitions/ModelsTitleImage"
+          },
+          "type": "array"
+        },
+        "prompt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "prompt"
+      ],
+      "type": "object"
+    },
+    "ModelsTitleResult": {
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "text"
+      ],
+      "type": "object"
+    },
     "MotionDirection": {
       "enum": [
         "left",
@@ -22525,6 +22582,10 @@
       "params": "ModelsShowParams",
       "result": "Empty"
     },
+    "models/title": {
+      "params": "ModelsTitleParams",
+      "result": "ModelsTitleResult"
+    },
     "pptx/metafile": {
       "params": "PptxMetafileParams",
       "result": "PptxMetafileResult"
@@ -22819,6 +22880,7 @@
       "models/list": "stable",
       "models/refresh": "stable",
       "models/show": "stable",
+      "models/title": "stable",
       "pptx/metafile": "experimental",
       "pptx/read": "experimental",
       "pptx/write": "experimental",

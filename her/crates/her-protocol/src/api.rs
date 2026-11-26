@@ -62,6 +62,7 @@ pub mod method {
     pub const MODELS_SHOW: &str = "models/show";
     pub const MODELS_CONFIGURE: &str = "models/configure";
     pub const MODELS_CATALOG: &str = "models/catalog";
+    pub const MODELS_TITLE: &str = "models/title";
     pub const PROVIDERS_ADD: &str = "providers/add";
     pub const PROVIDERS_UPDATE: &str = "providers/update";
     pub const PROVIDERS_REMOVE: &str = "providers/remove";
@@ -2172,4 +2173,27 @@ pub struct ChatGptCompleteParams {
     pub state: String,
     /// The redirect's `client_id`, when it has one: ChatGPT names there the client it registered.
     #[serde(default, skip_serializing_if = "Option::is_none")] pub client_id: Option<String>,
+}
+
+/// An inline base64 image passed to `models/title`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ModelsTitleImage {
+    pub mime_type: String,
+    pub data: String,
+}
+
+/// `models/title`: stateless, tool-free completion on the smallest available chat model.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ModelsTitleParams {
+    pub prompt: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<ModelsTitleImage>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ModelsTitleResult {
+    pub text: String,
+    pub model: String,
 }

@@ -151,20 +151,22 @@ func (n *Machine) openSessions() error {
 		idleTTL = 10 * time.Minute
 	}
 	eng, err := kernel.Open(kernel.Config{
-		DataDir:          n.cfg.DataDir,
-		MachineID:        n.machineID,
-		Logger:           n.log,
-		Drivers:          drivers,
-		IncludeScripted:  includeScripted,
-		IdleTTL:          idleTTL,
-		QuestionTimeout:  30 * time.Minute,
-		MachineMaxMode:   n.maxRuntimeMode(),
-		IsPaused:         n.isPaused,
-		MCPServers:       n.mcpServers,
-		AgentModels:      n.agentModelList,
-		ResolveSelection: n.resolveModelSelection,
-		ReleaseOnArchive: n.releaseOnArchive,
-		OnDeliverMessage: n.deliverMessageRPC,
+		DataDir:               n.cfg.DataDir,
+		MachineID:             n.machineID,
+		Logger:                n.log,
+		Drivers:               drivers,
+		IncludeScripted:       includeScripted,
+		IdleTTL:               idleTTL,
+		QuestionTimeout:       30 * time.Minute,
+		MachineMaxMode:        n.maxRuntimeMode(),
+		IsPaused:              n.isPaused,
+		MCPServers:            n.mcpServers,
+		AgentModels:           n.agentModelList,
+		PrimaryTitleGenerator: n.her,
+		CachedAgentModels:     n.cachedAgentModels,
+		ResolveSelection:      n.resolveModelSelection,
+		ReleaseOnArchive:      n.releaseOnArchive,
+		OnDeliverMessage:      n.deliverMessageRPC,
 		OnNotice: func(sess *sessionv1.Session, ev *sessionv1.SessionEvent) {
 			n.sessionNotice(sess, ev)
 			n.sessionNews(sess, ev)
@@ -257,6 +259,16 @@ func (n *Machine) agentModelList(agent string) ([]rt.Model, rt.Settings, bool) {
 	}
 	d := n.agentDefaults(agent)
 	return i.Models, rt.Settings{Model: cmp.Or(d.Model, i.Own.Model), Effort: cmp.Or(d.Effort, i.Own.Effort)}, true
+}
+
+func (n *Machine) cachedAgentModels(agent string) []rt.Model {
+	n.mu.Lock()
+	i, ok := n.infos[agent]
+	n.mu.Unlock()
+	if !ok || len(i.Models) == 0 {
+		return nil
+	}
+	return slices.Clone(i.Models)
 }
 
 func (n *Machine) resolveModelSelection(instanceID string, sel *sessionv1.ModelSelection) (*sessionv1.ModelSelection, error) {

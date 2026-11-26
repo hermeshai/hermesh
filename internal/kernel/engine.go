@@ -179,6 +179,12 @@ type Config struct {
 	// AgentModels: each coding agent's own list of models, as the machine
 	// last read it; nil offers the manifest's.
 	AgentModels catalog.AgentModels
+	// PrimaryTitleGenerator, when set and enabled (e.g. Her's smallest model),
+	// runs stateless title generation before falling back to the session's CLI.
+	PrimaryTitleGenerator runtime.TitleGenerator
+	// CachedAgentModels returns an agent's already-cached model list in memory
+	// without triggering any subprocess or network discovery.
+	CachedAgentModels func(agent string) []runtime.Model
 }
 
 type shellSub struct {

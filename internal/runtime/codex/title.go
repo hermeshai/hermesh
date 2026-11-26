@@ -52,50 +52,65 @@ func (d *Driver) GenerateTitle(ctx context.Context, cfg *sessionv1.ProviderInsta
 		instEnv = cfg.Env
 	}
 	env := runtime.BuildEnv(d.PathEnv, instEnv)
-
-	args := []string{
-		"exec",
-		"--ephemeral",
-		"--skip-git-repo-check",
-		"-s", "read-only",
-		"--config", "features.connectors=false",
-		"--config", "features.plugins=false",
-		"--config", "features.apps=false",
-		"--config", "features.codex_hooks=false",
-		"--config", "features.hooks=false",
-		"--config", `model_reasoning_effort="low"`,
+	modelHint := strings.TrimSpace(req.ModelHint)
+	if modelHint == "default" {
+		modelHint = ""
 	}
-	if m := strings.TrimSpace(req.ModelHint); m != "" && m != "default" {
-		args = append(args, "--model", m)
-	}
-	args = append(args,
-		"--output-schema", schemaPath,
-		"--output-last-message", outPath,
-	)
-	args = append(args, imageArgs...)
-	args = append(args, "-")
 
-	cmd := runtime.Command(ctx, bin, args...)
-	cmd.Dir = tmpDir
-	cmd.Env = env
-	cmd.Stdin = strings.NewReader(req.Prompt)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		detail := strings.TrimSpace(stderr.String())
-		if detail == "" {
-			detail = strings.TrimSpace(stdout.String())
+	runAttempt := func(model string) ([]byte, error) {
+		_ = os.Remove(outPath)
+		args := []string{
+			"exec",
+			"--ephemeral",
+			"--skip-git-repo-check",
+			"-s", "read-only",
+			"--config", "features.connectors=false",
+			"--config", "features.plugins=false",
+			"--config", "features.apps=false",
+			"--config", "features.codex_hooks=false",
+			"--config", "features.hooks=false",
+			"--config", `model_reasoning_effort="low"`,
 		}
-		if detail != "" {
-			return runtime.TitleGenResult{}, fmt.Errorf("codex title exec: %s", detail)
+		if model != "" {
+			args = append(args, "--model", model)
 		}
+		args = append(args,
+			"--output-schema", schemaPath,
+			"--output-last-message", outPath,
+		)
+		args = append(args, imageArgs...)
+		args = append(args, "-")
+
+		cmd := runtime.Command(ctx, bin, args...)
+		cmd.Dir = tmpDir
+		cmd.Env = env
+		cmd.Stdin = strings.NewReader(req.Prompt)
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			detail := strings.TrimSpace(stderr.String())
+			if detail == "" {
+				detail = strings.TrimSpace(stdout.String())
+			}
+			if detail != "" {
+				return nil, fmt.Errorf("codex title exec: %s", detail)
+			}
+			return nil, err
+		}
+		rawBytes, err := os.ReadFile(outPath)
+		if err != nil || len(bytes.TrimSpace(rawBytes)) == 0 {
+			rawBytes = stdout.Bytes()
+		}
+		return rawBytes, nil
+	}
+
+	rawBytes, err := runAttempt(modelHint)
+	if err != nil && modelHint != "" && ctx.Err() == nil {
+		rawBytes, err = runAttempt("")
+	}
+	if err != nil {
 		return runtime.TitleGenResult{}, err
-	}
-
-	rawBytes, err := os.ReadFile(outPath)
-	if err != nil || len(bytes.TrimSpace(rawBytes)) == 0 {
-		rawBytes = stdout.Bytes()
 	}
 	return runtime.ParseTitleGenOutput(string(rawBytes))
 }
