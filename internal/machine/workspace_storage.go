@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -39,7 +40,7 @@ var regenerable = map[string]bool{
 	"node_modules": true, ".pnpm-store": true, "bower_components": true,
 	".venv": true, "venv": true, "__pycache__": true, ".pytest_cache": true, ".mypy_cache": true, ".ruff_cache": true, ".tox": true,
 	".gradle": true, ".next": true, ".nuxt": true, ".svelte-kit": true, ".turbo": true, ".parcel-cache": true, ".angular": true, ".expo": true,
-	"DerivedData": true, ".build": true, "Pods": true, ".dart_tool": true,
+	"DerivedData": true, ".build": true, ".swiftpm": true, "xcuserdata": true, "Pods": true, ".dart_tool": true,
 	".cache": true, "coverage": true,
 }
 
@@ -154,20 +155,31 @@ func sessionUsesWorktree(s *sessionv1.Session) (string, bool) {
 	return wt, true
 }
 
+func sessionBusyForRelease(s *sessionv1.Session) bool {
+	if s.ActiveRunId != "" || s.PendingRequestId != "" || s.ActiveBackgroundCount > 0 || s.ActiveDaemonCount > 0 {
+		return true
+	}
+	switch s.Status {
+	case sessionv1.SessionStatus_SESSION_STATUS_IDLE,
+		sessionv1.SessionStatus_SESSION_STATUS_CRASHED,
+		sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED:
+		return false
+	default:
+		return true
+	}
+}
+
 func (n *Machine) scanWorkspaces(ctx context.Context) ([]*machinev1.Workspace, error) {
 	if n.sessions == nil {
 		return nil, nil
 	}
-	rows, err := n.sessions.ListAllSessions(false)
+	rows, err := n.sessions.ListAllSessions(true)
 	if err != nil {
 		return nil, err
 	}
 	repos := map[string]string{}
 	var todo []*sessionv1.Session
 	for _, s := range rows {
-		if s.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
-			continue
-		}
 		path, ok := sessionUsesWorktree(s)
 		if !ok || path != n.expectedWorktreePath(s.SessionId) {
 			continue
@@ -219,7 +231,7 @@ func (n *Machine) inspectWorkspace(ctx context.Context, sess *sessionv1.Session,
 	n.wsCache.mu.Lock()
 	releasing := n.wsCache.releasing[sess.SessionId]
 	n.wsCache.mu.Unlock()
-	busy := releasing || sess.ActiveRunId != "" || sess.PendingRequestId != "" || sess.Status != sessionv1.SessionStatus_SESSION_STATUS_IDLE
+	busy := releasing || sessionBusyForRelease(sess)
 	w := &machinev1.Workspace{
 		SessionId:  sess.SessionId,
 		ProjectId:  sess.ProjectId,
@@ -258,28 +270,98 @@ func blockOf(err error) (machinev1.WorkspaceBlock, string) {
 	return machinev1.WorkspaceBlock_WORKSPACE_BLOCK_UNVERIFIED, ""
 }
 
-// checkReleaseSession verifies whether sess's worktree can be safely removed
-// (used before archiving a session).
-func (n *Machine) checkReleaseSession(ctx context.Context, sess *sessionv1.Session) error {
+// removeVerifiedWorktree removes a worktree directory that checkSessionCheckout
+// has already verified holds no unsaved changes or non-regenerable local files.
+// Read-only cache subdirectories (e.g. Go modcache 0o555 dirs) can cause git
+// worktree remove to fail mid-delete; making entries user-writable and pruning
+// prevents leaving a half-deleted corrupt directory behind.
+func removeVerifiedWorktree(ctx context.Context, repo, path string) error {
+	if _, err := gitUnlimited(ctx, repo, "worktree", "remove", "--force", "--", filepath.ToSlash(path)); err == nil {
+		return nil
+	}
+	_ = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
+		if d.IsDir() {
+			_ = os.Chmod(p, 0o700)
+		} else {
+			_ = os.Chmod(p, 0o600)
+		}
+		return nil
+	})
+	rmErr := os.RemoveAll(path)
+	_, _ = gitUnlimited(ctx, repo, "worktree", "prune")
+	return rmErr
+}
+
+// releaseOnArchive removes an archived session's worktree when doing so loses
+// no local changes or files; otherwise it leaves the worktree in place (still
+// visible in Storage) and reports kept = true so archiving never fails.
+func (n *Machine) releaseOnArchive(ctx context.Context, sess *sessionv1.Session) bool {
 	path, ok := sessionUsesWorktree(sess)
 	if !ok {
-		return nil
+		return false
 	}
+	id := sess.SessionId
+	if n.cfg.WorkspaceMode == "none" {
+		if path != n.expectedWorktreePath(id) {
+			return true
+		}
+		st, err := os.Lstat(path)
+		if os.IsNotExist(err) {
+			n.forgetWorkspace(id)
+			return false
+		}
+		if err != nil || !st.IsDir() {
+			return true
+		}
+		_ = os.RemoveAll(path)
+		n.forgetWorkspace(id)
+		return false
+	}
+	n.wsCache.mu.Lock()
+	if n.wsCache.releasing == nil {
+		n.wsCache.releasing = map[string]bool{}
+	}
+	if n.wsCache.releasing[id] {
+		n.wsCache.mu.Unlock()
+		return true
+	}
+	n.wsCache.releasing[id] = true
+	n.wsCache.mu.Unlock()
+	defer func() {
+		n.wsCache.mu.Lock()
+		delete(n.wsCache.releasing, id)
+		n.wsCache.mu.Unlock()
+	}()
+
 	st, err := os.Lstat(path)
 	if os.IsNotExist(err) {
-		return nil
+		n.forgetWorkspace(id)
+		return false
 	}
-	if err != nil {
-		return err
-	}
-	if !st.IsDir() || path != n.expectedWorktreePath(sess.SessionId) {
-		return kept(connect.CodeAborted, machinev1.WorkspaceBlock_WORKSPACE_BLOCK_UNVERIFIED, "", "cannot verify this session's checkout")
+	if err != nil || !st.IsDir() || path != n.expectedWorktreePath(id) {
+		n.log.Info("archive kept workspace", "session", id, "reason", "unverified worktree path")
+		return true
 	}
 	repo := n.repoPathForProject(sess.ProjectId)
 	if repo == "" {
-		return kept(connect.CodeAborted, machinev1.WorkspaceBlock_WORKSPACE_BLOCK_UNVERIFIED, "", "cannot open project %q", sess.ProjectId)
+		n.log.Info("archive kept workspace", "session", id, "reason", "missing project repo")
+		return true
 	}
-	return checkSessionCheckout(ctx, n.sessions, sess, repo, path)
+	cctx := context.WithoutCancel(ctx)
+	if err := checkSessionCheckout(cctx, n.sessions, sess, repo, path); err != nil {
+		n.log.Info("archive kept workspace", "session", id, "err", err)
+		return true
+	}
+	if err := removeVerifiedWorktree(cctx, repo, path); err != nil {
+		n.log.Warn("archive failed to remove worktree; keeping it", "session", id, "err", err)
+		return true
+	}
+	n.forgetWorkspace(id)
+	n.log.Info("workspace released", "session", id)
+	return false
 }
 
 // ReleaseWorkspaces releases each session's checkout it can; the others
@@ -307,81 +389,80 @@ func (n *Machine) releaseWorkspace(ctx context.Context, id string) error {
 	if n.sessions == nil {
 		return cerr(connect.CodeNotFound, "session not found")
 	}
-	sess, err := n.sessions.Store().Session(id)
-	if err != nil || sess == nil {
-		return cerr(connect.CodeNotFound, "session %q not found", id)
-	}
-	if sess.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
-		return cerr(connect.CodeFailedPrecondition, "session is archived")
-	}
-	if sess.Status != sessionv1.SessionStatus_SESSION_STATUS_IDLE || sess.ActiveRunId != "" || sess.PendingRequestId != "" {
-		return kept(connect.CodeFailedPrecondition, machinev1.WorkspaceBlock_WORKSPACE_BLOCK_BUSY, "", "wait for the session to be idle before releasing its workspace")
-	}
-	path, ok := sessionUsesWorktree(sess)
-	if !ok || n.cfg.WorkspaceMode == "none" {
-		return cerr(connect.CodeFailedPrecondition, "only a managed Git worktree can be released")
-	}
+	return n.sessions.WithSessionLock(id, func() error {
+		sess, err := n.sessions.Store().Session(id)
+		if err != nil || sess == nil {
+			return cerr(connect.CodeNotFound, "session %q not found", id)
+		}
+		if sessionBusyForRelease(sess) {
+			return kept(connect.CodeFailedPrecondition, machinev1.WorkspaceBlock_WORKSPACE_BLOCK_BUSY, "", "wait for the session to be idle before releasing its workspace")
+		}
+		path, ok := sessionUsesWorktree(sess)
+		if !ok || n.cfg.WorkspaceMode == "none" {
+			return cerr(connect.CodeFailedPrecondition, "only a managed Git worktree can be released")
+		}
 
-	n.wsCache.mu.Lock()
-	if n.wsCache.releasing == nil {
-		n.wsCache.releasing = map[string]bool{}
-	}
-	if n.wsCache.releasing[id] {
-		n.wsCache.mu.Unlock()
-		return kept(connect.CodeUnavailable, machinev1.WorkspaceBlock_WORKSPACE_BLOCK_BUSY, "", "the workspace is already being released")
-	}
-	n.wsCache.releasing[id] = true
-	n.wsCache.mu.Unlock()
-	defer func() {
 		n.wsCache.mu.Lock()
-		delete(n.wsCache.releasing, id)
+		if n.wsCache.releasing == nil {
+			n.wsCache.releasing = map[string]bool{}
+		}
+		if n.wsCache.releasing[id] {
+			n.wsCache.mu.Unlock()
+			return kept(connect.CodeUnavailable, machinev1.WorkspaceBlock_WORKSPACE_BLOCK_BUSY, "", "the workspace is already being released")
+		}
+		n.wsCache.releasing[id] = true
 		n.wsCache.mu.Unlock()
-	}()
+		defer func() {
+			n.wsCache.mu.Lock()
+			delete(n.wsCache.releasing, id)
+			n.wsCache.mu.Unlock()
+		}()
 
-	st, err := os.Lstat(path)
-	missing := os.IsNotExist(err)
-	if err != nil && !missing {
-		return err
-	}
-	branch := cmp.Or(sess.Branch, sess.GetWorkspaceStrategy().GetBranch())
-	if !missing && (!st.IsDir() || path != n.expectedWorktreePath(id) || branch == "") {
-		return kept(connect.CodeAborted, machinev1.WorkspaceBlock_WORKSPACE_BLOCK_UNVERIFIED, "", "cannot verify this session's checkout")
-	}
-
-	var repo string
-	if !missing {
-		repo = n.repoPathForProject(sess.ProjectId)
-		if repo == "" {
-			return kept(connect.CodeAborted, machinev1.WorkspaceBlock_WORKSPACE_BLOCK_UNVERIFIED, "", "cannot open project %q", sess.ProjectId)
-		}
-		if err := checkSessionCheckout(ctx, n.sessions, sess, repo, path); err != nil {
+		st, err := os.Lstat(path)
+		missing := os.IsNotExist(err)
+		if err != nil && !missing {
 			return err
 		}
-	}
+		branch := cmp.Or(sess.Branch, sess.GetWorkspaceStrategy().GetBranch())
+		if !missing && (!st.IsDir() || path != n.expectedWorktreePath(id) || branch == "") {
+			return kept(connect.CodeAborted, machinev1.WorkspaceBlock_WORKSPACE_BLOCK_UNVERIFIED, "", "cannot verify this session's checkout")
+		}
 
-	hadLiveProc := sess.ActiveProviderSessionId != "" && n.sessions.Supervisor().Get(sess.ActiveProviderSessionId) != nil
-	if hadLiveProc {
-		n.sessions.Supervisor().Detach(sess.ActiveProviderSessionId, false)
-	}
-	if missing {
+		var repo string
+		if !missing {
+			repo = n.repoPathForProject(sess.ProjectId)
+			if repo == "" {
+				return kept(connect.CodeAborted, machinev1.WorkspaceBlock_WORKSPACE_BLOCK_UNVERIFIED, "", "cannot open project %q", sess.ProjectId)
+			}
+			if err := checkSessionCheckout(ctx, n.sessions, sess, repo, path); err != nil {
+				return err
+			}
+		}
+
+		hadLiveProc := sess.ActiveProviderSessionId != "" && n.sessions.Supervisor().Get(sess.ActiveProviderSessionId) != nil
+		if hadLiveProc {
+			n.sessions.Supervisor().Detach(sess.ActiveProviderSessionId, false)
+		}
+		if missing {
+			n.forgetWorkspace(id)
+			return nil
+		}
+		if hadLiveProc {
+			// Re-check in case the provider flushed files while shutting down.
+			if err := checkSessionCheckout(ctx, n.sessions, sess, repo, path); err != nil {
+				return err
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := removeVerifiedWorktree(context.WithoutCancel(ctx), repo, path); err != nil {
+			return err
+		}
 		n.forgetWorkspace(id)
+		n.log.Info("workspace released", "session", id)
 		return nil
-	}
-	if hadLiveProc {
-		// Re-check in case the provider flushed files while shutting down.
-		if err := checkSessionCheckout(ctx, n.sessions, sess, repo, path); err != nil {
-			return err
-		}
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if _, err := gitUnlimited(context.WithoutCancel(ctx), repo, "worktree", "remove", "--force", "--", filepath.ToSlash(path)); err != nil {
-		return err
-	}
-	n.forgetWorkspace(id)
-	n.log.Info("workspace released", "session", id)
-	return nil
+	})
 }
 
 func (n *Machine) forgetWorkspace(id string) {
@@ -415,7 +496,7 @@ func (n *Machine) autoRelease(ctx context.Context, now time.Time) {
 	if !n.AutoRelease() || n.cfg.WorkspaceMode == "none" || n.sessions == nil {
 		return
 	}
-	rows, err := n.sessions.ListAllSessions(false)
+	rows, err := n.sessions.ListAllSessions(true)
 	if err != nil {
 		n.log.Warn("auto-release: listing sessions", "err", err)
 		return
@@ -425,7 +506,7 @@ func (n *Machine) autoRelease(ctx context.Context, now time.Time) {
 		if ctx.Err() != nil {
 			return
 		}
-		if s.Status != sessionv1.SessionStatus_SESSION_STATUS_IDLE || !s.GetUpdatedAt().AsTime().Before(cutoff) {
+		if sessionBusyForRelease(s) || !s.GetUpdatedAt().AsTime().Before(cutoff) {
 			continue
 		}
 		path, ok := sessionUsesWorktree(s)
@@ -517,11 +598,12 @@ func checkSessionCheckout(ctx context.Context, eng *kernel.Engine, sess *session
 	}
 
 	// Verify working tree (tracked + untracked non-ignored files) matches latest checkpoint tree (or HEAD^{tree}).
+	if eng == nil {
+		return unverified("missing session engine")
+	}
 	var expectedTree string
-	if eng != nil {
-		if ckpts, cErr := eng.Store().Checkpoints(sess.SessionId); cErr == nil && len(ckpts) > 0 {
-			expectedTree = ckpts[len(ckpts)-1].GitTreeOid
-		}
+	if ckpts, cErr := eng.Store().Checkpoints(sess.SessionId); cErr == nil && len(ckpts) > 0 {
+		expectedTree = ckpts[len(ckpts)-1].GitTreeOid
 	}
 	if expectedTree == "" {
 		ht, err := git(ctx, path, "rev-parse", "HEAD^{tree}")
@@ -530,30 +612,27 @@ func checkSessionCheckout(ctx context.Context, eng *kernel.Engine, sess *session
 		}
 		expectedTree = strings.TrimSpace(ht)
 	}
-	var curTree string
-	if eng != nil {
-		curTree, _, err = eng.VCS().SnapshotWorkingTree(ctx, path)
-		if err != nil {
-			return err
-		}
+	curTree, _, err := eng.VCS().SnapshotWorkingTree(ctx, path)
+	if err != nil {
+		return err
 	}
 	if curTree != "" && curTree != expectedTree {
 		changedPath := firstDiffTreePath(ctx, path, expectedTree, curTree)
 		return kept(connect.CodeAborted, machinev1.WorkspaceBlock_WORKSPACE_BLOCK_CHANGES, changedPath, "save or move local changes before releasing it (%s)", changedPath)
 	}
 
-	// Check ignored files that are not regenerable build caches.
-	ignoredStatus, err := git(ctx, path, "-c", "core.quotepath=false", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "status", "--porcelain=v1", "--ignored=matching", "--ignore-submodules=none")
+	// Check ignored files that are not regenerable build caches (-z avoids newline/CRLF/quoting ambiguity).
+	ignoredStatus, err := git(ctx, path, "-c", "core.quotepath=false", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "status", "--porcelain=v1", "-z", "--ignored=matching", "--ignore-submodules=none")
 	if err != nil {
 		return err
 	}
-	for line := range strings.SplitSeq(ignoredStatus, "\n") {
-		if len(line) < 4 || line[:2] != "!!" {
+	for entry := range strings.SplitSeq(ignoredStatus, "\x00") {
+		if len(entry) < 4 || entry[:3] != "!! " {
 			continue
 		}
-		file := line[3:]
+		file := entry[3:]
 		if !regenerablePath(file) {
-			return kept(connect.CodeAborted, machinev1.WorkspaceBlock_WORKSPACE_BLOCK_LOCAL_FILES, file, "save or move local files before releasing it (%s)", line)
+			return kept(connect.CodeAborted, machinev1.WorkspaceBlock_WORKSPACE_BLOCK_LOCAL_FILES, file, "save or move local files before releasing it (%s)", entry)
 		}
 	}
 	return nil

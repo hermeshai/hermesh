@@ -311,6 +311,31 @@ func (o *Owner) cachedSessions(includeArchived bool) []*sessionv1.Session {
 	return out
 }
 
+func (o *Owner) cachedSession(sessionID string) *sessionv1.Session {
+	var sb []byte
+	if err := o.st.db.QueryRow(`SELECT session_payload FROM sessions_cache WHERE session_id = ?`, sessionID).Scan(&sb); err == nil && len(sb) > 0 {
+		sess := &sessionv1.Session{}
+		if proto.Unmarshal(sb, sess) == nil {
+			return sess
+		}
+	}
+	if o.rep != nil {
+		var held *sessionv1.Session
+		o.rep.feeds(func(feeds map[string]*feed) {
+			for _, f := range feeds {
+				if s := f.sessions[sessionID]; s != nil {
+					held = proto.CloneOf(s)
+					return
+				}
+			}
+		})
+		if held != nil {
+			return held
+		}
+	}
+	return nil
+}
+
 func (o *Owner) cachedProjectionOnly(sessionID string) *sessionv1.SessionProjection {
 	var sb, pb []byte
 	err := o.st.db.QueryRow(`SELECT session_payload, projection_payload FROM sessions_cache WHERE session_id = ?`, sessionID).Scan(&sb, &pb)
@@ -486,18 +511,32 @@ func (o *Owner) flushSessionOutboxOnce(ctx context.Context) {
 		if isOfflineErr(err) {
 			skipMachine[item.machineID] = true
 		} else {
-			o.recordOutboxFailure(item, err)
+			o.recordOutboxFailure(ctx, pm, item, err)
 			_, _ = o.st.db.Exec(`DELETE FROM sessions_outbox WHERE seq = ?`, item.seq)
 		}
 	}
 }
 
-func (o *Owner) recordOutboxFailure(item outboxRow, err error) {
-	proj := o.cachedProjection(item.sessionID)
-	if proj == nil || proj.Session == nil {
+func (o *Owner) recordOutboxFailure(ctx context.Context, pm *peer.Machine, item outboxRow, err error) {
+	// If an optimistic offline UpdateSession (e.g. Archive) was rejected because the
+	// remote session changed state (e.g. started running), reconcile from the machine
+	// immediately instead of leaving stale optimistic status or zeroing LastEventSeq.
+	if item.method == "UpdateSession" && pm != nil && item.sessionID != "" {
+		if remote, gErr := pm.Session.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: item.sessionID}); gErr == nil && remote.GetProjection().GetSession() != nil {
+			o.cacheSession(remote.Projection.Session, remote.Projection)
+			return
+		}
+	}
+	proj := o.cachedProjectionOnly(item.sessionID)
+	var sess *sessionv1.Session
+	if proj != nil && proj.Session != nil {
+		sess = proj.Session
+	} else {
+		sess = o.cachedSession(item.sessionID)
+	}
+	if sess == nil {
 		return
 	}
-	sess := proj.Session
 	if sess.OfflineQueued && sess.Status == sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
 		return
 	}
@@ -515,6 +554,9 @@ func (o *Owner) recordOutboxFailure(item outboxRow, err error) {
 		sess.QueuedRunCount = 0
 	}
 	sess.UpdatedAt = timestamppb.Now()
+	if proj != nil {
+		proj.Session = sess
+	}
 	o.cacheSession(sess, proj)
 }
 
@@ -1441,8 +1483,29 @@ func (s *ownerSessionService) UpdateSession(ctx context.Context, req *sessionv1.
 	if err := o.enqueueOutbox(req.CommandId, machineID, req.SessionId, "UpdateSession", "session update", req); err != nil {
 		return nil, err
 	}
-	proj := o.cachedProjection(req.SessionId)
-	return &sessionv1.UpdateSessionResponse{Session: proj.GetSession(), TransitionApplied: "queued_offline"}, nil
+	sess := o.cachedSession(req.SessionId)
+	if sess != nil {
+		now := timestamppb.Now()
+		if clean := runtime.CleanTitle(req.Title); clean != "" {
+			sess.Title = clean
+			sess.TitleRenamed = true
+		}
+		if req.HasPinned {
+			sess.Pinned = req.Pinned
+		}
+		if req.HasArchived {
+			if req.Archived {
+				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED
+				sess.ArchivedAt = now
+			} else if sess.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+				sess.ArchivedAt = nil
+			}
+		}
+		sess.UpdatedAt = now
+		o.cacheSession(sess, nil)
+	}
+	return &sessionv1.UpdateSessionResponse{Session: sess, TransitionApplied: "queued_offline"}, nil
 }
 
 func (s *ownerSessionService) RespondRuntimeRequest(ctx context.Context, req *sessionv1.RespondRuntimeRequestRequest) (*sessionv1.RespondRuntimeRequestResponse, error) {

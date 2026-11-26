@@ -36,8 +36,24 @@ final class Conversations {
     func keep(_ id: String, _ proj: Hermesh_Session_V1_SessionProjection) {
         guard !proj.items.isEmpty || proj.hasSession else { return }
         defer { touch(id) }
-        if let kept = held[id], kept.session.progress.lastEventSeq == proj.session.progress.lastEventSeq, kept.items.count == proj.items.count { return }
+        if let kept = held[id],
+           kept.session.progress.lastEventSeq == proj.session.progress.lastEventSeq,
+           kept.session.status == proj.session.status,
+           kept.session.title == proj.session.title,
+           kept.items.count == proj.items.count { return }
         held[id] = proj
+        persist(id, proj)
+    }
+
+    /// Updates a kept projection's session metadata (e.g. archived or renamed) at once.
+    func updateSession(_ s: Session) {
+        guard var proj = held[s.sessionID] else { return }
+        proj.session = s
+        held[s.sessionID] = proj
+        persist(s.sessionID, proj)
+    }
+
+    private func persist(_ id: String, _ proj: Hermesh_Session_V1_SessionProjection) {
         guard persistent, let data = try? proj.serializedData() else { return }
         let dir = directory, url = file(id)
         Task.detached(priority: .utility) {

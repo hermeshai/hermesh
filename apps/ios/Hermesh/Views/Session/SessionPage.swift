@@ -130,7 +130,14 @@ struct SessionPage: View {
         projection?.session.sessionID == sessionID ? projection : nil
     }
     private var currentSession: Session? {
-        if !isNew, let p = activeProjection { return p.session }
+        if !isNew, let p = activeProjection {
+            if let listed = listedSession,
+               listed.progress.lastEventSeq > p.session.progress.lastEventSeq ||
+               (listed.progress.lastEventSeq == p.session.progress.lastEventSeq && listed.updatedDate > p.session.updatedDate) {
+                return listed
+            }
+            return p.session
+        }
         return listedSession
     }
     private var activeBgTasks: [Hermesh_Session_V1_BackgroundTask] { activeBackgroundTasks(of: activeProjection) }
