@@ -392,3 +392,151 @@ func TestExternalTurnImagesPinnedAndMagicVerified(t *testing.T) {
 		}
 	}
 }
+
+// Antigravity walkthrough artifacts (PROPOSED_PLAN items and ~/.gemini/.../brain/*.md files
+// or sidecar-marked Markdown files) pin their external carousel screenshots at turn end and
+// let the owner — never scoped grants or symlink escapes — open the Markdown document itself.
+func TestProposedPlanImagesPinnedAndOutsideArtifactMarkdown(t *testing.T) {
+	ctx := context.Background()
+	eng, _, _ := openTestEngine(t, t.TempDir(), time.Minute)
+	defer eng.Close()
+	repo := initGitProject(t)
+	if err := eng.SyncWorkspace("repo", repo, "main", identityv1.Workspace_WORKSPACE_IN_PLACE, "", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	brainDir := filepath.Join(t.TempDir(), ".gemini", "antigravity-cli", "brain", "conv-1")
+	if err := os.MkdirAll(brainDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	slide1 := filepath.Join(brainDir, "dark.png")
+	slide2 := filepath.Join(brainDir, "light.png")
+	walkPath := filepath.Join(brainDir, "walkthrough.md")
+	pngDark := makeTestPNG(t, 16, 24, color.NRGBA{R: 25, G: 40, B: 70, A: 255})
+	pngLight := makeTestPNG(t, 16, 24, color.NRGBA{R: 240, G: 245, B: 252, A: 255})
+	if err := os.WriteFile(slide1, pngDark, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(slide2, pngLight, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	walkMD := "# Walkthrough\n\n> [!NOTE]\n> Verified.\n\n````carousel\n![Dark](dark.png)\n<!-- slide -->\n![Light](light.png)\n````\n"
+	if err := os.WriteFile(walkPath, []byte(walkMD), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	otherDir := t.TempDir()
+	sidecarMD := filepath.Join(otherDir, "plan.md")
+	plainMD := filepath.Join(otherDir, "random-notes.md")
+	secretFile := filepath.Join(otherDir, "id_rsa")
+	leakMD := filepath.Join(brainDir, "leak.md")
+	if err := os.WriteFile(sidecarMD, []byte("# Sidecar Plan\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sidecarMD+".metadata.json", []byte(`{"userFacing":true}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(plainMD, []byte("# Private Notes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(secretFile, []byte("SECRET_KEY"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secretFile, leakMD); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(leakMD+".metadata.json", []byte(`{"userFacing":true}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	owner := OwnerPrincipal("dev_owner", "Owner")
+	grant := &Principal{
+		Actor:           &sessionv1.Actor{Kind: sessionv1.ActorKind_ACTOR_KIND_EXTERNAL_AGENT, Id: "agent_x"},
+		AllowedProjects: []string{"repo"},
+		TaskVisibility:  identityv1.TaskVisibility_TASK_VISIBILITY_ALL,
+	}
+
+	prompt := strings.Join([]string{
+		"propose-artifact Walkthrough|false|# Walkthrough\\n\\n````carousel\\n![Dark](" + slide1 + ")\\n<!-- slide -->\\n![Light](" + slide2 + ")\\n````",
+		"say Report: [walkthrough.md](file://" + filepath.ToSlash(walkPath) + ")",
+	}, "\n")
+	started, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ProjectId:      "repo",
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "scripted", Model: "scripted-fast"},
+		InitialPrompt:  prompt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid := started.Session.SessionId
+	waitForSessionStatus(t, eng, owner, sid, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+
+	runs := map[uint32]string{}
+	cps, _ := eng.ListCheckpoints(ctx, owner, sid)
+	for _, c := range cps {
+		runs[c.RunOrdinal] = c.RunId
+	}
+	run1 := runs[1]
+	if run1 == "" {
+		t.Fatalf("checkpoints = %v", cps)
+	}
+
+	res, err := eng.ResolveFiles(ctx, owner, &sessionv1.ResolveFilesRequest{
+		SessionId: sid,
+		RunId:     run1,
+		Paths:     []string{walkPath, "file://" + filepath.ToSlash(walkPath), sidecarMD, plainMD, leakMD, slide1, slide2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotKinds []sessionv1.FileRefKind
+	for _, f := range res.Files {
+		gotKinds = append(gotKinds, f.Kind)
+	}
+	wantKinds := []sessionv1.FileRefKind{
+		sessionv1.FileRefKind_FILE_REF_KIND_FILE,
+		sessionv1.FileRefKind_FILE_REF_KIND_FILE,
+		sessionv1.FileRefKind_FILE_REF_KIND_FILE,
+		sessionv1.FileRefKind_FILE_REF_KIND_OUTSIDE,
+		sessionv1.FileRefKind_FILE_REF_KIND_OUTSIDE,
+		sessionv1.FileRefKind_FILE_REF_KIND_FILE,
+		sessionv1.FileRefKind_FILE_REF_KIND_FILE,
+	}
+	if !slices.Equal(gotKinds, wantKinds) {
+		t.Fatalf("resolve kinds = %v, want %v", gotKinds, wantKinds)
+	}
+
+	// Owner reads artifact Markdown; plain outside .md and symlinked secrets are denied; grants are denied.
+	rWalk, err := eng.ReadFile(ctx, owner, &sessionv1.ReadFileRequest{SessionId: sid, RunId: run1, Path: walkPath})
+	if err != nil || rWalk.Kind != sessionv1.FileContentKind_FILE_CONTENT_KIND_TEXT || rWalk.Text != walkMD {
+		t.Fatalf("read walkthrough = %+v, err=%v", rWalk, err)
+	}
+	rSidecar, err := eng.ReadFile(ctx, owner, &sessionv1.ReadFileRequest{SessionId: sid, Path: sidecarMD})
+	if err != nil || rSidecar.Text != "# Sidecar Plan\n" {
+		t.Fatalf("read sidecar = %+v, err=%v", rSidecar, err)
+	}
+	for _, bad := range []string{plainMD, leakMD} {
+		if _, err := eng.ReadFile(ctx, owner, &sessionv1.ReadFileRequest{SessionId: sid, Path: bad}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Fatalf("ReadFile(%s) = %v, want PermissionDenied", bad, err)
+		}
+	}
+	if _, err := eng.ReadFile(ctx, grant, &sessionv1.ReadFileRequest{SessionId: sid, RunId: run1, Path: walkPath}); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("grant ReadFile(walkthrough) = %v, want PermissionDenied", err)
+	}
+
+	// Removing external carousel PNGs after the turn still serves their pinned blobs on Run 1.
+	if err := os.Remove(slide1); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(slide2); err != nil {
+		t.Fatal(err)
+	}
+	rSlide1, err := eng.ReadFile(ctx, owner, &sessionv1.ReadFileRequest{SessionId: sid, RunId: run1, Path: slide1})
+	if err != nil || !bytes.Equal(rSlide1.Image, pngDark) || rSlide1.Now != sessionv1.FileNow_FILE_NOW_GONE {
+		t.Fatalf("pinned proposed-plan slide1 = %+v, err=%v", rSlide1, err)
+	}
+	rSlide2, err := eng.ReadFile(ctx, owner, &sessionv1.ReadFileRequest{SessionId: sid, RunId: run1, Path: slide2})
+	if err != nil || !bytes.Equal(rSlide2.Image, pngLight) || rSlide2.Now != sessionv1.FileNow_FILE_NOW_GONE {
+		t.Fatalf("pinned proposed-plan slide2 = %+v, err=%v", rSlide2, err)
+	}
+}

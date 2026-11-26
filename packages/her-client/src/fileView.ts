@@ -84,3 +84,24 @@ export function sameImagePath(a: string, b: string): boolean {
   if (aa === ab) return false;
   return aa ? na.endsWith(`/${nb}`) : nb.endsWith(`/${na}`);
 }
+
+/** Resolves a relative path inside a Markdown document at `baseDir` ("" for chat replies). */
+export function resolveDocPath(baseDir: string, path: string): string {
+  const base = baseDir.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  const p = path.trim().replace(/\\/g, "/");
+  if (!base || !p || isAbsImagePath(p)) return path;
+  const rootMatch = /^(\/|~\/|[A-Za-z]:\/)/.exec(base);
+  const root = rootMatch ? rootMatch[1]! : "";
+  const segs = [...base.slice(root.length).split("/"), ...p.split("/")];
+  const out: string[] = [];
+  for (const s of segs) {
+    if (!s || s === ".") continue;
+    if (s === "..") {
+      if (out.length > 0 && out[out.length - 1] !== "..") out.pop();
+      else if (!root) out.push("..");
+      continue;
+    }
+    out.push(s);
+  }
+  return root + out.join("/");
+}
