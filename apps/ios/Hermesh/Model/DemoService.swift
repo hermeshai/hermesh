@@ -111,6 +111,19 @@ final class DemoService {
             appendItem("demo-running", runID: "r1", kind: .toolCall) { $0.toolName = "Read"; $0.filePath = "package.json"; $0.output = "{}" }
             appendItem("demo-running", runID: "r1", kind: .commandExecution) { $0.command = "npm test"; $0.status = "running" }
         }
+        if UserDefaults.standard.bool(forKey: "DemoMultiProject") {
+            world.projects.append(.with {
+                $0.machineID = "demo-mac"; $0.projectID = "alpha"; $0.path = "/Demo/Projects/alpha"
+                $0.defaultBaseRef = "main"; $0.workspace = .worktree; $0.agents = ["claude", "codex"]
+            })
+            for i in 0 ..< 8 {
+                var s = session("demo-alpha-\(i)", title: "Alpha Task \(i + 1)", machine: "demo-mac", status: .idle)
+                s.projectID = "alpha"
+                s.updatedAt = .init(date: .now.addingTimeInterval(Double(-100 - i * 60)))
+                world.sessions.append(s)
+                syncSession(s.sessionID)
+            }
+        }
         #endif
         #if targetEnvironment(simulator)
         if Self.sessionDetailRegression {

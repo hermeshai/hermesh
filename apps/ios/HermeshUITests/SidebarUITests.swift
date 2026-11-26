@@ -100,6 +100,58 @@ final class SidebarUITests: XCTestCase {
                       "an activity indicator on the running step")
     }
 
+    func testProjectGroupingTruncatesToFiveAndResetsOnCollapse() {
+        launchDemo(["-DemoMultiProject", "YES"])
+        openDrawer()
+
+        let viewOptions = app.buttons["view-options"]
+        XCTAssertTrue(viewOptions.waitForExistence(timeout: 10), "view-options button")
+        viewOptions.tap()
+        let groupMenu = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Group")).firstMatch
+        XCTAssertTrue(groupMenu.waitForExistence(timeout: 5), "Group submenu")
+        groupMenu.tap()
+        let byProject = app.buttons["By Project"]
+        XCTAssertTrue(byProject.waitForExistence(timeout: 5), "By Project option")
+        byProject.tap()
+
+        // Both projects stay visible at once because alpha folds to 5 rows + "Show more (3)".
+        let alphaHeader = app.buttons["group-alpha"]
+        let helloHeader = app.buttons["group-hello-world"]
+        XCTAssertTrue(alphaHeader.waitForExistence(timeout: 5), "alpha group header")
+        XCTAssertTrue(helloHeader.waitForExistence(timeout: 5), "hello-world group header")
+        XCTAssertTrue(helloHeader.isHittable, "second project header stays visible on the first screen")
+
+        XCTAssertTrue(app.buttons["session-Alpha Task 1"].exists)
+        XCTAssertTrue(app.buttons["session-Alpha Task 5"].exists)
+        XCTAssertFalse(app.buttons["session-Alpha Task 6"].exists, "6th idle task folded behind Show more")
+
+        let showMore = app.buttons["show-more-alpha"]
+        XCTAssertTrue(showMore.waitForExistence(timeout: 5), "Show more button for alpha")
+        XCTAssertEqual(showMore.label, "Show more (3)")
+
+        // Tapping Show more reveals the remaining 3 tasks and removes the button.
+        showMore.tap()
+        XCTAssertTrue(app.buttons["session-Alpha Task 6"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["session-Alpha Task 8"].exists)
+        XCTAssertFalse(showMore.exists)
+
+        // Collapsing and reopening the group resets it back to the compact 5-row view.
+        alphaHeader.tap()
+        XCTAssertTrue(app.buttons["session-Alpha Task 1"].waitForNonExistence(timeout: 5))
+        alphaHeader.tap()
+        XCTAssertTrue(app.buttons["session-Alpha Task 5"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["session-Alpha Task 6"].exists, "collapsing resets expanded state back to 5")
+        XCTAssertTrue(showMore.waitForExistence(timeout: 5))
+
+        // Restore default By Status grouping so persisted view preferences don't bleed into later tests.
+        viewOptions.tap()
+        XCTAssertTrue(groupMenu.waitForExistence(timeout: 5))
+        groupMenu.tap()
+        let byStatus = app.buttons["By Status"]
+        XCTAssertTrue(byStatus.waitForExistence(timeout: 5))
+        byStatus.tap()
+    }
+
     private func verifyLongSidebar(mode: String) {
         let drawer = app.descendants(matching: .any)["drawer"].firstMatch
         let account = app.buttons["account"]

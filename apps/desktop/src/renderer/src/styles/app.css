@@ -98,7 +98,7 @@ html[data-platform=win]{--caption:calc(100vw - env(titlebar-area-x, 0px) - env(t
 .tl-room{width:62px;flex:none}
 /* Windows 11's type and corners: 14 px body text; 4 px controls and rows, 8 px boxes, cards and panels. */
 html[data-platform=win]{--fs-text:14px;--fs-text-l:14.5px;--r-ctl:4px;--r-box:8px;--r-card:8px;--r-panel:8px}
-html[data-platform=win] .nav-i,html[data-platform=win] .srow{border-radius:4px}
+html[data-platform=win] .nav-i,html[data-platform=win] .srow,html[data-platform=win] .grp-more{border-radius:4px}
 /* The selected row's accent bar, as Windows 11's navigation marks it. */
 html[data-platform=win] .nav-i.sel,html[data-platform=win] .srow.sel{position:relative}
 html[data-platform=win] .nav-i.sel::before,html[data-platform=win] .srow.sel::before{content:"";position:absolute;left:0;top:50%;height:16px;margin-top:-8px;width:3px;border-radius:2px;background:var(--accent)}
@@ -244,8 +244,10 @@ button{font:inherit;color:inherit}
 .side-h .tb{margin-left:auto}
 .side-list{flex:1;overflow-y:auto;min-height:0;padding:0 8px 8px;scrollbar-width:thin}
 .side-sessions>[role=group]{display:flex;flex-direction:column;gap:1px}
-/* An empty group's line starts where its sessions' logos would. */
+/* An empty group's line starts where its sessions' logos would; "Show more" starts under their titles. */
 .side-none{font-size:13px;color:var(--l3);padding:5px 9px 8px}
+.grp-more{border:0;background:none;border-radius:8px;padding:5px 9px 5px 33px;width:100%;text-align:left;font:inherit;font-size:12.5px;line-height:18px;color:var(--l2)}
+.grp-more:hover{background:var(--fill);color:var(--l1)}
 .side-empty{display:flex;flex-direction:column;gap:3px;text-align:center;padding:60px 14px;color:var(--l3);font-size:12.5px;line-height:1.6}
 .side-empty b{color:var(--l2);font-weight:var(--font-weight-medium);font-size:var(--fs-text)}
 /* A group's heading: its title and ▾ (▸ when collapsed); a click collapses or opens it. */

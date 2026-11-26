@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import {
   bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, language, listTime, needsAttention,
-  sessionSections, statusTitle, teamState, updatedDate, type SessionBucket, type SessionSection, type SessionView,
+  SECTION_EXPAND_STEP, SECTION_INITIAL_LIMIT, sessionSections, sliceSectionSessions, statusTitle, teamState, updatedDate, type SessionBucket, type SessionSection, type SessionView,
   SCRATCH_PROJECT,
 } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
@@ -229,56 +229,91 @@ function Sessions({ now }: { now: Date }) {
   const { sessions, view, archived, machines, clients } = st;
   const sections = useMemo(() => listSections({ sessions, view, archived, machines, clients }, now), [sessions, view, archived, machines, clients, now]);
   const total = sections.reduce((n, x) => n + x.sessions.length, 0);
+  const [expanded, setExpanded] = useState<{ group: SessionView["group"]; limits: Record<string, number> }>({ group: view.group, limits: {} });
+  const limits = expanded.group === view.group ? expanded.limits : {};
+  const sel = st.selection;
+  const selectedId = sel.kind === "session" ? sel.id : null;
+  const rendered = useMemo(
+    () =>
+      sections.map((sec) => {
+        const id = `${sec.grouping}:${sec.key}`;
+        const open = !st.collapsed.includes(id);
+        const limit = limits[id] ?? SECTION_INITIAL_LIMIT;
+        const slice = sliceSectionSessions(sec.sessions, sec.grouping, limit, selectedId);
+        return { sec, id, open, limit, slice };
+      }),
+    [sections, st.collapsed, limits, selectedId],
+  );
+  const anyTruncated = rendered.some((r) => r.slice.hiddenCount > 0);
   const list = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
   // The rows get the store as of a click, so a change elsewhere doesn't render them again.
   const latest = useRef(st);
   latest.current = st;
   // Older sessions load as the end of the list comes into view (again after each page, until the list is full or there are no more).
+  // While an open group hides rows behind "Show more", ask on demand instead of pulling page after page into a folded tail.
   const { moreSessions, loadOlderSessions } = st;
   useEffect(() => {
-    if (!moreSessions || !end.current) return;
+    if (!moreSessions || anyTruncated || !end.current) return;
     const io = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && loadOlderSessions(), { root: list.current, rootMargin: "200px" });
     io.observe(end.current);
     return () => io.disconnect();
-  }, [moreSessions, loadOlderSessions, sessions]);
-  const sel = st.selection;
+  }, [moreSessions, anyTruncated, loadOlderSessions, sessions]);
+  const toggleGroup = (id: string, open: boolean) => {
+    if (open && limits[id] !== undefined) {
+      const next = { ...limits };
+      delete next[id];
+      setExpanded({ group: view.group, limits: next });
+    }
+    st.set({ collapsed: open ? [...st.collapsed, id] : st.collapsed.filter((c) => c !== id) });
+  };
+  const showMore = (id: string, curLimit: number, hiddenCount: number) => {
+    setExpanded({ group: view.group, limits: { ...limits, [id]: curLimit + SECTION_EXPAND_STEP } });
+    if (hiddenCount <= SECTION_EXPAND_STEP && moreSessions) loadOlderSessions();
+  };
   return (
     <div className="side-list" ref={list}>
       <div className="side-sessions" role="list" aria-label={t("sidebar.sessions")}>
-        {sections.map((sec) => {
-          const id = `${sec.grouping}:${sec.key}`;
-          const open = !st.collapsed.includes(id);
-          return (
-            <div key={id} role="group" aria-label={sectionTitle(st, sec)}>
-              <div className="grp-hrow">
-                <button
-                  className={`grp-h ${open ? "" : "shut"}`}
-                  aria-expanded={open}
-                  onClick={() => st.set({ collapsed: open ? [...st.collapsed, id] : st.collapsed.filter((c) => c !== id) })}
-                >
-                  {sectionTitle(st, sec)}
-                  <Icon name="caret" className="sm" />
-                </button>
-                {sec.grouping === "project" && <NewInProject sec={sec} />}
-              </div>
-              {open && sec.sessions.length === 0 && <div className="side-none">{t("sidebar.noneNow")}</div>}
-              {open && sec.sessions.map((s) => (
-                <SessionRow
-                  key={s.sessionId}
-                  s={s}
-                  sel={sel.kind === "session" && sel.id === s.sessionId}
-                  sender={senderName(st, s.createdBy)}
-                  meta={view.metadata}
-                  renaming={st.renaming === s.sessionId}
-                  store={latest}
-                />
-              ))}
+        {rendered.map(({ sec, id, open, limit, slice }) => (
+          <div key={id} role="group" aria-label={sectionTitle(st, sec)}>
+            <div className="grp-hrow">
+              <button
+                className={`grp-h ${open ? "" : "shut"}`}
+                aria-expanded={open}
+                onClick={() => toggleGroup(id, open)}
+              >
+                {sectionTitle(st, sec)}
+                <Icon name="caret" className="sm" />
+              </button>
+              {sec.grouping === "project" && <NewInProject sec={sec} />}
             </div>
-          );
-        })}
+            {open && sec.sessions.length === 0 && <div className="side-none">{t("sidebar.noneNow")}</div>}
+            {open && slice.visible.map((s) => (
+              <SessionRow
+                key={s.sessionId}
+                s={s}
+                sel={sel.kind === "session" && sel.id === s.sessionId}
+                sender={senderName(st, s.createdBy)}
+                meta={view.metadata}
+                renaming={st.renaming === s.sessionId}
+                store={latest}
+              />
+            ))}
+            {open && slice.hiddenCount > 0 && (
+              <button className="grp-more" onClick={() => showMore(id, limit, slice.hiddenCount)}>
+                {t("sidebar.showMore", { count: slice.hiddenCount })}
+              </button>
+            )}
+          </div>
+        ))}
         {!st.sessionsLoaded ? null : moreSessions ? (
-          <div className="endrow" ref={end}>{t("sidebar.loadingOlder")}</div>
+          anyTruncated ? (
+            <div className="endrow">
+              <button className="link" onClick={() => loadOlderSessions()}>{t("sidebar.loadOlder")}</button>
+            </div>
+          ) : (
+            <div className="endrow" ref={end}>{t("sidebar.loadingOlder")}</div>
+          )
         ) : total === 0 ? (
           <div className="side-empty">
             <b>{t("sidebar.emptyTitle")}</b>
