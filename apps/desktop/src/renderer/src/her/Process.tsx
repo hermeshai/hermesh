@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { toolObject, toolOutput, type Step, type ToolView, type WorkItem } from "@hermesh/her-client";
 import { Code } from "../session/Code";
 import { Markdown } from "../session/Markdown";
+import { TerminalOutput } from "../session/TerminalOutput";
 import { Icon } from "../icons";
 import { toolVerb } from "./format";
 
@@ -68,7 +69,7 @@ function ToolStep({ tool }: { tool: ToolView }) {
         )}
         {output && <Icon name="caret" className="chev" />}
       </button>
-      {output && <div className="out sel-text">{output}</div>}
+      {output && <TerminalOutput text={output} follow={spinning} />}
     </div>
   );
 }

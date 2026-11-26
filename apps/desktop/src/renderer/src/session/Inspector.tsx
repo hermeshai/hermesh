@@ -37,12 +37,17 @@ export function Inspector({
   // A trusted device sets every machine; a machine only, its own.
   const settings = here || (st.status?.initialized === true && st.status.machineOnly !== true);
   const machine = here ? t("thisMac") : machineName(st, s.machineId);
-  const path = st.projects.find((p) => p.machineId === s.machineId && p.projectId === s.projectId)?.path ?? "";
-  const branch = useBranch(s, path);
+  const projectPath = st.projects.find((p) => p.machineId === s.machineId && p.projectId === s.projectId)?.path ?? "";
+  const worktreePath = s.workspaceStrategy?.worktreePath ?? "";
+  const path = worktreePath || projectPath;
+  const branch = useBranch(s, projectPath);
   const [menu, setMenu] = useState<Menu>();
   const toggle = (of: Menu["of"]) => (e: MouseEvent<HTMLElement>) =>
     setMenu(menu?.of === of ? undefined : { of, anchor: e.currentTarget, keyboard: e.detail === 0 });
-  const open = (to: "files" | "terminal") => window.hermesh?.openFolder(path, to);
+  const open = (to: "files" | "terminal") => {
+    if (window.hermesh?.openSessionFolder) void window.hermesh.openSessionFolder(s.sessionId, to);
+    else window.hermesh?.openFolder(path, to);
+  };
   const items: MenuEntry[] =
     menu?.of === "project"
       ? [

@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { TerminalCommand } from "../../shared/bridge";
+import { chooseMacTerminal, parseRunningBundleIds } from "../../shared/terminal";
 import { settleInApplications } from "../install";
 import { testDataDir } from "../paths";
 import type { Platform, WindowKind } from "./types";
@@ -167,12 +168,21 @@ export const mac: Platform = {
     const dir = path.join(os.homedir(), "Library", "Caches", "Hermesh");
     fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, `${c}.command`);
-    fs.writeFileSync(file, `#!/bin/zsh -l\n${appCLIs}\n${command}\n`, { mode: 0o700 });
+    fs.writeFileSync(file, `#!/bin/zsh -l\n${appCLIs}\n${command}\nexec "\${SHELL:-/bin/zsh}" -l\n`, { mode: 0o700 });
     shell.openPath(file);
   },
 
   openFolder(dir, to) {
-    if (fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) execFile("open", ["-a", to === "files" ? "Finder" : "Terminal", dir]);
+    if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return;
+    if (to === "files") {
+      execFile("open", ["-a", "Finder", dir]);
+      return;
+    }
+    execFile("/usr/bin/lsappinfo", ["list"], { timeout: 1500 }, (_err, stdout) => {
+      const running = parseRunningBundleIds(typeof stdout === "string" ? stdout : "");
+      const terminalApp = chooseMacTerminal(os.homedir(), running, (p) => fs.existsSync(p));
+      execFile("open", ["-a", terminalApp, dir]);
+    });
   },
 
   openProcessMonitor() {

@@ -120,7 +120,14 @@
     "hidden": "含隐藏字符",
     "hiddenTip": "这段代码里有看不见的字符，粘贴前请检查",
     "copyCode": "拷贝代码",
-    "copyCommand": "拷贝命令"
+    "copyCommand": "拷贝命令",
+    "run": "运行",
+    "runTip": "在当前会话工作目录运行并让智能体继续分析",
+    "runInSession": "在当前会话中运行",
+    "copyAndOpenTerminal": "拷贝命令并在终端打开目录",
+    "copiedAndOpenedTerminal": "已拷贝命令，正在打开终端",
+    "showSecrets": "显示已遮罩密钥",
+    "hideSecrets": "隐藏敏感密钥"
   },
   "files": {
     "open": "打开",

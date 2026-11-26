@@ -540,7 +540,33 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .cb-acts{margin-left:auto;display:flex;gap:2px}
 .cb-b{height:22px;padding:0 7px;border:0;border-radius:var(--r-sm);background:none;display:inline-flex;align-items:center;gap:4px;font:inherit;font-size:12px;color:var(--l2);cursor:pointer}
 .cb-b:hover{background:var(--fill2);color:var(--l1)}
+.cb-b.run:hover{background:var(--green-bg);color:var(--green)}
 .cb-b .ic{width:13px;height:13px}
+/* Terminal / diff output colouring inside .out and background task drawers (no WASM / xterm). */
+.term-out{position:relative}
+.term-copy{position:sticky;float:right;top:0;right:0;z-index:1;width:22px;height:22px;padding:0;margin:-2px -2px 2px 6px;border:0;border-radius:var(--r-xs);background:var(--code);color:var(--l3);display:inline-flex;align-items:center;justify-content:center;opacity:0;cursor:pointer;transition:opacity .12s}
+.term-out:hover .term-copy,.term-copy:focus-visible{opacity:1}
+.term-copy:hover{background:var(--fill2);color:var(--l1)}
+.term-copy .ic{width:12.5px;height:12.5px}
+.ansi-b{font-weight:600}
+.ansi-d{opacity:.65}
+.ansi-i{font-style:italic}
+.ansi-u{text-decoration:underline}
+.ansi-red{color:var(--red)}
+.ansi-green{color:var(--green)}
+.ansi-yellow{color:var(--orange)}
+.ansi-blue{color:var(--accent-t)}
+.ansi-magenta{color:light-dark(#9333ea,#c084fc)}
+.ansi-cyan{color:light-dark(#0891b2,#22d3ee)}
+.ansi-gray{color:var(--l3)}
+.ansi-fg{color:var(--l1)}
+.tline.diff-add{background:var(--add-bg);color:var(--add-fg)}
+.tline.diff-del{background:var(--del-bg);color:var(--del-fg)}
+.tline.diff-hunk{color:var(--accent-t)}
+.tline.diff-meta{color:var(--l3)}
+.th-cmp.shell-mode .cmp-in{font-family:var(--mono);font-size:13px}
+.cmp-shell-pill{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:var(--r-sm);background:var(--fill2);color:var(--l2);font-size:12px;white-space:nowrap}
+.cmp-shell-pill .ic{width:13px;height:13px}
 /* Tool steps: a grey line in the body's size, no icon; a small caret after it opens it. */
 .tool{border-radius:var(--r-md);font-size:14px;line-height:20px}
 .tool .th{display:flex;align-items:center;gap:6px;padding:2px 0;border-radius:var(--r-sm);border:0;background:none;max-width:100%;text-align:left;color:var(--l2)}

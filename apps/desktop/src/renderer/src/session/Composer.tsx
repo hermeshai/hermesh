@@ -61,6 +61,7 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
   const area = useRef<HTMLTextAreaElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const ready = !sending && !blocked && (value.trim() !== "" || attachments.length > 0);
+  const shellShortcut = /^[\t ]*!(?!\[)/.test(value);
   // Files dragged anywhere over the window come here, as to Her's box.
   const dropping = useFileDrop((files) => (onAttach(files), area.current?.focus()));
   // The text grows with what is written, up to ten lines, then scrolls (as Her's).
@@ -114,7 +115,7 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
   );
   return (
     <div
-      className={`cmp th-cmp ${dropping ? "dropping" : ""}`}
+      className={`cmp th-cmp ${dropping ? "dropping" : ""} ${shellShortcut ? "shell-mode" : ""}`}
       data-testid="thread-composer"
       onMouseDown={(e) => e.target instanceof HTMLElement && e.target.matches(".cmp,.cmp-row,.cmp-att,.th-bar") && (e.preventDefault(), area.current?.focus())}
       // A screenshot, a picture or files copied in Finder are attached, as from ＋; words paste as words (as Her's).
@@ -161,6 +162,12 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
       <div className="th-bar" data-testid="composer-bar">
         {plus}
         {model}
+        {shellShortcut && (
+          <span className="cmp-shell-pill" data-testid="composer-shell-badge" title={t("composer.shellHint")}>
+            <Icon name="terminal" />
+            <span>{t("composer.shellBadge")}</span>
+          </span>
+        )}
         <span className="th-grow" />
         {running && onStop && (
           <button className="th-stop" title={t("composer.stop")} aria-label={t("composer.stop")} data-testid="composer-stop-btn" onClick={onStop}>

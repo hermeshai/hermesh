@@ -7,3 +7,7 @@ export const useContentSession = () => useContext(SessionContext);
 
 /** Inside the block a reply is still writing: nothing in it acts yet (links are words, code blocks have no buttons). */
 export const DraftContext = createContext(false);
+
+/** Dispatches a single-line shell command (`! <cmd>`) in the active session's workspace; null outside a writable session. */
+export type SessionShellRunner = (command: string) => void;
+export const SessionRunContext = createContext<SessionShellRunner | null>(null);

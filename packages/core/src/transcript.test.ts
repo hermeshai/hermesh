@@ -126,6 +126,30 @@ describe("unified session transcript", () => {
     expect(stepSummary(tools.calls)).not.toBe("");
   });
 
+  it("streams live output on running commands and preserves output blob references", () => {
+    const liveProj = create(SessionProjectionSchema, {
+      session: create(SessionSchema, { sessionId: "s_live", status: SessionStatus.RUNNING, activeRunId: "r_live" }),
+      runs: [create(RunSchema, { runId: "r_live", ordinal: 1, status: RunStatus.RUNNING })],
+      items: [
+        item(1, "r_live", TurnItemKind.COMMAND_EXECUTION, { command: "go test ./...", status: "running", output: "ok pkg/a\n" }),
+        item(2, "r_live", TurnItemKind.COMMAND_EXECUTION, {
+          command: "cat big.log",
+          status: "completed",
+          output: "head...",
+          outputTruncated: true,
+          outputBlobSha256: "sha_big_123",
+          outputSize: 32768n,
+        }),
+      ],
+    });
+    const rows = sessionTranscript(liveProj);
+    expect(rows[1]?.kind === "tool" && rows[1].running).toBe(true);
+    expect(rows[1]?.kind === "tool" && rows[1].result?.summary).toBe("ok pkg/a\n");
+    expect(rows[1]?.kind === "tool" && rows[1].result?.isError).toBe(false);
+    expect(rows[2]?.kind === "tool" && rows[2].result?.blobSha256).toBe("sha_big_123");
+    expect(rows[2]?.kind === "tool" && rows[2].result?.size).toBe(32768n);
+  });
+
   it("ends an interrupted run as an interrupted turn and marks live replies", () => {
     const rows = sessionTranscript(proj);
     const end = rows.at(-1);
