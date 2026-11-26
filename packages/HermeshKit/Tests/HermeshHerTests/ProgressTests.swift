@@ -73,7 +73,7 @@ private func inner(_ seq: Int, _ agent: String, _ n: Int, _ event: [String: JSON
     // It asks: the post says what, and the record's call waits.
     v.apply(inner(17, "ag1", 6, ["type": "approval_requested", "call_id": "k1", "name": "read", "args": [:], "summary": "读取 a.csv\n在项目外"]))
     #expect(herAgentState(launch()) == .waiting && herAgentPost(launch()).words == "读取 a.csv" && herAgentPost(launch()).now?.state == .awaiting)
-    #expect(herSteps(launch().agent!.view).last?.kind == .tool(HerToolStep(callID: "k1", name: "read", category: "read", title: "read a.csv", state: .awaiting, output: "")))
+    #expect(herSteps(launch().agent!.view).last?.kind == .tool(HerToolStep(callID: "k1", name: "read", category: "read", title: "read a.csv", state: .awaiting, input: "{\n  \"path\" : \"a.csv\"\n}", output: "")))
 
     v.apply(inner(18, "ag1", 7, ["type": "approval_resolved", "call_id": "k1", "decision": ["type": "approve"]]))
     v.apply(inner(19, "ag1", 8, ["type": "tool_completed", "call_id": "k1", "result": ["call_id": "k1", "tool_name": "read", "is_error": false, "content": [["type": "text", "text": "wau,dau"]]]]))
@@ -88,7 +88,7 @@ private func inner(_ seq: Int, _ agent: String, _ n: Int, _ event: [String: JSON
     #expect(herSteps(a.view).map(\.kind) == [
         .said("You are a sub-agent.\n<task>\nSum the tables.\n</task>"),
         .thinking("先看表头。\n再算。", redacted: false),
-        .tool(HerToolStep(callID: "k1", name: "read", category: "read", title: "read a.csv", state: .done, output: "wau,dau")),
+        .tool(HerToolStep(callID: "k1", name: "read", category: "read", title: "read a.csv", state: .done, input: "{\n  \"path\" : \"a.csv\"\n}", output: "wau,dau")),
         .text("**周活** 多了 12%。\n表在附件里。"),
     ])
 

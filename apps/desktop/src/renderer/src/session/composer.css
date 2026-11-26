@@ -1,6 +1,6 @@
 /* A session started here (ThreadPage.tsx): a session's page (app.css .dwrap, session.css) with Her's box at the bottom. */
 /* With the cards docked, the box centres under the conversation as the conversation does (app.css .dwrap.dock). */
-.dwrap.dock .cmp-zone{padding-right:286px}
+.dwrap.dock .cmp-zone{padding-right:calc(270px + var(--cmp-gutter))}
 .th-badge{display:inline-flex;align-items:center;height:18px;padding:0 8px;border-radius:999px;background:var(--fill2);color:var(--l2);font-size:11px;margin-left:8px;flex:none}
 /* A question asks in Her's card, as a session's panel (app.css .qx) lays it out. */
 .appr.qx-card{padding:0;gap:0}
@@ -9,6 +9,22 @@
 .th-qtext{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .th-qrow .field{flex:1;height:26px;border-radius:var(--r-sm)}
 .btn.th-qbtn{height:26px;padding:0 10px;font-size:12px;flex:none}
+/* Live checklist floating over the composer while a multi-step turn runs; auto-collapses when all steps complete. */
+.knote.th-todo{padding:11px 14px}
+.th-todo-list{display:flex;flex-direction:column;gap:6px;max-height:176px;overflow-y:auto}
+.th-todo-row{display:flex;align-items:flex-start;gap:9px;min-width:0;font-size:13px;line-height:19px;color:var(--l2)}
+.th-todo-row.in_progress{color:var(--l1)}
+.th-todo-row.completed,.th-todo-row.skipped{color:var(--l3)}
+.th-todo-row.failed{color:var(--red)}
+.th-todo-ic{width:14px;height:14px;margin-top:2.5px;flex:none;color:var(--l3)}
+.th-todo-row.in_progress .th-todo-ic{color:var(--l2)}
+.th-todo-row.completed .th-todo-ic{color:var(--accent-t)}
+.th-todo-row.failed .th-todo-ic{color:var(--red)}
+.th-todo-spin{animation:spin 3.2s linear infinite}
+.th-todo-text{flex:1;min-width:0;overflow-wrap:anywhere}
+.wake-h{max-width:100%;min-width:0;cursor:pointer}
+.wake-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.th-todo-spin{animation:none}}
 
 /* ---------- The composer (docs/thread-composer.md §4): Her's box (her.css .cmp), the line under it ---------- */
 .th{--pill:var(--win);--pill-bd:var(--menu-bd)}
@@ -18,7 +34,7 @@
 }
 /* A new session: its question in the middle of what the box at the bottom leaves (the project a menu in it), the
    environment under it; the box where a session's is (her.css .cmp-zone). */
-.th-ask{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 32px 150px;text-align:center}
+.th-ask{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 var(--chat-gutter) 150px;text-align:center}
 /* Under a new session's question: kept out of the layout (the question stays where it is); connection notices show
    under their own waits, while Starting… waits 400 ms. */
 .th-ask-after{height:0;min-height:0;margin-top:-14px;display:flex;justify-content:center;overflow:visible}

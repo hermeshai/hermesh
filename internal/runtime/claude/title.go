@@ -100,7 +100,6 @@ func runClaudeTitleAttempt(ctx context.Context, bin, dir string, env []string, m
 		args = append(args, "--output-format", "json")
 	}
 	args = append(args,
-		"--json-schema", runtime.TitleGenSchema,
 		"--model", model,
 		"--tools", "",
 		"--setting-sources", "",

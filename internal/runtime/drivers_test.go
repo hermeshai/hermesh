@@ -14,6 +14,7 @@ import (
 	"time"
 
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/kernel"
 	"github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/internal/runtime/acp"
 	"github.com/hermeshai/hermesh/internal/runtime/claude"
@@ -247,6 +248,44 @@ func runMockClaude() {
 						"usage": map[string]any{"input_tokens": 20, "output_tokens": 8},
 					})
 				}()
+			} else if strings.Contains(prompt, "claude_todo_and_desc") {
+				write(map[string]any{
+					"type": "assistant",
+					"message": map[string]any{"content": []any{
+						map[string]any{
+							"type": "tool_use",
+							"id":   "tu_todo_1",
+							"name": "TodoWrite",
+							"input": map[string]any{
+								"todos": []any{
+									map[string]any{"content": "Inspect auth module", "status": "in_progress", "activeForm": "Inspecting auth module"},
+									map[string]any{"content": "Run test suite", "status": "pending", "activeForm": "Running test suite"},
+								},
+							},
+						},
+						map[string]any{
+							"type":  "tool_use",
+							"id":    "tu_bash_desc",
+							"name":  "Bash",
+							"input": map[string]any{"command": "pytest -q", "description": "Execute unit tests"},
+						},
+					}},
+				})
+				write(map[string]any{
+					"type": "user",
+					"message": map[string]any{"content": []any{
+						map[string]any{"type": "tool_result", "tool_use_id": "tu_todo_1", "content": "Todos updated"},
+						map[string]any{"type": "tool_result", "tool_use_id": "tu_bash_desc", "content": "12 passed"},
+					}},
+				})
+				write(map[string]any{
+					"type":    "assistant",
+					"message": map[string]any{"content": []any{map[string]any{"type": "text", "text": "All green."}}},
+				})
+				write(map[string]any{
+					"type":  "result",
+					"usage": map[string]any{"input_tokens": 30, "output_tokens": 10},
+				})
 			} else if strings.Contains(prompt, "run_bash") {
 				pendingCtrl["perm_1"] = func(res map[string]any) {
 					beh, _ := res["behavior"].(string)
@@ -382,6 +421,29 @@ func runMockCodex() {
 				write(map[string]any{"method": "item/completed", "params": map[string]any{"item": map[string]any{"id": "it_rsn", "type": "reasoning"}}})
 				write(map[string]any{"method": "item/agentMessage/delta", "params": map[string]any{"itemId": "it_msg", "delta": "done thinking"}})
 				write(map[string]any{"method": "item/completed", "params": map[string]any{"item": map[string]any{"id": "it_msg", "type": "agentMessage", "text": "done thinking"}}})
+				write(map[string]any{"method": "turn/completed", "params": map[string]any{"turn": map[string]any{"status": "completed"}}})
+				continue
+			}
+			if len(p.Input) > 0 && strings.Contains(p.Input[0].Text, "codex_plan_updated") {
+				write(map[string]any{
+					"method": "turn/plan/updated",
+					"params": map[string]any{
+						"threadId":    "cx_th_99",
+						"turnId":      "turn_1",
+						"explanation": "Rewriting sidebar halo without dynamic masks",
+						"plan": []any{
+							map[string]any{"step": "Check motion constraints", "status": "completed"},
+							map[string]any{"step": "Rewrite CALayer halo", "status": "inProgress"},
+							map[string]any{"step": "Run GPU benchmark", "status": "pending"},
+						},
+					},
+				})
+				write(map[string]any{
+					"method": "item/completed",
+					"params": map[string]any{
+						"item": map[string]any{"id": "msg_plan_up", "type": "agentMessage", "text": "Updated plan."},
+					},
+				})
 				write(map[string]any{"method": "turn/completed", "params": map[string]any{"turn": map[string]any{"status": "completed"}}})
 				continue
 			}
@@ -651,6 +713,73 @@ func runMockACP() {
 				} `json:"prompt"`
 			}
 			_ = json.Unmarshal(m.Params, &p)
+			if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "tool_io_cases") {
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_read_silent",
+							"title":         "read_file",
+							"kind":          "read",
+							"status":        "completed",
+							"locations":     []any{map[string]any{"path": "internal/machine/her_test.go"}},
+							"rawInput": map[string]any{
+								"Path":      "internal/machine/her_test.go",
+								"StartLine": 1,
+								"EndLine":   80,
+							},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_diff",
+							"title":         "edit_file",
+							"kind":          "edit",
+							"status":        "completed",
+							"rawInput": map[string]any{
+								"Path":   "pkg/a.go",
+								"Target": "return 1",
+							},
+							"content": []any{
+								map[string]any{
+									"type":    "diff",
+									"path":    "pkg/a.go",
+									"oldText": "package a\nfunc f() int {\n\treturn 1\n}\n",
+									"newText": "package a\nfunc f() int {\n\treturn 2\n}\n",
+								},
+							},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_mcp_json",
+							"title":         "mcp__hermesh__message_send",
+							"kind":          "other",
+							"status":        "completed",
+							"rawInput":      map[string]any{"to": "worker", "message": "go"},
+							"rawOutput":     map[string]any{"id": "msg_99", "delivered": true},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      promptReqID,
+					"result":  map[string]any{"stopReason": "end_turn"},
+				})
+				continue
+			}
 			if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "antigravity_artifacts") {
 				brainDir := os.Getenv("MOCK_BRAIN_DIR")
 				planPath := filepath.Join(brainDir, "implementation_plan.md")
@@ -1306,6 +1435,154 @@ func runMockACP() {
 						},
 					})
 				}()
+			} else if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "agy_schedule_lifecycle") {
+				sysDir := filepath.Join(os.Getenv("MOCK_AGY_BRAIN_DIR"), ".system_generated")
+				tasksDir := filepath.Join(sysDir, "tasks")
+				msgsDir := filepath.Join(sysDir, "messages")
+				_ = os.MkdirAll(tasksDir, 0o755)
+				_ = os.MkdirAll(msgsDir, 0o755)
+				// Pre-existing message before timers are created must NOT falsely trigger TimerCondition:"any".
+				_ = os.WriteFile(filepath.Join(msgsDir, "m_preexisting.json"), []byte(`{"sender":"conv_sched/task-old","content":"old wakeup"}`), 0o644)
+				toFileURI := func(name string) string {
+					full := filepath.Join(tasksDir, name)
+					_ = os.WriteFile(full, nil, 0o644)
+					sl := filepath.ToSlash(full)
+					if strings.HasPrefix(sl, "/") {
+						return "file://" + sl
+					}
+					return "file:///" + sl
+				}
+				emitBgLaunch := func(id, title, kind string, rawIn map[string]any, taskID, logFile string) {
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "tool_call",
+								"toolCallId":    id,
+								"title":         title,
+								"kind":          kind,
+								"status":        "completed",
+								"rawInput":      rawIn,
+								"content": []any{
+									map[string]any{
+										"type": "content",
+										"content": map[string]any{
+											"type": "text",
+											"text": "Tool is running as a background task with task id: " + taskID + "\nTask logs are available at: " + toFileURI(logFile) + "\nYOU MUST TAKE ONE OF THE FOLLOWING TWO ACTIONS: wait or continue.",
+										},
+									},
+								},
+							},
+						},
+					})
+				}
+
+				emitBgLaunch("tc_sched_oneshot", "schedule", "other", map[string]any{
+					"DurationSeconds": 120,
+					"Prompt":          "Check task-361 status if XCUITest has not completed yet.",
+				}, "conv_sched/task-367", "task-367.log")
+				emitBgLaunch("tc_build", "run_command", "execute", map[string]any{
+					"CommandLine":       "xcodebuild test",
+					"WaitMsBeforeAsync": 500,
+					"toolSummary":       "Run iOS UI tests",
+				}, "conv_sched/task-build", "task-build.log")
+				emitBgLaunch("tc_sched_cond", "schedule", "other", map[string]any{
+					"DurationSeconds": 120,
+					"TimerCondition":  "conv_sched/task-build",
+					"Prompt":          "Check build if still running.",
+				}, "conv_sched/task-cond", "task-cond.log")
+				emitBgLaunch("tc_sched_any", "schedule", "other", map[string]any{
+					"DurationSeconds": 180,
+					"TimerCondition":  "any",
+					"Prompt":          "Wake on any message.",
+				}, "conv_sched/task-any", "task-any.log")
+				emitBgLaunch("tc_canceled_cmd", "run_command", "execute", map[string]any{
+					"CommandLine":       "sleep 300",
+					"WaitMsBeforeAsync": 500,
+					"toolSummary":       "Canceled check",
+				}, "conv_sched/task-canceled", "task-canceled.log")
+				emitBgLaunch("tc_cron_bounded", "schedule", "other", map[string]any{
+					"CronExpression": "*/5 * * * *",
+					"MaxIterations":  2,
+					"Prompt":         "Poll CI status.",
+				}, "conv_sched/task-cron", "task-cron.log")
+				emitBgLaunch("tc_already_done", "run_command", "execute", map[string]any{
+					"CommandLine":       "echo stale",
+					"WaitMsBeforeAsync": 500,
+					"toolSummary":       "Stale task",
+				}, "conv_sched/task-stale", "task-stale.log")
+
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "agent_message_chunk",
+							"content":       map[string]any{"type": "text", "text": "Timers and tasks armed."},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      promptReqID,
+					"result":  map[string]any{"stopReason": "end_turn"},
+				})
+
+				go func() {
+					waitGate := func(name string) bool {
+						gp := filepath.Join(os.Getenv("MOCK_AGY_BRAIN_DIR"), name)
+						for i := 0; i < 400; i++ {
+							if _, err := os.Stat(gp); err == nil {
+								return true
+							}
+							time.Sleep(15 * time.Millisecond)
+						}
+						return false
+					}
+					if !waitGate("sched_step_final_kill") {
+						return
+					}
+					_ = os.WriteFile(filepath.Join(msgsDir, "m4_cron_tick2.json"), []byte(`{"sender":"conv_sched/task-cron","content":"Poll CI status (2/2)."}`), 0o644)
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "tool_call",
+								"toolCallId":    "tc_kill_already_done",
+								"title":         "manage_task",
+								"kind":          "other",
+								"status":        "failed",
+								"rawInput":      map[string]any{"Action": "kill", "TaskId": "conv_sched/task-stale"},
+								"content": []any{
+									map[string]any{
+										"type": "content",
+										"content": map[string]any{
+											"type": "text",
+											"text": `Encountered error in tool execution: cannot kill task "conv_sched/task-stale": task is not running (status: DONE)`,
+										},
+									},
+								},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "agent_message_chunk",
+								"content":       map[string]any{"type": "text", "text": "All background timers and tasks settled."},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params":  map[string]any{"update": map[string]any{"sessionUpdate": "usage_update", "used": 1200, "size": 200000}},
+					})
+				}()
 			} else if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "multistep_acp") {
 				write(map[string]any{
 					"jsonrpc": "2.0",
@@ -1653,8 +1930,8 @@ loop:
 	if len(msgTexts) != 2 || msgTexts[0] != "acp_preamble" || msgTexts[1] != "perm=opt_reject env=accept:staging" || msgIDs[0] == msgIDs[1] {
 		t.Fatalf("expected 2 distinct assistant messages (preamble + post-tool), got IDs=%v texts=%v", msgIDs, msgTexts)
 	}
-	if completedTool == nil || completedTool.Command != "pytest -q" || completedTool.Output != "3 passed" {
-		t.Fatalf("ACP tool_call_update array content not parsed/merged: %+v", completedTool)
+	if completedTool == nil || completedTool.Command != "pytest -q" || !strings.Contains(completedTool.Input, `"command": "pytest -q"`) || completedTool.Output != "3 passed" {
+		t.Fatalf("ACP tool_call_update array content/input not parsed/merged: %+v", completedTool)
 	}
 }
 
@@ -1683,7 +1960,7 @@ func TestClaudeMultiStepToolResultArrayAndSkipInteractiveTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	var msgIDs, msgTexts []string
-	var startedPath, completedOut string
+	var startedPath, startedInput, completedOut string
 	var completedToolIDs []string
 	timeout := time.After(8 * time.Second)
 loop:
@@ -1698,6 +1975,7 @@ loop:
 				msgTexts = append(msgTexts, ev.Text)
 			case runtime.EventToolStarted:
 				startedPath = ev.FilePath
+				startedInput = ev.Input
 			case runtime.EventToolCompleted:
 				completedToolIDs = append(completedToolIDs, ev.ItemID)
 				completedOut = ev.Output
@@ -1712,7 +1990,7 @@ loop:
 	if len(completedToolIDs) != 1 || completedToolIDs[0] != "tu_read" {
 		t.Fatalf("expected only tu_read completion (no orphan AskUserQuestion completion), got %v", completedToolIDs)
 	}
-	if startedPath != "pkg/foo.go" || completedOut != "package foo" {
+	if startedPath != "pkg/foo.go" || !strings.Contains(startedInput, `"pkg/foo.go"`) || completedOut != "package foo" {
 		t.Fatalf("Claude Read FilePath=%q Output=%q, want pkg/foo.go / package foo", startedPath, completedOut)
 	}
 }
@@ -2435,5 +2713,321 @@ func TestAntigravityACPAutoBackgroundLogStreamingAndChainedSettlement(t *testing
 		!bgByID["tc_agy_2"].HasExitCode || bgByID["tc_agy_2"].ExitCode != 0 ||
 		!strings.Contains(bgByID["tc_agy_2"].Output, "--- PASS: TestRaceSuiteFixed") {
 		t.Fatalf("expected tc_agy_2 to settle as COMPLETED (exitCode=0), got %+v", bgByID["tc_agy_2"])
+	}
+}
+
+func TestClaudeTodoWriteAndCodexTurnPlanUpdated(t *testing.T) {
+	ctx := context.Background()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("claude_todowrite_and_tool_description", func(t *testing.T) {
+		drv := claude.NewDriver("")
+		sess, err := drv.StartSession(ctx, runtime.StartSpec{
+			SessionID: "s_cl_todo",
+			Workdir:   t.TempDir(),
+			Instance: &sessionv1.ProviderInstanceConfig{
+				InstanceId: "claude",
+				Driver:     "claude",
+				BinaryPath: exe,
+				LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--"},
+				Env:        map[string]string{"HERMESH_MOCK_DRIVER": "claude"},
+			},
+			Selection: &sessionv1.ModelSelection{InstanceId: "claude", Model: "claude-sonnet-4-6"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sess.Close()
+		if err := sess.StartTurn(ctx, runtime.TurnInput{RunID: "r_todo", Prompt: "claude_todo_and_desc"}); err != nil {
+			t.Fatal(err)
+		}
+		var todos []runtime.Event
+		var toolStarts []runtime.Event
+		timeout := time.After(8 * time.Second)
+		for done := false; !done; {
+			select {
+			case <-timeout:
+				t.Fatal("timed out waiting for claude turn")
+			case ev := <-sess.Events():
+				switch ev.Kind {
+				case runtime.EventTodoUpdated:
+					todos = append(todos, ev)
+				case runtime.EventToolStarted:
+					if ev.ToolName == "TodoWrite" {
+						t.Fatalf("TodoWrite leaked as EventToolStarted: %+v", ev)
+					}
+					toolStarts = append(toolStarts, ev)
+				case runtime.EventToolCompleted:
+					if ev.ItemID == "tu_todo_1" {
+						t.Fatalf("TodoWrite tool_result leaked as EventToolCompleted: %+v", ev)
+					}
+				case runtime.EventTurnCompleted:
+					done = true
+				case runtime.EventTurnFailed:
+					t.Fatalf("turn failed: %s", ev.ErrorMessage)
+				}
+			}
+		}
+		if len(todos) != 1 || todos[0].ItemID != "todo" || !todos[0].HasFocus || todos[0].Text != "Inspecting auth module" || len(todos[0].TodoSteps) != 2 {
+			t.Fatalf("unexpected claude TodoUpdated events: %+v", todos)
+		}
+		if len(toolStarts) != 1 || toolStarts[0].Text != "Execute unit tests" || toolStarts[0].Command != "pytest -q" {
+			t.Fatalf("unexpected claude ToolStarted events: %+v", toolStarts)
+		}
+	})
+
+	t.Run("codex_turn_plan_updated", func(t *testing.T) {
+		drv := codex.NewDriver("")
+		sess, err := drv.StartSession(ctx, runtime.StartSpec{
+			SessionID: "s_cx_todo",
+			Workdir:   t.TempDir(),
+			Instance: &sessionv1.ProviderInstanceConfig{
+				InstanceId: "codex",
+				Driver:     "codex",
+				BinaryPath: exe,
+				LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--", "app-server"},
+				Env:        map[string]string{"HERMESH_MOCK_DRIVER": "codex"},
+			},
+			Selection: &sessionv1.ModelSelection{InstanceId: "codex", Model: "gpt-5.4"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sess.Close()
+		if err := sess.StartTurn(ctx, runtime.TurnInput{RunID: "r_cx_todo", Prompt: "codex_plan_updated"}); err != nil {
+			t.Fatal(err)
+		}
+		var todos []runtime.Event
+		timeout := time.After(8 * time.Second)
+		for done := false; !done; {
+			select {
+			case <-timeout:
+				t.Fatal("timed out waiting for codex turn")
+			case ev := <-sess.Events():
+				switch ev.Kind {
+				case runtime.EventTodoUpdated:
+					todos = append(todos, ev)
+				case runtime.EventTurnCompleted:
+					done = true
+				case runtime.EventTurnFailed:
+					t.Fatalf("turn failed: %s", ev.ErrorMessage)
+				}
+			}
+		}
+		if len(todos) != 1 || todos[0].ItemID != "todo" || !todos[0].HasFocus ||
+			todos[0].Text != "Rewriting sidebar halo without dynamic masks" ||
+			len(todos[0].TodoSteps) != 3 ||
+			todos[0].TodoSteps[0].Status != "completed" ||
+			todos[0].TodoSteps[1].Status != "in_progress" ||
+			todos[0].TodoSteps[2].Status != "pending" {
+			t.Fatalf("unexpected codex TodoUpdated events: %+v", todos)
+		}
+	})
+}
+
+func TestAntigravityACPScheduleLifecycleSettlesSessionStatus(t *testing.T) {
+	ctx := context.Background()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	brainDir := t.TempDir()
+	msgsDir := filepath.Join(brainDir, ".system_generated", "messages")
+
+	drv := acp.NewDriver("")
+	drv.PostPromptMergeWindow = 40 * time.Millisecond
+	drv.OutOfTurnDebounce = 40 * time.Millisecond
+	drv.TaskLogPollInterval = 20 * time.Millisecond
+
+	eng, err := kernel.Open(kernel.Config{
+		DataDir:   t.TempDir(),
+		MachineID: "m_agy_sched",
+		Drivers:   map[string]runtime.Driver{"acp": drv},
+		IdleTTL:   time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+
+	owner := kernel.OwnerPrincipal("dev_owner", "Owner")
+	if _, err := eng.UpsertProviderInstance(ctx, owner, &sessionv1.ProviderInstanceConfig{
+		InstanceId:  "antigravity",
+		Driver:      "acp",
+		AcpFlavor:   "antigravity",
+		DisplayName: "Antigravity",
+		Enabled:     true,
+		BinaryPath:  exe,
+		LaunchArgs:  []string{"-test.run=TestHelperMockCLI", "--", "acp"},
+		Env: map[string]string{
+			"HERMESH_MOCK_DRIVER": "acp",
+			"MOCK_AGY_BRAIN_DIR":  brainDir,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	launched, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "antigravity", Model: "default"},
+		InitialPrompt:  "agy_schedule_lifecycle",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionID := launched.Session.SessionId
+
+	waitProj := func(label string, pred func(*sessionv1.SessionProjection) bool) *sessionv1.SessionProjection {
+		t.Helper()
+		deadline := time.Now().Add(8 * time.Second)
+		var last *sessionv1.SessionProjection
+		for time.Now().Before(deadline) {
+			p, gErr := eng.GetSession(ctx, owner, sessionID)
+			if gErr == nil {
+				last = p
+				if pred(p) {
+					return p
+				}
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("timed out waiting for %s (last session=%+v bgs=%+v)", label, last.GetSession(), last.GetBackgroundTasks())
+		return nil
+	}
+	bgStatus := func(p *sessionv1.SessionProjection, id string) sessionv1.BackgroundTaskStatus {
+		for _, bt := range p.GetBackgroundTasks() {
+			if bt.TaskId == id {
+				return bt.Status
+			}
+		}
+		return sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_UNSPECIFIED
+	}
+
+	// 1. After Turn #1 finishes, all 7 awaited tasks/schedules are RUNNING (pre-existing message did not cancel tc_sched_any):
+	p1 := waitProj("initial 7 background tasks armed", func(p *sessionv1.SessionProjection) bool {
+		return p.GetSession().GetActiveBackgroundCount() == 7 && p.GetSession().GetActiveRunId() == ""
+	})
+	if bgStatus(p1, "tc_sched_any") != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+		t.Fatalf("pre-existing message must not cancel tc_sched_any: %+v", p1.GetBackgroundTasks())
+	}
+
+	// 2. Hidden cancellation receipt settles tc_canceled_cmd as STOPPED without triggering TimerCondition:"any":
+	if err := os.WriteFile(filepath.Join(msgsDir, "m1_hidden_cancel.json"), []byte(`{"sender":"conv_sched/task-canceled","hideFromUser":true,"renderDetails":{"messageTitle":"Canceled check was canceled"},"content":"Task id \"conv_sched/task-canceled\" was canceled with result:\nTool execution was canceled"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p2 := waitProj("hidden cancellation settled", func(p *sessionv1.SessionProjection) bool {
+		return bgStatus(p, "tc_canceled_cmd") == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+	})
+	if bgStatus(p2, "tc_sched_any") != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+		t.Fatalf("hideFromUser cancellation receipt must not trigger TimerCondition:any: %+v", p2.GetBackgroundTasks())
+	}
+
+	// 3. One-shot schedule expires with authentic Antigravity timer payload (no "finished with result:"):
+	//    tc_sched_oneshot settles COMPLETED, AND tc_sched_any cancels early as STOPPED!
+	if err := os.WriteFile(filepath.Join(msgsDir, "m2_timer_expired.json"), []byte(`{"sender":"conv_sched/task-367","priority":"MESSAGE_PRIORITY_HIGH","renderDetails":{"messageTitle":"2m timer: Timer has expired"},"content":"Check task-361 status if XCUITest has not completed yet."}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	waitProj("one-shot timer expiry and TimerCondition:any early cancel", func(p *sessionv1.SessionProjection) bool {
+		return bgStatus(p, "tc_sched_oneshot") == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED &&
+			bgStatus(p, "tc_sched_any") == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+	})
+
+	// 4. Build finishes + bounded cron fires tick #1 (1/2):
+	//    tc_build settles COMPLETED, tc_sched_cond cancels early via TimerCondition:"conv_sched/task-build",
+	//    while tc_cron_bounded (MaxIterations=2) stays RUNNING on tick #1!
+	if err := os.WriteFile(filepath.Join(msgsDir, "m3_build_and_cron1.json"), []byte(`{"sender":"conv_sched/task-build","content":"Task id \"conv_sched/task-build\" finished with result:\nCommand exited with code 0.\n"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(msgsDir, "m3b_cron_tick1.json"), []byte(`{"sender":"conv_sched/task-cron","content":"Poll CI status (1/2)."}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p4 := waitProj("build finished and conditioned timer canceled", func(p *sessionv1.SessionProjection) bool {
+		return bgStatus(p, "tc_build") == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED &&
+			bgStatus(p, "tc_sched_cond") == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+	})
+	if bgStatus(p4, "tc_cron_bounded") != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+		t.Fatalf("bounded cron (MaxIterations=2) must remain RUNNING after tick #1: %+v", p4.GetBackgroundTasks())
+	}
+
+	// 5. Cron tick #2 (2/2) + manage_task(kill) returning "task is not running (status: DONE)":
+	//    ActiveBackgroundCount reaches 0, Session.Status settles to IDLE, and archiving succeeds!
+	if err := os.WriteFile(filepath.Join(brainDir, "sched_step_final_kill"), []byte("1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p5 := waitProj("all background work settled and session IDLE", func(p *sessionv1.SessionProjection) bool {
+		return p.GetSession().GetActiveBackgroundCount() == 0 &&
+			p.GetSession().GetActiveRunId() == "" &&
+			p.GetSession().GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_IDLE
+	})
+	if bgStatus(p5, "tc_cron_bounded") != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED ||
+		bgStatus(p5, "tc_already_done") != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
+		t.Fatalf("expected cron tick #2 and DONE kill check to settle COMPLETED: %+v", p5.GetBackgroundTasks())
+	}
+	if _, err := eng.UpdateSession(ctx, owner, &sessionv1.UpdateSessionRequest{
+		CommandId:   "cmd_archive_settled",
+		SessionId:   sessionID,
+		HasArchived: true,
+		Archived:    true,
+	}); err != nil {
+		t.Fatalf("expected settled session to archive cleanly without active-background error: %v", err)
+	}
+}
+
+func TestACPToolInputOutputDiffAndNoCompletedPlaceholder(t *testing.T) {
+	ctx := context.Background()
+	exe, _ := os.Executable()
+	drv := acp.NewDriver("")
+	sess, err := drv.StartSession(ctx, runtime.StartSpec{
+		SessionID: "s_acp_io",
+		Workdir:   t.TempDir(),
+		Instance: &sessionv1.ProviderInstanceConfig{
+			InstanceId: "gemini",
+			Driver:     "acp",
+			AcpFlavor:  "gemini",
+			BinaryPath: exe,
+			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--"},
+			Env:        map[string]string{"HERMESH_MOCK_DRIVER": "acp"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	if err := sess.StartTurn(ctx, runtime.TurnInput{RunID: "r_io", Prompt: "tool_io_cases"}); err != nil {
+		t.Fatal(err)
+	}
+	done := map[string]runtime.Event{}
+	timeout := time.After(8 * time.Second)
+loop:
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timed out waiting for ACP tool_io_cases turn")
+		case ev := <-sess.Events():
+			if ev.Kind == runtime.EventToolCompleted {
+				done[ev.ItemID] = ev
+			}
+			if ev.Kind == runtime.EventTurnCompleted {
+				break loop
+			}
+		}
+	}
+	r := done["tc_read_silent"]
+	if r.Output != "" || !strings.Contains(r.Input, `"StartLine": 1`) {
+		t.Fatalf("silent ACP read must preserve JSON input and leave output empty (no 'completed' placeholder): %+v", r)
+	}
+	d := done["tc_diff"]
+	if !strings.Contains(d.Input, `"Target": "return 1"`) || !strings.Contains(d.Output, "-\treturn 1") || !strings.Contains(d.Output, "+\treturn 2") {
+		t.Fatalf("ACP diff content block must format unified diff: %+v", d)
+	}
+	m := done["tc_mcp_json"]
+	if !strings.Contains(m.Input, `"to": "worker"`) || !strings.Contains(m.Output, `"id": "msg_99"`) {
+		t.Fatalf("ACP structured JSON rawOutput not preserved: %+v", m)
+	}
+	if got := runtime.FormatToolJSON(json.RawMessage(`{"command":"echo ran \u003e ran.txt \u0026\u0026 cat \u003c ran.txt"}`)); !strings.Contains(got, `"echo ran > ran.txt && cat < ran.txt"`) {
+		t.Fatalf("FormatToolJSON did not unescape HTML angle/ampersand escapes: %s", got)
 	}
 }

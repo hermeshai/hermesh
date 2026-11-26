@@ -40,3 +40,20 @@ import Testing
     #expect(closingOpenMarks("See [the docs](https://example.com) now") == "See [the docs](https://example.com) now")
     #expect(closingOpenMarks("```go\nfmt.Println(\"**\")") == "```go\nfmt.Println(\"**\")")
 }
+
+@Test func nextStreamRowEndReleasesFullRowsAndProtectsInlineSyntax() {
+    let multi = "## 标题\n\n第一行\n第二行"
+    let first = nextStreamRowEnd(multi, from: multi.startIndex, flushTail: false)!
+    #expect(String(multi[..<first]) == "## 标题\n")
+    let second = nextStreamRowEnd(multi, from: first, flushTail: false)!
+    #expect(String(multi[first..<second]) == "\n第一行\n")
+
+    let short = "还没攒够一整排"
+    #expect(nextStreamRowEnd(short, from: short.startIndex, flushTail: false) == nil)
+    #expect(nextStreamRowEnd(short, from: short.startIndex, flushTail: true) == short.endIndex)
+
+    let prose = "这是一整排在手机宽度下已经超过二十八个汉字的流式输出测试内容，用来确认按整排蓄水切分时不会截断行内代码。"
+    let cut = nextStreamRowEnd(prose, from: prose.startIndex, flushTail: false)!
+    #expect(prose.distance(from: prose.startIndex, to: cut) >= 22)
+    #expect(cut < prose.endIndex)
+}

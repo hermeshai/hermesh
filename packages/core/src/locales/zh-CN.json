@@ -1,5 +1,6 @@
 {
   "bucket": {
+    "pinned": "置顶",
     "attention": "需要处理",
     "active": "进行中",
     "done": "已结束",

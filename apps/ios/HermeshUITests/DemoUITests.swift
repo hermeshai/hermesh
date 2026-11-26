@@ -346,6 +346,11 @@ final class DemoUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Regenerate Title"].exists)
         tap("Copy Task ID")
         XCTAssertTrue(contains("Copied the task ID").waitForExistence(timeout: 5))
+        tap("session-more"); tap("Pin")
+        place("All Sessions")
+        XCTAssertTrue(app.buttons["group-Pinned"].waitForExistence(timeout: 5))
+        tap("session-Add a welcome page")
+        tap("session-more"); tap("Unpin")
         tap("session-more"); tap("Rename")
         replace(app.alerts.textFields.firstMatch, with: "Review Session"); tap("rename-confirm")
         XCTAssertTrue(contains("Review Session").waitForExistence(timeout: 5))
@@ -356,9 +361,13 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(contains("Archived: read-only").waitForNonExistence(timeout: 5))
         tap("session-more"); tap("Delete…"); tap("delete-confirm")
         place("All Sessions")
+        XCTAssertFalse(app.buttons["group-Pinned"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["session-Review Session"].exists)
         for group in ["By Date", "By Agent", "By Status", "By Machine"] {
             tap("view-options"); menuItem("Group"); tap(group)
+        }
+        for sortBy in ["Created", "Last Active", "Default (In Progress by Created)"] {
+            tap("view-options"); menuItem("Sort"); tap(sortBy)
         }
         for order in ["Oldest First", "Newest First"] {
             tap("view-options"); menuItem("Sort"); tap(order)

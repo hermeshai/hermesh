@@ -339,7 +339,7 @@ func canShortCircuitTitle(seed, rawPrompt string, attachments []*sessionv1.Attac
 	runes := utf8.RuneCountInString(seed)
 	switch locale {
 	case "zh-CN", "zh-TW":
-		if hanCount < 2 || hanCount > 16 || runes < 4 || runes > 22 || kanaHangulCount > 0 || nonASCIILetterCount > 0 {
+		if hanCount < 2 || hanCount > 18 || runes < 4 || runes > 24 || kanaHangulCount > 0 || nonASCIILetterCount > 0 {
 			return false
 		}
 		if vagueZHRE.MatchString(seed) {
@@ -363,6 +363,108 @@ func canShortCircuitTitle(seed, rawPrompt string, attachments []*sessionv1.Attac
 		// exact target-language phrasing.
 		return false
 	}
+}
+
+// NeedsAttachmentForTitle reports whether prompt text alone lacks a concrete
+// subject (empty, very short, or deictic screenshot references), so an image
+// attachment should be included in Pass 1 title generation.
+func NeedsAttachmentForTitle(prompt string) bool {
+	seed := compactPromptForSeed(prompt)
+	if seed == "" {
+		return true
+	}
+	runes := utf8.RuneCountInString(seed)
+	if runes < 10 || vagueZHRE.MatchString(seed) || vagueENRE.MatchString(seed) {
+		return true
+	}
+	if runes < 28 {
+		low := strings.ToLower(seed)
+		for _, kw := range []string{"截图", "如图", "图里", "图片", "报错", "screenshot", "image", "attached", "this error", "this bug"} {
+			if strings.Contains(low, kw) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// PickLowestEffort chooses the lightest non-thinking / minimal-thinking level
+// offered in efforts, or "" when none is offered.
+func PickLowestEffort(efforts []string) string {
+	for _, want := range []string{"off", "none", "minimal", "low"} {
+		for _, got := range efforts {
+			if strings.EqualFold(strings.TrimSpace(got), want) {
+				return got
+			}
+		}
+	}
+	return ""
+}
+
+func smallModelRank(id, name string) (tier int, effortRank int) {
+	text := strings.ToLower(id + " " + name)
+	tokens := strings.FieldsFunc(text, func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'))
+	})
+	has := func(w string) bool {
+		for _, tok := range tokens {
+			if tok == w {
+				return true
+			}
+		}
+		return false
+	}
+	effortRank = 2
+	switch {
+	case has("off") || has("none") || has("minimal"):
+		effortRank = 0
+	case has("low"):
+		effortRank = 1
+	case has("medium"):
+		effortRank = 2
+	case has("high"):
+		effortRank = 3
+	case has("xhigh") || has("max"):
+		effortRank = 4
+	}
+	if strings.Contains(text, "flash-lite") || strings.Contains(text, "flash_lite") || has("nano") || has("lite") || has("8b") || has("7b") || has("4b") {
+		return 0, effortRank
+	}
+	if has("opus") || has("ultra") || has("reasoner") || has("o1") || has("o3") || has("orchestrator") || has("120b") || has("405b") || strings.Contains(text, "deep-research") {
+		return 3, effortRank
+	}
+	if has("flash") || has("haiku") || has("mini") || has("small") || has("turbo") || has("instant") || has("fast") || has("air") {
+		return 1, effortRank
+	}
+	if has("pro") || has("max") {
+		return 3, effortRank
+	}
+	return 2, effortRank
+}
+
+// PickSmallModelID selects the smallest/fastest model from an in-memory list
+// without performing any subprocess or network probe, along with its lowest
+// reasoning effort when advertised.
+func PickSmallModelID(models []Model) (modelID string, effort string) {
+	bestIdx := -1
+	bestTier := 99
+	bestEffort := 99
+	for i, m := range models {
+		if strings.TrimSpace(m.ID) == "" {
+			continue
+		}
+		tier, effRank := smallModelRank(m.ID, m.Name)
+		if tier < bestTier || (tier == bestTier && effRank < bestEffort) {
+			bestIdx = i
+			bestTier = tier
+			bestEffort = effRank
+		}
+	}
+	if bestIdx < 0 {
+		return "", ""
+	}
+	chosen := models[bestIdx]
+	return chosen.ID, PickLowestEffort(chosen.Efforts)
 }
 
 // SanitizeGeneratedTitle cleans a model-produced title string and validates it.
@@ -405,7 +507,8 @@ func SanitizeGeneratedTitle(raw string) (string, error) {
 }
 
 // ParseTitleGenOutput extracts and validates a TitleGenResult JSON object from
-// raw model text (handling optional markdown code fences or surrounding prose).
+// raw model text (handling optional markdown code fences or single-line plain
+// title responses from small models).
 func ParseTitleGenOutput(raw string) (TitleGenResult, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -413,21 +516,27 @@ func ParseTitleGenOutput(raw string) (TitleGenResult, error) {
 	}
 	start := strings.IndexByte(s, '{')
 	end := strings.LastIndexByte(s, '}')
-	if start < 0 || end <= start {
-		return TitleGenResult{}, errors.New("no JSON object in title generation output")
+	if start >= 0 && end > start {
+		var parsed TitleGenResult
+		if err := json.Unmarshal([]byte(s[start:end+1]), &parsed); err != nil {
+			return TitleGenResult{}, fmt.Errorf("decode title JSON: %w", err)
+		}
+		clean, err := SanitizeGeneratedTitle(parsed.Title)
+		if err != nil {
+			return TitleGenResult{}, err
+		}
+		return TitleGenResult{
+			Title:       clean,
+			Provisional: parsed.Provisional,
+		}, nil
 	}
-	var parsed TitleGenResult
-	if err := json.Unmarshal([]byte(s[start:end+1]), &parsed); err != nil {
-		return TitleGenResult{}, fmt.Errorf("decode title JSON: %w", err)
+	if !strings.Contains(s, "\n") && utf8.RuneCountInString(s) <= 48 {
+		clean, err := SanitizeGeneratedTitle(s)
+		if err == nil {
+			return TitleGenResult{Title: clean}, nil
+		}
 	}
-	clean, err := SanitizeGeneratedTitle(parsed.Title)
-	if err != nil {
-		return TitleGenResult{}, err
-	}
-	return TitleGenResult{
-		Title:       clean,
-		Provisional: parsed.Provisional,
-	}, nil
+	return TitleGenResult{}, errors.New("no JSON object in title generation output")
 }
 
 // SliceHeadTail truncates s to maxRunes by preserving both the opening and

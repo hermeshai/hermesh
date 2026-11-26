@@ -389,6 +389,7 @@ struct SessionPage: View {
         let activeProj = activeProjection
         let grant = model.grantLabel(s)
         let steps = groupSteps(sessionTranscript(activeProj))
+        let writing = sessionLiveReplies(activeProj)
         let files = model.sessionFiles.model(s.sessionID, api: model.api)
         let codeActions = codeActions(for: s)
         // A wide screen: the side panel beside the conversation (docs/session-files.md §15), or taking the page.
@@ -401,10 +402,11 @@ struct SessionPage: View {
             VStack(alignment: .leading, spacing: 13) {
                 if s.status == .archived { ArchivedNote(session: s) }
                 ForEach(Array(steps.enumerated()), id: \.element.id) { i, step in
-                    StepView(step: step, session: s, previousTurn: previousTurn(steps, before: i))
+                    StepView(step: step, session: s, previousTurn: previousTurn(steps, before: i), live: writing.contains(step.id))
                 }
                 .environment(\.sessionFiles, files)
                 .environment(\.sessionCodeActions, codeActions)
+                .environment(\.openBackgroundTasks) { _ in showingBackgroundTasks = true }
                 .environment(\.openURL, OpenURLAction { url in
                     guard let route = FileRefLink.route(url, session: s.sessionID) else { return .systemAction }
                     if case .sessionFile(_, let r, let p, let line, _) = route, isSessionImage(p, line: line > 0 ? line : nil) {
@@ -450,6 +452,7 @@ struct SessionPage: View {
                     }
                     backgroundBar
                     queue(activeProj)
+                    todoCard(activeProj)
                     box
                 }
                 .padding(.bottom, 4)
@@ -566,6 +569,61 @@ struct SessionPage: View {
         }
     }
 
+    /// Live checklist floating over the composer while a multi-step turn runs; auto-collapses when all steps complete.
+    @ViewBuilder private func todoCard(_ activeProj: Hermesh_Session_V1_SessionProjection?) -> some View {
+        let todos = activeTodoSteps(activeProj)
+        if !todos.isEmpty {
+            let list = VStack(alignment: .leading, spacing: 7) {
+                ForEach(Array(todos.enumerated()), id: \.offset) { i, step in
+                    HStack(alignment: .firstTextBaseline, spacing: 9) {
+                        todoGlyph(step.status)
+                        Text(verbatim: step.text)
+                            .font(.subheadline)
+                            .foregroundStyle(todoTextStyle(step.status))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .accessibilityIdentifier("thread-todo-step-\(i)")
+                }
+            }
+            Group {
+                if todos.count > 5 {
+                    ScrollView { list }
+                        .frame(maxHeight: 168)
+                } else {
+                    list
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 11)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .padding(.horizontal, 20)
+            .accessibilityIdentifier("thread-todo-card")
+        }
+    }
+
+    @ViewBuilder private func todoGlyph(_ status: TodoStepStatus) -> some View {
+        switch status {
+        case .inProgress:
+            MovingMark(size: 14, motion: .seq)
+                .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.bottom] - 2 }
+        case .completed:
+            Image(systemName: "checkmark").font(.caption.weight(.semibold)).foregroundStyle(.tint)
+        case .skipped:
+            Image(systemName: "minus").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+        case .failed:
+            Image(systemName: "xmark").font(.caption.weight(.semibold)).foregroundStyle(.red)
+        case .pending:
+            Image(systemName: "circle").font(.caption).foregroundStyle(.tertiary)
+        }
+    }
+
+    private func todoTextStyle(_ status: TodoStepStatus) -> HierarchicalShapeStyle {
+        switch status {
+        case .inProgress, .failed: .primary
+        case .pending: .secondary
+        case .completed, .skipped: .tertiary
+        }
+    }
+
     private func sessionWorkStatus(_ activeProj: Hermesh_Session_V1_SessionProjection?, steps: [Step]) -> SessionWorkStatus? {
         switch currentSession?.status {
         case .preparing:
@@ -574,13 +632,13 @@ struct SessionPage: View {
             return SessionWorkStatus(text: statusTitle(.queued))
         case .running:
             let run = activeProj?.runs.first { $0.runID == currentSession?.activeRunID }
-            let text = switch sessionWork(activeProj) {
+            let defaultText = switch sessionWork(activeProj) {
             case .tool: String(localized: "Running tools…")
             case .thinking: String(localized: "Thinking…")
             case .replying: String(localized: "Replying…")
             case .working: String(localized: "Working…")
             }
-            return SessionWorkStatus(text: text, since: run.flatMap { dateOf($0.startedAt, set: $0.hasStartedAt) })
+            return SessionWorkStatus(text: sessionFocusText(activeProj) ?? defaultText, since: run.flatMap { dateOf($0.startedAt, set: $0.hasStartedAt) })
         case .idle where sessionFailure(currentSession) == nil:
             guard let last = steps.last else { return nil }
             if case .item(.turnEnd) = last { return nil }

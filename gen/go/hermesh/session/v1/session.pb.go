@@ -5228,6 +5228,10 @@ type TurnItem struct {
 	CreatedAt        *timestamppb.Timestamp `protobuf:"bytes,35,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt        *timestamppb.Timestamp `protobuf:"bytes,36,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	Workspace        *WorkspaceStep         `protobuf:"bytes,37,opt,name=workspace,proto3" json:"workspace,omitempty"`
+	Input            string                 `protobuf:"bytes,38,opt,name=input,proto3" json:"input,omitempty"`
+	InputTruncated   bool                   `protobuf:"varint,39,opt,name=input_truncated,json=inputTruncated,proto3" json:"input_truncated,omitempty"`
+	InputBlobSha256  string                 `protobuf:"bytes,40,opt,name=input_blob_sha256,json=inputBlobSha256,proto3" json:"input_blob_sha256,omitempty"`
+	InputSize        uint64                 `protobuf:"varint,41,opt,name=input_size,json=inputSize,proto3" json:"input_size,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -5521,6 +5525,34 @@ func (x *TurnItem) GetWorkspace() *WorkspaceStep {
 	return nil
 }
 
+func (x *TurnItem) GetInput() string {
+	if x != nil {
+		return x.Input
+	}
+	return ""
+}
+
+func (x *TurnItem) GetInputTruncated() bool {
+	if x != nil {
+		return x.InputTruncated
+	}
+	return false
+}
+
+func (x *TurnItem) GetInputBlobSha256() string {
+	if x != nil {
+		return x.InputBlobSha256
+	}
+	return ""
+}
+
+func (x *TurnItem) GetInputSize() uint64 {
+	if x != nil {
+		return x.InputSize
+	}
+	return 0
+}
+
 // What a session's first turn did to the project's folder before the agent started: a
 // worktree made (after fetching its base, if asked), a branch switched to in the folder
 // itself, or the folder kept as it is. The item's status is "running", "completed" or
@@ -5615,15 +5647,19 @@ func (x *WorkspaceStep) GetPath() string {
 
 // Value types used by UI conversation step reducers.
 type ToolCall struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	CallId        string                 `protobuf:"bytes,1,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
-	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
-	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	Summary       string                 `protobuf:"bytes,4,opt,name=summary,proto3" json:"summary,omitempty"`
-	Decision      string                 `protobuf:"bytes,5,opt,name=decision,proto3" json:"decision,omitempty"`
-	Reason        string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	CallId          string                 `protobuf:"bytes,1,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
+	Kind            string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	Name            string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	Summary         string                 `protobuf:"bytes,4,opt,name=summary,proto3" json:"summary,omitempty"`
+	Decision        string                 `protobuf:"bytes,5,opt,name=decision,proto3" json:"decision,omitempty"`
+	Reason          string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
+	Input           string                 `protobuf:"bytes,7,opt,name=input,proto3" json:"input,omitempty"`
+	InputTruncated  bool                   `protobuf:"varint,8,opt,name=input_truncated,json=inputTruncated,proto3" json:"input_truncated,omitempty"`
+	InputBlobSha256 string                 `protobuf:"bytes,9,opt,name=input_blob_sha256,json=inputBlobSha256,proto3" json:"input_blob_sha256,omitempty"`
+	InputSize       uint64                 `protobuf:"varint,10,opt,name=input_size,json=inputSize,proto3" json:"input_size,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ToolCall) Reset() {
@@ -5696,6 +5732,34 @@ func (x *ToolCall) GetReason() string {
 		return x.Reason
 	}
 	return ""
+}
+
+func (x *ToolCall) GetInput() string {
+	if x != nil {
+		return x.Input
+	}
+	return ""
+}
+
+func (x *ToolCall) GetInputTruncated() bool {
+	if x != nil {
+		return x.InputTruncated
+	}
+	return false
+}
+
+func (x *ToolCall) GetInputBlobSha256() string {
+	if x != nil {
+		return x.InputBlobSha256
+	}
+	return ""
+}
+
+func (x *ToolCall) GetInputSize() uint64 {
+	if x != nil {
+		return x.InputSize
+	}
+	return 0
 }
 
 type ToolResult struct {
@@ -11039,7 +11103,7 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\bTodoStep\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12\x16\n" +
-	"\x06status\x18\x03 \x01(\tR\x06status\"\xb7\v\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\"\xc1\f\n" +
 	"\bTurnItem\x12\x17\n" +
 	"\aitem_id\x18\x01 \x01(\tR\x06itemId\x12\x1d\n" +
 	"\n" +
@@ -11085,21 +11149,32 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"created_at\x18# \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18$ \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12?\n" +
-	"\tworkspace\x18% \x01(\v2!.hermesh.session.v1.WorkspaceStepR\tworkspace\"\xf0\x01\n" +
+	"\tworkspace\x18% \x01(\v2!.hermesh.session.v1.WorkspaceStepR\tworkspace\x12\x14\n" +
+	"\x05input\x18& \x01(\tR\x05input\x12'\n" +
+	"\x0finput_truncated\x18' \x01(\bR\x0einputTruncated\x12*\n" +
+	"\x11input_blob_sha256\x18( \x01(\tR\x0finputBlobSha256\x12\x1d\n" +
+	"\n" +
+	"input_size\x18) \x01(\x04R\tinputSize\"\xf0\x01\n" +
 	"\rWorkspaceStep\x122\n" +
 	"\x04mode\x18\x01 \x01(\x0e2\x1e.hermesh.identity.v1.WorkspaceR\x04mode\x12;\n" +
 	"\x06action\x18\x02 \x01(\x0e2#.hermesh.session.v1.WorkspaceActionR\x06action\x12\x16\n" +
 	"\x06branch\x18\x03 \x01(\tR\x06branch\x12\x19\n" +
 	"\bbase_ref\x18\x04 \x01(\tR\abaseRef\x12'\n" +
 	"\x0fprevious_branch\x18\x05 \x01(\tR\x0epreviousBranch\x12\x12\n" +
-	"\x04path\x18\x06 \x01(\tR\x04path\"\x99\x01\n" +
+	"\x04path\x18\x06 \x01(\tR\x04path\"\xa3\x02\n" +
 	"\bToolCall\x12\x17\n" +
 	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12\x18\n" +
 	"\asummary\x18\x04 \x01(\tR\asummary\x12\x1a\n" +
 	"\bdecision\x18\x05 \x01(\tR\bdecision\x12\x16\n" +
-	"\x06reason\x18\x06 \x01(\tR\x06reason\"\xc7\x01\n" +
+	"\x06reason\x18\x06 \x01(\tR\x06reason\x12\x14\n" +
+	"\x05input\x18\a \x01(\tR\x05input\x12'\n" +
+	"\x0finput_truncated\x18\b \x01(\bR\x0einputTruncated\x12*\n" +
+	"\x11input_blob_sha256\x18\t \x01(\tR\x0finputBlobSha256\x12\x1d\n" +
+	"\n" +
+	"input_size\x18\n" +
+	" \x01(\x04R\tinputSize\"\xc7\x01\n" +
 	"\n" +
 	"ToolResult\x12\x17\n" +
 	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x18\n" +

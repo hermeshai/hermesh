@@ -1,5 +1,5 @@
 /* Progress (docs/her-team.md §15): the work Her sent out, as a feed with what set each piece off at its foot; and a post's page, the record of that piece of work. */
-.pg{padding:0 var(--sp-4) var(--sp-5);display:flex;flex-direction:column;gap:var(--sp-2);max-width:calc(var(--conversation-width) + 48px);margin:0 auto}
+.pg{padding:0 var(--sp-4) var(--sp-5);display:flex;flex-direction:column;gap:var(--sp-2);max-width:calc(var(--composer-width) + 48px);margin:0 auto}
 .pg-h{display:flex;align-items:baseline;gap:var(--sp-2);height:32px;min-width:0}
 .pg-h h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-.01em}
 .pg-h span{color:var(--l2);font-size:var(--fs-text)}

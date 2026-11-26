@@ -370,3 +370,42 @@ async fn each_channel_describes_its_models_and_sends_the_levels_it_offers() {
         assert_eq!(sent(&request), expected, "{reference} at {thinking}");
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn models_title_picks_smallest_model_with_thinking_off_and_no_tools() {
+    let env = TestEnv::new("manual", "[models]\nnetwork = false\n").await;
+    let path = env.home.path().join("models.toml");
+    let mut config = std::fs::read_to_string(&path).unwrap();
+    config.push_str(&format!(
+        "\n[providers.bailian-token-plan]\nbase_url = \"{}/bailian/v1\"\n",
+        env.mock.base_url()
+    ));
+    std::fs::write(path, config).unwrap();
+
+    let schema = SchemaCheck::new(&["ModelsTitleResult"]);
+    let (_child, client, _incoming) = env.spawn_rpc(&["serve", "--stdio"]);
+    native_init(&client).await;
+    client
+        .request("auth/set", json!({"provider": "bailian-token-plan", "api_key": "sk-plan-test"}))
+        .await
+        .unwrap();
+
+    let res = client
+        .request(
+            "models/title",
+            json!({"prompt": "[[mock:say:{\"title\":\"会话排序防抖优化\",\"provisional\":false}]] Task title"}),
+        )
+        .await
+        .unwrap();
+    schema.check("ModelsTitleResult", &res);
+    // Among qwen3.8-max, qwen3.7-max, glm-5.3, deepseek-v4.1-flash-1017 and mock-1,
+    // smallest_models picks the flash-tier model and disables thinking.
+    assert_eq!(res["model"], "bailian-token-plan/deepseek-v4.1-flash-1017");
+    assert_eq!(res["text"], "{\"title\":\"会话排序防抖优化\",\"provisional\":false}");
+
+    let last_req = env.mock.stats().chat_controls().last().cloned().unwrap();
+    assert_eq!(
+        sent(&last_req),
+        json!({"model": "deepseek-v4.1-flash-1017", "max_tokens": 96, "enable_thinking": false})
+    );
+}

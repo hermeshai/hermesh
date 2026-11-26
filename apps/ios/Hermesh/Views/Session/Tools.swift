@@ -213,9 +213,9 @@ private struct CardScrollsFirst: UIViewRepresentable {
     }
 }
 
-/// One tool call: what it did, and its output when opened, read whole then
-/// when the conversation holds only its start. Folded until opened, failed
-/// ones too; the one running shimmers. A command reads as code.
+/// One tool call: what it did, and its input and output when opened, read whole
+/// then when the conversation holds only their start. Folded until opened,
+/// failed ones too; the one running shimmers. A command reads as code.
 struct ToolRow: View {
     @Environment(AppModel.self) private var model
     let item: ToolItem
@@ -223,6 +223,7 @@ struct ToolRow: View {
     /// In an opened group's card: a size down, its output on the card's ground.
     var inCard = false
     @State private var open = false
+    @State private var wholeIn: ToolOutput?
     @State private var whole: ToolOutput?
 
     var body: some View {
@@ -230,14 +231,33 @@ struct ToolRow: View {
         let denied = call.decision == "deny"
         let failed = denied || item.result?.isError == true
         ToolLine(verb: toolVerb(call, running: item.running), object: toolSummary(toolObject(call), sessionID: sessionID), shell: call.kind == "shell",
-                 running: item.running || reading, failed: failed, output: output(denied: denied), inCard: inCard, open: $open)
-            .task(id: open) { if open { await readWhole() } }
+                 running: item.running || readingIn || reading, failed: failed, input: inputText, output: output(denied: denied), inCard: inCard, open: $open)
+            .task(id: open) {
+                if open {
+                    async let a: Void = readWholeInput()
+                    async let b: Void = readWhole()
+                    _ = await (a, b)
+                }
+            }
     }
 
+    private var partialIn: Bool { partialInput(item.call) }
     private var partial: Bool { item.result.map(partialOutput) ?? false }
+    private var inKey: String { "\(sessionID)/in/\(item.call.callID)" }
     private var key: String { "\(sessionID)/\(item.call.callID)" }
+    private var doneIn: ToolOutput? { wholeIn ?? ToolOutputs.read[inKey].map { ToolOutput(text: $0, done: true, failed: false) } }
     private var done: ToolOutput? { whole ?? ToolOutputs.read[key].map { ToolOutput(text: $0, done: true, failed: false) } }
+    private var readingIn: Bool { open && partialIn && doneIn?.done != true && doneIn?.failed != true }
     private var reading: Bool { open && partial && done?.done != true && done?.failed != true }
+
+    private var inputText: String {
+        let c = item.call
+        let text = partialIn ? (doneIn.flatMap { $0.text.isEmpty ? nil : $0.text } ?? c.input) : c.input
+        if text.isEmpty { return "" }
+        let note = doneIn?.failed == true ? String(localized: "… (the rest can’t be read now)")
+            : !partialIn && c.inputTruncated ? String(localized: "… (truncated)") : ""
+        return note.isEmpty ? text : "\(text)\n\(note)"
+    }
 
     /// What opens under the row: why it was denied, or the output (with a
     /// note when the rest can't be read), or nothing to open.
@@ -250,6 +270,19 @@ struct ToolRow: View {
         let note = done?.failed == true ? String(localized: "… (the rest can’t be read now)")
             : !partial && r.truncated ? String(localized: "… (truncated)") : ""
         return note.isEmpty ? text : "\(text)\n\(note)"
+    }
+
+    private func readWholeInput() async {
+        let sha = item.call.inputBlobSha256
+        guard partialIn, !sha.isEmpty, doneIn?.done != true, doneIn?.failed != true, let api = model.api else { return }
+        do {
+            let data = try await api.downloadBlob(sessionID, sha256: sha)
+            let text = String(decoding: data, as: UTF8.self)
+            ToolOutputs.keep(inKey, text)
+            wholeIn = ToolOutput(text: text, done: true, failed: false)
+        } catch {
+            if !Task.isCancelled { wholeIn = ToolOutput(text: "", done: false, failed: true) }
+        }
     }
 
     /// The whole output (DownloadBlob), shown once fetched.
@@ -266,9 +299,9 @@ struct ToolRow: View {
     }
 }
 
-/// A step on its line: its verb, what it acted on (a command as code), and what it gave when opened (`output`;
-/// nothing to open without one). The one at work shimmers; a failed one is red. In an opened group's card (`inCard`): a
-/// size down, its output on the card's ground.
+/// A step on its line: its verb, what it acted on (a command as code), and what it took and gave when opened (`input`
+/// and `output`; nothing to open without either). The one at work shimmers; a failed one is red. In an opened group's
+/// card (`inCard`): a size down, its output on the card's ground.
 struct ToolLine: View {
     @Environment(\.revealStep) private var reveal
     let verb: String
@@ -276,14 +309,17 @@ struct ToolLine: View {
     let shell: Bool
     let running: Bool
     let failed: Bool
+    var input = ""
     let output: String
     var inCard = false
     @Binding var open: Bool
 
+    private var expandable: Bool { !input.isEmpty || !output.isEmpty }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                guard !output.isEmpty else { return }
+                guard expandable else { return }
                 withAnimation(.snappy(duration: 0.25)) { open.toggle() }
                 // In a card that scrolls: the output just opened comes into view once it has opened.
                 if open, let reveal { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { reveal() } }
@@ -297,7 +333,7 @@ struct ToolLine: View {
                     } else {
                         Text(object).foregroundStyle(.secondary)
                     }
-                    if !output.isEmpty { Caret(open: open) }
+                    if expandable { Caret(open: open) }
                 }
                 .lineLimit(1)
                 .font(inCard ? .footnote : .subheadline)
@@ -307,10 +343,10 @@ struct ToolLine: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityValue(output.isEmpty ? Text("") : open ? Text("Expanded") : Text("Collapsed"))
-            if open, !output.isEmpty {
+            .accessibilityValue(!expandable ? Text("") : open ? Text("Expanded") : Text("Collapsed"))
+            if open, expandable {
                 // In a card, less high: one output does not fill the card.
-                OutputText(text: output, maxHeight: inCard ? 160 : 320)
+                OutputText(input: input, text: output, running: running, maxHeight: inCard ? 160 : 320)
                     .padding(.horizontal, inCard ? 13 : 10).padding(.top, inCard ? 0 : 8).padding(.bottom, inCard ? 10 : 8)
                     .background(inCard ? Palette.fill : Palette.code, in: RoundedRectangle(cornerRadius: inCard ? 0 : 8, style: .continuous))
                     .padding(.top, inCard ? 0 : 4).padding(.bottom, inCard ? 0 : 6)
@@ -411,14 +447,18 @@ struct Caret: View {
     }
 }
 
-/// A tool's output: the code face, grey (with ANSI SGR & unified diff colours when present),
+/// A tool's input and output: the code face, grey (with ANSI SGR & unified diff colours when present),
 /// wrapping, selectable, at most 320 high and scrolling inside (UITextView, which lays out a long output fast).
 struct OutputText: UIViewRepresentable {
+    var input = ""
     let text: String
+    var running = false
     var maxHeight: CGFloat = 320
 
     final class Coordinator {
+        var lastInput = ""
         var lastText = ""
+        var lastRunning = false
         var lastDark: Bool?
     }
 
@@ -438,16 +478,46 @@ struct OutputText: UIViewRepresentable {
     func updateUIView(_ v: UITextView, context: Context) {
         let dark = v.traitCollection.userInterfaceStyle == .dark
         let c = context.coordinator
-        guard c.lastText != text || c.lastDark != dark else { return }
+        guard c.lastInput != input || c.lastText != text || c.lastRunning != running || c.lastDark != dark else { return }
+        c.lastInput = input
         c.lastText = text
+        c.lastRunning = running
         c.lastDark = dark
-        v.attributedText = TerminalRendering.nsAttributedString(text, dark: dark)
+        if input.isEmpty {
+            v.attributedText = TerminalRendering.nsAttributedString(text, dark: dark)
+            return
+        }
+        let labelFont = UIFontMetrics(forTextStyle: .caption2).scaledFont(for: .systemFont(ofSize: 11, weight: .medium))
+        let emptyFont = UIFontMetrics(forTextStyle: .caption1).scaledFont(for: .systemFont(ofSize: 12, weight: .regular))
+        let headingPara = NSMutableParagraphStyle()
+        headingPara.paragraphSpacing = 2
+        let sectionHeadingPara = NSMutableParagraphStyle()
+        sectionHeadingPara.paragraphSpacingBefore = 8
+        sectionHeadingPara.paragraphSpacing = 2
+
+        let full = NSMutableAttributedString()
+        full.append(NSAttributedString(string: String(localized: "Input") + "\n", attributes: [
+            .font: labelFont, .foregroundColor: UIColor.tertiaryLabel, .paragraphStyle: headingPara,
+        ]))
+        full.append(TerminalRendering.nsAttributedString(input, dark: dark))
+        full.append(NSAttributedString(string: "\n" + String(localized: "Output") + "\n", attributes: [
+            .font: labelFont, .foregroundColor: UIColor.tertiaryLabel, .paragraphStyle: sectionHeadingPara,
+        ]))
+        if !text.isEmpty {
+            full.append(TerminalRendering.nsAttributedString(text, dark: dark))
+        } else {
+            let emptyWord = running ? String(localized: "Waiting for output…") : String(localized: "(no output)")
+            full.append(NSAttributedString(string: emptyWord, attributes: [
+                .font: emptyFont, .foregroundColor: UIColor.tertiaryLabel,
+            ]))
+        }
+        v.attributedText = full
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         let width = proposal.width ?? 320
         // A long output fills the box anyway; it isn't laid out whole to find that out.
-        if text.utf8.count > 16_384 { return CGSize(width: width, height: maxHeight) }
+        if input.utf8.count + text.utf8.count > 16_384 { return CGSize(width: width, height: maxHeight) }
         let fit = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
         return CGSize(width: width, height: min(ceil(fit.height), maxHeight))
     }

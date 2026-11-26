@@ -1,0 +1,1683 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>整排渐变流式动效 · 五版重设计对比</title>
+<style>
+:root {
+  --font: "Google Sans Flex", "Google Sans", system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --mono: "Google Sans Code", ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --ease-wipe: cubic-bezier(0.24, 0.86, 0.28, 1);
+  --ease-curtain: cubic-bezier(0.22, 0.85, 0.26, 1);
+}
+
+[data-theme="light"] {
+  --page: #e8eaf0;
+  --page-fg: #1b1c22;
+  --page-fg2: #5c606b;
+  --page-fg3: #848894;
+  --card: #ffffff;
+  --card-bd: rgba(20, 24, 40, 0.085);
+  --win: #ffffff;
+  --win2: #f4f5f8;
+  --l1: #1d1e24;
+  --l2: #5f636e;
+  --l3: #8c909c;
+  --l4: rgba(32, 33, 39, 0.14);
+  --msg: #1f2026;
+  --msg-ghost: rgba(31, 32, 38, 0.17);
+  --sep: rgba(32, 33, 39, 0.08);
+  --fill: rgba(32, 33, 39, 0.045);
+  --fill2: rgba(32, 33, 39, 0.078);
+  --fill3: rgba(32, 33, 39, 0.125);
+  --accent: #2f6fd6;
+  --accent-fg: #2458b0;
+  --accent-bg: rgba(47, 111, 214, 0.10);
+  --bub: #2f6fd6;
+  --bub-fg: #ffffff;
+  --bot-bub: #f3f4f7;
+  --code: #f3f5f9;
+  --ok: #158849;
+  --ok-bg: rgba(21, 136, 73, 0.11);
+  --shadow-win: 0 0 0 0.5px rgba(0, 0, 0, 0.13), 0 18px 46px rgba(10, 20, 50, 0.13), 0 4px 14px rgba(10, 20, 50, 0.06);
+  --ctl-bg: rgba(255, 255, 255, 0.90);
+  /* Aurora & Laser stops tuned for crisp contrast on white paper */
+  --aur-1: #0284c7;
+  --aur-2: #6366f1;
+  --aur-3: #d946ef;
+  --laser-peak: #2563eb;
+  --laser-halo: #38bdf8;
+  --hl-kw: #cf222e;
+  --hl-fn: #8250df;
+  --hl-str: #0a3069;
+  --hl-num: #0550ae;
+  --hl-cmt: #6e7781;
+  --hl-typ: #953800;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --page: #0d0e13;
+  --page-fg: #ececf1;
+  --page-fg2: #9a9ca8;
+  --page-fg3: #6c6e7a;
+  --card: #181920;
+  --card-bd: rgba(255, 255, 255, 0.085);
+  --win: #1c1d22;
+  --win2: #25262c;
+  --l1: #f2f2f0;
+  --l2: #a7a8b0;
+  --l3: #787982;
+  --l4: rgba(255, 255, 255, 0.15);
+  --msg: #ededeb;
+  --msg-ghost: rgba(237, 237, 235, 0.18);
+  --sep: rgba(255, 255, 255, 0.085);
+  --fill: rgba(255, 255, 255, 0.048);
+  --fill2: rgba(255, 255, 255, 0.085);
+  --fill3: rgba(255, 255, 255, 0.135);
+  --accent: #3b7bf6;
+  --accent-fg: #8ab4f8;
+  --accent-bg: rgba(59, 123, 246, 0.17);
+  --bub: #2f3037;
+  --bub-fg: #f2f2f0;
+  --bot-bub: #25262c;
+  --code: #141519;
+  --ok: #4bc986;
+  --ok-bg: rgba(75, 201, 134, 0.14);
+  --shadow-win: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 20px 54px rgba(0, 0, 0, 0.55), 0 6px 18px rgba(0, 0, 0, 0.3);
+  --ctl-bg: rgba(22, 23, 29, 0.90);
+  /* Aurora & Laser stops tuned for luminous dark mode */
+  --aur-1: #38bdf8;
+  --aur-2: #818cf8;
+  --aur-3: #f472b6;
+  --laser-peak: #ffffff;
+  --laser-halo: #60a5fa;
+  --hl-kw: #ff7b72;
+  --hl-fn: #d2a8ff;
+  --hl-str: #a5d6ff;
+  --hl-num: #79c0ff;
+  --hl-cmt: #8b949e;
+  --hl-typ: #ffa657;
+  color-scheme: dark;
+}
+
+[data-theme="black"] {
+  --page: #030305;
+  --page-fg: #f5f5f7;
+  --page-fg2: #8e9099;
+  --page-fg3: #63656e;
+  --card: #0b0b0f;
+  --card-bd: rgba(255, 255, 255, 0.08);
+  --win: #07070a;
+  --win2: #121217;
+  --l1: #f5f5f7;
+  --l2: #b4b5be;
+  --l3: #787983;
+  --l4: rgba(255, 255, 255, 0.15);
+  --msg: #f7f7f8;
+  --msg-ghost: rgba(247, 247, 248, 0.16);
+  --sep: rgba(255, 255, 255, 0.07);
+  --fill: rgba(255, 255, 255, 0.045);
+  --fill2: rgba(255, 255, 255, 0.08);
+  --fill3: rgba(255, 255, 255, 0.13);
+  --accent: #2f71e3;
+  --accent-fg: #8ab4f8;
+  --accent-bg: rgba(47, 113, 227, 0.18);
+  --bub: #1b1b21;
+  --bub-fg: #f5f5f7;
+  --bot-bub: #121217;
+  --code: #0c0c10;
+  --ok: #6fd08c;
+  --ok-bg: rgba(111, 208, 140, 0.14);
+  --shadow-win: 0 0 0 0.5px rgba(255, 255, 255, 0.11), 0 22px 60px rgba(0, 0, 0, 0.8);
+  --ctl-bg: rgba(11, 11, 15, 0.92);
+  --aur-1: #22d3ee;
+  --aur-2: #818cf8;
+  --aur-3: #e879f9;
+  --laser-peak: #ffffff;
+  --laser-halo: #38bdf8;
+  --hl-kw: #ff7b72;
+  --hl-fn: #d2a8ff;
+  --hl-str: #a5d6ff;
+  --hl-num: #79c0ff;
+  --hl-cmt: #7d8590;
+  --hl-typ: #ffa657;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--page);
+  color: var(--page-fg);
+  font-family: var(--font);
+  font-size: 13.5px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  padding-bottom: 112px;
+}
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* Header */
+.top {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 13px 20px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.top-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.top h1 {
+  font-size: 16.5px;
+  font-weight: 650;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.top-sub {
+  color: var(--page-fg2);
+  font-size: 12.5px;
+}
+.telemetry {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.tel-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 0.5px solid var(--card-bd);
+  color: var(--page-fg2);
+}
+.tel-pill b { color: var(--page-fg); font-weight: 600; }
+.tel-dot { width: 6.5px; height: 6.5px; border-radius: 50%; background: var(--ok); }
+
+/* 5 Redesigned Schemes Bar */
+.scheme-bar {
+  max-width: 1440px;
+  margin: 2px auto 8px;
+  padding: 0 20px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+}
+@media (max-width: 1060px) {
+  .scheme-bar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .scheme-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.scheme-card {
+  text-align: left;
+  padding: 8px 11px;
+  border-radius: 10px;
+  background: var(--card);
+  border: 1px solid var(--card-bd);
+  transition: border-color 0.15s, background 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.scheme-card:hover { border-color: var(--l3); }
+.scheme-card.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, var(--card));
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.sc-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--page-fg);
+}
+.sc-tag {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--fill2);
+  color: var(--page-fg2);
+  white-space: nowrap;
+}
+.sc-tag.hit { background: var(--accent-bg); color: var(--accent-fg); }
+.sc-tag.cool { background: rgba(168, 85, 247, 0.16); color: #c084fc; }
+[data-theme="light"] .sc-tag.cool { color: #7e22ce; }
+.sc-desc {
+  font-size: 11px;
+  color: var(--page-fg2);
+  line-height: 1.38;
+}
+
+/* Stage Layouts */
+.stage-wrap {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 2px 20px 14px;
+}
+.split-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.single-grid {
+  display: flex;
+  justify-content: center;
+}
+.single-grid .win-shell {
+  width: min(880px, 100%);
+}
+.matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 11px;
+}
+@media (max-width: 1060px) {
+  .matrix-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 800px) {
+  .split-grid, .matrix-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Window Shell */
+.win-shell {
+  background: var(--win);
+  border-radius: 13px;
+  box-shadow: var(--shadow-win);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: clamp(320px, calc(100vh - 245px), 560px);
+  min-width: 0;
+}
+@media (max-width: 1060px) {
+  .win-shell { height: clamp(275px, calc(100vh - 355px), 490px); }
+}
+.matrix-grid .win-shell {
+  height: 360px;
+}
+.win-bar {
+  height: 38px;
+  flex: none;
+  padding: 0 13px;
+  border-bottom: 0.5px solid var(--sep);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--win2) 48%, var(--win));
+}
+.lights { display: inline-flex; gap: 5.5px; margin-right: 3px; }
+.lights i { width: 9.5px; height: 9.5px; border-radius: 50%; background: #ff5f57; display: block; }
+.lights i:nth-child(2) { background: #febc2e; }
+.lights i:nth-child(3) { background: #28c840; }
+.win-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--l1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.win-metrics {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--l2);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.m-chip {
+  padding: 2px 6.5px;
+  border-radius: 5px;
+  background: var(--fill);
+}
+.m-chip.on {
+  background: var(--accent-bg);
+  color: var(--accent-fg);
+}
+
+/* Conversation Surface */
+.cscroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px 26px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--l4) transparent;
+}
+.dbody {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.um { align-self: flex-end; max-width: 84%; }
+.um .bub {
+  background: var(--bub);
+  color: var(--bub-fg);
+  border-radius: 14px;
+  padding: 8px 14px;
+  font-size: 13.8px;
+  line-height: 1.52;
+}
+.tool-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--l2);
+}
+
+/* Markdown Typography */
+.am {
+  font-size: 14.5px;
+  line-height: 1.68;
+  color: var(--msg);
+}
+.am.her-bubble {
+  align-self: flex-start;
+  max-width: 92%;
+  background: var(--bot-bub);
+  padding: 12px 16px;
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 0.5px var(--sep);
+}
+.matrix-grid .am { font-size: 13.3px; line-height: 1.62; }
+
+.md-blk { margin-bottom: 10px; }
+.md-blk:last-child { margin-bottom: 0; }
+.md h3 {
+  font-size: 15.5px;
+  font-weight: 650;
+  margin: 12px 0 5px;
+  color: var(--l1);
+}
+.md-blk:first-child h3 { margin-top: 0; }
+.md strong { font-weight: 630; color: var(--l1); }
+.md code.inline {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--fill2);
+  padding: 1px 5px;
+  border-radius: 5px;
+  color: var(--l1);
+}
+.md ul, .md ol { margin: 0; padding-left: 20px; }
+.md li { margin: 4px 0; }
+
+/* Code Block */
+.cblock {
+  background: var(--code);
+  border-radius: 9px;
+  box-shadow: inset 0 0 0 0.5px var(--sep);
+  overflow: hidden;
+}
+.cb-h {
+  height: 27px;
+  padding: 0 10px 0 12px;
+  border-bottom: 0.5px solid var(--sep);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--l2);
+  font-family: var(--mono);
+}
+.cblock pre {
+  margin: 0;
+  padding: 9px 12px 10px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 12.3px;
+  line-height: 1.6;
+  color: var(--l1);
+}
+.code-line {
+  display: block;
+  min-height: 1.6em;
+  white-space: pre;
+}
+.hl-kw { color: var(--hl-kw); }
+.hl-fn { color: var(--hl-fn); }
+.hl-str { color: var(--hl-str); }
+.hl-num { color: var(--hl-num); }
+.hl-cmt { color: var(--hl-cmt); font-style: italic; }
+.hl-typ { color: var(--hl-typ); }
+
+/* Table */
+.tbl-wrap {
+  border-radius: 9px;
+  box-shadow: inset 0 0 0 0.5px var(--sep);
+  overflow-x: auto;
+}
+.md table { width: 100%; border-collapse: collapse; font-size: 12.8px; line-height: 1.45; }
+.md th, .md td { text-align: left; padding: 6.5px 10px; border-bottom: 0.5px solid var(--sep); }
+.md th { background: var(--fill); font-weight: 600; color: var(--l1); }
+.md tr:last-child td { border-bottom: 0; }
+
+/* Each visual row inside a paragraph/list item */
+.s-row {
+  display: block;
+}
+
+/* ==========================================================================
+   THE 5 REDESIGNED WHOLE-ROW GRADIENT STREAMING EFFECTS
+   Mathematical 300% mask/bg geometry:
+   At position 100% 0 -> window sees [66.7% .. 100%] (initial unrevealed state)
+   At position   0% 0 -> window sees [0% .. 33.3%]   (final 100% revealed state)
+   Sweeping 100% -> 0% drives a wide 100%-line-width gradient across the entire row!
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   VERSION 1: PERPLEXITY / GEMINI SILK LINE WIPE (整排丝绸渐变扫出)
+   Whole row pops out at once & wipes smoothly left -> right via wide alpha mask
+   -------------------------------------------------------------------------- */
+.fx-wipe {
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    #000 0%,
+    #000 33.5%,
+    rgba(0, 0, 0, 0.72) 43%,
+    rgba(0, 0, 0, 0.22) 56%,
+    transparent 66.5%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    #000 0%,
+    #000 33.5%,
+    rgba(0, 0, 0, 0.72) 43%,
+    rgba(0, 0, 0, 0.22) 56%,
+    transparent 66.5%,
+    transparent 100%
+  );
+  -webkit-mask-size: 300% 100%;
+  mask-size: 300% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  animation: row-mask-wipe var(--row-dur, 620ms) var(--ease-wipe) both;
+  will-change: -webkit-mask-position, mask-position;
+}
+
+@keyframes row-mask-wipe {
+  0% {
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
+  }
+  100% {
+    -webkit-mask-position: 0% 0;
+    mask-position: 0% 0;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   VERSION 2: AURORA PRISM SWEEP (极光彩流渐变显影)
+   Whole row sweeps in with a luminous Cyan -> Indigo -> Orchid spectrum crest
+   that condenses into crisp ink!
+   -------------------------------------------------------------------------- */
+.fx-aurora {
+  background-image: linear-gradient(
+    90deg,
+    var(--msg) 0%,
+    var(--msg) 33.5%,
+    var(--aur-1) 43%,
+    var(--aur-2) 51%,
+    var(--aur-3) 59%,
+    transparent 66.5%,
+    transparent 100%
+  );
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  /* Pair with soft alpha mask so inline <code> pill boxes also wipe in smoothly */
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 52%, transparent 66.5%, transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0%, #000 52%, transparent 66.5%, transparent 100%);
+  -webkit-mask-size: 300% 100%;
+  mask-size: 300% 100%;
+  animation: aurora-sweep var(--row-dur, 720ms) var(--ease-wipe) both;
+  will-change: background-position, -webkit-mask-position;
+}
+.fx-aurora code.inline {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--sep);
+}
+/* Code blocks & table rows in Aurora mode keep syntax colors + glowing aurora mask bar */
+.fx-aurora-code {
+  position: relative;
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 35%, rgba(0,0,0,0.3) 55%, transparent 66.5%, transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0%, #000 35%, rgba(0,0,0,0.3) 55%, transparent 66.5%, transparent 100%);
+  -webkit-mask-size: 300% 100%;
+  mask-size: 300% 100%;
+  animation: row-mask-wipe var(--row-dur, 650ms) var(--ease-wipe) both;
+}
+
+@keyframes aurora-sweep {
+  0% {
+    background-position: 100% 0;
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
+  }
+  100% {
+    background-position: 0% 0;
+    -webkit-mask-position: 0% 0;
+    mask-position: 0% 0;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   VERSION 3: BLUEPRINT GHOST + LASER BEAM IGNITE (整排暗影秒出 + 刀锋高光点亮)
+   100% of the row snaps onto screen at 0ms as a dim 18% blueprint ghost,
+   then a bright electric highlight beam races across to ignite full contrast!
+   -------------------------------------------------------------------------- */
+.fx-laser {
+  background-image: linear-gradient(
+    90deg,
+    var(--msg) 0%,
+    var(--msg) 34%,
+    var(--laser-halo) 43%,
+    var(--laser-peak) 48.5%,
+    var(--laser-halo) 53%,
+    var(--msg-ghost) 60%,
+    var(--msg-ghost) 100%
+  );
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: laser-ignite var(--row-dur, 660ms) cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: background-position;
+}
+.fx-laser code.inline {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--sep);
+}
+.fx-laser-code {
+  animation: laser-code-ignite var(--row-dur, 620ms) var(--ease-wipe) both;
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 36%, rgba(0,0,0,0.22) 52%, rgba(0,0,0,0.18) 100%);
+  mask-image: linear-gradient(90deg, #000 0%, #000 36%, rgba(0,0,0,0.22) 52%, rgba(0,0,0,0.18) 100%);
+  -webkit-mask-size: 300% 100%;
+  mask-size: 300% 100%;
+}
+
+@keyframes laser-ignite {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0% 0; }
+}
+@keyframes laser-code-ignite {
+  0% { -webkit-mask-position: 100% 0; mask-position: 100% 0; filter: brightness(1.35); }
+  100% { -webkit-mask-position: 0% 0; mask-position: 0% 0; filter: none; }
+}
+
+/* --------------------------------------------------------------------------
+   VERSION 4: VELVET DEFOCUS CURTAIN (整排柔焦散雾升起 · Linear 字幕质感)
+   Whole row rises 7px while defocus mist clears from left to right
+   -------------------------------------------------------------------------- */
+.fx-curtain {
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    #000 0%,
+    #000 34%,
+    rgba(0, 0, 0, 0.45) 51%,
+    transparent 66.5%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    #000 0%,
+    #000 34%,
+    rgba(0, 0, 0, 0.45) 51%,
+    transparent 66.5%,
+    transparent 100%
+  );
+  -webkit-mask-size: 300% 100%;
+  mask-size: 300% 100%;
+  animation: curtain-rise var(--row-dur, 600ms) var(--ease-curtain) both;
+  will-change: transform, filter, -webkit-mask-position;
+}
+
+@keyframes curtain-rise {
+  0% {
+    opacity: 0.15;
+    transform: translate3d(0, 7px, 0);
+    filter: blur(4.5px);
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
+  }
+  55% {
+    opacity: 1;
+    filter: blur(1px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+    filter: none;
+    -webkit-mask-position: 0% 0;
+    mask-position: 0% 0;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   VERSION 5: STAGGERED PHRASE WAVE (整排分句阶梯涟漪推进)
+   Row arrives as 3-4 staggered clauses gliding rightwards in a wide wave
+   -------------------------------------------------------------------------- */
+.fx-phrase {
+  display: inline-block;
+  animation: phrase-glide var(--phr-dur, 460ms) var(--ease-wipe) both;
+  animation-delay: var(--phr-delay, 0ms);
+  will-change: opacity, transform;
+}
+@keyframes phrase-glide {
+  0% {
+    opacity: 0;
+    transform: translate3d(-9px, 2px, 0);
+    filter: blur(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-wipe, .fx-aurora, .fx-aurora-code, .fx-laser, .fx-laser-code, .fx-curtain, .fx-phrase {
+    animation: none !important;
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+}
+
+/* Status line */
+.work-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--l2);
+  padding-top: 4px;
+  min-height: 22px;
+}
+.work-bar {
+  width: 22px;
+  height: 3.5px;
+  border-radius: 99px;
+  background: var(--fill2);
+  overflow: hidden;
+  position: relative;
+}
+.work-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--aur-3), transparent);
+  animation: bar-sweep 1.1s linear infinite;
+}
+@keyframes bar-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+/* Bottom Control Bar */
+.ctl {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 90;
+  background: var(--ctl-bg);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  border-top: 0.5px solid var(--card-bd);
+  padding: 8px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 15px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+.ctl .g {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.ctl .g b {
+  color: var(--page-fg2);
+  font-weight: 500;
+  margin-right: 2px;
+}
+.ctl button {
+  padding: 4px 10px;
+  border-radius: 7px;
+  background: var(--fill2);
+  color: var(--page-fg);
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.ctl button:hover { background: var(--fill3); }
+.ctl button.on { background: var(--accent); color: #ffffff; }
+.ctl button.act { background: var(--ok-bg); color: var(--ok); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="top-title">
+    <h1>整排渐变流式动效 · 五版重设计</h1>
+    <span class="top-sub">告别单字挤牙膏：攒满整排瞬间落位 + 宽幅从左向右渐变扫掠（DOM 提交降频 80%，更酷更省算力）</span>
+  </div>
+  <div class="telemetry">
+    <span class="tel-pill"><i class="tel-dot"></i>帧率 <b id="tel-fps">60</b> fps</span>
+    <span class="tel-pill">DOM 更新频率 <b>~5 次/秒</b> (按排触发)</span>
+    <span class="tel-pill">活跃动画行 <b id="tel-rows">0</b></span>
+  </div>
+</div>
+
+<div class="scheme-bar" id="scheme-bar"></div>
+
+<div class="stage-wrap">
+  <div id="stage"></div>
+</div>
+
+<div class="ctl" id="ctl"></div>
+
+<script>
+// ============================================================================
+// 1. FIVE BOLD WHOLE-ROW GRADIENT DESIGNS (+ RAW BASELINE FOR PK)
+// ============================================================================
+const SCHEMES = [
+  {
+    id: "wipe",
+    name: "1 · 整排丝绸擦除 (Perplexity / Gemini 经典扫出)",
+    short: "1 · 整排丝绸擦除",
+    tag: "最还原你说的效果",
+    tagCls: "hit",
+    desc: "一瞬间铺出一整排字，宽幅遮罩从左往右丝滑渐变显影，多行呈斜向瀑布流",
+    dur: 760,
+  },
+  {
+    id: "aurora",
+    name: "2 · 极光光谱扫字 (Aurora Prism)",
+    short: "2 · 极光光谱扫字",
+    tag: "最炫酷惊艳",
+    tagCls: "cool",
+    desc: "整排刷出瞬间，冰蓝→电紫→柔粉极光沿笔画横向掠过，扫过之处凝结为正文墨色",
+    dur: 880,
+  },
+  {
+    id: "laser",
+    name: "3 · 暗影秒出 + 刀锋点亮 (Laser Ignite)",
+    short: "3 · 暗影刀锋点亮",
+    tag: "极客未来感",
+    tagCls: "cool",
+    desc: "0ms 瞬间铺出整排 18% 浅暗影轮廓，紧接着一道高亮光锋横向疾驰点亮整行文字",
+    dur: 760,
+  },
+  {
+    id: "curtain",
+    name: "4 · 柔焦散雾幕布 (Velvet Curtain)",
+    short: "4 · 柔焦散雾幕布",
+    tag: "电影字幕质感",
+    tagCls: "",
+    desc: "整排微距上浮 7px + 毛玻璃柔焦从左向右散雾凝结，代码块逐行阶梯滑入",
+    dur: 700,
+  },
+  {
+    id: "wave",
+    name: "5 · 分句阶梯涟漪 (Phrase Wave)",
+    short: "5 · 分句阶梯涟漪",
+    tag: "灵动跳跃感",
+    tagCls: "",
+    desc: "整排拆为 3~4 组短句同时投入，带 75ms 阶梯相位差从左向右一浪推一浪滑入",
+    dur: 520,
+  },
+];
+
+const RAW_BASELINE = {
+  id: "raw",
+  name: "0 · 现状分片直出 (无缓冲无渐变 · 对照基线)",
+  short: "现状直出",
+  tag: "基线对照",
+  tagCls: "",
+  desc: "收到网络 token 立即硬切追加，无整排蓄水与横向扫光",
+  dur: 0,
+};
+
+const SCENARIOS = {
+  mixed: {
+    label: "混合排版长文",
+    prompt: "我想要那种「一瞬间出一排字、从左到右渐变扫出来」的流式效果，怎么做到既炫酷又省算力？",
+    tools: "读取了 3 个文件 · Markdown.tsx、parse.ts、app.css",
+    herBubble: false,
+    markdown: `你印象里看到的那种效果（Perplexity 与早期 Gemini Web 的标志性动效），核心秘诀其实是**「整排蓄水闸门 + 300% 宽幅遮罩扫掠」**，它不仅视觉张力强得多，算力消耗反而比传统打字机更低：
+
+### 1. 为什么「整排渐变扫出」既好看又极省算力？
+传统打字机每收到两三个字符就改一次 DOM，画面一直在碎步抖动；而整排扫出把节奏改成了**按行释放**：
+
+- **整排瞬间落位**：前端用离屏 \`measureText\` 攒满一整行宽度（或约 \`180ms\` 闸门时间）后一次性挂载整行，排版零跳动。
+- **宽幅横向扫掠**：利用 \`mask-size: 300% 100%\` 把一整行宽度的柔和透明梯度从左向右推进，上下两行自然形成斜向瀑布流。
+- **重绘降频 80%**：React 与 Markdown 每秒只需提交 **4~5 次**（每排一次），扫光过程完全交给 GPU 合成器跑满 120Hz，动画结束自动退化为普通纯文本。
+
+\`\`\`ts
+export function shouldFlushLine(buffer: string, widthPx: number, maxPx: number, waitMs: number): boolean {
+  if (buffer.includes("\\n")) return true;          // 遇到换行立即整行推出
+  if (widthPx >= maxPx * 0.92) return true;        // 攒够一整排视觉宽度，瞬间刷出！
+  if (waitMs >= 190 && /[，。；：！？,.!?]\\s*$/.test(buffer)) return true;
+  return waitMs >= 260;                            // 超时保底，慢速思考模型也不卡壳
+}
+\`\`\`
+
+### 2. 五种整排渐变风格对比
+
+| 方案名称 | 核心视觉特征 | GPU 实现方式 | 推荐搭配场景 |
+| :--- | :--- | :--- | :--- |
+| 1 · 整排丝绸擦除 | 整排瞬间铺出，纯透明度从左向右丝滑显影 | CSS \`mask-position\` | 耐看百搭，长篇会话与文档首选 |
+| 2 · 极光光谱扫字 | 冰蓝→电紫→柔粉极光沿笔画扫过并褪为墨色 | \`background-clip: text\` | 极具 AI 辨识度，日常对话惊艳 |
+| 3 · 暗影刀锋点亮 | 0ms 预显整排暗影轮廓，高光刀锋横向点亮 | 双色阶 \`background-clip\` | 极客科技风，零延迟感知最快 |
+| 4 · 柔焦散雾幕布 | 整排微上浮 + 柔焦雾气从左向右消散凝结 | \`mask\` + 轻 \`blur\` | 电影字幕级高级感，适合短回复 |`,
+  },
+  chat: {
+    label: "Perplexity 问答风",
+    prompt: "为什么现代大模型界面越来越少用传统的单字闪烁打字机了？",
+    tools: "搜索了 4 篇交互研究与渲染基准报告",
+    herBubble: true,
+    markdown: `随着推理速度进入 **每秒 80~150 Token** 的时代，传统「一个字一个字往外蹦」的打字机模式已经跟不上人类阅读的眼动规律了：
+
+1. **视线锚点更稳定**：人的眼睛在阅读时并不是逐字扫描，而是以「意群 / 整行」为单位做跳跃式注视（Saccade）。整排渐变扫出让每行字从第一毫秒起就固定在最终坐标上，眼球不需要追着抖动的末尾跑。
+2. **斜向瀑布流的速度感**：当上一行扫到 **55%** 左右时，下一行刚好从左侧接力起扫。两三行同时向右推进，会在视觉上形成一道非常丝滑的「对角线光幕」，体感速度比直出快 **30%** 以上。
+3. **极致的低功耗表现**：动画周期结束后立即移除遮罩样式，长会话里成百上千行历史消息全都是零开销的静态文本，手机端也不会发热掉帧。`,
+  },
+  code: {
+    label: "代码逐行刷出",
+    prompt: "给我看看代码块在这种整排渐变模式下是怎么一行行刷出来的？",
+    tools: "读取了 session/Markdown.tsx",
+    herBubble: false,
+    markdown: `在代码场景下，按 \`\\n\` 换行符**逐行整排扫出**比逐字母敲代码舒服太多了——缩进、括号与语法高亮从出场的瞬间就是完整的：
+
+\`\`\`ts
+import { useEffect, useRef, useState } from "react";
+
+interface LineWave {
+  id: number;
+  text: string;
+  bornAt: number;
+}
+
+export function useRowWaveStream(source: string, streaming: boolean) {
+  const [committedLen, setCommittedLen] = useState(streaming ? 0 : source.length);
+  const gateTimer = useRef<number>(0);
+
+  useEffect(() => {
+    if (!streaming) {
+      setCommittedLen(source.length);
+      return;
+    }
+    // 攒够一整行或换行符后一次性开闸放行，触发整排横向渐变扫掠
+    const pending = source.slice(committedLen);
+    const newlineIdx = pending.indexOf("\\n");
+    if (newlineIdx >= 0 || pending.length >= 34) {
+      const cut = newlineIdx >= 0 ? newlineIdx + 1 : pending.length;
+      setCommittedLen((n) => n + cut);
+      return;
+    }
+    gateTimer.current = window.setTimeout(() => setCommittedLen(source.length), 180);
+    return () => clearTimeout(gateTimer.current);
+  }, [source, streaming, committedLen]);
+
+  return source.slice(0, committedLen);
+}
+\`\`\`
+
+你会发现每一行代码都像激光打印机一样干脆利落地整排滑出，既保留了语法高亮色彩，又完全没有单字符闪烁的杂乱感。`,
+  },
+};
+
+const PACE_MODES = {
+  normal:   { label: "标准瀑布 (180ms/排)", rowInterval: 185, speedScale: 1.0 },
+  dramatic: { label: "舒展大片 (290ms/排)", rowInterval: 295, speedScale: 0.75 },
+  turbo:    { label: "极速连发 (105ms/排)", rowInterval: 105, speedScale: 1.25 },
+};
+
+// ============================================================================
+// 2. STATE
+// ============================================================================
+const S = {
+  scheme: "wipe",        // "wipe" | "aurora" | "laser" | "curtain" | "wave"
+  leftCompare: "raw",    // In split PK: "raw" or another scheme like "wipe"
+  view: "split",         // "split" | "single" | "matrix"
+  scenario: "mixed",     // "mixed" | "chat" | "code"
+  pace: "normal",        // "normal" | "dramatic" | "turbo"
+  theme: "dark",
+};
+
+// ============================================================================
+// 3. OFFSCREEN CANVAS VISUAL-ROW SEGMENTER (0 Reflow · Exact Full-Row Slicing!)
+// ============================================================================
+const measureCanvas = document.createElement("canvas");
+const measureCtx = measureCanvas.getContext("2d");
+
+function plainForMeasure(mdInline) {
+  return mdInline.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/`([^`]+)`/g, " $1 ");
+}
+
+// Cuts a paragraph or list item into exact visual rows fitting `maxWidthPx`
+// so EVERY `.s-row` spans a clean single horizontal line ("一瞬间出一排字")!
+function sliceIntoVisualRows(text, maxWidthPx, fontCss) {
+  if (!text) return [];
+  measureCtx.font = fontCss;
+  const safeMax = Math.max(180, maxWidthPx - 8);
+  const rows = [];
+  let start = 0;
+
+  while (start < text.length) {
+    // Respect explicit single line breaks
+    const nl = text.indexOf("\n", start);
+    const hardEnd = nl >= 0 ? nl : text.length;
+    const sub = text.slice(start, hardEnd);
+
+    if (measureCtx.measureText(plainForMeasure(sub)).width <= safeMax) {
+      rows.push({ text: sub, complete: nl >= 0 });
+      start = nl >= 0 ? nl + 1 : hardEnd;
+      continue;
+    }
+
+    // Binary search + clean token/markdown boundary snap for exact 1-row fit
+    let lo = 1;
+    let hi = sub.length;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      const w = measureCtx.measureText(plainForMeasure(sub.slice(0, mid))).width;
+      if (w <= safeMax) lo = mid;
+      else hi = mid - 1;
+    }
+
+    let cut = lo;
+    // Never slice inside `inline code` or **bold** markers if avoidable
+    const head = sub.slice(0, cut);
+    const openTick = (head.match(/`/g) || []).length % 2 === 1;
+    if (openTick) {
+      const lastTick = head.lastIndexOf("`");
+      if (lastTick > cut * 0.55) cut = lastTick;
+    }
+    const openBold = (head.match(/\*\*/g) || []).length % 2 === 1;
+    if (openBold) {
+      const lastBold = head.lastIndexOf("**");
+      if (lastBold > cut * 0.55) cut = lastBold;
+    }
+    // Avoid splitting an English word in half
+    while (cut > 8 && /[a-zA-Z0-9]/.test(sub[cut - 1]) && /[a-zA-Z0-9]/.test(sub[cut])) {
+      cut--;
+    }
+    // Avoid starting next line with closing punctuation
+    if (cut < sub.length && /^[，。、；：！？）》”’,.!?;:)]/.test(sub[cut])) {
+      cut = Math.max(1, cut - 1);
+    }
+
+    rows.push({ text: sub.slice(0, cut), complete: true });
+    start += cut;
+  }
+  return rows;
+}
+
+// ============================================================================
+// 4. MARKDOWN + INLINE FORMATTER + PHRASE SPLITTER
+// ============================================================================
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function healInline(s) {
+  if (s.endsWith("`") && (s.match(/`/g) || []).length % 2 === 1) s = s.slice(0, -1);
+  else if ((s.match(/`/g) || []).length % 2 === 1) s += "`";
+  if (/(^|[^*])\*$/.test(s)) s = s.slice(0, -1);
+  if (s.endsWith("**") && (s.match(/\*\*/g) || []).length % 2 === 1) s = s.slice(0, -2);
+  else if ((s.match(/\*\*/g) || []).length % 2 === 1) s += "**";
+  return s;
+}
+
+function formatInlines(raw) {
+  const healed = healInline(raw);
+  const re = /(\*\*([^*]+)\*\*|`([^`]+)`)/g;
+  let out = "";
+  let last = 0;
+  let m;
+  while ((m = re.exec(healed)) !== null) {
+    if (m.index > last) out += escapeHtml(healed.slice(last, m.index));
+    if (m[2] !== undefined) out += `<strong>${escapeHtml(m[2])}</strong>`;
+    else if (m[3] !== undefined) out += `<code class="inline">${escapeHtml(m[3])}</code>`;
+    last = m.index + m[0].length;
+  }
+  if (last < healed.length) out += escapeHtml(healed.slice(last));
+  return out;
+}
+
+// For Version 5 (Phrase Wave): split a row into 3~4 clauses with staggered delays
+function formatPhraseWave(raw, durMs, animate) {
+  if (!animate) return formatInlines(raw);
+  const parts = [];
+  const tokenRe = /(\*\*[^*]+\*\*|`[^`]+`|[^*`，。；：、！？,.!?;:\s]+[，。；：、！？,.!?;:\s]*|\s+)/g;
+  let m;
+  let acc = "";
+  const healed = healInline(raw);
+  while ((m = tokenRe.exec(healed)) !== null) {
+    acc += m[0];
+    if (acc.length >= 9 || /[，。；：、！？,.!?;:]\s*$/.test(acc)) {
+      parts.push(acc);
+      acc = "";
+    }
+  }
+  if (acc) parts.push(acc);
+  return parts
+    .map((p, idx) => {
+      const delay = idx * Math.round(78 / PACE_MODES[S.pace].speedScale);
+      return `<span class="fx-phrase" style="--phr-dur:${durMs}ms;--phr-delay:${delay}ms">${formatInlines(p)}</span>`;
+    })
+    .join("");
+}
+
+const CODE_RE = /(\/\/[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b(?:export|function|return|const|let|var|if|else|import|from|type|interface|async|await|new|for|while|true|false)\b|\b(?:number|boolean|string|void|Promise|LineWave)\b|\b\d+(?:\.\d+)?\b|\b[a-zA-Z_$][\w$]*(?=\s*\())/g;
+
+function highlightCodeLine(line) {
+  let out = "";
+  let last = 0;
+  let m;
+  CODE_RE.lastIndex = 0;
+  while ((m = CODE_RE.exec(line)) !== null) {
+    if (m.index > last) out += escapeHtml(line.slice(last, m.index));
+    const tok = m[0];
+    let cls = "hl-fn";
+    if (tok.startsWith("//")) cls = "hl-cmt";
+    else if (/^["'`]/.test(tok)) cls = "hl-str";
+    else if (/^\d/.test(tok)) cls = "hl-num";
+    else if (/^(?:number|boolean|string|void|Promise|LineWave)$/.test(tok)) cls = "hl-typ";
+    else if (/^(?:export|function|return|const|let|var|if|else|import|from|type|interface|async|await|new|for|while|true|false)$/.test(tok)) cls = "hl-kw";
+    out += `<span class="${cls}">${escapeHtml(tok)}</span>`;
+    last = m.index + tok.length;
+  }
+  if (last < line.length) out += escapeHtml(line.slice(last));
+  return out || " ";
+}
+
+// Parse full markdown into flat sequence of "Row Units" so our row-gate releases
+// EXACTLY one visual row / heading / code-line / table-row per wave!
+function buildRowUnits(markdown, paneWidthPx, isCompact) {
+  const fontSize = isCompact ? "13.3px" : "14.5px";
+  const fontCss = `400 ${fontSize} -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+  const lines = markdown.split("\n");
+  const units = [];
+  let blockId = 0;
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.trim() === "") {
+      i++;
+      continue;
+    }
+
+    // Fenced Code Block -> 1 unit per code line!
+    const fence = /^ {0,3}```(\S*)/.exec(line);
+    if (fence) {
+      const bId = blockId++;
+      const lang = fence[1] || "code";
+      i++;
+      while (i < lines.length && !/^ {0,3}```\s*$/.test(lines[i])) {
+        units.push({ blockId: bId, blockType: "code", lang, codeLine: lines[i] });
+        i++;
+      }
+      if (i < lines.length) i++; // skip closing fence
+      continue;
+    }
+
+    // Heading -> 1 row unit
+    const h = /^(#{1,4})\s+(.*)$/.exec(line);
+    if (h) {
+      units.push({ blockId: blockId++, blockType: "heading", text: h[2] });
+      i++;
+      continue;
+    }
+
+    // Table -> header row + 1 unit per body row!
+    if (/^\s*\|/.test(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|/.test(lines[i + 1])) {
+      const bId = blockId++;
+      const parseRow = (r) => r.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+      const head = parseRow(lines[i]);
+      i += 2; // skip header + delimiter
+      units.push({ blockId: bId, blockType: "table", isHead: true, cells: head });
+      while (i < lines.length && /^\s*\|/.test(lines[i])) {
+        units.push({ blockId: bId, blockType: "table", isHead: false, cells: parseRow(lines[i]), colCount: head.length });
+        i++;
+      }
+      continue;
+    }
+
+    // List -> each list item sliced into visual rows (bullet width = -22px)
+    if (/^\s*(?:[-*]|\d+\.)\s+/.test(line)) {
+      const bId = blockId++;
+      const ordered = /^\s*\d+\./.test(line);
+      let itemIdx = 0;
+      while (i < lines.length && /^\s*(?:[-*]|\d+\.)\s+/.test(lines[i])) {
+        const itemText = lines[i].replace(/^\s*(?:[-*]|\d+\.)\s+/, "");
+        const vRows = sliceIntoVisualRows(itemText, paneWidthPx - 24, fontCss);
+        vRows.forEach((vr, rIdx) => {
+          units.push({ blockId: bId, blockType: "list", ordered, itemIdx, isFirstRow: rIdx === 0, text: vr.text });
+        });
+        itemIdx++;
+        i++;
+      }
+      continue;
+    }
+
+    // Paragraph -> sliced into exact visual rows!
+    const bId = blockId++;
+    const pLines = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== "" &&
+      !/^ {0,3}```/.test(lines[i]) &&
+      !/^#{1,4}\s+/.test(lines[i]) &&
+      !/^\s*(?:[-*]|\d+\.)\s+/.test(lines[i]) &&
+      !(/^\s*\|/.test(lines[i]) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|/.test(lines[i + 1]))
+    ) {
+      pLines.push(lines[i]);
+      i++;
+    }
+    const vRows = sliceIntoVisualRows(pLines.join("\n"), paneWidthPx, fontCss);
+    vRows.forEach((vr) => {
+      units.push({ blockId: bId, blockType: "paragraph", text: vr.text });
+    });
+  }
+  return units;
+}
+
+// ============================================================================
+// 5. ROW-WAVE PANE RENDERER (Appends Whole Rows · Zero Re-render of Prior Rows!)
+// ============================================================================
+class WavePane {
+  constructor(scheme, mountEl, isCompact) {
+    this.scheme = scheme;
+    this.mountEl = mountEl;
+    this.isCompact = isCompact;
+    this.mdEl = mountEl.querySelector(".md");
+    this.scrollEl = mountEl.querySelector(".cscroll");
+    this.activeChip = mountEl.querySelector("[data-m='active']");
+    this.modeChip = mountEl.querySelector("[data-m='mode']");
+    this.workEl = mountEl.querySelector(".work-row");
+    this.atEnd = true;
+
+    this.scrollEl.addEventListener("scroll", () => {
+      const below = this.scrollEl.scrollHeight - this.scrollEl.scrollTop - this.scrollEl.clientHeight;
+      this.atEnd = below < 52;
+    }, { passive: true });
+  }
+
+  prepare(markdown) {
+    this.mdEl.innerHTML = "";
+    this.atEnd = true;
+    const width = Math.max(240, this.mdEl.clientWidth || 520);
+    this.markdown = markdown;
+    this.units = buildRowUnits(markdown, width, this.isCompact);
+    this.committedUnits = 0;
+    this.rawChars = 0;
+    this.blockMap = new Map();
+    this.activeAnims = 0;
+    this.done = false;
+    this.updateStatus(false);
+  }
+
+  // Used ONLY by the Raw Baseline pane (simulating jittery token-by-token raw dump)
+  pushRawChars(count, streamFinished) {
+    if (this.scheme.id !== "raw") return;
+    this.rawChars = count;
+    this.done = streamFinished;
+    const partial = this.markdown.slice(0, count);
+    const width = Math.max(240, this.mdEl.clientWidth || 520);
+    const partialUnits = buildRowUnits(partial, width, this.isCompact);
+    this.mdEl.innerHTML = "";
+    this.blockMap.clear();
+    for (const u of partialUnits) {
+      this.appendUnitDom(u, false);
+    }
+    if (this.atEnd) this.scrollEl.scrollTop = this.scrollEl.scrollHeight;
+    this.updateStatus(streamFinished);
+  }
+
+  // Used by ALL 5 Whole-Row Gradient Schemes: appends 1 entire row at once with sweeping CSS animation!
+  commitNextRow() {
+    if (this.scheme.id === "raw") return false;
+    if (this.committedUnits >= this.units.length) {
+      this.done = true;
+      this.updateStatus(true);
+      return false;
+    }
+    const unit = this.units[this.committedUnits++];
+    this.appendUnitDom(unit, true);
+    if (this.atEnd) {
+      this.scrollEl.scrollTop = this.scrollEl.scrollHeight;
+    }
+    const finished = this.committedUnits >= this.units.length;
+    this.done = finished;
+    this.updateStatus(finished);
+    return !finished;
+  }
+
+  effectClassFor(isCodeOrTable) {
+    switch (this.scheme.id) {
+      case "wipe":    return "fx-wipe";
+      case "aurora":  return isCodeOrTable ? "fx-aurora-code" : "fx-aurora";
+      case "laser":   return isCodeOrTable ? "fx-laser-code" : "fx-laser";
+      case "curtain": return "fx-curtain";
+      default:        return "";
+    }
+  }
+
+  decorateAnimatedRow(el, isCodeOrTable) {
+    const scale = PACE_MODES[S.pace].speedScale;
+    const durMs = Math.round(this.scheme.dur / scale);
+    const cls = this.effectClassFor(isCodeOrTable);
+    if (cls) {
+      el.classList.add(cls);
+      el.style.setProperty("--row-dur", `${durMs}ms`);
+    }
+    this.activeAnims++;
+    const settle = () => {
+      if (el._settled) return;
+      el._settled = true;
+      if (cls) el.classList.remove(cls);
+      el.style.removeProperty("--row-dur");
+      // For Phrase Wave, unwrap settled phrase spans back to clean inline HTML!
+      if (this.scheme.id === "wave" && el._cleanHtml) {
+        el.innerHTML = el._cleanHtml;
+      }
+      this.activeAnims = Math.max(0, this.activeAnims - 1);
+      this.updateChips();
+    };
+    el.addEventListener("animationend", settle, { once: true });
+    setTimeout(settle, durMs + 380);
+    this.updateChips();
+  }
+
+  ensureBlock(u) {
+    let entry = this.blockMap.get(u.blockId);
+    if (entry) return entry;
+
+    const wrap = document.createElement("div");
+    wrap.className = "md-blk";
+
+    if (u.blockType === "heading") {
+      const h3 = document.createElement("h3");
+      wrap.appendChild(h3);
+      entry = { wrap, target: h3 };
+    } else if (u.blockType === "paragraph") {
+      const p = document.createElement("div");
+      p.className = "md-p";
+      wrap.appendChild(p);
+      entry = { wrap, target: p };
+    } else if (u.blockType === "list") {
+      const list = document.createElement(u.ordered ? "ol" : "ul");
+      wrap.appendChild(list);
+      entry = { wrap, target: list, items: new Map() };
+    } else if (u.blockType === "code") {
+      wrap.innerHTML = `<div class="cblock"><div class="cb-h"><span>${escapeHtml(u.lang)}</span><span>Copy</span></div><pre><code></code></pre></div>`;
+      entry = { wrap, target: wrap.querySelector("code") };
+    } else if (u.blockType === "table") {
+      wrap.innerHTML = `<div class="tbl-wrap"><table><thead></thead><tbody></tbody></table></div>`;
+      entry = { wrap, thead: wrap.querySelector("thead"), tbody: wrap.querySelector("tbody") };
+    }
+
+    this.mdEl.appendChild(wrap);
+    this.blockMap.set(u.blockId, entry);
+    return entry;
+  }
+
+  appendUnitDom(u, animate) {
+    const blk = this.ensureBlock(u);
+    const scale = PACE_MODES[S.pace].speedScale;
+    const durMs = Math.round((this.scheme.dur || 500) / scale);
+
+    if (u.blockType === "heading" || u.blockType === "paragraph") {
+      const row = document.createElement("span");
+      row.className = "s-row";
+      const clean = formatInlines(u.text);
+      if (animate && this.scheme.id === "wave") {
+        row.innerHTML = formatPhraseWave(u.text, durMs, true);
+        row._cleanHtml = clean;
+      } else {
+        row.innerHTML = clean;
+      }
+      blk.target.appendChild(row);
+      if (animate) this.decorateAnimatedRow(row, false);
+      return;
+    }
+
+    if (u.blockType === "list") {
+      let li = blk.items.get(u.itemIdx);
+      if (!li) {
+        li = document.createElement("li");
+        blk.target.appendChild(li);
+        blk.items.set(u.itemIdx, li);
+      }
+      const row = document.createElement("span");
+      row.className = "s-row";
+      const clean = formatInlines(u.text);
+      if (animate && this.scheme.id === "wave") {
+        row.innerHTML = formatPhraseWave(u.text, durMs, true);
+        row._cleanHtml = clean;
+      } else {
+        row.innerHTML = clean;
+      }
+      li.appendChild(row);
+      if (animate) this.decorateAnimatedRow(row, false);
+      return;
+    }
+
+    if (u.blockType === "code") {
+      const lineEl = document.createElement("span");
+      lineEl.className = "code-line";
+      lineEl.innerHTML = highlightCodeLine(u.codeLine);
+      blk.target.appendChild(lineEl);
+      if (animate) this.decorateAnimatedRow(lineEl, true);
+      return;
+    }
+
+    if (u.blockType === "table") {
+      const tr = document.createElement("tr");
+      if (u.isHead) {
+        tr.innerHTML = u.cells.map((c) => `<th>${formatInlines(c)}</th>`).join("");
+        blk.thead.appendChild(tr);
+      } else {
+        const cols = u.colCount || u.cells.length;
+        let tds = "";
+        for (let c = 0; c < cols; c++) {
+          tds += `<td>${formatInlines(u.cells[c] ?? "")}</td>`;
+        }
+        tr.innerHTML = tds;
+        blk.tbody.appendChild(tr);
+      }
+      if (animate) this.decorateAnimatedRow(tr, true);
+    }
+  }
+
+  updateChips() {
+    if (this.activeChip) {
+      this.activeChip.textContent = `扫光行: ${this.activeAnims}`;
+      this.activeChip.classList.toggle("on", this.activeAnims > 0);
+    }
+  }
+
+  updateStatus(finished) {
+    this.updateChips();
+    if (this.modeChip) {
+      this.modeChip.textContent = this.scheme.id === "raw"
+        ? (finished ? "已完成" : "分片硬切直出")
+        : (finished ? `共 ${this.units.length} 排 · 已静态归零` : `第 ${this.committedUnits}/${this.units.length} 排`);
+    }
+    if (this.workEl) {
+      this.workEl.innerHTML = finished
+        ? `<span style="color:var(--ok)">✓</span><span>输出完成（所有渐变遮罩已卸载，恢复零开销静态文本）</span>`
+        : `<span class="work-bar"></span><span>整排渐变扫掠输出中…</span>`;
+    }
+  }
+}
+
+// ============================================================================
+// 6. SIMULATION ORCHESTRATOR
+// ============================================================================
+let panes = [];
+let rowTimer = null;
+let rawTimer = null;
+let fpsId = 0;
+let frames = 0;
+let lastFpsAt = performance.now();
+
+function startWaveSimulation() {
+  clearInterval(rowTimer);
+  clearTimeout(rawTimer);
+  cancelAnimationFrame(fpsId);
+
+  const md = SCENARIOS[S.scenario].markdown;
+  for (const p of panes) p.prepare(md);
+
+  const pace = PACE_MODES[S.pace];
+  const wavePanes = panes.filter((p) => p.scheme.id !== "raw");
+  const rawPanes = panes.filter((p) => p.scheme.id === "raw");
+
+  // 1. Drive Whole-Row Wave Panes: emit 1 crisp visual row immediately, then every `rowInterval` ms!
+  if (wavePanes.length > 0) {
+    for (const p of wavePanes) p.commitNextRow();
+    rowTimer = setInterval(() => {
+      let anyMore = false;
+      for (const p of wavePanes) {
+        if (p.commitNextRow()) anyMore = true;
+      }
+      if (!anyMore) clearInterval(rowTimer);
+    }, pace.rowInterval);
+  }
+
+  // 2. Drive Raw Baseline Pane (if visible) at matching overall duration with realistic bursty chunks
+  if (rawPanes.length > 0) {
+    const maxUnits = Math.max(12, panes[panes.length - 1]?.units.length || 18);
+    const totalDurationMs = maxUnits * pace.rowInterval;
+    const startAt = performance.now();
+    let curChars = 0;
+
+    const stepRaw = () => {
+      const elapsed = performance.now() - startAt;
+      const targetRatio = Math.min(1, elapsed / totalDurationMs);
+      // Add realistic network jitter bursts around targetRatio
+      const burst = Math.floor(Math.random() * 18) + 3;
+      curChars = Math.min(md.length, Math.max(curChars + burst, Math.floor(md.length * targetRatio)));
+      const done = curChars >= md.length;
+      for (const rp of rawPanes) rp.pushRawChars(curChars, done);
+      if (!done) {
+        const wait = Math.random() < 0.25 ? 160 + Math.random() * 150 : 35 + Math.random() * 65;
+        rawTimer = setTimeout(stepRaw, wait);
+      }
+    };
+    stepRaw();
+  }
+
+  // Live FPS & Active Row Counter
+  function tickFps(now) {
+    frames++;
+    if (now - lastFpsAt >= 450) {
+      const fps = Math.min(120, Math.round((frames * 1000) / (now - lastFpsAt)));
+      document.getElementById("tel-fps").textContent = String(fps);
+      const totalActive = panes.reduce((s, p) => s + p.activeAnims, 0);
+      document.getElementById("tel-rows").textContent = String(totalActive);
+      frames = 0;
+      lastFpsAt = now;
+    }
+    const stillRunning = panes.some((p) => !p.done || p.activeAnims > 0);
+    if (stillRunning) fpsId = requestAnimationFrame(tickFps);
+  }
+  lastFpsAt = performance.now();
+  frames = 0;
+  fpsId = requestAnimationFrame(tickFps);
+}
+
+// ============================================================================
+// 7. UI BUILDER & INTERACTIVE CONTROLS
+// ============================================================================
+function getScheme(id) {
+  if (id === "raw") return RAW_BASELINE;
+  return SCHEMES.find((s) => s.id === id) || SCHEMES[0];
+}
+
+function windowHtml(scheme, roleLabel) {
+  const sc = SCENARIOS[S.scenario];
+  return `
+    <div class="win-shell" data-scheme="${scheme.id}">
+      <div class="win-bar">
+        <span class="lights"><i></i><i></i><i></i></span>
+        <span class="win-title">${scheme.name}</span>
+        <div class="win-metrics">
+          <span class="m-chip" data-m="mode">准备中</span>
+          ${scheme.id !== "raw" ? `<span class="m-chip" data-m="active">扫光行: 0</span>` : ""}
+        </div>
+      </div>
+      <div class="cscroll">
+        <div class="dbody">
+          <div class="um"><div class="bub">${escapeHtml(sc.prompt)}</div></div>
+          ${sc.tools ? `<div class="tool-line"><span>${escapeHtml(sc.tools)}</span><span>▸</span></div>` : ""}
+          <div class="am ${sc.herBubble ? "her-bubble" : ""}">
+            <div class="md"></div>
+          </div>
+          <div class="work-row"></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAll() {
+  document.documentElement.dataset.theme = S.theme;
+
+  // 1. Top 5 Redesigned Scheme Cards
+  document.getElementById("scheme-bar").innerHTML = SCHEMES.map((sc) => `
+    <button class="scheme-card ${S.scheme === sc.id && S.view !== "matrix" ? "on" : ""}" data-pick="${sc.id}">
+      <div class="sc-head">
+        <span>${sc.short}</span>
+        ${sc.tag ? `<span class="sc-tag ${sc.tagCls}">${sc.tag}</span>` : ""}
+      </div>
+      <div class="sc-desc">${sc.desc}</div>
+    </button>
+  `).join("");
+
+  // 2. Stage
+  const stage = document.getElementById("stage");
+  let list = [];
+  if (S.view === "split") {
+    const left = getScheme(S.leftCompare);
+    const right = getScheme(S.scheme);
+    stage.className = "split-grid";
+    stage.innerHTML = windowHtml(left, "左窗") + windowHtml(right, "右窗");
+    list = [left, right];
+  } else if (S.view === "single") {
+    const chosen = getScheme(S.scheme);
+    stage.className = "single-grid";
+    stage.innerHTML = windowHtml(chosen, "沉浸预览");
+    list = [chosen];
+  } else {
+    stage.className = "matrix-grid";
+    list = [RAW_BASELINE, ...SCHEMES];
+    stage.innerHTML = list.map((sc) => windowHtml(sc, "")).join("");
+  }
+
+  const shells = stage.querySelectorAll(".win-shell");
+  panes = Array.from(shells).map((el, i) => new WavePane(list[i], el, S.view === "matrix"));
+
+  renderControls();
+  // Allow layout width to settle before measuring exact row widths
+  requestAnimationFrame(() => startWaveSimulation());
+}
+
+function renderControls() {
+  const ctl = document.getElementById("ctl");
+  const btn = (g, v, label, cur) =>
+    `<button class="${cur === v ? "on" : ""}" data-g="${g}" data-v="${v}">${label}</button>`;
+
+  ctl.innerHTML = `
+    <div class="g">
+      <button class="act" data-replay="1">↻ 再刷一遍</button>
+    </div>
+    <div class="g">
+      <b>视图</b>
+      ${btn("view", "split", "左右同屏 PK", S.view)}
+      ${btn("view", "single", "单窗大屏看细节", S.view)}
+      ${btn("view", "matrix", "五版同屏全览", S.view)}
+    </div>
+    ${S.view === "split" ? `
+    <div class="g">
+      <b>左窗参照</b>
+      ${btn("leftCompare", "raw", "现状直出", S.leftCompare)}
+      ${btn("leftCompare", "wipe", "1·丝绸擦除", S.leftCompare)}
+    </div>` : ""}
+    <div class="g">
+      <b>场景</b>
+      ${Object.entries(SCENARIOS).map(([k, v]) => btn("scenario", k, v.label, S.scenario)).join("")}
+    </div>
+    <div class="g">
+      <b>出排节奏</b>
+      ${Object.entries(PACE_MODES).map(([k, v]) => btn("pace", k, v.label, S.pace)).join("")}
+    </div>
+    <div class="g">
+      <b>主题</b>
+      ${btn("theme", "dark", "深色", S.theme)}
+      ${btn("theme", "black", "纯黑", S.theme)}
+      ${btn("theme", "light", "浅色", S.theme)}
+    </div>
+  `;
+}
+
+document.addEventListener("click", (e) => {
+  const pick = e.target.closest("[data-pick]");
+  if (pick) {
+    S.scheme = pick.dataset.pick;
+    if (S.view === "matrix") S.view = "split";
+    renderAll();
+    return;
+  }
+  if (e.target.closest("[data-replay]")) {
+    startWaveSimulation();
+    return;
+  }
+  const gBtn = e.target.closest("[data-g]");
+  if (gBtn) {
+    const g = gBtn.dataset.g;
+    const v = gBtn.dataset.v;
+    if (g === "theme") {
+      S.theme = v;
+      document.documentElement.dataset.theme = v;
+      renderControls();
+      return;
+    }
+    S[g] = v;
+    renderAll();
+  }
+});
+
+let resizeDebounce = 0;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeDebounce);
+  resizeDebounce = setTimeout(() => startWaveSimulation(), 220);
+});
+
+renderAll();
+</script>
+</body>
+</html>

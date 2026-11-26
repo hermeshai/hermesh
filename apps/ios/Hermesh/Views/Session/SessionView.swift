@@ -35,14 +35,20 @@ func previousTurn(_ steps: [Step], before i: Int) -> Date? {
     return nil
 }
 
+extension EnvironmentValues {
+    @Entry var openBackgroundTasks: ((String) -> Void)?
+}
+
 /// One row of the conversation, as on the Mac: the owner on the right in a
 /// blue bubble, the agent's words across the page, its tool calls as quiet
 /// grey lines folded until opened.
 struct StepView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openBackgroundTasks) private var openBackgroundTasks
     let step: Step
     let session: Session
     let previousTurn: Date?
+    var live = false
 
     var body: some View {
         switch step {
@@ -64,12 +70,26 @@ struct StepView: View {
 
     @ViewBuilder private func row(_ item: TranscriptItem) -> some View {
         switch item {
-        case .turn(_, _, let at, _):
-            // A time line before a turn, only for the first one and after a pause.
+        case .turn(_, _, let at, let wakeReason):
+            // A time line before a turn, only for the first one and after a pause; plus any background task wake line.
             if let line = at.flatMap({ turnTimeLine($0, previous: previousTurn, now: model.now) }) {
                 Text(line).font(.caption).foregroundStyle(.tertiary).frame(maxWidth: .infinity)
                     .padding(.top, 8)
                     .accessibilityIdentifier("turn-time-line")
+            }
+            if !wakeReason.isEmpty {
+                Button {
+                    openBackgroundTasks?(wakeReason)
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(String(localized: "\(wakeReason) finished")).lineLimit(1)
+                        Caret(open: false)
+                    }
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("thread-wake-line")
             }
         case .user(_, let text, let at, let asker, let attachments):
             // Who asked for the turn speaks on the right: the owner in the blue bubble, with nothing over it; another
@@ -85,7 +105,7 @@ struct StepView: View {
         case .workspace(let row):
             WorkspaceLine(row: row)
         case .agent(_, let text, let runID):
-            MarkdownText(text: text)
+            StreamingMarkdownText(text: text, streaming: live)
                 .environment(\.filesRun, runID)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())

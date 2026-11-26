@@ -9,6 +9,7 @@ import {
   nextAutoStep,
   nextManualStep,
   parseOptionLabel,
+  summarizeQuestion,
 } from "./question-state.ts";
 
 test("parseOptionLabel extracts Recommended prefix without losing clean text", () => {
@@ -69,4 +70,40 @@ test("custom text and single-choice selection replace each other cleanly", () =>
   st = applyChoice(it, "方案二", st.chosen, st.texts);
   assert.deepEqual(st.chosen.q1, ["方案二"]);
   assert.equal(st.texts.q1, "");
+});
+
+test("summarizeQuestion returns concise count and first prompt without trailing notes or legacy wrapper noise", () => {
+  assert.deepEqual(summarizeQuestion([]), { count: 0, text: "" });
+
+  // Single choice with optional free-text note counts as 1 question and omits note label.
+  assert.deepEqual(
+    summarizeQuestion([
+      { header: "Choice", text: "选哪个颜色", optional: false },
+      { header: "Note", text: "Anything else", optional: true },
+    ]),
+    { count: 1, text: "选哪个颜色" },
+  );
+
+  // Merged multi-question items report total count + first question only.
+  assert.deepEqual(
+    summarizeQuestion([
+      { header: "", text: "展开单条工具时，输入与输出希望如何呈现？", optional: false },
+      { header: "", text: "当工具没有返回输出内容时怎么处理？", optional: false },
+      { header: "", text: "这次优化希望覆盖哪些端和会话视图？", optional: false },
+    ]),
+    { count: 3, text: "展开单条工具时，输入与输出希望如何呈现？" },
+  );
+
+  // Unmerged legacy ACP items strip companion free-form items and generic wrapper text.
+  assert.deepEqual(
+    summarizeQuestion([
+      { header: "展开单条工具时，输入与输出希望如何呈现？", text: "The agent has 3 questions.", optional: true },
+      { header: "Other", text: "Optional free-form answer to: 展开单条工具时，输入与输出希望如何呈现？", optional: true },
+      { header: "当工具没有返回输出内容时怎么处理？", text: "The agent has 3 questions.", optional: true },
+      { header: "Other", text: "Optional free-form answer to: 当工具没有返回输出内容时怎么处理？", optional: true },
+      { header: "这次优化希望覆盖哪些端和会话视图？", text: "The agent has 3 questions.", optional: true },
+      { header: "Other", text: "Optional free-form answer to: 这次优化希望覆盖哪些端和会话视图？", optional: true },
+    ]),
+    { count: 3, text: "展开单条工具时，输入与输出希望如何呈现？" },
+  );
 });

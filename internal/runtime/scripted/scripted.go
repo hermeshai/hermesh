@@ -463,7 +463,8 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 			case "tool-sleep":
 				dur, _ := time.ParseDuration(rest)
 				callID := fmt.Sprintf("cmd_%d", s.itemSeq.Add(1))
-				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: callID, ToolName: "Bash", Command: "sleep " + rest})
+				sleepIn := runtime.MarshalToolInput(map[string]any{"command": "sleep " + rest})
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: callID, ToolName: "Bash", Command: "sleep " + rest, Input: sleepIn})
 				select {
 				case <-time.After(dur):
 				case <-turnCtx.Done():
@@ -477,7 +478,7 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 					s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
 					return true
 				}
-				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: callID, ToolName: "Bash", Command: "sleep " + rest, Output: "slept"})
+				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: callID, ToolName: "Bash", Command: "sleep " + rest, Input: sleepIn, Output: "slept"})
 
 			case "output":
 				n, _ := strconv.Atoi(rest)
@@ -487,9 +488,10 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 				}
 				out := b.String()[:max(n-4, 0)] + "END\n"
 				callID := fmt.Sprintf("cmd_%d", s.itemSeq.Add(1))
-				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: callID, ToolName: "Bash", Command: "print " + rest})
+				printIn := runtime.MarshalToolInput(map[string]any{"command": "print " + rest})
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: callID, ToolName: "Bash", Command: "print " + rest, Input: printIn})
 				kept, _ := runtime.KeepOutput(out)
-				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: callID, ToolName: "Bash", Command: "print " + rest, Output: kept})
+				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: callID, ToolName: "Bash", Command: "print " + rest, Input: printIn, Output: kept})
 
 			case "hang":
 				select {
@@ -586,14 +588,16 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 			case "message":
 				to, text, _ := strings.Cut(rest, "|")
 				callID := fmt.Sprintf("mcp_%d", s.itemSeq.Add(1))
-				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: callID, ToolName: "message_send", FilePath: to})
-				res, isErr := s.callTool(turnCtx, "message_send", map[string]any{"to": to, "message": text})
+				msgArgs := map[string]any{"to": to, "message": text}
+				msgIn := runtime.MarshalToolInput(msgArgs)
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: callID, ToolName: "message_send", Input: msgIn, FilePath: to})
+				res, isErr := s.callTool(turnCtx, "message_send", msgArgs)
 				exit := int32(0)
 				if isErr {
 					exit = 1
 				}
 				replyParts = append(replyParts, res)
-				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: callID, ToolName: "message_send", FilePath: to, ExitCode: exit, Output: res})
+				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: callID, ToolName: "message_send", Input: msgIn, FilePath: to, ExitCode: exit, Output: res})
 
 			case "write":
 				var relPath, content string
@@ -678,8 +682,9 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 						continue
 					}
 				}
-				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: callID, ToolName: "Bash", Command: cmdStr})
-				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: callID, ToolName: "Bash", Command: cmdStr, ExitCode: 0, Output: outStr})
+				cmdIn := runtime.MarshalToolInput(map[string]any{"command": cmdStr})
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: callID, ToolName: "Bash", Command: cmdStr, Input: cmdIn})
+				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: callID, ToolName: "Bash", Command: cmdStr, Input: cmdIn, ExitCode: 0, Output: outStr})
 
 			case "bg-shell", "bg-daemon":
 				// bg-shell <dur>|<cmd>|<output>|<wake_reply>
@@ -727,7 +732,8 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 				if !isDaemon {
 					initOut = "[running] " + cmdStr
 				}
-				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: callID, ToolName: "Bash", Command: cmdStr})
+				bgIn := runtime.MarshalToolInput(map[string]any{"command": cmdStr, "run_in_background": true})
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: callID, ToolName: "Bash", Command: cmdStr, Input: bgIn})
 				s.emit(runtime.Event{
 					Kind:                runtime.EventBackgroundTask,
 					TaskID:              callID,

@@ -1,6 +1,6 @@
 {
   "nav": {
-    "newThread": "新会话",
+    "newThread": "新建",
     "threads": "原生会话",
     "newIn": "在 {{project}} 里新建会话"
   },
@@ -41,6 +41,9 @@
     "replying": "回复中",
     "tool": "处理中",
     "working": "工作中"
+  },
+  "todo": {
+    "label": "步骤进展"
   },
   "mode": {
     "code": "编码",

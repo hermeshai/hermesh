@@ -281,6 +281,15 @@ extension AppAPI {
         return try await updateSession(r).session
     }
 
+    func setPinned(_ sessionID: String, _ pinned: Bool) async throws -> Hermesh_Session_V1_Session {
+        var r = Hermesh_Session_V1_UpdateSessionRequest()
+        r.commandID = UUID().uuidString
+        r.sessionID = sessionID
+        r.hasPinned_p = true
+        r.pinned = pinned
+        return try await updateSession(r).session
+    }
+
     func diff(_ sessionID: String) async throws -> String {
         var r = Hermesh_Session_V1_GetDiffRequest()
         r.sessionID = sessionID

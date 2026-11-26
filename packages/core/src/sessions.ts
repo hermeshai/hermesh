@@ -207,23 +207,30 @@ function byNewest(a: Date, b: Date): number {
 export const sessionGroupings = ["sender", "status", "date", "project", "agent", "machine"] as const;
 export type SessionGrouping = (typeof sessionGroupings)[number];
 
+/** How the session list sorts each section: workbench default (active by creation, others by last activity), creation time, or last activity. */
+export const sessionSorts = ["default", "created", "updated"] as const;
+export type SessionSort = (typeof sessionSorts)[number];
+
 /**
- * How the session list is laid out: its grouping, which way it sorts by
- * last activity, and whether each row shows its metadata line (grant,
- * coding agent, project and time).
+ * How the session list is laid out: its grouping, how each section sorts,
+ * which direction it goes, and whether each row shows its metadata line
+ * (grant, coding agent, project and time).
  */
 export interface SessionView {
   group: SessionGrouping;
+  sort: SessionSort;
   newestFirst: boolean;
   metadata: boolean;
 }
 
 export function sessionView(v: Partial<SessionView> = {}): SessionView {
-  return { group: "status", newestFirst: true, metadata: true, ...v };
+  const group: SessionGrouping = v.group && (sessionGroupings as readonly string[]).includes(v.group) ? v.group : "status";
+  const sort: SessionSort = v.sort && (sessionSorts as readonly string[]).includes(v.sort) ? v.sort : "default";
+  return { group, sort, newestFirst: v.newestFirst ?? true, metadata: v.metadata ?? true };
 }
 
-/** A section's key: a state or a day (titled by bucketTitle), who sent the work (a client id, or "owner"), a project, a coding agent, a machine id, or "archived". */
-export type SessionBucket = "attention" | "active" | "done" | "today" | "yesterday" | "week" | "earlier" | "archived";
+/** A section's key: pinned, a state or a day (titled by bucketTitle), who sent the work (a client id, or "owner"), a project, a coding agent, a machine id, or "archived". */
+export type SessionBucket = "pinned" | "attention" | "active" | "done" | "today" | "yesterday" | "week" | "earlier" | "archived";
 
 /** A section of the list, by its title. */
 export function bucketTitle(b: SessionBucket): string {
@@ -238,32 +245,87 @@ export function statusOf(s: Session): SessionBucket {
   return needsAttention(s) ? "attention" : isActive(s) ? "active" : "done";
 }
 
+/** When a session's current state began for activity sorting without intra-turn heartbeat jitter. */
+export function activityDate(s: Session): Date {
+  return isActive(s) && !needsAttention(s) ? (dateOf(s.progress?.turnStartedAt) ?? createdDate(s)) : updatedDate(s);
+}
+
 /** The day it was last active; "week" is the six days before today, not the calendar week. */
 export function dayOf(s: Session, now: Date): SessionBucket {
   const d = updatedDate(s);
   return sameDay(d, now) ? "today" : isYesterday(d, now) ? "yesterday" : withinWeek(d, now) ? "week" : "earlier";
 }
 
+/** Places `movedId` at insertion slot `slot` (0..currentIds.length) among `currentIds`. */
+export function reorderIds(currentIds: readonly string[], movedId: string, slot: number): string[] {
+  const orig = currentIds.indexOf(movedId);
+  const without = currentIds.filter((id) => id !== movedId);
+  const idx = orig !== -1 && orig < slot ? slot - 1 : slot;
+  without.splice(Math.max(0, Math.min(without.length, idx)), 0, movedId);
+  return without;
+}
+
 export interface SessionSection {
-  grouping: SessionGrouping | "archived";
+  grouping: SessionGrouping | "pinned" | "archived";
   key: string;
   sessions: Session[];
 }
 
+function sortWithManualOrder(
+  list: Session[],
+  timeOf: (s: Session) => number,
+  newestFirst: boolean,
+  manualOrder?: readonly string[],
+  manualApplies: (s: Session) => boolean = () => true,
+): Session[] {
+  const dir = newestFirst ? 1 : -1;
+  const cmpTime = (ta: number, tb: number) => dir * (tb - ta);
+  if (!manualOrder || manualOrder.length === 0) {
+    return [...list].sort((a, b) => cmpTime(timeOf(a), timeOf(b)));
+  }
+  const present = new Map<string, Session>();
+  for (const s of list) {
+    if (manualApplies(s)) present.set(s.sessionId, s);
+  }
+  const orderedIds = manualOrder.filter((id) => present.has(id));
+  if (orderedIds.length === 0) {
+    return [...list].sort((a, b) => cmpTime(timeOf(a), timeOf(b)));
+  }
+  const slotTimes = orderedIds.map((id) => timeOf(present.get(id)!)).sort((ta, tb) => cmpTime(ta, tb));
+  const assigned = new Map<string, [number, number]>();
+  orderedIds.forEach((id, rank) => assigned.set(id, [slotTimes[rank], rank]));
+  return [...list].sort((a, b) => {
+    const ma = assigned.get(a.sessionId);
+    const mb = assigned.get(b.sessionId);
+    const ta = ma ? ma[0] : timeOf(a);
+    const tb = mb ? mb[0] : timeOf(b);
+    if (ta !== tb) return cmpTime(ta, tb);
+    if (ma && mb) return ma[1] - mb[1];
+    return 0;
+  });
+}
+
 /**
- * The list as the view lays it out, each section sorted by last activity.
- * States keep their order (needs you, running, done); days follow the sort;
- * projects and coding agents go by name, machines in the order given
- * (unknown ones last); senders (docs/her-team.md §14.2) are Her (the client
- * ids in `her`), then the agents by their latest session, then the owner.
- * Archived sessions, when shown, are a section of their own at the end.
+ * The list as the view lays it out. Pinned sessions sit in their own section
+ * at the top (whatever the grouping); active sessions sort by creation time
+ * (plus any manual drag order) so concurrent tool heartbeats never jump rows,
+ * while sessions needing attention or done sort by when they settled.
  */
-export function sessionSections(sessions: Session[], view: SessionView, o: { archived: boolean; now: Date; machines?: string[]; her?: string[]; alwaysActive?: boolean }): SessionSection[] {
+export function sessionSections(
+  sessions: Session[],
+  view: SessionView,
+  o: { archived: boolean; now: Date; machines?: string[]; her?: string[]; alwaysActive?: boolean; pinnedOrder?: readonly string[]; activeOrder?: readonly string[] },
+): SessionSection[] {
   const by = new Map<string, Session[]>();
+  const pinned: Session[] = [];
   const archived: Session[] = [];
   for (const s of sessions) {
     if (s.status === SessionStatus.ARCHIVED) {
       if (o.archived) archived.push(s);
+      continue;
+    }
+    if (s.pinned) {
+      pinned.push(s);
       continue;
     }
     const k = { sender: () => s.createdBy, status: () => statusOf(s), date: () => dayOf(s, o.now), project: () => s.projectId, agent: () => s.agent, machine: () => s.machineId }[view.group]();
@@ -286,10 +348,33 @@ export function sessionSections(sessions: Session[], view: SessionView, o: { arc
     : view.group === "project" ? keys.sort((a, b) => a.localeCompare(b))
     : view.group === "agent" ? keys.sort((a, b) => codingAgentTitle(a).localeCompare(codingAgentTitle(b)))
     : keys.sort((a, b) => at(a) - at(b) || a.localeCompare(b));
-  const sorted = (list: Session[]) => list.sort((a, c) => (view.newestFirst ? 1 : -1) * byNewest(updatedDate(a), updatedDate(c)));
+
+  const timeFor = (s: Session): number => {
+    if (view.sort === "created") return createdDate(s).getTime();
+    if (view.sort === "updated") return activityDate(s).getTime();
+    return isActive(s) && !needsAttention(s) ? createdDate(s).getTime() : updatedDate(s).getTime();
+  };
+  const sorted = (list: Session[], isActBucket = false) =>
+    sortWithManualOrder(
+      list,
+      timeFor,
+      view.newestFirst,
+      o.activeOrder,
+      (s) => isActBucket || (isActive(s) && !needsAttention(s)),
+    );
+
   // By status, the running section stays while nothing runs, empty, so the sidebar always shows it (docs/her-team.md §16).
-  const keep = o.alwaysActive && view.group === "status" && by.size > 0;
-  const out: SessionSection[] = order.filter((k) => by.has(k) || (keep && k === "active")).map((k) => ({ grouping: view.group, key: k, sessions: sorted(by.get(k) ?? []) }));
+  const keep = o.alwaysActive && view.group === "status" && (by.size > 0 || pinned.length > 0);
+  const out: SessionSection[] = [];
+  if (pinned.length) {
+    const pinTime = (s: Session) => (view.sort === "updated" ? activityDate(s).getTime() : createdDate(s).getTime());
+    out.push({ grouping: "pinned", key: "pinned", sessions: sortWithManualOrder(pinned, pinTime, view.newestFirst, o.pinnedOrder) });
+  }
+  for (const k of order) {
+    if (by.has(k) || (keep && k === "active")) {
+      out.push({ grouping: view.group, key: k, sessions: sorted(by.get(k) ?? [], view.group === "status" && k === "active") });
+    }
+  }
   if (archived.length) out.push({ grouping: "archived", key: "archived", sessions: sorted(archived) });
   return out;
 }

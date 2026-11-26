@@ -92,6 +92,7 @@ const paths: Record<string, string> = {
   // A speech bubble with an arrow in it: go to a message in the conversation.
   bubble: "<path d=\"M13.8 7.6a5.6 5.6 0 0 1-8 5L2.2 13.8l1.1-3.4a5.6 5.6 0 1 1 10.5-2.8z\"/><path d=\"M5.8 7.6h4.2M8.6 5.9l1.7 1.7-1.7 1.7\"/>",
   pin: "<path d=\"M6 2.4h4l-.6 3.4 2 2v1H3.6v-1l2-2z\"/><path d=\"M8 8.8v4.8\"/>",
+  pinFill: "<path d=\"M6 2.4h4l-.6 3.4 2 2v1H3.6v-1l2-2z\" fill=\"currentColor\"/><path d=\"M8 8.8v4.8\"/>",
   play: "<path d=\"M5 3.4v9.2L12.4 8z\"/>",
   retry: "<path d=\"M12.8 7.6a4.8 4.8 0 1 1-1.4-3.4\"/><path d=\"M12 2.4v2.8H9.2\"/>",
   // A list with checks: Her's page, its Work tab.

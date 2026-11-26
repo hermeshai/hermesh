@@ -23,7 +23,9 @@ const (
 	titleGenModeRegenerate titleGenMode = "regenerate"
 
 	maxConcurrentTitleGens = 2
-	singleTitleGenTimeout  = 15 * time.Second
+	primaryTitleGenTimeout = 8 * time.Second
+	singleTitleGenTimeout  = 20 * time.Second
+	fastRetryElapsedMax    = 4 * time.Second
 	titleNoticeAlignWait   = 1500 * time.Millisecond
 )
 
@@ -32,18 +34,24 @@ type titleRefineSnapshot struct {
 	resultText string
 }
 
-func isTitleGenEnabled(drv runtime.Driver) (runtime.TitleGenerator, bool) {
-	tg, ok := drv.(runtime.TitleGenerator)
+func isTitleGenEnabled(v any) (runtime.TitleGenerator, bool) {
+	if v == nil {
+		return nil, false
+	}
+	tg, ok := v.(runtime.TitleGenerator)
 	if !ok {
 		return nil, false
 	}
-	if gate, ok := drv.(runtime.TitleGeneratorEnabled); ok && !gate.TitleGeneratorEnabled() {
+	if gate, ok := v.(runtime.TitleGeneratorEnabled); ok && !gate.TitleGeneratorEnabled() {
 		return nil, false
 	}
 	return tg, true
 }
 
 func (e *Engine) hasTitleGenerator() bool {
+	if _, ok := isTitleGenEnabled(e.cfg.PrimaryTitleGenerator); ok {
+		return true
+	}
 	for _, drv := range e.cfg.Drivers {
 		if _, ok := isTitleGenEnabled(drv); ok {
 			return true
@@ -186,8 +194,15 @@ func (e *Engine) runTitleGen(ctx context.Context, sessionID string, expectedSeq 
 			case <-time.After(time.Second):
 			}
 		}
+		attemptStart := time.Now()
 		res, lastErr = e.invokeTitleGenerators(ctx, sessSnap, req)
 		if lastErr == nil {
+			break
+		}
+		// Only retry immediately on fast transient failures; if the first attempt
+		// already spent seconds cold-starting or timed out, yield now and let
+		// Turn 1 completion refine via TITLE_STATE_PROVISIONAL.
+		if time.Since(attemptStart) >= fastRetryElapsedMax {
 			break
 		}
 	}
@@ -261,6 +276,10 @@ func (e *Engine) clearTitleGenerating(sessionID string, expectedSeq uint64, mode
 		}
 		sNow.TitleGenerating = false
 		if mode == titleGenModeInitial && sNow.TitleState == sessionv1.TitleState_TITLE_STATE_SEED {
+			// Keep PROVISIONAL so Turn 1 completion automatically retries once
+			// after cold-start contention subsides instead of locking a raw seed.
+			sNow.TitleState = sessionv1.TitleState_TITLE_STATE_PROVISIONAL
+		} else if mode == titleGenModeRefine && sNow.TitleState == sessionv1.TitleState_TITLE_STATE_PROVISIONAL {
 			sNow.TitleState = sessionv1.TitleState_TITLE_STATE_FINAL
 		}
 		if err := putSessionSynced(tx, sNow); err != nil {
@@ -278,7 +297,40 @@ func (e *Engine) clearTitleGenerating(sessionID string, expectedSeq uint64, mode
 	}
 }
 
+func (e *Engine) hintSmallModelForInstance(inst *sessionv1.ProviderInstanceConfig) string {
+	if inst == nil || e.cfg.CachedAgentModels == nil {
+		return ""
+	}
+	key := cmp.Or(inst.AcpFlavor, inst.InstanceId, inst.Driver)
+	models := e.cfg.CachedAgentModels(key)
+	if len(models) == 0 && inst.Driver != "" && inst.Driver != key {
+		models = e.cfg.CachedAgentModels(inst.Driver)
+	}
+	if len(models) == 0 {
+		return ""
+	}
+	id, _ := runtime.PickSmallModelID(models)
+	if inst.Driver == "claude" && id != "" && !strings.Contains(strings.ToLower(id), "haiku") {
+		return "haiku"
+	}
+	return id
+}
+
 func (e *Engine) invokeTitleGenerators(ctx context.Context, sess *sessionv1.Session, req runtime.TitleGenRequest) (runtime.TitleGenResult, error) {
+	var lastErr error
+	if primary, ok := isTitleGenEnabled(e.cfg.PrimaryTitleGenerator); ok {
+		pctx, cancel := context.WithTimeout(ctx, primaryTitleGenTimeout)
+		res, err := primary.GenerateTitle(pctx, nil, req)
+		cancel()
+		if err == nil {
+			return res, nil
+		}
+		lastErr = err
+		if ctx.Err() != nil {
+			return runtime.TitleGenResult{}, ctx.Err()
+		}
+	}
+
 	type candidate struct {
 		drv runtime.TitleGenerator
 		cfg *sessionv1.ProviderInstanceConfig
@@ -319,8 +371,8 @@ func (e *Engine) invokeTitleGenerators(ctx context.Context, sess *sessionv1.Sess
 			}
 		}
 	}
-	// Only fall back across other provider instances when the session's own
-	// selected provider has no TitleGenerator implementation.
+	// Keep CLI fallback strictly on the session's own selected provider unless
+	// that provider has no TitleGenerator implementation at all.
 	if !primaryAdded {
 		for _, inst := range allInstances {
 			addInstance(inst)
@@ -336,10 +388,13 @@ func (e *Engine) invokeTitleGenerators(ctx context.Context, sess *sessionv1.Sess
 		}
 	}
 
-	var lastErr error
 	for _, c := range list {
+		creq := req
+		if creq.ModelHint == "" {
+			creq.ModelHint = e.hintSmallModelForInstance(c.cfg)
+		}
 		cctx, cancel := context.WithTimeout(ctx, singleTitleGenTimeout)
-		res, err := c.drv.GenerateTitle(cctx, c.cfg, req)
+		res, err := c.drv.GenerateTitle(cctx, c.cfg, creq)
 		cancel()
 		if err == nil {
 			return res, nil
@@ -452,7 +507,7 @@ func (e *Engine) buildTitleGenRequest(sessionID string, expectedSeq uint64, mode
 	}
 
 	var nearby []string
-	if all, lErr := e.st.ListSessions("", false, 12); lErr == nil {
+	if all, lErr := e.st.ListSessions("", false, 8); lErr == nil {
 		for _, other := range all {
 			if other.SessionId == sessionID {
 				continue
@@ -462,7 +517,7 @@ func (e *Engine) buildTitleGenRequest(sessionID string, expectedSeq uint64, mode
 				continue
 			}
 			nearby = append(nearby, t)
-			if len(nearby) >= 8 {
+			if len(nearby) >= 4 {
 				break
 			}
 		}
@@ -476,36 +531,22 @@ func (e *Engine) buildTitleGenRequest(sessionID string, expectedSeq uint64, mode
 	}
 
 	var b strings.Builder
-	b.WriteString("Generate a concise task title for a coding session so the user can recognize it weeks later in a single-line sidebar.\n")
-	b.WriteString("Return JSON only: {\"title\": string, \"provisional\": boolean}.\n\n")
-	fmt.Fprintf(&b, "Target locale: %s\n", locale)
-	fmt.Fprintf(&b, "Mode: %s\n", mode)
-	fmt.Fprintf(&b, "Project: %s\n\n", sess.ProjectId)
-	b.WriteString("Language & Length (MANDATORY):\n")
-	fmt.Fprintf(&b, "- Write `title` strictly in %s (%s), EVEN IF the user message, logs, or file contents are in another language.\n", langName, locale)
-	b.WriteString("- Keep code identifiers, function/type names, file/package names, CLI flags, platform names, and error codes in their original form.\n")
-	fmt.Fprintf(&b, "- Length: %s. No surrounding quotes, no trailing punctuation.\n\n", lengthRule)
-	b.WriteString("Editorial Rules:\n")
-	b.WriteString("- Name the durable subject and desired outcome; ignore workflow instructions (which model/subagent to use, opening a PR, running CI, committing).\n")
+	b.WriteString("Task title for sidebar. JSON only: {\"title\":string,\"provisional\":boolean}\n")
+	fmt.Fprintf(&b, "Target locale: %s\nMode: %s\n", locale, mode)
+	fmt.Fprintf(&b, "Rules: Strictly %s (%s), %s, no quotes/trailing punctuation, keep code/file/CLI identifiers intact; name subject+outcome, skip workflow chatter.", langName, locale, lengthRule)
 	if mode == titleGenModeInitial {
-		b.WriteString("- Set `provisional` to true ONLY if the subject is still unknown (e.g. \"fix this error\" with a screenshot, \"fix failing test\", or an unresolved URL). Otherwise set `provisional` to false.\n")
+		b.WriteString(" provisional=true ONLY when subject is unknown (e.g. \"fix this\" + screenshot/URL); else false.\n")
 	} else {
-		b.WriteString("- Always set `provisional` to false.\n")
-	}
-	if sess.ProjectId != "" && sess.ProjectId != ScratchProjectID {
-		fmt.Fprintf(&b, "- Omit the project name (%q) unless needed to disambiguate from Nearby active titles.\n", sess.ProjectId)
-	}
-	if len(nearby) > 0 {
-		b.WriteString("- Make the title clearly distinguishable from Nearby active titles when working on a different platform, module, or angle.\n")
+		b.WriteString(" provisional=false.\n")
 	}
 	if parentTitle != "" {
-		fmt.Fprintf(&b, "\nForked from task: %q\nKeep the inherited subject and add the new direction after the fork; do not include the word \"fork\" or \"分支\".\n", parentTitle)
+		fmt.Fprintf(&b, "Forked from: %q (reflect new direction; omit \"fork\"/\"分支\").\n", parentTitle)
 	}
 	if (mode == titleGenModeRefine || mode == titleGenModeRegenerate) && strings.TrimSpace(sess.Title) != "" {
-		fmt.Fprintf(&b, "\nPrevious title: %q\n", sess.Title)
+		fmt.Fprintf(&b, "Previous title: %q\n", sess.Title)
 	}
 	if len(nearby) > 0 {
-		b.WriteString("\nNearby active titles:\n")
+		b.WriteString("Nearby active titles:\n")
 		for _, nt := range nearby {
 			fmt.Fprintf(&b, "- %s\n", nt)
 		}
@@ -518,35 +559,36 @@ func (e *Engine) buildTitleGenRequest(sessionID string, expectedSeq uint64, mode
 	if mode == titleGenModeInitial {
 		msg := ""
 		if len(userMsgs) > 0 {
-			msg = runtime.SliceHeadTail(userMsgs[0], 2000)
+			msg = runtime.SliceHeadTail(userMsgs[0], 360)
 		}
 		b.WriteString("\nUser message:\n" + msg + "\n")
 	} else {
 		b.WriteString("\nConversation:\n")
 		if len(userMsgs) > 0 {
-			b.WriteString("USER (initial): " + runtime.SliceHeadTail(userMsgs[0], 1000) + "\n")
+			b.WriteString("USER (initial): " + runtime.SliceHeadTail(userMsgs[0], 300) + "\n")
 			start := max(1, len(userMsgs)-2)
 			for i := start; i < len(userMsgs); i++ {
-				b.WriteString("USER (later): " + runtime.SliceHeadTail(userMsgs[i], 600) + "\n")
+				b.WriteString("USER (later): " + runtime.SliceHeadTail(userMsgs[i], 200) + "\n")
 			}
 		}
 		if lastAssistant != "" {
-			b.WriteString("ASSISTANT (latest): " + runtime.SliceHeadTail(lastAssistant, 800) + "\n")
+			b.WriteString("ASSISTANT (latest): " + runtime.SliceHeadTail(lastAssistant, 240) + "\n")
 		}
 	}
 
-	if len(firstAtts) > 0 {
+	needImage := mode == titleGenModeInitial && len(firstAtts) > 0 && (len(userMsgs) == 0 || runtime.NeedsAttachmentForTitle(userMsgs[0]))
+	if len(firstAtts) > 0 && (len(userMsgs) == 0 || needImage) {
 		b.WriteString("\nAttachments:\n")
 		for i, a := range firstAtts {
-			if i >= 4 {
+			if i >= 2 {
 				break
 			}
-			fmt.Fprintf(&b, "- %s (%s, %d bytes)\n", a.Name, a.MimeType, a.SizeBytes)
+			fmt.Fprintf(&b, "- %s (%s)\n", a.Name, a.MimeType)
 		}
 	}
 
 	var images []runtime.TurnAttachment
-	if mode == titleGenModeInitial {
+	if needImage {
 		for _, a := range e.loadTurnAttachments(firstAtts) {
 			if strings.HasPrefix(strings.ToLower(a.MimeType), "image/") {
 				images = append(images, a)

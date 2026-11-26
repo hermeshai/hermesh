@@ -923,6 +923,22 @@ func (s *session) readLoop() {
 							s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
 							s.msgUsed = false
 						}
+						if c.Name == "TodoWrite" {
+							if c.ID != "" {
+								s.skipToolResult[c.ID] = true
+							}
+							s.mu.Unlock()
+							if steps, focus, ok := parseClaudeTodoWrite(c.Input); ok {
+								s.emit(runtime.Event{
+									Kind:      runtime.EventTodoUpdated,
+									ItemID:    "todo",
+									Text:      focus,
+									HasFocus:  true,
+									TodoSteps: steps,
+								})
+							}
+							continue
+						}
 						if c.Name == "AskUserQuestion" || c.Name == "ExitPlanMode" {
 							if c.ID != "" {
 								s.skipToolResult[c.ID] = true
@@ -946,8 +962,10 @@ func (s *session) readLoop() {
 						s.emit(runtime.Event{
 							Kind:     runtime.EventToolStarted,
 							ItemID:   c.ID,
+							Text:     toolDescription(c.Input),
 							ToolName: c.Name,
 							Command:  cmd,
+							Input:    runtime.FormatToolJSON(c.Input),
 							FilePath: summaryPath,
 						})
 						if isAsyncLaunch && asyncMeta.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE && c.ID != "" {
@@ -1162,7 +1180,7 @@ func extractToolResultText(raw json.RawMessage) string {
 		}
 		return strings.Join(parts, "\n")
 	}
-	return string(raw)
+	return runtime.FormatToolJSON(raw)
 }
 
 func toolSummaryPath(raw json.RawMessage, targetPath string) string {
@@ -1182,6 +1200,47 @@ func toolSummaryPath(raw json.RawMessage, targetPath string) string {
 		}
 	}
 	return ""
+}
+
+func toolDescription(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var in struct {
+		Description string `json:"description"`
+	}
+	if json.Unmarshal(raw, &in) == nil {
+		return strings.TrimSpace(in.Description)
+	}
+	return ""
+}
+
+func parseClaudeTodoWrite(raw json.RawMessage) (steps []*sessionv1.TodoStep, focus string, ok bool) {
+	if len(raw) == 0 {
+		return nil, "", false
+	}
+	var in struct {
+		Todos []struct {
+			Content    string `json:"content"`
+			Status     string `json:"status"`
+			ActiveForm string `json:"activeForm"`
+		} `json:"todos"`
+	}
+	if json.Unmarshal(raw, &in) != nil || in.Todos == nil {
+		return nil, "", false
+	}
+	for _, item := range in.Todos {
+		txt := strings.TrimSpace(item.Content)
+		if txt == "" {
+			continue
+		}
+		st := runtime.NormalizeTodoStatus(item.Status)
+		steps = append(steps, &sessionv1.TodoStep{Text: txt, Status: st})
+		if st == "in_progress" && focus == "" {
+			focus = strings.TrimSpace(item.ActiveForm)
+		}
+	}
+	return steps, focus, true
 }
 
 func (s *session) handleControlRequest(reqID string, raw json.RawMessage) {
@@ -1227,6 +1286,10 @@ func (s *session) handleControlRequest(reqID string, raw json.RawMessage) {
 	}
 
 	switch cr.ToolName {
+	case "TodoWrite":
+		reply(map[string]any{"behavior": "allow", "updatedInput": inputMap})
+		return
+
 	case "ExitPlanMode":
 		planMD, _ := inputMap["plan"].(string)
 		planID := fmt.Sprintf("plan_%d", s.itemSeq.Add(1))

@@ -603,3 +603,121 @@ func TestAntigravityACPChainedBackgroundTasksThroughEngine(t *testing.T) {
 		}
 	}
 }
+
+func TestEngineInPlaceTodoAndFocusUpdates(t *testing.T) {
+	ctx := context.Background()
+	drv := &customTestDriver{
+		kind: "todo_focus",
+		caps: &sessionv1.ProviderCapabilities{NativeResume: true},
+		onStart: func(_ context.Context, _ runtime.StartSpec) (runtime.Session, error) {
+			ch := make(chan runtime.Event, 32)
+			sess := &customTestSession{
+				events: ch,
+				onTurn: func(_ context.Context, _ runtime.TurnInput, out chan<- runtime.Event) {
+					out <- runtime.Event{Kind: runtime.EventFocusUpdated, Text: "Inspecting auth flow"}
+					out <- runtime.Event{
+						Kind:   runtime.EventTodoUpdated,
+						ItemID: "todo",
+						TodoSteps: []*sessionv1.TodoStep{
+							{Text: "Inspect auth", Status: "in_progress"},
+							{Text: "Run tests", Status: "pending"},
+						},
+					}
+					out <- runtime.Event{
+						Kind:     runtime.EventToolStarted,
+						ItemID:   "tc_1",
+						ToolName: "Bash",
+						Command:  "go test ./...",
+						Text:     "Unit test execution",
+					}
+					out <- runtime.Event{
+						Kind:        runtime.EventToolCompleted,
+						ItemID:      "tc_1",
+						ToolName:    "Bash",
+						Command:     "go test ./...",
+						ExitCode:    0,
+						HasExitCode: true,
+						Output:      "ok",
+					}
+					out <- runtime.Event{
+						Kind:   runtime.EventTodoUpdated,
+						ItemID: "todo",
+						TodoSteps: []*sessionv1.TodoStep{
+							{Text: "Inspect auth", Status: "completed"},
+							{Text: "Run tests", Status: "completed"},
+						},
+					}
+					out <- runtime.Event{Kind: runtime.EventAssistantMessage, ItemID: "m1", Text: "Done."}
+					out <- runtime.Event{Kind: runtime.EventTurnCompleted}
+				},
+			}
+			return sess, nil
+		},
+	}
+
+	eng, err := Open(Config{
+		DataDir:   t.TempDir(),
+		MachineID: "m_todo",
+		Drivers:   map[string]runtime.Driver{"todo_focus": drv},
+		IdleTTL:   time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+
+	owner := OwnerPrincipal("dev_owner", "Owner")
+	if _, err := eng.UpsertProviderInstance(ctx, owner, &sessionv1.ProviderInstanceConfig{
+		InstanceId:  "todo-agent",
+		Driver:      "todo_focus",
+		DisplayName: "Todo Focus",
+		Enabled:     true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	launched, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "todo-agent", Model: "m1"},
+		InitialPrompt:  "ship it",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid := launched.Session.SessionId
+
+	var proj *sessionv1.SessionProjection
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		cur, gErr := eng.GetSession(ctx, owner, sid)
+		if gErr == nil && len(cur.Runs) == 1 && cur.Runs[0].Status == sessionv1.RunStatus_RUN_STATUS_COMPLETED {
+			proj = cur
+			break
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	if proj == nil {
+		t.Fatal("timed out waiting for run completion")
+	}
+
+	var todos []*sessionv1.TurnItem
+	var cmdItem *sessionv1.TurnItem
+	for _, it := range proj.Items {
+		if it.Kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_TODO_LIST {
+			todos = append(todos, it)
+		}
+		if it.Kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION {
+			cmdItem = it
+		}
+	}
+	if len(todos) != 1 {
+		t.Fatalf("expected exactly 1 in-place TODO_LIST item per run, got %d: %+v", len(todos), todos)
+	}
+	if todos[0].Text != "Inspecting auth flow" {
+		t.Fatalf("expected focus Text preserved across HasFocus=false TodoUpdated, got %q", todos[0].Text)
+	}
+	if len(todos[0].TodoSteps) != 2 || todos[0].TodoSteps[0].Status != "completed" || todos[0].TodoSteps[1].Status != "completed" {
+		t.Fatalf("expected latest TodoSteps persisted in place, got %+v", todos[0].TodoSteps)
+	}
+	if cmdItem == nil || cmdItem.Text != "Unit test execution" || cmdItem.Command != "go test ./..." {
+		t.Fatalf("expected command TurnItem to preserve Text summary and Command, got %+v", cmdItem)
+	}
+}

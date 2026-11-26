@@ -22,7 +22,7 @@ import { Code } from "./Code";
 import { Markdown } from "./Markdown";
 import { TerminalOutput } from "./TerminalOutput";
 import { FilesRunContext, sizeText } from "./files/files";
-import { partialOutput, useToolOutput } from "./output";
+import { partialInput, partialOutput, useToolInput, useToolOutput } from "./output";
 import { useRowKept, useRowState } from "./useRowState";
 import { useVirtualRows, type VirtualRow } from "./useVirtualRows";
 
@@ -331,7 +331,7 @@ export function rowsOf(items: Step[], ends: Set<bigint>, current: Failure | unde
 function draws(it: Step, previous: Date | undefined, current: Failure | undefined): boolean {
   switch (it.kind) {
     case "turn":
-      return !!it.at && turnTimeLine(it.at, previous, new Date()) !== null;
+      return !!it.wakeReason || (!!it.at && turnTimeLine(it.at, previous, new Date()) !== null);
     case "question":
       return !!it.resolution;
     case "turnEnd":
@@ -344,7 +344,18 @@ function draws(it: Step, previous: Date | undefined, current: Failure | undefine
 }
 
 /** starter: who started the session (a client id, or "owner"), for a prompt whose turn doesn't say who asked. */
-type RowProps = { it: Step; rowKey: string; end: boolean; live: boolean; sessionId: string; machineId?: string; clients: Client[]; starter: string; previous: Date | undefined };
+type RowProps = {
+  it: Step;
+  rowKey: string;
+  end: boolean;
+  live: boolean;
+  sessionId: string;
+  machineId?: string;
+  clients: Client[];
+  starter: string;
+  previous: Date | undefined;
+  onOpenWakeTask?: (reason: string) => void;
+};
 
 /**
  * A row renders again only when what it shows changed: the conversation's
@@ -355,14 +366,15 @@ export const Row = memo(
   RowView,
   (a, b) =>
     sameStep(a.it, b.it) && a.rowKey === b.rowKey && a.end === b.end && a.live === b.live && a.sessionId === b.sessionId &&
-    a.machineId === b.machineId && a.clients === b.clients && a.starter === b.starter && a.previous?.getTime() === b.previous?.getTime(),
+    a.machineId === b.machineId && a.clients === b.clients && a.starter === b.starter &&
+    a.previous?.getTime() === b.previous?.getTime() && a.onOpenWakeTask === b.onOpenWakeTask,
 );
 
 function sameStep(a: Step, b: Step): boolean {
   if (a.kind !== b.kind || a.seq !== b.seq) return false;
   switch (a.kind) {
     case "turn":
-      return a.at?.getTime() === (b as typeof a).at?.getTime();
+      return a.at?.getTime() === (b as typeof a).at?.getTime() && a.wakeReason === (b as typeof a).wakeReason;
     case "user": {
       const u = b as typeof a;
       const aa = a.attachments ?? [];
@@ -384,11 +396,16 @@ function sameStep(a: Step, b: Step): boolean {
   }
 }
 
-function RowView({ it, rowKey, end, live, sessionId, machineId, clients, starter, previous }: RowProps) {
+function RowView({ it, rowKey, end, live, sessionId, machineId, clients, starter, previous, onOpenWakeTask }: RowProps) {
   const { t } = useTranslation("session");
   switch (it.kind) {
     case "turn":
-      return <TimeLine at={it.at} previous={previous} />;
+      return (
+        <>
+          <TimeLine at={it.at} previous={previous} />
+          {it.wakeReason && <WakeLine reason={it.wakeReason} onOpen={onOpenWakeTask} />}
+        </>
+      );
     case "user": {
       // Who asked for the turn speaks on the right: the owner in the blue bubble, with nothing on it; another of the
       // owner's agents (Her, a granted one) in a quiet bubble with its face on the corner. Each turn says its own: a
@@ -631,6 +648,25 @@ export function TimeLine({ at, previous }: { at: Date | undefined; previous: Dat
   return text ? <div className="tdiv">{text}</div> : null;
 }
 
+/** A background task that finished and woke this continuation turn; clicking opens its background record. */
+function WakeLine({ reason, onOpen }: { reason: string; onOpen?: (reason: string) => void }) {
+  const { t } = useTranslation("session");
+  const st = useStore();
+  const label = t("chat.taskFinished", { title: reason });
+  return (
+    <button
+      type="button"
+      className="tg-h wake-h"
+      data-testid="thread-wake-line"
+      title={label}
+      onClick={() => (onOpen ? onOpen(reason) : st.set({ background: true }))}
+    >
+      <span className="wake-t">{label}</span>
+      <Icon name="caret" className="chev" />
+    </button>
+  );
+}
+
 /** Under a message on hover: when it was sent, and Copy. */
 /** On hover under a message: who sent it (`from`, when it isn't the owner), when, and Copy. */
 function Copy({ text, at, from }: { text: string; at?: Date; from?: string }) {
@@ -761,6 +797,7 @@ function StepsCard<T>({ kept, items, keyOf, row, running }: {
   };
   // Drawn again after its row was not: back where it was left (its rows above are as high as they were guessed).
   const restored = useRef(false);
+  const revealing = useRef(false);
   useLayoutEffect(() => {
     if (!scroller) return;
     if (kept.follow) scroller.scrollTop = scroller.scrollHeight;
@@ -772,7 +809,8 @@ function StepsCard<T>({ kept, items, keyOf, row, running }: {
     const el = scroller;
     if (!el) return;
     const below = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (below < 8) kept.follow = true;
+    if (revealing.current) revealing.current = false;
+    else if (below < 8) kept.follow = true;
     else if (performance.now() - touched.current < 1000) kept.follow = false;
     kept.top = el.scrollTop;
     mark();
@@ -791,7 +829,17 @@ function StepsCard<T>({ kept, items, keyOf, row, running }: {
     kept.follow = false;
     const opening = head.getAttribute("aria-expanded") === "false";
     requestAnimationFrame(() => {
-      if (opening) head.parentElement?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      const el = scroller;
+      const rowEl = head.parentElement;
+      if (opening && el && rowEl) {
+        const er = el.getBoundingClientRect();
+        const rr = rowEl.getBoundingClientRect();
+        const delta = rr.bottom > er.bottom ? Math.max(0, Math.min(rr.bottom - er.bottom, rr.top - er.top)) : rr.top < er.top ? rr.top - er.top : 0;
+        if (delta !== 0) {
+          revealing.current = true;
+          el.scrollTop += delta;
+        }
+      }
       mark();
     });
   };
@@ -820,16 +868,19 @@ function StepsCard<T>({ kept, items, keyOf, row, running }: {
 }
 
 /**
- * One tool call: what it did, and its output when opened, read whole then
- * when the conversation holds only its start. Folded until opened, failed
- * ones too; the one running shimmers.
+ * One tool call: what it did, and its input and output when opened, read whole
+ * then when the conversation holds only their start. Folded until opened,
+ * failed ones too; the one running shimmers.
  */
 function ToolRow({ id, call, result, resultSeq, running, sessionId }: { id: string; call: ToolCall; result: ToolResult | undefined; resultSeq?: bigint; running: boolean; sessionId: string }) {
   const { t } = useTranslation("session");
   const denied = call.decision === "deny";
   const failed = denied || result?.isError === true;
   const [open, setOpen] = useRowState(`tool:${id}`, false);
+  const wholeIn = useToolInput(sessionId, call, open);
   const whole = useToolOutput(sessionId, result, resultSeq, open);
+  const inNote = wholeIn.failed ? t("chat.outputUnreadable") : !partialInput(call) && call.inputTruncated ? t("chat.truncated") : "";
+  const input = wholeIn.text !== "" ? wholeIn.text + (inNote ? `\n${inNote}` : "") : "";
   // A machine from before whole outputs kept only their start.
   const note = whole.failed ? t("chat.outputUnreadable") : result && !partialOutput(result) && result.truncated ? t("chat.truncated") : "";
   const output = denied ? call.reason : whole.text !== "" ? whole.text + (note ? `\n${note}` : "") : "";
@@ -839,9 +890,10 @@ function ToolRow({ id, call, result, resultSeq, running, sessionId }: { id: stri
       object={toolSummary(toolObject(call), sessionId)}
       title={call.summary}
       shell={call.kind === "shell"}
-      running={running || whole.reading}
+      running={running || wholeIn.reading || whole.reading}
       failed={failed}
       denied={denied}
+      input={input}
       output={output}
       open={open}
       onToggle={() => setOpen(!open)}
@@ -850,11 +902,11 @@ function ToolRow({ id, call, result, resultSeq, running, sessionId }: { id: stri
 }
 
 /**
- * A step on its line: its verb, what it acted on (a command as code; `title`, all of it), and what it gave when
- * opened (`output`; nothing to open without one). The one at work shimmers; a failed one is red. prose: its output is
- * words, not a program's (a thought).
+ * A step on its line: its verb, what it acted on (a command as code; `title`, all of it), and what it took and gave
+ * when opened (`input` and `output`; nothing to open without either). The one at work shimmers; a failed one is red.
+ * prose: its output is words, not a program's (a thought).
  */
-export function ToolLine({ verb, object, title, shell, running, failed, denied = false, output, open, onToggle, prose = false }: {
+export function ToolLine({ verb, object, title, shell, running, failed, denied = false, input = "", output, open, onToggle, prose = false }: {
   verb: string;
   object: string;
   title: string;
@@ -862,14 +914,17 @@ export function ToolLine({ verb, object, title, shell, running, failed, denied =
   running: boolean;
   failed: boolean;
   denied?: boolean;
+  input?: string;
   output: string;
   open: boolean;
   onToggle: () => void;
   prose?: boolean;
 }) {
+  const { t } = useTranslation("session");
+  const expandable = input !== "" || output !== "";
   return (
-    <div className={`tool ${denied ? "denied" : failed ? "err" : ""} ${prose ? "thought" : ""} ${open && output ? "open" : ""}`}>
-      <button className={`th ${running ? "shimmer" : ""}`} onClick={() => output && onToggle()} aria-expanded={output ? open : undefined} aria-busy={running || undefined}>
+    <div className={`tool ${denied ? "denied" : failed ? "err" : ""} ${prose ? "thought" : ""} ${open && expandable ? "open" : ""}`}>
+      <button className={`th ${running ? "shimmer" : ""}`} onClick={() => expandable && onToggle()} aria-expanded={expandable ? open : undefined} aria-busy={running || undefined}>
         <span className="vb">{verb}</span>
         {shell ? (
           <code className="sm2 cmd" title={title}>
@@ -878,9 +933,20 @@ export function ToolLine({ verb, object, title, shell, running, failed, denied =
         ) : (
           <span className="sm2" title={title}>{object}</span>
         )}
-        {output && <Icon name="caret" className="chev" />}
+        {expandable && <Icon name="caret" className="chev" />}
       </button>
-      {output && (prose ? <div className="out sel-text">{output}</div> : <TerminalOutput text={output} follow={running} />)}
+      {open && expandable && (prose ? (
+        <div className="out sel-text">{output}</div>
+      ) : (
+        <TerminalOutput
+          text={output}
+          input={input}
+          inputLabel={t("chat.toolInput")}
+          outputLabel={t("chat.toolOutput")}
+          emptyOutput={running ? t("content.waitingOutput") : t("content.noOutput")}
+          follow={running}
+        />
+      ))}
     </div>
   );
 }

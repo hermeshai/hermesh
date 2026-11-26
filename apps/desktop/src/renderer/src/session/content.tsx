@@ -5,7 +5,7 @@ import { i18n } from "../../../shared/i18n";
 import { Icon } from "../icons";
 import { useStore, type Store } from "../store";
 import { fileOfCode, fileOfLink } from "@hermesh/her-client";
-import { Code } from "./Code";
+import { Code, PlainWipeCode } from "./Code";
 import {
   markInlineRunSent,
   startInlineRun,
@@ -16,7 +16,8 @@ import {
 } from "./codeBlockRuns";
 import { FileTag } from "./files/FileTag";
 import { FilesHomeContext, type FilesHome } from "./files/files";
-import { DraftContext, SessionRunContext, type SessionCodeActions } from "./scope";
+import { useWipeLines } from "./markdown/stream";
+import { DraftContext, SessionRunContext, StreamContext, type SessionCodeActions } from "./scope";
 import {
   cleanShellCommand,
   effectiveCodeLang,
@@ -319,6 +320,9 @@ export function CodeBlock({ lang, text }: { lang: string; text: string }) {
   const draft = useContext(DraftContext);
   const home = useContext(FilesHomeContext);
   const actions = useContext(SessionRunContext);
+  const animate = useContext(StreamContext);
+  const lineCount = useMemoCount(text);
+  const wipeFrom = useWipeLines(lineCount, animate);
   const [done, setDone] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -428,7 +432,7 @@ export function CodeBlock({ lang, text }: { lang: string; text: string }) {
       </div>
       <pre>
         <code className={eff.lang ? `language-${eff.lang}` : undefined}>
-          {eff.lang ? <Code text={shownText} lang={eff.lang} /> : shownText}
+          {eff.lang ? <Code text={shownText} lang={eff.lang} wipeFrom={wipeFrom} /> : wipeFrom < lineCount ? <PlainWipeCode text={shownText} wipeFrom={wipeFrom} /> : shownText}
         </code>
       </pre>
       {confirming && actions && plan && (
@@ -457,4 +461,10 @@ export function CodeBlock({ lang, text }: { lang: string; text: string }) {
       )}
     </div>
   );
+}
+
+function useMemoCount(text: string): number {
+  let n = 1;
+  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) n++;
+  return n;
 }

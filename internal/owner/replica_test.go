@@ -56,6 +56,9 @@ func TestTrimSessions(t *testing.T) {
 			status = sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT // the oldest, still asking
 		}
 		s := at(fmt.Sprintf("s%d", i), 1, t0.Add(time.Duration(i)*time.Minute), status)
+		if i == 1 {
+			s.Pinned = true // an older idle session that is pinned stays too
+		}
 		m[s.SessionId] = s
 	}
 	if trimSessions(m, 10) {
@@ -69,7 +72,7 @@ func TestTrimSessions(t *testing.T) {
 		kept = append(kept, id)
 	}
 	slices.Sort(kept)
-	if want := []string{"s0", "s6", "s7", "s8", "s9"}; !slices.Equal(kept, want) {
+	if want := []string{"s0", "s1", "s6", "s7", "s8", "s9"}; !slices.Equal(kept, want) {
 		t.Errorf("kept %v, want %v", kept, want)
 	}
 }
