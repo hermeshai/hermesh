@@ -109,9 +109,9 @@ function view(): TrayView {
       ? d
       : !st
         ? "daemon"
-        : !st.initialized && !st.machineOnly
+        : !st.initialized && !st.machineOnly && !st.localMachineEnabled
           ? "setup"
-          : st.relayConnected
+          : st.relayConnected || ((!st.initialized || st.signedOut) && st.localMachineEnabled) // without an account, this computer works on its own
             ? "ok"
             : "down";
   return {

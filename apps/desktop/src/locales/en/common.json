@@ -58,8 +58,6 @@
     "showArchived": "Show Archived",
     "hideArchived": "Hide Archived",
     "account": "Account & Settings",
-    "connected": "Connected",
-    "notConnected": "Not connected",
     "disconnectedGrant": "Disconnected agent",
     "archived": "Archived “{{title}}”",
     "unarchived": "Unarchived “{{title}}”",
@@ -73,7 +71,9 @@
     "running_one": "{{count}} working",
     "running_other": "{{count}} working",
     "pairing": "Request to connect",
-    "sentByYou": "Sent by You"
+    "sentByYou": "Sent by You",
+    "signedIn": "Signed in",
+    "signedOut": "Not signed in"
   },
   "accountMenu": {
     "settings": "Settings…",

@@ -25,14 +25,16 @@
     "enterCode": "输入配对码…"
   },
   "addDevice": {
-    "title": "添加可信设备",
-    "sub": "新设备加入后，也能批准连接请求。丢了的设备，在另一台上移除。",
-    "step1": "1. 在新 Mac 上安装并打开 Hermesh",
-    "hosted": "用同一个账号登录。",
-    "selfHosted": "点“使用自己的服务器…”，再点“加入它…”，填入这个连接地址：",
-    "step2": "2. 在这里核对，再在新 Mac 上输入两位数字",
-    "waiting": "等新设备发出请求…",
-    "waitingDetail": "会弹出它的加入请求：核对码一致就批准，批准后把这里显示的两位数字输入新 Mac。"
+    "title": "添加设备",
+    "sub": "iPhone，或另一台装了 Hermesh 的电脑。",
+    "step1": "在那台设备上安装 Hermesh",
+    "step2": "用同一个账号登录",
+    "step2Own": "点「使用自己的服务器…」，再点「加入它…」，填入这个连接地址：",
+    "step3": "回到这里，按 Touch ID 批准",
+    "step3_win": "回到这里，用 Windows Hello 批准",
+    "step3_linux": "回到这里，用系统密码批准",
+    "note": "在任何地方都能连，也能接入云端助手和其他电脑。",
+    "waiting": "等它连上来…"
   },
   "addProject": {
     "added": "已添加项目「{{name}}」",
@@ -284,7 +286,16 @@
     "approve_win": "用 Windows Hello 确认。",
     "approve_linux": "用系统密码确认。",
     "done": "已在「{{name}}」上关闭 Her",
-    "erased": "已在「{{name}}」上关闭 Her，并清空了她的数据",
+    "erased": "已在「{{name}}」上关闭 Her，并清空了它的数据",
     "offline": "「{{name}}」离线，Her 的数据会留在上面。"
+  },
+  "needSignIn": {
+    "newGrant": "连接 agent需要登录",
+    "addMachine": "添加环境需要登录",
+    "enterCode": "输入配对码需要登录",
+    "body": "登录 Hermesh 账号后，其他设备和 agent 才能连接这台 Mac。",
+    "body_win": "登录 Hermesh 账号后，其他设备和 agent 才能连接这台电脑。",
+    "body_linux": "登录 Hermesh 账号后，其他设备和 agent 才能连接这台电脑。",
+    "signIn": "登录…"
   }
 }

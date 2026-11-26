@@ -425,22 +425,15 @@ func (d *Device) AddProfile() (string, error) {
 	return id, d.switchTo(id)
 }
 
-// SignOut signs the current profile out.
+// SignOut signs the current profile out, in place: its machine keeps
+// running.
 func (d *Device) SignOut(ctx context.Context) error {
-	if err := d.owner().SignOut(ctx); err != nil {
-		return err
-	}
-	d.restart()
-	return nil
+	return d.owner().SignOut(ctx)
 }
 
-// SignIn signs the current profile in again.
+// SignIn signs the current profile in again, in place.
 func (d *Device) SignIn(ctx context.Context, req *localv1.SignInRequest) error {
-	if err := d.owner().SignIn(ctx, req); err != nil {
-		return err
-	}
-	d.restart()
-	return nil
+	return d.owner().SignIn(ctx, req)
 }
 
 // Leave forgets the current profile's owner in place, transitioning its
