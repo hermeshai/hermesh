@@ -43,8 +43,10 @@
 @keyframes th-work-in{from{opacity:0}to{opacity:1}}
 /* A session at work, at the end of its conversation: the mark, what it does, for how long. One more row of it: as far
    under the last one as rows are apart (app.css .tr), starting where they start. */
-.th-work{display:flex;align-items:center;gap:8px;font-size:14px;line-height:19px;color:var(--l2);padding:var(--sp-2) 0 0}
-.th-work .el{font-size:12.5px;color:var(--l3);font-variant-numeric:tabular-nums}
+.th-work{display:flex;align-items:flex-start;gap:8px;min-width:0;font-size:14px;line-height:19px;color:var(--l2);padding:var(--sp-2) 0 0}
+.th-work>.mark,.th-work>.conn-i,.th-work>.conn-ring{flex:none;margin-top:.5px}
+.th-work-t,.th-work .conn-t{min-width:0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+.th-work .el{flex:none;white-space:nowrap;font-size:12.5px;line-height:19px;color:var(--l3);font-variant-numeric:tabular-nums}
 .th-ask h1{margin:0;max-width:var(--conversation-width);font-size:28px;line-height:1.3;font-weight:var(--font-weight-semibold);letter-spacing:-.01em;text-wrap:balance}
 .th-pick{display:inline-flex;align-items:center;gap:4px;max-width:100%;vertical-align:bottom;border:0;padding:0 2px;margin:0 2px;background:none;color:inherit;font:inherit;letter-spacing:inherit;border-bottom:1.5px solid var(--l4);border-radius:0;cursor:pointer}
 .th-pick:hover,.th-pick[aria-expanded="true"]{border-bottom-color:var(--l2)}

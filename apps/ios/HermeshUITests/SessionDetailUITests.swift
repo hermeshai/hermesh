@@ -343,8 +343,11 @@ final class LiveProgressUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Rewrite CALayer halo"].exists)
         XCTAssertTrue(app.staticTexts["Verify GPU usage"].exists)
 
-        // 2. Native focus phrase shows on the bottom working status line:
-        XCTAssertTrue(app.staticTexts["Inspecting CALayer sprite benchmark"].exists, "live focus text")
+        // 2. Long live focus phrase wraps up to two lines on iPhone without single-line truncation, and legacy Run update_steps never leaks:
+        let working = app.descendants(matching: .any)["thread-working"].firstMatch
+        XCTAssertTrue(working.waitForExistence(timeout: 5), "live working line")
+        XCTAssertTrue(working.label.contains("Run HermeshKit tests and iOS Simulator UI tests"), "untruncated focus label: \(working.label)")
+        XCTAssertFalse(app.staticTexts["Run update_steps"].exists, "Run update_steps must not leak into chat log")
 
         // 3. Background continuation wake line "<task> finished" is visible and tappable:
         let wakeLine = app.buttons["thread-wake-line"].firstMatch

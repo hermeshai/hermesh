@@ -1369,12 +1369,17 @@ final class DemoService {
         }
         appendItem(id, runID: "r1", kind: .todoList) {
             $0.itemID = "r1:todo:todo"
-            $0.text = "Inspecting CALayer sprite benchmark"
             $0.todoSteps = [
                 .with { $0.text = "Check motion constraints"; $0.status = "completed" },
                 .with { $0.text = "Rewrite CALayer halo"; $0.status = "in_progress" },
                 .with { $0.text = "Verify GPU usage"; $0.status = "pending" },
             ]
+        }
+        appendItem(id, runID: "r1", kind: .toolCall) {
+            $0.itemID = "r1:call_legacy_steps"
+            $0.toolName = "Run update_steps"
+            $0.status = "completed"
+            $0.input = #"{"steps":[{"title":"Check motion constraints","status":"done"},{"title":"Rewrite CALayer halo","status":"in_progress"},{"title":"Verify GPU usage","status":"pending"}]}"#
         }
         appendItem(id, runID: "r1", kind: .assistantMessage) {
             $0.text = "Running GPU benchmark in background."
@@ -1409,6 +1414,7 @@ final class DemoService {
         emitEvent(id) { $0.type = "run.started"; $0.run = contRun }
         appendItem(id, runID: "r2", kind: .commandExecution) {
             $0.itemID = "r2:cmd:1"
+            $0.text = "Run HermeshKit tests and iOS Simulator UI tests"
             $0.command = "swift test"
             $0.status = "running"
         }

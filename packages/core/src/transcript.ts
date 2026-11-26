@@ -252,6 +252,9 @@ export function sessionTranscript(proj: SessionProjection | null | undefined): T
         out.push({ kind: "agent", seq, text: formatProposedPlan(it.planTitle, it.text), at, runId: it.runId });
         break;
       case TurnItemKind.TOOL_CALL:
+        if (isMetaProgressToolItem(it)) break;
+        out.push(toolItem(it, run, activeBgItems));
+        break;
       case TurnItemKind.COMMAND_EXECUTION:
       case TurnItemKind.FILE_CHANGE:
         out.push(toolItem(it, run, activeBgItems));
@@ -353,7 +356,7 @@ export function sessionWork(proj: SessionProjection | null | undefined): Session
   if (!proj || !run) return "working";
   const now = proj.items.filter((it) => it.runId === run);
   const tools = [TurnItemKind.TOOL_CALL, TurnItemKind.COMMAND_EXECUTION, TurnItemKind.FILE_CHANGE];
-  if (now.some((it) => it.status === "running" && tools.includes(it.kind))) return "tool";
+  if (now.some((it) => it.status === "running" && tools.includes(it.kind) && !isMetaProgressToolItem(it))) return "tool";
   if (now.some((it) => it.kind === TurnItemKind.REASONING && it.streaming)) return "thinking";
   if (now.some((it) => it.kind === TurnItemKind.ASSISTANT_MESSAGE && it.streaming)) return "replying";
   return "working";
@@ -432,6 +435,90 @@ function isSessionChecklistLive(proj: SessionProjection): boolean {
   return false;
 }
 
+function normalizeMetaProgressToolName(rawName: string): string {
+  let norm = rawName.trim().toLowerCase();
+  for (const pfx of ["run ", "call ", "tool: ", "tool "]) {
+    if (norm.startsWith(pfx)) {
+      norm = norm.slice(pfx.length).trim();
+      break;
+    }
+  }
+  const dbl = norm.lastIndexOf("__");
+  const slash = norm.lastIndexOf("/");
+  const dot = norm.lastIndexOf(".");
+  if (dbl >= 0) norm = norm.slice(dbl + 2);
+  else if (slash >= 0) norm = norm.slice(slash + 1);
+  else if (dot >= 0) norm = norm.slice(dot + 1);
+
+  for (const sfx of ["update_focus", "update_steps", "todowrite", "todo_write", "update_plan"]) {
+    if (norm === sfx || (norm.startsWith("mcp_") && norm.endsWith(`_${sfx}`))) return sfx;
+  }
+  if (["todoread", "taskcreate", "taskupdate", "tasklist", "taskget"].includes(norm)) return norm;
+  return "";
+}
+
+function isMetaProgressToolItem(it: TurnItem): boolean {
+  return it.kind === TurnItemKind.TOOL_CALL && it.command === "" && normalizeMetaProgressToolName(it.toolName) !== "";
+}
+
+function reduceChainProgress(proj: SessionProjection, chain: Set<string>): { steps: TodoStepView[]; focus: string } {
+  let steps: TodoStepView[] = [];
+  let focus = "";
+  for (const it of proj.items) {
+    if (!chain.has(it.runId)) continue;
+    if (it.kind === TurnItemKind.TODO_LIST) {
+      if (it.todoSteps.length > 0) {
+        const parsed: TodoStepView[] = [];
+        for (const s of it.todoSteps) {
+          const text = s.text.trim();
+          if (text) parsed.push({ text, status: normalizeTodoStepStatus(s.status) });
+        }
+        steps = parsed;
+      }
+      focus = it.text.trim();
+      continue;
+    }
+    if (it.kind !== TurnItemKind.TOOL_CALL || it.command !== "") continue;
+    const meta = normalizeMetaProgressToolName(it.toolName);
+    if (!meta || !it.input) continue;
+    try {
+      const obj = JSON.parse(it.input) as Record<string, unknown>;
+      if (meta === "update_focus") {
+        if (typeof obj.focus === "string" && obj.focus.trim()) focus = obj.focus.trim();
+        continue;
+      }
+      const rawList = Array.isArray(obj.steps)
+        ? obj.steps
+        : Array.isArray(obj.todos)
+          ? obj.todos
+          : Array.isArray(obj.plan)
+            ? obj.plan
+            : Array.isArray(obj.items)
+              ? obj.items
+              : null;
+      if (!rawList) continue;
+      let nextFocus = typeof obj.focus === "string" ? obj.focus.trim() : typeof obj.explanation === "string" ? obj.explanation.trim() : "";
+      const parsed: TodoStepView[] = [];
+      for (const entry of rawList) {
+        if (!entry || typeof entry !== "object") continue;
+        const rec = entry as Record<string, unknown>;
+        const rawText = [rec.title, rec.content, rec.step, rec.text].find((v) => typeof v === "string" && v.trim() !== "") as string | undefined;
+        if (!rawText) continue;
+        const status = normalizeTodoStepStatus(typeof rec.status === "string" ? rec.status : "");
+        parsed.push({ text: rawText.trim(), status });
+        if (!nextFocus && status === "in_progress" && typeof rec.activeForm === "string" && rec.activeForm.trim()) {
+          nextFocus = rec.activeForm.trim();
+        }
+      }
+      steps = parsed;
+      focus = nextFocus;
+    } catch {
+      // Ignore malformed legacy tool input.
+    }
+  }
+  return { steps, focus };
+}
+
 /**
  * Steps for the floating live checklist above the composer while the session is working.
  * Automatically returns [] once the turn settles or all steps are completed/skipped.
@@ -440,14 +527,7 @@ export function activeTodoSteps(proj: SessionProjection | null | undefined): Tod
   if (!proj || !isSessionChecklistLive(proj)) return [];
   const chain = currentTurnChainRunIds(proj);
   if (chain.size === 0) return [];
-  const latest = proj.items.findLast((it) => it.kind === TurnItemKind.TODO_LIST && chain.has(it.runId));
-  if (!latest || latest.todoSteps.length === 0) return [];
-  const steps: TodoStepView[] = [];
-  for (const s of latest.todoSteps) {
-    const text = s.text.trim();
-    if (!text) continue;
-    steps.push({ text, status: normalizeTodoStepStatus(s.status) });
-  }
+  const { steps } = reduceChainProgress(proj, chain);
   if (steps.length === 0 || steps.every((s) => s.status === "completed" || s.status === "skipped")) {
     return [];
   }
@@ -465,15 +545,14 @@ export function sessionFocusText(proj: SessionProjection | null | undefined): st
   if (work === "thinking" || work === "replying") return undefined;
 
   const chain = currentTurnChainRunIds(proj);
-  const latestTodo = proj.items.findLast((it) => it.kind === TurnItemKind.TODO_LIST && chain.has(it.runId));
-  const explicitFocus = latestTodo?.text.trim();
+  const { focus: explicitFocus } = reduceChainProgress(proj, chain);
   if (explicitFocus) return explicitFocus;
 
   const runningTool = proj.items.findLast(
     (it) =>
       it.runId === s.activeRunId &&
       it.status === "running" &&
-      (it.kind === TurnItemKind.COMMAND_EXECUTION || it.kind === TurnItemKind.TOOL_CALL) &&
+      (it.kind === TurnItemKind.COMMAND_EXECUTION || (it.kind === TurnItemKind.TOOL_CALL && !isMetaProgressToolItem(it))) &&
       it.text.trim() !== "",
   );
   if (runningTool) return runningTool.text.trim();

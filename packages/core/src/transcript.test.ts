@@ -376,14 +376,40 @@ test("activeTodoSteps and sessionFocusText track live turns, background continua
   p.session!.activeRunId = "r2";
   expect(activeTodoSteps(p)).toHaveLength(2);
 
+  // Focus-only update in continuation run r2 updates focus without wiping r1's checklist steps:
+  p.items.push(item(5, "r2", TurnItemKind.TODO_LIST, { itemId: "r2:todo:todo", text: "Summarizing GPU benchmark results" }));
+  expect(activeTodoSteps(p)).toHaveLength(2);
+  expect(sessionFocusText(p)).toBe("Summarizing GPU benchmark results");
+
   // New user turn r3 does not inherit stale incomplete steps from r1:
   p.runs.push(create(RunSchema, { runId: "r3", ordinal: 3, status: RunStatus.RUNNING, author: create(ActorSchema, { kind: ActorKind.OWNER, id: "dev" }) }));
   p.session!.activeRunId = "r3";
   expect(activeTodoSteps(p)).toEqual([]);
 
+  // Legacy leaked "Run update_steps" / "Run update_focus" TOOL_CALL items are hidden from transcript rows and drive checklist + focus:
+  p.items.push(
+    item(6, "r3", TurnItemKind.TOOL_CALL, {
+      itemId: "r3:call_legacy_steps",
+      toolName: "Run update_steps",
+      status: "completed",
+      input: JSON.stringify({
+        steps: [
+          { title: "Add Git status helpers", status: "done" },
+          { title: "Verify with HermeshKit and iOS Simulator tests", status: "in_progress" },
+        ],
+      }),
+    }),
+  );
+  expect(sessionTranscript(p).some((r) => r.kind === "tool" && r.call.name.includes("update_steps"))).toBe(false);
+  expect(activeTodoSteps(p)).toEqual([
+    { text: "Add Git status helpers", status: "completed" },
+    { text: "Verify with HermeshKit and iOS Simulator tests", status: "in_progress" },
+  ]);
+  expect(sessionFocusText(p)).toBe("Verify with HermeshKit and iOS Simulator tests");
+
   // Auto-collapses when all steps in the active turn are completed/skipped:
   p.items.push(
-    item(5, "r3", TurnItemKind.TODO_LIST, {
+    item(7, "r3", TurnItemKind.TODO_LIST, {
       itemId: "r3:todo:todo",
       todoSteps: [
         { text: "Step A", status: "done" },

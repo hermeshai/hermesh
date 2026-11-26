@@ -569,7 +569,7 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 		case "focus":
 			callN++
 			cid := fmt.Sprintf("call-%d", callN)
-			update(sid, map[string]any{"sessionUpdate": "tool_call", "toolCallId": cid, "title": "update_focus", "kind": "other", "status": "in_progress", "rawInput": map[string]any{"focus": arg}})
+			update(sid, map[string]any{"sessionUpdate": "tool_call", "toolCallId": cid, "title": "Run update_focus", "kind": "other", "status": "in_progress", "rawInput": map[string]any{"focus": arg}})
 			update(sid, map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": cid, "status": "completed",
 				"content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": "OK"}}}})
 		case "steps":
@@ -587,7 +587,7 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 				}
 				steps = append(steps, map[string]any{"title": strings.TrimSpace(title), "status": strings.TrimSpace(status)})
 			}
-			update(sid, map[string]any{"sessionUpdate": "tool_call", "toolCallId": cid, "title": "update_steps", "kind": "other", "status": "in_progress", "rawInput": map[string]any{"steps": steps}})
+			update(sid, map[string]any{"sessionUpdate": "tool_call", "toolCallId": cid, "title": "Run update_steps", "kind": "other", "status": "in_progress", "rawInput": map[string]any{"steps": steps}})
 			update(sid, map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": cid, "status": "completed",
 				"content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": "OK"}}}})
 		case "run-summary":
