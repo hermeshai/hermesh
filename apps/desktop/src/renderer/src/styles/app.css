@@ -265,7 +265,12 @@ button{font:inherit;color:inherit}
 html.vibrant .grp-hrow{position:static;background:transparent}
 /* A session: its agent's logo, the title, one mark; 32 high. */
 .srow{display:flex;gap:8px;padding:6px 9px;border-radius:8px;align-items:flex-start;border:0;background:none;width:100%;text-align:left;font-size:14px;color:var(--side-fg)}
-.slogo{display:flex;flex:none;margin-top:2px}
+.slogo{position:relative;display:flex;align-items:center;justify-content:center;width:16px;height:16px;flex:none;margin-top:2px}
+.slogo.run>:not(.slogo-orbit){transform:scale(.78);border-radius:3.5px}
+.slogo-orbit{position:absolute;inset:-2px;border-radius:6px;padding:1.5px;pointer-events:none;background:var(--l4);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;overflow:hidden}
+.slogo-orbit::before{content:"";position:absolute;inset:-55%;background:conic-gradient(from 0deg,transparent 0deg,transparent 205deg,var(--accent) 275deg,color-mix(in srgb,var(--accent) 62%,#fff) 325deg,var(--accent) 355deg,transparent 360deg);animation:slogo-orbit 1.35s linear infinite}
+@keyframes slogo-orbit{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.slogo-orbit{background:var(--accent)}.slogo-orbit::before{display:none}}
 .srow:hover{background:var(--fill)}
 .srow.sel{background:var(--side-sel);color:var(--side-sel-fg);font-weight:500}
 .srow.arch .stitle{color:var(--l2)}

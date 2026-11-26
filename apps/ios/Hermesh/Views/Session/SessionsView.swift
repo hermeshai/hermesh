@@ -2,10 +2,10 @@ import HermeshProto
 import HermeshSessions
 import SwiftUI
 
-/// A session in the menu (docs/her-team.md §16): the coding agent's logo, the title, one mark (an orange dot
-/// while it waits for the owner, a red one when it failed, a ring while it runs); with the metadata, who sent the
-/// work to which agent, the project and the time. A tap opens it; long-press for Rename, Archive and Delete (the
-/// Mac's ⋯ menu). No swipe: in the menu a swipe left is the menu's own, to close it.
+/// A session in the menu (docs/her-team.md §16): the coding agent's logo (with a brand-blue orbit while it runs),
+/// the title, one mark (an orange dot while it waits for the owner, a red one when it failed); with the metadata, who
+/// sent the work to which agent, the project and the time. A tap opens it; long-press for Rename, Archive and Delete
+/// (the Mac's ⋯ menu). No swipe: in the menu a swipe left is the menu's own, to close it.
 struct SessionListRow: View {
     @Environment(AppModel.self) private var model
     let session: Session
@@ -31,15 +31,17 @@ struct MenuSessionRow: View {
     var metadata = false
 
     var body: some View {
+        let running = session.isActive && !session.needsAttention
+        let paused = !(model.drawerOpen || model.menuInView)
         HStack(alignment: .top, spacing: 12) {
-            AgentLogo(id: session.agent, size: 22).frame(width: 28, height: 22)
+            AgentLogo(id: session.agent, size: 22, running: running, paused: paused).frame(width: 28, height: 22)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
-                    // One running has no mark: its title shimmers, while the menu shows.
+                    // One running has no trailing mark: its logo has a brand-blue orbit and its title shimmers.
                     Text(session.displayTitle)
                         .foregroundStyle(session.status == .archived ? .secondary : .primary)
                         .lineLimit(1)
-                        .shimmer((session.isActive && !session.needsAttention) || session.titleGenerating, paused: !(model.drawerOpen || model.menuInView))
+                        .shimmer(running || session.titleGenerating, paused: paused)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     mark
                 }
