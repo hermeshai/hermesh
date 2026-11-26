@@ -342,10 +342,10 @@ button.wb-h:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .fpast .chev{width:12px;height:12px;transition:transform .15s}
 .fpast .chev.open{transform:rotate(90deg)}
 
-/* The composer's zone: the bottom of the page, as wide as the conversation's column. The conversation scrolls under it
-   and fades out above it; an approval, or what keeps the environment from answering, sits over the composer. */
-.cmp-zone{position:absolute;left:0;right:0;bottom:0;z-index:4;pointer-events:none;padding:28px 16px 16px;background:linear-gradient(to bottom,transparent,var(--win) 28px)}
-.cmp-col{pointer-events:auto;max-width:var(--conversation-width);margin:0 auto;display:flex;flex-direction:column;gap:10px}
+/* The composer's zone: the bottom of the page, at least 32px from the edges and 20px wider on each side than the
+   conversation's column. The conversation scrolls under it and fades out above it; an approval sits over the composer. */
+.cmp-zone{position:absolute;left:0;right:0;bottom:0;z-index:4;pointer-events:none;padding:28px var(--cmp-gutter) 16px;background:linear-gradient(to bottom,transparent,var(--win) 28px)}
+.cmp-col{pointer-events:auto;max-width:var(--composer-width);margin:0 auto;display:flex;flex-direction:column;gap:10px}
 /* Inline connection notice glyphs and words (ConnectionCapsule.tsx), shared by session WorkLine and Her's foot bubble. */
 .conn-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .conn-t b{font-weight:600;color:var(--l1)}

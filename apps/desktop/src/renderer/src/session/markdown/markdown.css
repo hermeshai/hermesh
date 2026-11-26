@@ -84,13 +84,12 @@
 .md .katex{font-size:1.05em}
 .md .katex-display{overflow:auto;max-width:100%;padding:6px 0;margin:.8em 0}
 .md .katex-error{color:inherit!important;font-family:var(--mono);font-size:.9em;white-space:pre-wrap}
-/* Replies and rich blocks share the centered conversation column, including with the info card shown.
-   No scrollbar lane: prose and the control area share the same center. A reply's words and its blocks take the whole
-   column: they start where the steps, the work line and the box under them start, and end where a message ends. */
+/* Replies and rich blocks share the centered conversation column, inset 20px inside the composer's column,
+   including with the info card shown. No scrollbar lane: prose and the control area share the same center. */
 .cscroll.markdown-chat{scrollbar-width:none}
 .cscroll.markdown-chat::-webkit-scrollbar{display:none}
 .markdown-chat{container-type:inline-size;--md-prose-width:var(--conversation-width);--md-rich-width:var(--conversation-width)}
-.markdown-chat>.dbody{max-width:calc(var(--conversation-width) + 32px)}
+.markdown-chat>.dbody{max-width:calc(var(--conversation-width) + 2 * var(--chat-gutter))}
 .markdown-chat .vrow>.am{width:100%;align-self:center}
 .markdown-chat .am>.md>*{max-width:var(--md-prose-width);margin-inline:auto}
 /* Cards and steps take the column; time lines and notes stay centred, as small as their words. */
