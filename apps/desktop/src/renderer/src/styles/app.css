@@ -27,6 +27,7 @@
   /* The owner's messages: the brand blue, white words, as on the iPhone. */
   --bub:var(--accent);--bub-fg:#fff;--msg:var(--l1);
   --glass:rgba(255,255,255,.72);--glass-sh:0 0 0 .5px rgba(0,0,0,.10),0 2px 8px rgba(0,0,0,.08);
+  --bar-tint:rgba(255,255,255,.7);
   /* The box one writes in (her.css .cmp): the light along its top, its shadows at rest and while written in. */
   --cmp-hi:transparent;--cmp-lift:0 .5px 1px rgba(0,0,0,.05),0 2px 6px rgba(10,20,50,.05);--cmp-lift-f:0 .5px 1px rgba(0,0,0,.06),0 3px 10px rgba(10,20,50,.08);
   --shadow-win:0 0 0 .5px rgba(0,0,0,.20),0 24px 70px rgba(10,20,50,.30),0 8px 22px rgba(10,20,50,.14);
@@ -53,6 +54,7 @@
   /* The agent's words: near white, a step brighter than other text. */
   --msg:rgba(255,255,255,.95);
   --glass:rgba(60,60,66,.62);--glass-sh:0 0 0 .5px rgba(255,255,255,.10),0 2px 10px rgba(0,0,0,.3);
+  --bar-tint:rgba(30,30,33,.6);
   --cmp-hi:rgba(255,255,255,.08);--cmp-lift:0 .5px 1px rgba(0,0,0,.3),0 2px 6px rgba(0,0,0,.14);--cmp-lift-f:0 .5px 1px rgba(0,0,0,.34),0 3px 10px rgba(0,0,0,.2);
   --shadow-win:0 0 0 .5px rgba(255,255,255,.14),0 24px 70px rgba(0,0,0,.6),0 8px 22px rgba(0,0,0,.35);
   --code:#18181b;--add-bg:rgba(63,207,134,.12);--del-bg:rgba(255,102,112,.11);--add-fg:#5fe0a0;--del-fg:#ff8c94;
@@ -77,6 +79,7 @@
   --menu:rgba(19,19,23,.94);--menu-solid:#131317;--menu-bd:rgba(255,255,255,.085);
   --bub:#1f1f24;--bub-fg:var(--l1);--bot-reply:var(--win2);--bot-user:#1f1f24;--msg:#fafafa;
   --glass:rgba(19,19,23,.92);--glass-sh:inset 0 1px 0 rgba(255,255,255,.085),0 0 0 .5px rgba(255,255,255,.085),0 20px 44px -12px rgba(0,0,0,.375);
+  --bar-tint:rgba(7,7,9,.78);
   --cmp-hi:rgba(255,255,255,.035);--cmp-lift:0 0 0 1px rgba(255,255,255,.09),0 8px 24px -8px rgba(0,0,0,.32);--cmp-lift-f:0 0 0 1px rgba(255,255,255,.16),0 8px 24px -8px rgba(0,0,0,.36);
   --code:#0d0d11;--add-bg:rgba(122,174,102,.12);--del-bg:rgba(222,85,85,.11);--add-fg:#98ca84;--del-fg:#f28b8b;
   --scrim:rgba(0,0,0,.64);--lg-bg:rgba(19,19,23,.78);--lg-hi:rgba(255,255,255,.10);--lg-edge:rgba(255,255,255,.085);
@@ -200,7 +203,7 @@ button{font:inherit;color:inherit}
 .mainwrap{position:relative;display:grid;grid-template-columns:272px minmax(0,1fr);height:100%;transition:grid-template-columns .3s cubic-bezier(.2,0,0,1)}
 .mainwrap.noside{grid-template-columns:0 minmax(0,1fr)}
 /* Hidden, the sidebar leaves its toggle where it was, over the page's toolbar, which makes room for it. */
-.side-float{position:absolute;top:0;left:0;z-index:3;height:44px;display:flex;align-items:center;gap:2px;padding-left:79px}
+.side-float{position:absolute;top:0;left:0;z-index:6;height:44px;display:flex;align-items:center;gap:2px;padding-left:79px}
 .noside .ctool{padding-left:117px}
 /* Edge to edge: the sidebar fills the window from top to bottom and left to its edge, one hairline from the content. */
 .side{background:var(--side);border-right:.5px solid var(--sep);display:flex;flex-direction:column;min-height:0;overflow:hidden}
@@ -719,6 +722,24 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .livebar{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--l2);padding:8px 2px 0}
 .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--l2);height:100%;text-align:center;padding:40px}
 .empty b{color:var(--l1);font-size:15px}
+/* A session page: the conversation's column, and the file panel beside it when open. */
+.spage{flex:1;min-height:0;display:flex;position:relative}
+.spage>.scol{position:relative;flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
+/* On a session page the bar floats over the conversation as liquid glass (glass.tsx): the conversation
+   scrolls under it and shows through, blurred, bending at the bar's bottom edge; a hairline closes it.
+   The bending is its inline backdrop-filter once measured; until then, and where SVG backdrops don't
+   work, it is frosted. */
+.spage>.scol>.ctool{position:absolute;top:0;left:0;right:0;z-index:5;background:var(--bar-tint);box-shadow:inset 0 -.5px 0 var(--sep);
+  backdrop-filter:blur(18px) saturate(1.8);-webkit-backdrop-filter:blur(18px) saturate(1.8)}
+.glass-defs{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
+.spage .dwrap{border-top:0}
+.spage .dbody{padding-top:calc(44px + var(--sp-3))}
+.spage .empty{padding-top:84px}
+.spage .insp-col{top:calc(44px + var(--sp-3))}
+/* Reduce transparency (System Settings › Accessibility › Display): a solid bar. */
+@media (prefers-reduced-transparency:reduce){.spage>.scol>.ctool{backdrop-filter:none !important;-webkit-backdrop-filter:none !important;background:var(--win)}}
+/* With the file panel open on the right, Windows' caption buttons sit over the panel's strip instead. */
+html[data-platform=win] .spage.bgopen .ctool{padding-right:14px}
 /* info */
 .form{display:flex;flex-direction:column;gap:18px}
 .fgroup{background:var(--win2);border-radius:var(--r-card)}
