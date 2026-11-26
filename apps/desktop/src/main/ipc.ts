@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebContents } from "electron";
 import path from "node:path";
-import type { Command, MenuItem, MenuState, PageRect, PageSlot, Preferences, TerminalCommand } from "../shared/bridge";
+import type { Command, MenuItem, MenuState, PageRect, Preferences, TerminalCommand } from "../shared/bridge";
 import { i18n } from "../shared/i18n";
 import { openComputerPermission } from "./computer";
 import { daemonInfo, quitForRelaunch, startBackgroundService, stopBackgroundService } from "./daemon";
@@ -183,18 +183,19 @@ export function registerIPC() {
     if (!ref) throw new Error("no file");
     return ref;
   };
-  const pageSlot = (v: unknown): PageSlot => (v === "panel" ? "panel" : "dialog");
-  ipcMain.handle("session-page-open", (e, file: unknown, rect: unknown, slot: unknown) => {
+  ipcMain.handle("session-page-open", (e, file: unknown, rect: unknown) => {
     const ref = refOf(file);
     const r = pageRect(rect);
     if (!trusted(e) || !ref || !r) return { value: false };
-    return openSessionPage(e.sender, ref, r, pageSlot(slot)).then((value) => ({ value }), (err: unknown) => ({ error: errorMessage(err) }));
+    return openSessionPage(e.sender, ref, r).then((value) => ({ value }), (err: unknown) => ({ error: errorMessage(err) }));
   });
-  ipcMain.on("session-page-place", (e, rect: unknown, slot: unknown) => {
+  ipcMain.on("session-page-place", (e, rect: unknown) => {
+    if (!trusted(e)) return;
+    if (rect === null) return placeSessionPage(e.sender, null);
     const r = pageRect(rect);
-    if (trusted(e) && r) placeSessionPage(e.sender, r, pageSlot(slot));
+    if (r) placeSessionPage(e.sender, r);
   });
-  ipcMain.on("session-page-close", (e, slot: unknown) => trusted(e) && closeSessionPage(e.sender, pageSlot(slot)));
+  ipcMain.on("session-page-close", (e) => trusted(e) && closeSessionPage(e.sender));
   ipcMain.handle("session-page-browser", answer((file: unknown) => openSessionPageInBrowser(fileRef(file))));
   ipcMain.handle("session-file-save", answer((file: unknown, name: unknown) => saveSessionFile(fileRef(file), typeof name === "string" ? name : "file")));
   ipcMain.handle("session-file-reveal", answer((file: unknown) => revealSessionFile(fileRef(file))));

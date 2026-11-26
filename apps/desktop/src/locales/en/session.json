@@ -6,7 +6,9 @@
   "page": {
     "showInfo": "Show info panel {{keys}}",
     "hideInfo": "Hide info panel {{keys}}",
-    "info": "Info panel"
+    "info": "Info panel",
+    "showPanel": "Show Side Panel",
+    "hidePanel": "Hide Side Panel"
   },
   "chat": {
     "archived": "Archived: read-only. Worktree released, with changes preserved on the branch.",
@@ -170,7 +172,6 @@
     "source": "Source",
     "preview": "Preview",
     "more": "More",
-    "close": "Close Preview",
     "line": "Line {{line}}",
     "lines": "Lines {{line}}–{{end}}",
     "notFound": "File not found",
@@ -186,18 +187,17 @@
     "showNow": "Show Current Version",
     "nowShown": "This is the current version",
     "showTurn": "Show Version at Reply",
-    "title": "Files",
-    "openFiles": "Files",
-    "hide": "Hide Files",
     "tree": "Project Files",
     "toggleTree": "Show or Hide the Tree",
     "closeTab": "Close {{name}}",
     "maximize": "Expand",
     "restore": "Restore",
-    "pick": "Pick a file on the right to open it",
-    "resize": "Resize the Files Panel",
+    "resize": "Resize the Side Panel",
     "treeGone": "The workspace was released; these are the files as turn {{turn}} left them",
-    "treeFailed": "Couldn’t read this folder",
-    "fullWindow": "Fill the Window"
+    "treeFailed": "Couldn’t read this folder"
+  },
+  "panel": {
+    "title": "Side Panel",
+    "newTab": "New Tab"
   }
 }

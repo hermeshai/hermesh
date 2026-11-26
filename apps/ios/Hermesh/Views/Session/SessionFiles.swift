@@ -101,7 +101,7 @@ extension EnvironmentValues {
     func openLightbox(run: String, path: String, machineID: String = "", gallery: [ReplyImageItem]? = nil) {
         let list = gallery ?? self.gallery(run: run, containing: path) ?? [ReplyImageItem(path: path, caption: "")]
         let idx = list.firstIndex { sameImagePath($0.path, path) } ?? 0
-        lightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: machineID, run: run, items: list, initialIndex: idx)
+        lightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: machineID, run: run, items: list.map(LightboxItem.file), initialIndex: idx)
     }
 
     func want(run: String, paths: [String]) {
@@ -497,7 +497,7 @@ struct SessionFolderPage: View {
                         Button {
                             if !e.dir, isSessionImage(path) {
                                 let mid = model.session(sessionID)?.machineID ?? ""
-                                lightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: mid, run: "", items: [ReplyImageItem(path: path, caption: "")], initialIndex: 0)
+                                lightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: mid, run: "", items: [.file(ReplyImageItem(path: path, caption: ""))], initialIndex: 0)
                             } else {
                                 model.path.append(e.dir ? .sessionFolder(sessionID, path) : .sessionFile(sessionID, "", path, 0, 0))
                             }

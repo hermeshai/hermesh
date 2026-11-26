@@ -20,12 +20,19 @@ extension EnvironmentValues {
     @Entry var replyImages: ReplyImages?
 }
 
+/// One picture in the Lightbox: a reply's file, or a picture the owner sent with a prompt (kept by the machine as a
+/// blob, with nothing to save or find, so the Lightbox has no menu for it).
+enum LightboxItem: Hashable {
+    case file(ReplyImageItem)
+    case attachment(Hermesh_Session_V1_AttachmentRef)
+}
+
 struct SessionLightboxPresentation: Identifiable, Equatable {
     let id = UUID()
     let sessionID: String
     let machineID: String
     let run: String
-    let items: [ReplyImageItem]
+    let items: [LightboxItem]
     let initialIndex: Int
 }
 
@@ -99,7 +106,18 @@ nonisolated private enum SessionImageDecoder {
     private let maxInFlight = 3
     private(set) var entries: [String: State] = [:]
     @ObservationIgnored private var order: [String] = []
-    @ObservationIgnored private var queue: [(key: String, api: AppAPI, sessionID: String, run: String, path: String)] = []
+    private struct Job {
+        let key: String
+        let api: AppAPI
+        let sessionID: String
+        let run: String
+        let path: String
+        /// A prompt's picture, read by its blob in place of `path`.
+        var attachment: Hermesh_Session_V1_AttachmentRef?
+        var machineID = ""
+    }
+
+    @ObservationIgnored private var queue: [Job] = []
     @ObservationIgnored private var queuedKeys: Set<String> = []
     @ObservationIgnored private var inFlightKeys: Set<String> = []
     @ObservationIgnored private var activeCount = 0
@@ -112,9 +130,25 @@ nonisolated private enum SessionImageDecoder {
         entries[key(sessionID: sessionID, run: run, path: path)]
     }
 
+    func state(attachment: Hermesh_Session_V1_AttachmentRef) -> State? {
+        entries["blob\u{0}\(attachment.blobSha256)"]
+    }
+
     func request(api: AppAPI?, sessionID: String, run: String, path: String, retryOffline: Bool = false) {
         guard let api, !sessionID.isEmpty, !path.isEmpty else { return }
         let k = key(sessionID: sessionID, run: run, path: path)
+        enqueue(Job(key: k, api: api, sessionID: sessionID, run: run, path: path), retryOffline: retryOffline)
+    }
+
+    /// A picture the owner sent with a prompt: from this iPhone when it was sent from here or seen before, else its blob.
+    func request(api: AppAPI?, sessionID: String, machineID: String, attachment: Hermesh_Session_V1_AttachmentRef, retryOffline: Bool = false) {
+        guard let api, !attachment.blobSha256.isEmpty else { return }
+        let k = "blob\u{0}\(attachment.blobSha256)"
+        enqueue(Job(key: k, api: api, sessionID: sessionID, run: "", path: attachment.name, attachment: attachment, machineID: machineID), retryOffline: retryOffline)
+    }
+
+    private func enqueue(_ job: Job, retryOffline: Bool) {
+        let k = job.key
         if let existing = entries[k] {
             if case .offline = existing, retryOffline {
                 entries.removeValue(forKey: k)
@@ -125,7 +159,7 @@ nonisolated private enum SessionImageDecoder {
         guard !inFlightKeys.contains(k), !queuedKeys.contains(k) else { return }
         store(k, .loading)
         queuedKeys.insert(k)
-        queue.append((k, api, sessionID, run, path))
+        queue.append(job)
         pump()
     }
 
@@ -161,7 +195,8 @@ nonisolated private enum SessionImageDecoder {
         return false
     }
 
-    private func loadOne(_ job: (key: String, api: AppAPI, sessionID: String, run: String, path: String)) async {
+    private func loadOne(_ job: Job) async {
+        if let att = job.attachment { return await loadAttachment(job, att) }
         do {
             let res = try await job.api.readFile(job.sessionID, run: job.run, path: job.path)
             if res.kind == .image, !res.image.isEmpty {
@@ -197,6 +232,33 @@ nonisolated private enum SessionImageDecoder {
                 store(job.key, .missing)
             default:
                 store(job.key, .failed(error.localizedDescription))
+            }
+        }
+    }
+
+    private func loadAttachment(_ job: Job, _ att: Hermesh_Session_V1_AttachmentRef) async {
+        do {
+            let raw = try await SessionAttachmentStore.shared.data(api: job.api, sessionID: job.sessionID, machineID: job.machineID, ref: att)
+            let decoded = await Task.detached(priority: .userInitiated) {
+                SessionImageDecoder.decode(data: raw, maxPixelSize: 960)
+            }.value
+            guard let decoded else { return store(job.key, .missing) }
+            store(job.key, .ready(Loaded(
+                thumbnail: decoded.thumbnail,
+                data: raw,
+                mimeType: att.mimeType.isEmpty ? "image/png" : att.mimeType,
+                pixelWidth: decoded.width,
+                pixelHeight: decoded.height,
+                sizeBytes: UInt64(raw.count),
+                turn: 0,
+                folder: "",
+                resolvedPath: att.name
+            )))
+        } catch {
+            switch (error as? APIError)?.code {
+            case "unavailable", "deadline_exceeded": store(job.key, .offline)
+            case "not_found", "permission_denied": store(job.key, .missing)
+            default: store(job.key, .failed(error.localizedDescription))
             }
         }
     }
@@ -450,8 +512,14 @@ struct SessionImageLightbox: View {
         _index = State(initialValue: max(0, min(presentation.items.count - 1, presentation.initialIndex)))
     }
 
-    private var currentItem: ReplyImageItem {
+    private var currentItem: LightboxItem {
         presentation.items.indices.contains(index) ? presentation.items[index] : presentation.items[0]
+    }
+
+    /// The owner's own pictures: nothing to save, share or find, so no menu.
+    private var ownPictures: Bool {
+        if case .attachment = currentItem { return true }
+        return false
     }
 
     private var online: Bool {
@@ -462,7 +530,7 @@ struct SessionImageLightbox: View {
     var body: some View {
         let files = model.sessionFiles.model(presentation.sessionID, api: model.api)
         let curPath = resolvedAskPath(files: files, item: currentItem)
-        let curState = SessionImageStore.shared.state(sessionID: presentation.sessionID, run: presentation.run, path: curPath)
+        let curState = state(of: currentItem, path: curPath)
         let name = fileBaseName(loadedOf(curState)?.resolvedPath ?? curPath)
         let meta = metadataLine(loaded: loadedOf(curState))
         let fade = max(0.25, 1.0 - abs(dragY) / 320.0)
@@ -486,6 +554,7 @@ struct SessionImageLightbox: View {
                         machineID: presentation.machineID,
                         run: presentation.run,
                         path: askPath,
+                        attachment: { if case .attachment(let a) = item { a } else { nil } }(),
                         online: online,
                         isCurrent: idx == index,
                         zoomed: $zoomed
@@ -543,38 +612,42 @@ struct SessionImageLightbox: View {
                 }
                 .frame(maxWidth: .infinity)
 
-                Menu {
-                    if let loaded = loadedOf(curState) {
-                        Button("Save to Photos", systemImage: "square.and.arrow.down") {
-                            Task {
-                                let ok = await SessionImageStore.saveToPhotos(loaded.data)
-                                model.show(ok ? String(localized: "Saved to Photos") : String(localized: "Couldn’t save to Photos"))
+                if ownPictures {
+                    Color.clear.frame(width: 38, height: 38)
+                } else {
+                    Menu {
+                        if let loaded = loadedOf(curState) {
+                            Button("Save to Photos", systemImage: "square.and.arrow.down") {
+                                Task {
+                                    let ok = await SessionImageStore.saveToPhotos(loaded.data)
+                                    model.show(ok ? String(localized: "Saved to Photos") : String(localized: "Couldn’t save to Photos"))
+                                }
+                            }
+                            Button("Share…", systemImage: "square.and.arrow.up") {
+                                sharing = SessionImageStore.shared.shareURL(for: loaded)
+                            }
+                            Divider()
+                            Button("Copy Path", systemImage: "doc.on.doc") {
+                                UIPasteboard.general.string = SessionImageStore.fullPath(folder: loaded.folder, path: loaded.resolvedPath)
+                                model.show(String(localized: "Copied"))
+                            }
+                        } else {
+                            Button("Copy Path", systemImage: "doc.on.doc") {
+                                UIPasteboard.general.string = curPath
+                                model.show(String(localized: "Copied"))
                             }
                         }
-                        Button("Share…", systemImage: "square.and.arrow.up") {
-                            sharing = SessionImageStore.shared.shareURL(for: loaded)
-                        }
-                        Divider()
-                        Button("Copy Path", systemImage: "doc.on.doc") {
-                            UIPasteboard.general.string = SessionImageStore.fullPath(folder: loaded.folder, path: loaded.resolvedPath)
-                            model.show(String(localized: "Copied"))
-                        }
-                    } else {
-                        Button("Copy Path", systemImage: "doc.on.doc") {
-                            UIPasteboard.general.string = curPath
-                            model.show(String(localized: "Copied"))
-                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 38, height: 38)
+                            .background(.white.opacity(0.14), in: .circle)
+                            .overlay(Circle().strokeBorder(.white.opacity(0.16), lineWidth: 0.5))
                     }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 38, height: 38)
-                        .background(.white.opacity(0.14), in: .circle)
-                        .overlay(Circle().strokeBorder(.white.opacity(0.16), lineWidth: 0.5))
+                    .accessibilityLabel(Text("More"))
+                    .accessibilityIdentifier("lightbox-more")
                 }
-                .accessibilityLabel(Text("More"))
-                .accessibilityIdentifier("lightbox-more")
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -588,12 +661,21 @@ struct SessionImageLightbox: View {
         .accessibilityIdentifier("session-image-lightbox")
     }
 
-    private func resolvedAskPath(files: SessionFilesModel, item: ReplyImageItem) -> String {
+    private func resolvedAskPath(files: SessionFilesModel, item: LightboxItem) -> String {
+        guard case .file(let item) = item else {
+            if case .attachment(let a) = item { return a.name }
+            return ""
+        }
         if let info = files.info(run: presentation.run, path: item.path),
            info.kind != .missing, info.kind != .outside, !info.path.isEmpty {
             return info.path
         }
         return item.path
+    }
+
+    private func state(of item: LightboxItem, path: String) -> SessionImageStore.State? {
+        if case .attachment(let a) = item { return SessionImageStore.shared.state(attachment: a) }
+        return SessionImageStore.shared.state(sessionID: presentation.sessionID, run: presentation.run, path: path)
     }
 
     private func loadedOf(_ state: SessionImageStore.State?) -> SessionImageStore.Loaded? {
@@ -623,6 +705,8 @@ private struct LightboxPage: View {
     let machineID: String
     let run: String
     let path: String
+    /// A prompt's picture, read by its blob in place of `path` (then its name).
+    let attachment: Hermesh_Session_V1_AttachmentRef?
     let online: Bool
     let isCurrent: Bool
     @Binding var zoomed: Bool
@@ -631,7 +715,7 @@ private struct LightboxPage: View {
     @State private var fullImage: UIImage?
 
     var body: some View {
-        let state = SessionImageStore.shared.state(sessionID: sessionID, run: run, path: path)
+        let state = attachment.map { SessionImageStore.shared.state(attachment: $0) } ?? SessionImageStore.shared.state(sessionID: sessionID, run: run, path: path)
         ZStack {
             switch state {
             case nil, .loading?:
@@ -677,7 +761,11 @@ private struct LightboxPage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: "\(sessionID)\u{0}\(run)\u{0}\(path)\u{0}\(online)") {
             let isOff: Bool = if case .offline? = state { true } else { false }
-            SessionImageStore.shared.request(api: model.api, sessionID: sessionID, run: run, path: path, retryOffline: isOff && online)
+            if let attachment {
+                SessionImageStore.shared.request(api: model.api, sessionID: sessionID, machineID: machineID, attachment: attachment, retryOffline: isOff && online)
+            } else {
+                SessionImageStore.shared.request(api: model.api, sessionID: sessionID, run: run, path: path, retryOffline: isOff && online)
+            }
         }
     }
 }

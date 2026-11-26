@@ -51,10 +51,8 @@ export type ComputerPermission = "accessibility" | "screen";
 export type SessionFileRef = { session: string; run: string; path: string };
 /** Where a page's view goes over the window, in the page's coordinates. */
 export type PageRect = { x: number; y: number; width: number; height: number };
-/** Where a session's page runs: over the window, or in the file panel. */
-export type PageSlot = "dialog" | "panel";
-/** What a page shown asks of the app: to close (Esc), or to open a web address; `slot` says which page. */
-export type SessionPageEvent = ({ kind: "close" } | { kind: "link"; url: string }) & { slot?: PageSlot };
+/** What a page shown asks of the app: to open a web address. */
+export type SessionPageEvent = { kind: "link"; url: string };
 
 export type Bridge = {
   platform: string;
@@ -100,9 +98,10 @@ export type Bridge = {
   /** A machine's Her console, in a window of its own (docs/her-server.md §5.3); at `page`, its address's hash ("browser/connect"). */
   openHerConsole(machineId: string, page?: string): Promise<void>;
   /** Shows a session's page (an HTML file) in a view of its own over `rect`, with no network, reading its folder from the session's machine. */
-  openSessionPage(file: SessionFileRef, rect: PageRect, slot: PageSlot): Promise<boolean>;
-  placeSessionPage(rect: PageRect, slot: PageSlot): void;
-  closeSessionPage(slot: PageSlot): void;
+  openSessionPage(file: SessionFileRef, rect: PageRect): Promise<boolean>;
+  /** Moves the page's view to `rect`; null hides it (something of the app's is over it). */
+  placeSessionPage(rect: PageRect | null): void;
+  closeSessionPage(): void;
   onSessionPage(cb: (e: SessionPageEvent) => void): () => void;
   /** The page with the web files of its folder, in the default browser (the owner's click: it has the network there). */
   openSessionPageInBrowser(file: SessionFileRef): Promise<void>;

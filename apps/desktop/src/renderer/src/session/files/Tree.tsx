@@ -2,13 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Icon } from "../../icons";
-import { listDir, openInPanel, toggleDir, type Panel } from "./panel";
+import { sizeText } from "./files";
+import { listDir, openFromTree, toggleDir, type Panel } from "./panel";
 
 // The session's folder as a tree (FinxWork's files/Tree.tsx): each folder read when it is opened,
 // the rows to show worked out from what is open, and only the rows in sight drawn. The folder as
 // it is now; when the worktree is gone, as the last turn left it.
 
-type Row = { path: string; name: string; dir: boolean; depth: number; parent: string };
+type Row = { path: string; name: string; dir: boolean; size: bigint; depth: number; parent: string };
 
 const ROW = 26;
 const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
@@ -18,7 +19,7 @@ function rowsOf(p: Panel): Row[] {
   const walk = (dir: string, depth: number) => {
     for (const e of p.dirs.get(dir)?.list?.entries ?? []) {
       const path = join(dir, e.name);
-      rows.push({ path, name: e.name, dir: e.dir, depth, parent: dir });
+      rows.push({ path, name: e.name, dir: e.dir, size: e.size, depth, parent: dir });
       if (e.dir && p.expanded.has(path)) walk(path, depth + 1);
     }
   };
@@ -26,7 +27,8 @@ function rowsOf(p: Panel): Row[] {
   return rows;
 }
 
-export function Tree({ p, activePath }: { p: Panel; activePath: string | null }) {
+/** `wide`: the tree alone in its tab (项目文件), files with their sizes. */
+export function Tree({ p, activePath, wide = false }: { p: Panel; activePath: string | null; wide?: boolean }) {
   const { t } = useTranslation("session");
   const scroller = useRef<HTMLDivElement>(null);
   const rows = useMemo(() => rowsOf(p), [p.rev]);
@@ -39,7 +41,7 @@ export function Tree({ p, activePath }: { p: Panel; activePath: string | null })
     setFocus(active);
     v.scrollToIndex(active, { align: "auto" });
   }, [active, activePath]);
-  const open = (r: Row) => (r.dir ? toggleDir(p, r.path) : openInPanel({ session: p.session, run: "", path: r.path }));
+  const open = (r: Row) => (r.dir ? toggleDir(p, r.path) : openFromTree(p, r.path));
   const move = (i: number) => {
     const next = Math.max(0, Math.min(rows.length - 1, i));
     setFocus(next);
@@ -49,7 +51,7 @@ export function Tree({ p, activePath }: { p: Panel; activePath: string | null })
   const turn = root?.list?.folderGone ? root.list.turn : 0;
   return (
     <div
-      className="sft"
+      className={`sft ${wide ? "wide" : ""}`}
       ref={scroller}
       role="tree"
       aria-label={t("files.tree")}
@@ -94,6 +96,7 @@ export function Tree({ p, activePath }: { p: Panel; activePath: string | null })
               {r.dir ? <Icon name="chevD" className={`chev ${expanded ? "open" : ""}`} /> : <span className="sft-sp" />}
               <Icon name={r.dir ? "folder" : "doc"} />
               <span className="sft-name">{r.name}</span>
+              {wide && !r.dir && <span className="sft-size">{sizeText(r.size)}</span>}
             </div>
           );
         })}

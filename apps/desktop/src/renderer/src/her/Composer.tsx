@@ -213,8 +213,8 @@ function FileBadge({ name }: { name: string }) {
 
 /**
  * One attachment, the same in the composer and in the conversation: a picture shows itself and opens
- * large over the window; a file shows its name and type (or `meta`), and opens as `onOpen` says:
- * saved to Downloads, or, with `views`, shown over the window.
+ * large over the window (or as `onOpen` says, when given); a file shows its name and type (or `meta`),
+ * and opens as `onOpen` says: saved to Downloads, or, with `views`, shown over the window.
  */
 export function Tile({ name, src, meta, views, onOpen, onRemove, onContextMenu }: {
   name: string;
@@ -233,7 +233,7 @@ export function Tile({ name, src, meta, views, onOpen, onRemove, onContextMenu }
   const ext = /\.([A-Za-z0-9]{1,6})$/.exec(name)?.[1]?.toUpperCase() ?? "";
   return (
     <div className={`tile ${src ? "img" : "file"}`} title={name} onContextMenu={onContextMenu}>
-      <button className="tile-open" onClick={() => (src ? setLarge(true) : onOpen?.())} aria-label={src || views ? t("composer.view", { name }) : (onOpen ? t("files.save", { name }) : name)}>
+      <button className="tile-open" onClick={() => (src && !onOpen ? setLarge(true) : onOpen?.())} aria-label={src || views ? t("composer.view", { name }) : (onOpen ? t("files.save", { name }) : name)}>
         {src ? (
           <img src={src} alt="" />
         ) : (

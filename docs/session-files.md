@@ -2,6 +2,8 @@
 
 Status: steps 1 and 2 built (2026-11-25), with the recommended answer to each of §11's decisions; §13
 records what was built and how it differs from the plan. Step 3 (changing files) is not.
+On the Mac, §14 (2026-11-26) replaces the preview over the window (§3.2, §3.3) and the file panel
+(§3.4) with the side panel's tabs.
 
 Scope: coding sessions, on the Mac and the iPhone, for a session on any of
 the owner's machines. What the owner sees comes from FinxWork
@@ -380,3 +382,46 @@ Verified:
   other Mac stopped and both open again).
 - The iPhone: `HermeshUITests/SessionFilesUITests.swift` on the iOS 26 Simulator, the same session
   through the relay. Not checked on the iOS 27 device.
+
+## 14. The side panel as tabs (2026-11-26, Mac)
+
+Prototype: [side-panel-mac-demo.html](side-panel-mac-demo.html). The file panel becomes the **side
+panel**, a place that will take more kinds of work (a terminal, a browser) as tabs, and the preview over
+the window (§3.3) goes into it.
+
+**The toolbar's right end** has two fixed buttons:
+
+- **信息面板** (ⓘ, the app's `info` glyph; it was `infoCard`, too like the panel's own): the environment
+  and context cards. It cannot be shown while the side panel is open: the button is greyed, ⌥⌘0 does
+  nothing, and opening the panel puts the cards away (as before).
+- **侧边面板** (`panelRight`, the side bar's glyph mirrored): shows and puts away the panel. The 文件 button
+  and the panel's own close button are gone.
+
+**The panel** (`session/files/SidePanel.tsx`, state in `panel.ts`):
+
+- The strip: one tab per thing open (kind glyph, name, close), ＋ for a new tab (a native menu of
+  kinds: today only 项目文件), and ⤢ to take the window but the side bar. Under it, the tab's own bar.
+- Each session keeps its tabs. Opened empty, the panel starts with 项目文件; the last tab closed, it goes.
+- **Files tab**: a file (code at its lines, Markdown and SVG as they look or their source, a picture, a
+  PDF) with the folder's tree beside it, shown or hidden by the bar's tree button; hidden when a reply
+  opened it. With no file it is 项目文件: the tree alone, files with their sizes, the folder in its bar.
+  A file picked in the tree opens **in that tab**, as a browser goes to a page; the tree stays.
+- **Page tab**: a `.html` running in its own view, as §3.3 had it (a process apart, no network, its own
+  folder). Its bar is the page's address, 在浏览器中打开, and the file menu. It is where a built-in
+  browser would go; back, forward and reload wait for that. A page picked in the tree opens its page tab.
+- The foot keeps the version bar of a reply's file (§6.2).
+
+**A click in a reply**: a picture, the Lightbox; Office, sound, video and archives, Quick Look; anything
+else, its tab (a page tab for a `.html`, else a files tab, at its line, tree hidden), the tab it already
+has brought forward. A folder: 项目文件, opened to it. The preview over the window and its 铺满窗口 are
+gone; ⤢ takes their place.
+
+**The page's view** is drawn over the app's own page, so it hides while something of the app's is over
+the panel (a `<dialog>`, the Lightbox, a sheet: anything with `role="dialog"`) and shows again after.
+With the dialog gone there is one view per window (`main/sessionFiles.ts`), and the page's Esc no longer
+closes anything.
+
+Verified: `apps/desktop/e2e/session-files.spec.ts` on the built app with the session on another Mac (the
+page tab, max and back, the version bar; code at its line with the tree hidden, then shown; the tree
+opening files in its tab and a page in its page tab; ＋ 项目文件 with sizes; put away and back; every tab
+closed and the panel back with 项目文件; the page's view hidden under the Lightbox; the other Mac stopped).

@@ -1,36 +1,22 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Code, ConnectError } from "@connectrpc/connect";
-import type { PageSlot } from "../../../../shared/bridge";
 import { i18n } from "../../../../shared/i18n";
 import { fileView } from "@hermesh/her-client";
 import { FileContentKind, FileNow, type ReadFileResponse } from "@hermesh/proto/session";
 import { PdfView } from "../../her/preview/PdfView";
 import { Icon } from "../../icons";
-import { machineName } from "../../Sidebar";
 import { useStore } from "../../store";
-import { sessions } from "../../api";
 import { Markdown } from "../Markdown";
-import { Dialog } from "../markdown/Dialog";
 import { readAll, sizeText, type SessionFile } from "./files";
-import { closeShownFile, fileMenu, useShownFile, type Shown } from "./open";
 import "../../her/preview/preview.css";
 import "./files.css";
 
 const CodeView = lazy(() => import("./CodeView"));
 
-// A session's file over the window (docs/session-files.md §3.3, FinxWork's preview/FilePreview): a
-// page as it runs, a PDF as its pages, a picture, Markdown as it reads, code at the lines a reply
-// pointed at. It reads the file as the reply's turn left it; the bar at its foot says so when the
-// file is different now, and shows the current one.
-
-export function FileViewHost() {
-  const shown = useShownFile();
-  return shown ? <FileView key={shown.seq} shown={shown} onClose={closeShownFile} /> : null;
-}
-
-type Read = { res: ReadFileResponse } | { error: string } | null;
+// What a side panel's tab shows of a session's file (docs/session-files.md §3.3, FinxWork's
+// preview/FilePreview): a page as it runs, a PDF as its pages, a picture, Markdown as it reads, code at
+// the lines a reply pointed at; the bar at its foot says when a reply's file is different now.
 
 /** Why a file could not be read, as the owner reads it. */
 export function fileError(e: unknown, machine: string): string {
@@ -40,80 +26,6 @@ export function fileError(e: unknown, machine: string): string {
   if (err.code === Code.PermissionDenied) return t("files.outside");
   if (err.code === Code.Unavailable || err.code === Code.DeadlineExceeded) return t("files.offline", { machine });
   return t("files.failed", { message: err.rawMessage });
-}
-
-function FileView({ shown, onClose }: { shown: Shown; onClose: () => void }) {
-  const { t } = useTranslation("session");
-  const st = useStore();
-  const [run, setRun] = useState(shown.file.run);
-  const [source, setSource] = useState(false);
-  // Taking the whole window (a page, a picture, a PDF are read wide), and back.
-  const [max, setMax] = useState(false);
-  const [read, setRead] = useState<Read>(null);
-  const file: SessionFile = { ...shown.file, run };
-  const view = fileView(shown.file.path);
-  useEffect(() => {
-    let live = true;
-    setRead(null);
-    sessions.readFile({ sessionId: file.session, runId: file.run, path: file.path }).then(
-      (res) => live && setRead({ res }),
-      (e: unknown) => live && setRead({ error: errorText(e) }),
-    );
-    return () => {
-      live = false;
-    };
-  }, [run]);
-
-  const errorText = (e: unknown) => fileError(e, machineName(st, shown.home.machine));
-
-  const res = read && "res" in read ? read.res : null;
-  // A page is what it runs as: its source is in the file panel.
-  const sourceable = view === "markdown" || view === "svg";
-  return createPortal(
-    <Dialog label={shown.name} width={max ? "100vw" : "min(var(--md-rich-width), calc(100vw - 96px))"} className={`fpv sfv ${max ? "max" : ""}`} onClose={onClose}>
-      <div className="fpv-in" data-testid="file-view" data-path={shown.file.path}>
-        <div className="fpv-head">
-          <span className="fpv-name" title={shown.file.path}>
-            {shown.name}
-          </span>
-          {sourceable && (
-            <button className={`tb ${source ? "on" : ""}`} aria-label={t("files.source")} title={source ? t("files.preview") : t("files.source")} aria-pressed={source} onClick={() => setSource(!source)}>
-              <Icon name="code" />
-            </button>
-          )}
-          {view === "page" && (
-            <button className="tb" aria-label={t("files.openBrowser")} title={t("files.openBrowser")} onClick={() => void window.hermesh?.openSessionPageInBrowser(file)}>
-              <Icon name="web" />
-            </button>
-          )}
-          <button className={`tb ${max ? "on" : ""}`} aria-label={max ? t("files.restore") : t("files.fullWindow")} title={max ? t("files.restore") : t("files.fullWindow")} aria-pressed={max} onClick={() => setMax(!max)} data-testid="file-view-max">
-            <Icon name={max ? "shrink" : "expand"} />
-          </button>
-          <button className="tb" aria-label={t("files.more")} title={t("files.more")} onClick={() => void fileMenu(st, shown.home, file, res?.folder ?? "", { line: shown.line })}>
-            <Icon name="more" />
-          </button>
-          <button className="tb" aria-label={t("files.close")} title={t("files.close")} onClick={onClose}>
-            <Icon name="x" />
-          </button>
-        </div>
-        <div className="fpv-body" tabIndex={-1} ref={(el) => el?.setAttribute("autofocus", "")}>
-          {!read ? (
-            <Loading />
-          ) : "error" in read ? (
-            <Card name={shown.name} text={read.error} />
-          ) : view === "page" && !source ? (
-            <PageBody file={file} slot="dialog" onClose={onClose} />
-          ) : view === "pdf" ? (
-            <PdfBody file={file} name={shown.name} />
-          ) : (
-            <TextBody res={read.res} file={file} name={shown.name} line={shown.line} endLine={shown.endLine} source={source} />
-          )}
-        </div>
-        {res && <VersionBar res={res} run={run} turnRun={shown.file.run} onRun={setRun} />}
-      </div>
-    </Dialog>,
-    document.body,
-  );
 }
 
 /** What a turn's file is against the folder now, and the way to the other. */
@@ -218,18 +130,22 @@ export function PdfBody({ file, name }: { file: SessionFile; name: string }) {
   return <PdfView bytes={bytes} name={name} />;
 }
 
+/** Something of the app's over the window (a dialog, the Lightbox, a sheet): the page's view, drawn over the app, steps out of its way. */
+const covered = () => document.querySelector('dialog[open], [role="dialog"]') !== null;
+
 /**
  * A page as it runs, in a view of its own over this room (main/sessionFiles.ts): a process apart from
  * the app, with no network, reading its own folder from the session's machine. It opens once the
- * dialog has laid the room out.
+ * room is laid out, and hides while something of the app's is over it.
  */
-export function PageBody({ file, slot, onClose }: { file: SessionFile; slot: PageSlot; onClose?: () => void }) {
+export function PageBody({ file }: { file: SessionFile }) {
   const room = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const bridge = window.hermesh;
     const el = room.current;
     if (!bridge || !el) return;
     let opened = false;
+    let live = true;
     const rect = () => {
       const r = el.getBoundingClientRect();
       return { x: r.x, y: r.y, width: r.width, height: r.height };
@@ -237,24 +153,27 @@ export function PageBody({ file, slot, onClose }: { file: SessionFile; slot: Pag
     const place = () => {
       const now = rect();
       if (now.width === 0 || now.height === 0) return;
-      if (opened) return bridge.placeSessionPage(now, slot);
+      if (opened) return bridge.placeSessionPage(covered() ? null : now);
       opened = true;
-      void bridge.openSessionPage(file, now, slot);
+      void bridge.openSessionPage(file, now).then(() => live && covered() && bridge.placeSessionPage(null));
     };
-    const observer = new ResizeObserver(place);
-    observer.observe(el);
+    let frame = 0;
+    const soon = () => void (frame ||= requestAnimationFrame(() => ((frame = 0), place())));
+    const sized = new ResizeObserver(place);
+    sized.observe(el);
+    const overlays = new MutationObserver(soon);
+    overlays.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["open", "role"] });
     window.addEventListener("resize", place);
-    const off = bridge.onSessionPage((event) => {
-      if ((event.slot ?? "dialog") !== slot) return;
-      if (event.kind === "close") onClose?.();
-      else if (event.kind === "link") bridge.openExternal(event.url);
-    });
+    const off = bridge.onSessionPage((event) => bridge.openExternal(event.url));
     return () => {
-      observer.disconnect();
+      live = false;
+      cancelAnimationFrame(frame);
+      sized.disconnect();
+      overlays.disconnect();
       window.removeEventListener("resize", place);
       off();
-      bridge.closeSessionPage(slot);
+      bridge.closeSessionPage();
     };
   }, [file.run, file.path]);
-  return <div ref={room} className={`sfv-page ${slot}`} data-testid={slot === "panel" ? "panel-page" : "file-page"} />;
+  return <div ref={room} className="sfv-page" data-testid="panel-page" />;
 }

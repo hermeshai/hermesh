@@ -2,20 +2,23 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { sameImagePath } from "@hermesh/her-client";
+import type { AttachmentRef } from "@hermesh/proto/session";
 import type { MenuItem } from "../../../../shared/bridge";
 import { Icon } from "../../icons";
 import { machineName } from "../../Sidebar";
 import { useStore, type Store } from "../../store";
+import { sessions } from "../../api";
+import { attachmentSnapshot, loadAttachmentBlob, subscribeAttachments } from "../attachments";
 import { baseName, sizeText, type FilesHome, type SessionFile } from "./files";
-import { requestSessionImage, useSessionImage, type ReplyImageItem } from "./images";
+import { decodeDimensions, requestSessionImage, useSessionImage, type ImageState, type ReplyImageItem } from "./images";
 
-export type ShownLightbox = {
-  home: FilesHome;
-  run: string;
-  items: ReplyImageItem[];
-  index: number;
-  seq: number;
-};
+/**
+ * What the Lightbox shows: a reply's pictures (session files, with their menu), or the pictures the owner sent with
+ * a prompt (attachments, kept by the machine as blobs; nothing to save or find, so no menu).
+ */
+export type ShownLightbox =
+  | { kind: "files"; home: FilesHome; run: string; items: ReplyImageItem[]; index: number; seq: number }
+  | { kind: "attachments"; session: string; machine: string; items: AttachmentRef[]; index: number; seq: number };
 
 let current: ShownLightbox | null = null;
 let seq = 0;
@@ -38,8 +41,41 @@ export function closeSessionLightbox() {
 export function openSessionLightbox(home: FilesHome, run: string, items: ReplyImageItem[], index: number) {
   if (items.length === 0) return;
   const clamped = Math.max(0, Math.min(items.length - 1, index));
-  current = { home, run, items, index: clamped, seq: ++seq };
+  current = { kind: "files", home, run, items, index: clamped, seq: ++seq };
   emit();
+}
+
+/** The pictures of a prompt (in its bubble or the composer), from the one clicked. */
+export function openAttachmentLightbox(session: string, machine: string, items: AttachmentRef[], index: number) {
+  if (items.length === 0) return;
+  current = { kind: "attachments", session, machine, items, index: Math.max(0, Math.min(items.length - 1, index)), seq: ++seq };
+  emit();
+}
+
+const download = (session: string, machine: string) => (sha256: string) =>
+  sessions.downloadBlob({ sessionId: session, machineId: machine, blobSha256: sha256 });
+
+/** A prompt's picture as the Lightbox reads it: the bubble's own blob URL, its size as sent. */
+function useAttachmentImage(att: AttachmentRef | null, session: string, machine: string): ImageState | undefined {
+  const urls = useSyncExternalStore(subscribeAttachments, attachmentSnapshot);
+  const url = att ? urls[att.blobSha256] : undefined;
+  const [dims, setDims] = useState<{ url: string; width: number; height: number } | null>(null);
+  useEffect(() => {
+    if (att && url === undefined) void loadAttachmentBlob(att, download(session, machine));
+  }, [att?.blobSha256, url === undefined]);
+  useEffect(() => {
+    if (!url) return;
+    let live = true;
+    void decodeDimensions(url).then((d) => live && setDims({ url, ...d }));
+    return () => {
+      live = false;
+    };
+  }, [url]);
+  if (!att) return undefined;
+  if (url === undefined) return { status: "loading" };
+  if (url === null) return { status: "missing" };
+  const d = dims?.url === url ? dims : { width: 0, height: 0 };
+  return { status: "ready", url, width: d.width, height: d.height, size: att.sizeBytes, turn: 0, folder: "", resolvedPath: att.name };
 }
 
 export function openFileInLightbox(home: FilesHome, file: SessionFile, gallery?: ReplyImageItem[] | null) {
@@ -101,17 +137,30 @@ function ImageLightbox({ shown, onClose }: { shown: ShownLightbox; onClose: () =
   const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number; moved: boolean } | null>(null);
   const moreRef = useRef<HTMLButtonElement>(null);
 
-  const item = shown.items[index] ?? shown.items[0]!;
-  const file: SessionFile = { session: shown.home.session, run: shown.run, path: item.path };
-  const machine = st.machines.find((m) => m.machineId === shown.home.machine);
-  const online = shown.home.local || (st.status?.relayConnected !== false && (machine?.online ?? false));
-  const state = useSessionImage(file, true, online);
+  const files = shown.kind === "files" ? shown : null;
+  const atts = shown.kind === "attachments" ? shown : null;
+  const item = files ? (files.items[index] ?? files.items[0]!) : null;
+  const att = atts ? (atts.items[index] ?? atts.items[0]!) : null;
+  const file: SessionFile | null = files && item ? { session: files.home.session, run: files.run, path: item.path } : null;
+  const machineId = files ? files.home.machine : atts!.machine;
+  const machine = st.machines.find((m) => m.machineId === machineId);
+  const online = (files?.home.local ?? false) || (st.status?.relayConnected !== false && (machine?.online ?? false));
+  const fileState = useSessionImage(file, true, online);
+  const attState = useAttachmentImage(att, atts?.session ?? "", machineId);
+  const state = files ? fileState : attState;
+  const caption = item?.caption ?? "";
+  const askedPath = item?.path ?? att?.name ?? "";
 
-  // Prefetch adjacent images in the same reply for instant stepping.
+  // Prefetch adjacent images for instant stepping.
   useEffect(() => {
     for (const adj of [index - 1, index + 1]) {
-      const neighbor = shown.items[adj];
-      if (neighbor) requestSessionImage({ session: shown.home.session, run: shown.run, path: neighbor.path });
+      if (files) {
+        const neighbor = files.items[adj];
+        if (neighbor) requestSessionImage({ session: files.home.session, run: files.run, path: neighbor.path });
+      } else if (atts) {
+        const neighbor = atts.items[adj];
+        if (neighbor) void loadAttachmentBlob(neighbor, download(atts.session, atts.machine));
+      }
     }
   }, [index, shown]);
 
@@ -141,7 +190,7 @@ function ImageLightbox({ shown, onClose }: { shown: ShownLightbox; onClose: () =
     return () => window.removeEventListener("keydown", onKey, true);
   }, [index, shown.items.length, onClose]);
 
-  const resolvedPath = state?.status === "ready" ? state.resolvedPath : item.path;
+  const resolvedPath = state?.status === "ready" ? state.resolvedPath : askedPath;
   const folder = state?.status === "ready" ? state.folder : "";
   const name = baseName(resolvedPath);
   const metaParts: string[] = [];
@@ -152,13 +201,14 @@ function ImageLightbox({ shown, onClose }: { shown: ShownLightbox; onClose: () =
   const clampZoom = (next: number) => Math.max(1, Math.min(4, next));
 
   const openMore = () => {
+    if (!files || !file) return;
     const rect = moreRef.current?.getBoundingClientRect();
     const at = rect ? { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) } : undefined;
-    void sessionImageMenu(st, shown.home, { ...file, path: resolvedPath }, folder, { at });
+    void sessionImageMenu(st, files.home, { ...file, path: resolvedPath }, folder, { at });
   };
 
   return createPortal(
-    <div className="slb" role="dialog" aria-modal="true" aria-label={name} data-testid="image-lightbox" data-path={resolvedPath}>
+    <div className="slb" role="dialog" aria-modal="true" aria-label={name} data-testid="image-lightbox" data-path={resolvedPath} data-source={shown.kind}>
       <div className="slb-top">
         <div className="slb-spacer" aria-hidden="true" />
         <div className="slb-center">
@@ -172,16 +222,18 @@ function ImageLightbox({ shown, onClose }: { shown: ShownLightbox; onClose: () =
           )}
         </div>
         <div className="slb-actions">
-          <button
-            ref={moreRef}
-            className="slb-btn"
-            aria-label={t("files.more")}
-            title={t("files.more")}
-            data-testid="lightbox-more"
-            onClick={openMore}
-          >
-            <Icon name="more" />
-          </button>
+          {files && (
+            <button
+              ref={moreRef}
+              className="slb-btn"
+              aria-label={t("files.more")}
+              title={t("files.more")}
+              data-testid="lightbox-more"
+              onClick={openMore}
+            >
+              <Icon name="more" />
+            </button>
+          )}
           <button
             className="slb-btn"
             aria-label={t("markdown.close")}
@@ -228,7 +280,7 @@ function ImageLightbox({ shown, onClose }: { shown: ShownLightbox; onClose: () =
         ) : state.status === "ready" ? (
           <img
             src={state.url}
-            alt={item.caption || name}
+            alt={caption || name}
             draggable={false}
             data-testid="lightbox-image"
             className={`slb-img ${scale > 1 ? (dragging ? "grabbing" : "grab") : ""}`}
@@ -270,7 +322,7 @@ function ImageLightbox({ shown, onClose }: { shown: ShownLightbox; onClose: () =
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              void sessionImageMenu(st, shown.home, { ...file, path: resolvedPath }, folder);
+              if (files && file) void sessionImageMenu(st, files.home, { ...file, path: resolvedPath }, folder);
             }}
           />
         ) : (
@@ -279,7 +331,7 @@ function ImageLightbox({ shown, onClose }: { shown: ShownLightbox; onClose: () =
             <b>{name}</b>
             <span>
               {state.status === "offline"
-                ? t("files.imageOffline", { machine: machineName(st, shown.home.machine) })
+                ? t("files.imageOffline", { machine: machineName(st, machineId) })
                 : state.status === "tooLarge"
                   ? t("files.tooLarge", { size: sizeText(state.size) })
                   : state.status === "missing"

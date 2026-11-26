@@ -6,7 +6,9 @@
   "page": {
     "showInfo": "显示信息面板 {{keys}}",
     "hideInfo": "隐藏信息面板 {{keys}}",
-    "info": "信息面板"
+    "info": "信息面板",
+    "showPanel": "展开侧边面板",
+    "hidePanel": "收起侧边面板"
   },
   "chat": {
     "archived": "已归档：只读，worktree 已释放，改动还在分支上。",
@@ -170,7 +172,6 @@
     "source": "源码",
     "preview": "预览",
     "more": "更多",
-    "close": "关闭预览",
     "line": "第 {{line}} 行",
     "lines": "第 {{line}}–{{end}} 行",
     "notFound": "找不到这个文件",
@@ -186,18 +187,17 @@
     "showNow": "查看当前版本",
     "nowShown": "这是当前版本",
     "showTurn": "查看回复时的版本",
-    "title": "文件",
-    "openFiles": "文件",
-    "hide": "收起文件面板",
     "tree": "项目文件",
     "toggleTree": "显示或隐藏目录树",
     "closeTab": "关闭 {{name}}",
     "maximize": "放大",
     "restore": "还原",
-    "pick": "在右边选一个文件打开",
-    "resize": "调整文件面板宽度",
+    "resize": "调整侧边面板宽度",
     "treeGone": "工作区已回收，这是第 {{turn}} 轮结束时的文件",
-    "treeFailed": "没能读取这个文件夹",
-    "fullWindow": "铺满窗口"
+    "treeFailed": "没能读取这个文件夹"
+  },
+  "panel": {
+    "title": "侧边面板",
+    "newTab": "新建标签页"
   }
 }

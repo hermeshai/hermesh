@@ -201,6 +201,14 @@ struct PromptSender {
         return try? writeTemp(sha256: sha, name: ref.name, data: data)
     }
 
+    /// An attachment's bytes: kept on this iPhone when it was sent from here or opened before, else downloaded once.
+    func data(api: AppAPI, sessionID: String, machineID: String, ref: Hermesh_Session_V1_AttachmentRef) async throws -> Data {
+        if let kept = try? Data(contentsOf: tempURL(sha256: ref.blobSha256, name: ref.name)) { return kept }
+        let data = try await api.downloadBlob(sessionID, sha256: ref.blobSha256, machineID: machineID)
+        _ = try? writeTemp(sha256: ref.blobSha256, name: ref.name, data: data)
+        return data
+    }
+
     private func store(sha256: String, picture: UIImage?) {
         pictures.updateValue(picture, forKey: sha256)
         order.removeAll { $0 == sha256 }
@@ -250,6 +258,7 @@ struct PromptBubble<Sender: View>: View {
     @ViewBuilder let sender: () -> Sender
     @State private var preview: URL?
     @State private var opening: String?
+    @State private var lightbox: SessionLightboxPresentation?
 
     var body: some View {
         let store = SessionAttachmentStore.shared
@@ -283,6 +292,7 @@ struct PromptBubble<Sender: View>: View {
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.top, from == nil ? 8 : 14).padding(.bottom, 8)
         .quickLookPreview($preview)
+        .fullScreenCover(item: $lightbox) { SessionImageLightbox(presentation: $0) }
     }
 
     @ViewBuilder private func attachmentView(_ att: Hermesh_Session_V1_AttachmentRef, store: SessionAttachmentStore) -> some View {
@@ -290,7 +300,7 @@ struct PromptBubble<Sender: View>: View {
         let cached = store.pictures[att.blobSha256]
         let unreadable = if case .some(nil) = cached { true } else { false }
         if isSessionImageAttachment(att) && !unreadable {
-            Button { open(att) } label: {
+            Button { openPicture(att) } label: {
                 Group {
                     if let picture = cached ?? nil {
                         Image(uiImage: picture)
@@ -316,6 +326,18 @@ struct PromptBubble<Sender: View>: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("prompt-attachment-\(name)")
         }
+    }
+
+    /// The bubble's pictures in the Lightbox, from the one tapped; those that could not be read stay out, as chips.
+    private func openPicture(_ att: Hermesh_Session_V1_AttachmentRef) {
+        let store = SessionAttachmentStore.shared
+        let pictures = attachments.filter { a in
+            guard isSessionImageAttachment(a) else { return false }
+            if case .some(nil) = store.pictures[a.blobSha256] { return false }
+            return true
+        }
+        lightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: machineID, run: "", items: pictures.map(LightboxItem.attachment),
+                                               initialIndex: pictures.firstIndex(of: att) ?? 0)
     }
 
     private func open(_ att: Hermesh_Session_V1_AttachmentRef) {

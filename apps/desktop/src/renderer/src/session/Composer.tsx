@@ -23,6 +23,7 @@ import { MenuButton } from "../her/menus";
 import { Tile, useFileDrop } from "../her/Composer";
 import { pastedFiles } from "../her/attachments";
 import { attachmentUrl } from "./attachments";
+import { openAttachmentLightbox } from "./files/ImageLightbox";
 import "../her/her.css";
 
 // The composer (docs/thread-composer.md §16, §17), a new session's and a
@@ -136,9 +137,20 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
       <input ref={file} type="file" multiple hidden onChange={(e) => (e.target.files && onAttach([...e.target.files]), (e.target.value = ""))} />
       {attachments.length > 0 && (
         <div className="cmp-att">
-          {attachments.map((a) => (
-            <Tile key={a.blobSha256} name={a.name} src={attachmentUrl(a)} onRemove={() => onRemove(a.blobSha256)} />
-          ))}
+          {attachments.map((a) => {
+            const src = attachmentUrl(a);
+            // Only pictures already here: nothing in the composer is read from a machine.
+            const pictures = attachments.filter((x) => attachmentUrl(x));
+            return (
+              <Tile
+                key={a.blobSha256}
+                name={a.name}
+                src={src}
+                onOpen={src ? () => openAttachmentLightbox("", "", pictures, pictures.indexOf(a)) : undefined}
+                onRemove={() => onRemove(a.blobSha256)}
+              />
+            );
+          })}
         </div>
       )}
       <div className="cmp-row">
