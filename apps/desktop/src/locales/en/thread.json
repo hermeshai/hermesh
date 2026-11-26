@@ -1,6 +1,6 @@
 {
   "nav": {
-    "newThread": "New Session",
+    "newThread": "New",
     "threads": "Threads",
     "newIn": "New session in {{project}}"
   },

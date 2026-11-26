@@ -13,6 +13,7 @@ import {
   needsAttention,
   pendingQuestion,
   relistedCursor,
+  reorderIds,
   searchSessions,
   SECTION_EXPAND_STEP,
   SECTION_INITIAL_LIMIT,
@@ -56,6 +57,49 @@ describe("session list", () => {
     const oldest = sessionSections(all, sessionView({ newestFirst: false }), { archived: false, now });
     expect(oldest.map((s) => s.key)).toEqual(["attention", "active", "done"]);
     expect(ids(oldest[0].sessions)).toEqual(["w", "crash"]);
+  });
+
+  test("running sessions stay ordered by creation time while updatedAt ticks, and respect manual drag and pinned sections", () => {
+    const rOld = session("rOld", SessionStatus.RUNNING, { created: -600, updated: -1 }); // updated most recently!
+    const rMid = session("rMid", SessionStatus.RUNNING, { created: -300, updated: -50 });
+    const rNew = session("rNew", SessionStatus.RUNNING, { created: -60, updated: -55 });
+    const dOld = session("dOld", SessionStatus.IDLE, { created: -5000, updated: -10 }); // old session just finished
+    const dEarly = session("dEarly", SessionStatus.IDLE, { created: -200, updated: -400 });
+
+    // Default workbench sort: active by createdAt (rNew, rMid, rOld — never jumping on updatedAt), done by updatedAt (dOld first).
+    const secs = sessionSections([rOld, rMid, rNew, dOld, dEarly], sessionView(), { archived: false, now });
+    expect(secs.map((s) => [s.key, ids(s.sessions)])).toEqual([
+      ["active", ["rNew", "rMid", "rOld"]],
+      ["done", ["dOld", "dEarly"]],
+    ]);
+
+    // Manual drag order in active overrides creation order while new tasks still land at the top and old woken ones at the bottom.
+    const draggedOrder = reorderIds(["rNew", "rMid", "rOld"], "rOld", 0);
+    expect(draggedOrder).toEqual(["rOld", "rNew", "rMid"]);
+    const brandNew = session("rBrandNew", SessionStatus.RUNNING, { created: -5, updated: -5 });
+    const wokenAncient = session("rAncient", SessionStatus.RUNNING, { created: -86400, updated: -2 });
+    const withDrag = sessionSections([rOld, rMid, rNew, brandNew, wokenAncient], sessionView(), {
+      archived: false,
+      now,
+      activeOrder: draggedOrder,
+    });
+    expect(ids(withDrag[0].sessions)).toEqual(["rBrandNew", "rOld", "rNew", "rMid", "rAncient"]);
+
+    // Pinned sessions sit in their own top section across all groupings, ordered by pinnedOrder, and keep empty active visible when alone.
+    dEarly.pinned = true;
+    rMid.pinned = true;
+    const withPinned = sessionSections([rOld, rMid, rNew, dOld, dEarly], sessionView(), {
+      archived: false,
+      now,
+      pinnedOrder: ["dEarly", "rMid"],
+    });
+    expect(withPinned.map((s) => [s.key, ids(s.sessions)])).toEqual([
+      ["pinned", ["dEarly", "rMid"]],
+      ["active", ["rNew", "rOld"]],
+      ["done", ["dOld"]],
+    ]);
+    expect(sessionSections([dEarly], sessionView({ group: "project" }), { archived: false, now }).map((s) => s.key)).toEqual(["pinned"]);
+    expect(sessionSections([dEarly], sessionView(), { archived: false, now, alwaysActive: true }).map((s) => s.key)).toEqual(["pinned", "active"]);
   });
 
   test("by status, the sidebar keeps the running section while nothing runs, empty; with no session, none", () => {
@@ -102,7 +146,7 @@ describe("session list", () => {
 
   test("entity sections fold past five while status, date and pinned sessions stay visible", () => {
     const ten = Array.from({ length: 10 }, (_, i) => session(`s${i + 1}`, SessionStatus.IDLE, { updated: -(i + 1) * 10 }));
-    for (const g of ["status", "date", "archived"] as const) {
+    for (const g of ["status", "date", "pinned", "archived"] as const) {
       expect(sliceSectionSessions(ten, g)).toEqual({ visible: ten, hiddenCount: 0 });
     }
     // 6 rows never fold for a single orphan row; 7 rows fold to 5 + 2.

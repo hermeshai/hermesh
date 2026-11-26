@@ -379,8 +379,15 @@ func Preview(s string) string {
 	return s[:end]
 }
 
-// Unsettled sessions need the owner or have a turn in progress.
+// Unsettled sessions are kept on the first page however old: those that need
+// the owner, have a turn in progress, or are pinned (until archived).
 func Unsettled(s *sessionv1.Session) bool {
+	if s.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+		return false
+	}
+	if s.Pinned {
+		return true
+	}
 	switch s.Status {
 	case sessionv1.SessionStatus_SESSION_STATUS_QUEUED,
 		sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
@@ -388,8 +395,6 @@ func Unsettled(s *sessionv1.Session) bool {
 		sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT,
 		sessionv1.SessionStatus_SESSION_STATUS_CRASHED:
 		return true
-	case sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED:
-		return false
 	}
 	f := s.GetProgress().GetLastFailure()
 	return f != nil && f.Kind != sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED

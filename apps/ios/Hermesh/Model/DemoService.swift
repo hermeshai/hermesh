@@ -604,12 +604,14 @@ final class DemoService {
         case "UpdateSession":
             let req = try Hermesh_Session_V1_UpdateSessionRequest(jsonUTF8Data: data, options: dec)
             guard let i = world.sessions.firstIndex(where: { $0.sessionID == req.sessionID }) else { throw CancellationError() }
+            let pinOnly = req.hasPinned_p && req.title.isEmpty && !req.hasArchived_p && !req.hasModelSelection && req.runtimeMode == .unspecified && req.interactionMode == .unspecified
             if !req.title.isEmpty { world.sessions[i].title = req.title }
+            if req.hasPinned_p { world.sessions[i].pinned = req.pinned }
             if req.hasArchived_p { world.sessions[i].status = req.archived ? .archived : .idle }
             if req.hasModelSelection { world.sessions[i].modelSelection = req.modelSelection }
             if req.runtimeMode != .unspecified { world.sessions[i].runtimeMode = req.runtimeMode }
             if req.interactionMode != .unspecified { world.sessions[i].interactionMode = req.interactionMode }
-            world.sessions[i].updatedAt = .init(date: .now)
+            if !pinOnly { world.sessions[i].updatedAt = .init(date: .now) }
             syncSession(req.sessionID)
             emitEvent(req.sessionID) { $0.type = "session.updated" }
             publish()

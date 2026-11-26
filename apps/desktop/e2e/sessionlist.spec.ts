@@ -252,3 +252,86 @@ test("only pushed or merged sessions show a sidebar git mark, and hovering shows
 
   await app.close();
 });
+
+test("concurrent active sessions stay in creation order without jumping, support drag reorder and reset, and pin to the top", async () => {
+  test.setTimeout(120_000);
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
+  let { app, page } = await launch(fixture.socket, { profile });
+  let list = await sessionList(page);
+
+  await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "并发任务 A", "--prompt", "shell sleep 3\nshell sleep 60\nsay A好");
+  const active = () => list.getByRole("group", { name: "进行中" });
+  await expect(active()).toContainText("并发任务 A");
+
+  await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "并发任务 B", "--prompt", "shell sleep 60\nsay B好");
+  await expect(active()).toContainText("并发任务 B");
+
+  const activeTitles = () => active().locator(".stitle").allInnerTexts();
+  await expect.poll(activeTitles).toEqual(["并发任务 B", "并发任务 A", "跑很久"]);
+
+  // Wait until "并发任务 A" finishes its first 3s tool step so its updatedAt overtakes "并发任务 B".
+  await expect.poll(async () => {
+    const r = await page.evaluate(async () => {
+      const res = await fetch("app://hermesh/api/hermesh.local.v1.LocalService/ListSessions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ limit: 50 }),
+      });
+      return ((await res.json()).sessions as { title: string; updatedAt: string }[]).map((s) => [s.title, Date.parse(s.updatedAt)]);
+    });
+    const byTitle = Object.fromEntries(r);
+    return (byTitle["并发任务 A"] ?? 0) > (byTitle["并发任务 B"] ?? Infinity);
+  }, { timeout: 15_000 }).toBe(true);
+
+  // Even after "并发任务 A" updated more recently, 进行中 stays rock-solid in creation order.
+  expect(await activeTitles()).toEqual(["并发任务 B", "并发任务 A", "跑很久"]);
+
+  // Drag "跑很久" above "并发任务 B" inside 进行中; the custom order persists across relaunch and resets from View Options.
+  const dragRow = async (fromLocator: ReturnType<typeof page.locator>, toX: number, toY: number) => {
+    const box = (await fromLocator.boundingBox())!;
+    await page.mouse.move(box.x + 60, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 60, box.y - 8, { steps: 3 });
+    await page.mouse.move(toX, toY, { steps: 8 });
+    await page.mouse.up();
+  };
+
+  const topBox = (await active().getByRole("listitem").first().boundingBox())!;
+  await dragRow(active().getByRole("listitem").filter({ hasText: "跑很久" }), topBox.x + 60, topBox.y + 2);
+  await expect.poll(activeTitles).toEqual(["跑很久", "并发任务 B", "并发任务 A"]);
+
+  await app.close();
+  ({ app, page } = await launch(fixture.socket, { profile }));
+  list = await sessionList(page);
+  await expect.poll(activeTitles).toEqual(["跑很久", "并发任务 B", "并发任务 A"]);
+
+  await page.getByRole("button", { name: "视图选项" }).click();
+  await page.getByRole("menu", { name: "视图选项" }).getByRole("menuitem", { name: /排序/ }).hover();
+  await page.getByRole("menu", { name: "排序" }).getByRole("menuitem", { name: "恢复默认顺序" }).click();
+  await expect.poll(activeTitles).toEqual(["并发任务 B", "并发任务 A", "跑很久"]);
+
+  // Pinning moves a task into the top 置顶 group; dragging another task into 置顶 pins and orders it too.
+  const rowA = active().getByRole("listitem").filter({ hasText: "并发任务 A" });
+  await rowA.hover();
+  await rowA.getByRole("button", { name: "置顶" }).click();
+
+  const pinned = list.getByRole("group", { name: "置顶" });
+  await expect(pinned).toContainText("并发任务 A");
+  await expect(active()).not.toContainText("并发任务 A");
+  expect((await list.locator(".grp-h").allInnerTexts())[0]).toBe("置顶");
+
+  await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "刚跑完的", "--prompt", "say 好", "--wait");
+  await expect(list.getByRole("group", { name: "已结束" })).toContainText("刚跑完的");
+
+  const pinTopBox = (await pinned.getByRole("listitem").first().boundingBox())!;
+  await dragRow(list.getByRole("listitem").filter({ hasText: "刚跑完的" }), pinTopBox.x + 60, pinTopBox.y + 2);
+  await expect.poll(() => pinned.locator(".stitle").allInnerTexts()).toEqual(["刚跑完的", "并发任务 A"]);
+
+  // Unpinning returns "刚跑完的" to 已结束.
+  const pinnedDone = pinned.getByRole("listitem").filter({ hasText: "刚跑完的" });
+  await pinnedDone.hover();
+  await pinnedDone.getByRole("button", { name: "取消置顶" }).click();
+  await expect(list.getByRole("group", { name: "已结束" })).toContainText("刚跑完的");
+
+  await app.close();
+});

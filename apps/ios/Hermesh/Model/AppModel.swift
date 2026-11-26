@@ -259,6 +259,8 @@ final class AppModel {
     var listView = SessionListLayout() { didSet { save(listView, "listView") } }
     var showArchived = false { didSet { save(showArchived, "showArchived") } }
     var collapsed: Set<String> = [] { didSet { save(collapsed, "collapsed") } }
+    var pinnedOrder: [String] = [] { didSet { save(pinnedOrder, "pinnedOrder") } }
+    var activeOrder: [String] = [] { didSet { save(activeOrder, "activeOrder") } }
     var toast: Toast?
     var problem: String?
     /// Pairing requests the owner put off ("Deny"): hidden until they expire.
@@ -275,6 +277,8 @@ final class AppModel {
         listView = Self.saved("listView") ?? SessionListLayout()
         showArchived = Self.saved("showArchived") ?? false
         collapsed = Self.saved("collapsed") ?? []
+        pinnedOrder = Self.saved("pinnedOrder") ?? []
+        activeOrder = Self.saved("activeOrder") ?? []
         menuRail = Self.saved("menuRail") ?? false
         menuWidth = Self.saved("menuWidth") ?? 322
         herLater = Self.saved("herLater") ?? false
@@ -1016,6 +1020,27 @@ final class AppModel {
             replace(try await api.interrupt(s.sessionID))
             show(String(localized: "Interrupted “\(s.displayTitle)”"))
         } catch { report(error) }
+    }
+
+    func setPinned(_ s: Session, _ pinned: Bool) async {
+        guard let api else { return }
+        let curPinned = heldSessions.filter { $0.pinned && $0.status != .archived }.map(\.sessionID)
+        var base = pinnedOrder.filter { curPinned.contains($0) }
+        for id in curPinned where !base.contains(id) { base.append(id) }
+        pinnedOrder = pinned ? reorderIDs(base, movedID: s.sessionID, slot: 0) : pinnedOrder.filter { $0 != s.sessionID }
+        do {
+            replace(try await api.setPinned(s.sessionID, pinned))
+        } catch { report(error) }
+    }
+
+    func moveSessions(in section: SessionSection, from offsets: IndexSet, to destination: Int) {
+        var ids = section.sessions.map(\.sessionID)
+        ids.move(fromOffsets: offsets, toOffset: destination)
+        if section.key == SessionBucket.pinned.rawValue {
+            pinnedOrder = ids
+        } else if section.key == SessionBucket.active.rawValue {
+            activeOrder = ids
+        }
     }
 
     func setArchived(_ s: Session, _ archived: Bool, undoable: Bool = true) async {

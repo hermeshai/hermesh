@@ -5754,7 +5754,19 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 				sNow.ArchivedAt = nil
 			}
 		}
-		if err := putSessionSynced(tx, sNow); err != nil {
+		pinOnly := req.HasPinned &&
+			cleanTitle == "" &&
+			!req.RegenerateTitle &&
+			!req.HasArchived &&
+			req.ModelSelection == nil &&
+			req.RuntimeMode == identityv1.RuntimeMode_RUNTIME_MODE_UNSPECIFIED &&
+			req.InteractionMode == sessionv1.InteractionMode_INTERACTION_MODE_UNSPECIFIED
+		if pinOnly {
+			syncSessionSummary(sNow)
+			if err := tx.PutSessionPreserveUpdatedAt(sNow); err != nil {
+				return err
+			}
+		} else if err := putSessionSynced(tx, sNow); err != nil {
 			return err
 		}
 		for _, it := range stoppedItems {

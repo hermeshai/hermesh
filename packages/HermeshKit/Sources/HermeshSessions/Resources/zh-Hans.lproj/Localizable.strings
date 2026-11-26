@@ -47,6 +47,7 @@
 "No progress for a long time" = "长时间无进展";
 "Not signed in" = "未登录";
 "Out of quota" = "额度已用完";
+"Pinned" = "置顶";
 "Preparing" = "准备中";
 "Preparing the worktree…" = "正在准备 worktree…";
 "Queued" = "排队中";

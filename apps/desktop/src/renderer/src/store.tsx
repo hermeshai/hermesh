@@ -68,6 +68,8 @@ type UI = {
   viewChosen: boolean;
   archived: boolean;
   collapsed: string[];
+  pinnedOrder: string[];
+  activeOrder: string[];
   searching: boolean;
   renaming: string | null;
   searchFor: Partial<SessionFilter>;
@@ -139,7 +141,7 @@ export function save(key: string, v: boolean) {
   }
 }
 
-type SavedView = Pick<UI, "selection" | "sidebar" | "view" | "viewChosen" | "archived" | "collapsed">;
+type SavedView = Pick<UI, "selection" | "sidebar" | "view" | "viewChosen" | "archived" | "collapsed" | "pinnedOrder" | "activeOrder">;
 function savedView(): Partial<SavedView> {
   if (location.hash.startsWith("#settings")) return {};
   try {
@@ -157,7 +159,16 @@ function savedView(): Partial<SavedView> {
     } else {
       selection = v.selection as Selection | undefined;
     }
-    return { selection, sidebar: v.sidebar, view: chosen ? sessionView(v.view) : undefined, viewChosen: chosen, archived: v.archived, collapsed: Array.isArray(v.collapsed) ? v.collapsed : undefined };
+    return {
+      selection,
+      sidebar: v.sidebar,
+      view: chosen ? sessionView(v.view) : undefined,
+      viewChosen: chosen,
+      archived: v.archived,
+      collapsed: Array.isArray(v.collapsed) ? v.collapsed : undefined,
+      pinnedOrder: Array.isArray(v.pinnedOrder) ? v.pinnedOrder.filter((x): x is string => typeof x === "string") : undefined,
+      activeOrder: Array.isArray(v.activeOrder) ? v.activeOrder.filter((x): x is string => typeof x === "string") : undefined,
+    };
   } catch {
     return {};
   }
@@ -188,6 +199,8 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     viewChosen: false,
     archived: false,
     collapsed: [],
+    pinnedOrder: [],
+    activeOrder: [],
     searching: false,
     renaming: null,
     searchFor: {},
@@ -218,9 +231,22 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
   }, [world.machines]);
   useEffect(() => {
     if (location.hash.startsWith("#settings")) return;
-    try { localStorage.setItem("main-view", JSON.stringify({ selection: ui.selection, sidebar: ui.sidebar, view: ui.view, viewChosen: ui.viewChosen, archived: ui.archived, collapsed: ui.collapsed })); }
-    catch { /* Main-window context is optional when storage is unavailable. */ }
-  }, [ui.selection, ui.sidebar, ui.view, ui.viewChosen, ui.archived, ui.collapsed]);
+    try {
+      localStorage.setItem(
+        "main-view",
+        JSON.stringify({
+          selection: ui.selection,
+          sidebar: ui.sidebar,
+          view: ui.view,
+          viewChosen: ui.viewChosen,
+          archived: ui.archived,
+          collapsed: ui.collapsed,
+          pinnedOrder: ui.pinnedOrder,
+          activeOrder: ui.activeOrder,
+        }),
+      );
+    } catch { /* Main-window context is optional when storage is unavailable. */ }
+  }, [ui.selection, ui.sidebar, ui.view, ui.viewChosen, ui.archived, ui.collapsed, ui.pinnedOrder, ui.activeOrder]);
   const [width, setWidth] = useState(() => window.innerWidth);
   useEffect(() => {
     const resize = () => setWidth(window.innerWidth);

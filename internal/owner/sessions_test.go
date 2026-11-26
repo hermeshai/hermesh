@@ -56,6 +56,7 @@ func TestOnePageAcrossMachines(t *testing.T) {
 	}
 	b = append(b, session("b", 6, 100*time.Minute, idle), session("b", 7, 101*time.Minute, idle))
 	b[0].Status = running
+	b[1].Pinned = true
 	// Machine c is too old to page: it answers with all its sessions.
 	var c []*sessionv1.Session
 	for i := range 5 {
@@ -76,8 +77,8 @@ func TestOnePageAcrossMachines(t *testing.T) {
 		}
 		list, next := onePage(sessions, limit, before, more)
 		if page == 0 {
-			if len(list) != limit+1 || list[limit].SessionId != b[0].SessionId {
-				t.Fatalf("first page %v: wants %d, then the running %s", ids(list), limit, b[0].SessionId)
+			if len(list) != limit+2 || list[limit].SessionId != b[1].SessionId || list[limit+1].SessionId != b[0].SessionId {
+				t.Fatalf("first page %v: wants %d, then the pinned %s and running %s", ids(list), limit, b[1].SessionId, b[0].SessionId)
 			}
 			list = list[:limit]
 		}

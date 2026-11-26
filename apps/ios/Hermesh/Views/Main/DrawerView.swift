@@ -90,7 +90,7 @@ struct DrawerView: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "square.and.pencil").frame(width: 28)
-                Text("New Session")
+                Text("New")
                 Spacer(minLength: 0)
             }
             .font(.body).frame(maxWidth: .infinity, alignment: .leading)
@@ -198,7 +198,7 @@ private struct MenuSessions: View {
 
     var body: some View {
         let machines = model.machines.sorted { $0.machineName.localizedStandardCompare($1.machineName) == .orderedAscending }.map(\.machineID)
-        let sections = sessionSections(model.sessions, view: model.listView, archived: model.showArchived, now: model.now, machines: machines, alwaysActive: true)
+        let sections = sessionSections(model.sessions, view: model.listView, archived: model.showArchived, now: model.now, machines: machines, alwaysActive: true, pinnedOrder: model.pinnedOrder, activeOrder: model.activeOrder)
         let limits = expandedGroup == model.listView.group ? expandedLimits : [:]
         let rendered = sections.map { section in
             let open = !model.collapsed.contains(section.id)
@@ -217,7 +217,12 @@ private struct MenuSessions: View {
                         .plainRow()
                         .accessibilityIdentifier("none-now")
                 }
-                ForEach(item.slice.visible, id: \.sessionID) { s in SessionListRow(session: s) }
+                if section.key == SessionBucket.pinned.rawValue || (section.grouping == .status && section.key == SessionBucket.active.rawValue) {
+                    ForEach(item.slice.visible, id: \.sessionID) { s in SessionListRow(session: s) }
+                        .onMove { from, to in model.moveSessions(in: section, from: from, to: to) }
+                } else {
+                    ForEach(item.slice.visible, id: \.sessionID) { s in SessionListRow(session: s) }
+                }
                 if item.slice.hiddenCount > 0 {
                     showMoreButton(section, limit: item.limit, hiddenCount: item.slice.hiddenCount)
                 }

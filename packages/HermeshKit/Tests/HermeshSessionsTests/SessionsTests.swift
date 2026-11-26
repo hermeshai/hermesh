@@ -48,6 +48,35 @@ func ask(_ s: inout Session) {
     #expect(oldest.map(\.key) == ["attention", "active", "done"] && oldest[0].sessions.map(\.sessionID) == ["w", "crash"])
 }
 
+@Test func runningSessionsStayOrderedByCreationAndRespectManualAndPinnedOrder() throws {
+    let rOld = session("rOld", .running, updated: -1, created: -600)
+    var rMid = session("rMid", .running, updated: -50, created: -300)
+    let rNew = session("rNew", .running, updated: -55, created: -60)
+    let dOld = session("dOld", .idle, updated: -10, created: -5000)
+    var dEarly = session("dEarly", .idle, updated: -400, created: -200)
+
+    let secs = sessionSections([rOld, rMid, rNew, dOld, dEarly], view: SessionListLayout(), archived: false, now: now, calendar: utc)
+    #expect(secs.map { "\($0.key):\($0.sessions.map(\.sessionID).joined(separator: ","))" } == ["active:rNew,rMid,rOld", "done:dOld,dEarly"])
+
+    let dragged = reorderIDs(["rNew", "rMid", "rOld"], movedID: "rOld", slot: 0)
+    #expect(dragged == ["rOld", "rNew", "rMid"])
+    let brandNew = session("rBrandNew", .running, updated: -5, created: -5)
+    let ancient = session("rAncient", .running, updated: -2, created: -86400)
+    let withDrag = sessionSections([rOld, rMid, rNew, brandNew, ancient], view: SessionListLayout(), archived: false, now: now, activeOrder: dragged, calendar: utc)
+    #expect(withDrag[0].sessions.map(\.sessionID) == ["rBrandNew", "rOld", "rNew", "rMid", "rAncient"])
+
+    dEarly.pinned = true
+    rMid.pinned = true
+    let withPin = sessionSections([rOld, rMid, rNew, dOld, dEarly], view: SessionListLayout(), archived: false, now: now, pinnedOrder: ["dEarly", "rMid"], calendar: utc)
+    #expect(withPin.map { "\($0.key):\($0.sessions.map(\.sessionID).joined(separator: ","))" } == ["pinned:dEarly,rMid", "active:rNew,rOld", "done:dOld"])
+    #expect(withPin[0].id == "pinned:pinned")
+    #expect(sessionSections([dEarly], view: SessionListLayout(), archived: false, now: now, alwaysActive: true, calendar: utc).map(\.key) == ["pinned", "active"])
+
+    // Legacy saved JSON without `sort` decodes cleanly to `.default`.
+    let legacy = try JSONDecoder().decode(SessionListLayout.self, from: Data(#"{"group":"project","newestFirst":false,"metadata":true}"#.utf8))
+    #expect(legacy == SessionListLayout(group: .project, sort: .default, newestFirst: false, metadata: true))
+}
+
 @Test func theMenuKeepsTheRunningSectionWhileNothingRuns() {
     var waiting = session("w", .waitingInput)
     ask(&waiting)
