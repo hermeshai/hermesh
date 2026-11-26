@@ -2,7 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { MachineSchema } from "@hermesh/proto/local";
 import { describe, expect, test } from "vitest";
-import { agentLimits, lowLimits } from "./limits";
+import { agentLimits, hasUnseenLowLimits, lowLimits, markLowLimitsSeen } from "./limits";
 
 describe("limits", () => {
   const now = new Date(2026, 10, 24, 14, 20);
@@ -89,5 +89,46 @@ describe("limits", () => {
       ["Claude and GPT models", 10080, 12],
     ]);
     expect(lowLimits(cards)).toEqual([{ card: cards[0], window: cards[0].windows[3] }]);
+  });
+
+  test("a low window stays unseen until marked seen, stays quiet until it resets, and returns for a new low window or cycle", () => {
+    const initial = agentLimits(
+      [machine("mac", [{ name: "claude", said: min(-2), windows: [[300, 86, min(140)], [10080, 82, min(5000)]] }, { name: "codex", said: min(-2), windows: [[300, 30, min(120)]] }])],
+      now,
+    );
+    expect(hasUnseenLowLimits(initial, {}, now)).toBe(true);
+    const seen = markLowLimitsSeen(initial, {}, now);
+    expect(hasUnseenLowLimits(initial, seen, now)).toBe(false);
+
+    // Same window drops further and resetsAt drifts slightly: still quiet.
+    const lower = agentLimits(
+      [machine("mac", [{ name: "claude", said: min(5), windows: [[300, 93, min(142)], [10080, 85, min(5000)]] }, { name: "codex", said: min(-2), windows: [[300, 30, min(120)]] }])],
+      min(5),
+    );
+    expect(hasUnseenLowLimits(lower, seen, min(5))).toBe(false);
+
+    // A different agent drops low: dot comes back.
+    const another = agentLimits(
+      [machine("mac", [{ name: "claude", said: min(5), windows: [[300, 93, min(142)], [10080, 85, min(5000)]] }, { name: "codex", said: min(6), windows: [[300, 88, min(120)]] }])],
+      min(6),
+    );
+    expect(hasUnseenLowLimits(another, seen, min(6))).toBe(true);
+
+    // After the 5-hour window resets (past +140 min), weekly is still suppressed until +5000 min.
+    const afterFiveReset = agentLimits(
+      [machine("mac", [{ name: "claude", said: min(150), windows: [[300, 20, min(450)], [10080, 85, min(5000)]] }])],
+      min(150),
+    );
+    expect(hasUnseenLowLimits(afterFiveReset, seen, min(150))).toBe(false);
+
+    // Next 5-hour cycle drops low again: dot comes back, and marking prunes expired entries.
+    const nextCycleLow = agentLimits(
+      [machine("mac", [{ name: "claude", said: min(200), windows: [[300, 90, min(450)], [10080, 85, min(5000)]] }])],
+      min(200),
+    );
+    expect(hasUnseenLowLimits(nextCycleLow, seen, min(200))).toBe(true);
+    const seenAgain = markLowLimitsSeen(nextCycleLow, seen, min(200));
+    expect(hasUnseenLowLimits(nextCycleLow, seenAgain, min(200))).toBe(false);
+    expect(seenAgain["claude//300"]).toBe(min(450).getTime());
   });
 });

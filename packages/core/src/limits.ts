@@ -24,8 +24,19 @@ export type AgentLimitsCard = {
   stale: boolean;
 };
 
-/** Left of a window at or below this is a thing that needs the owner. */
+/** Left of a window at or below this is flagged as low on the overview's Limits tab. */
 export const limitLow = 20;
+
+/** Maps each low window key to the epoch ms when it resets, so a seen low limit stays quiet until its next cycle. */
+export type SeenLowLimits = Record<string, number>;
+
+function lowWindowKey(agent: string, w: LimitShown): string {
+  return `${agent}/${w.group}/${w.minutes}`;
+}
+
+function lowWindowUntil(w: LimitShown, now: Date): number {
+  return w.resetsAt ? w.resetsAt.getTime() : now.getTime() + w.minutes * 60_000;
+}
 
 /**
  * A card for each coding agent available on a machine, from what the machines say: the one with the least left
@@ -60,10 +71,33 @@ export function agentLimits(machines: Pick<Machine, "machineId" | "status">[], n
   return [...cards.values()].sort((a, b) => least(a) - least(b));
 }
 
-/** The window with the least left of each card, where it is at or below limitLow: what needs the owner. */
+/** The window with the least left of each card, where it is at or below limitLow. */
 export function lowLimits(cards: AgentLimitsCard[]): { card: AgentLimitsCard; window: LimitShown }[] {
   return cards.flatMap((card) => {
     const w = card.windows.reduce<LimitShown | null>((m, x) => (!m || x.left < m.left ? x : m), null);
     return w && w.left <= limitLow ? [{ card, window: w }] : [];
   });
+}
+
+/** Whether any window at or below limitLow has not been seen yet since its last reset. */
+export function hasUnseenLowLimits(cards: AgentLimitsCard[], seen: SeenLowLimits, now: Date): boolean {
+  const t = now.getTime();
+  return cards.some((card) => card.windows.some((w) => w.left <= limitLow && (seen[lowWindowKey(card.agent, w)] ?? 0) <= t));
+}
+
+/** Records every currently low window as seen until it resets, dropping entries that have already reset. */
+export function markLowLimitsSeen(cards: AgentLimitsCard[], seen: SeenLowLimits, now: Date): SeenLowLimits {
+  const t = now.getTime();
+  const next: SeenLowLimits = {};
+  for (const [k, until] of Object.entries(seen)) {
+    if (until > t) next[k] = until;
+  }
+  for (const card of cards) {
+    for (const w of card.windows) {
+      if (w.left > limitLow) continue;
+      const k = lowWindowKey(card.agent, w);
+      next[k] = Math.max(next[k] ?? 0, lowWindowUntil(w, now));
+    }
+  }
+  return next;
 }

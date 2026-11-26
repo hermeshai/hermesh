@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { agoText, dateOf } from "@hermesh/core";
+import { agentLimits, agoText, dateOf, hasUnseenLowLimits, markLowLimitsSeen, type SeenLowLimits } from "@hermesh/core";
 import { Icon } from "./icons";
 import { Attention } from "./overview/Attention";
 import { Limits } from "./overview/Limits";
@@ -14,6 +14,28 @@ import { FinishedRow, useTeam } from "./team";
 import "./overview/overview.css";
 
 const views = ["live", "usage", "limits"] as const;
+const seenLimitsKey = "hermesh.limits.seen";
+
+function loadSeenLimits(): SeenLowLimits {
+  try {
+    const raw = JSON.parse(localStorage.getItem(seenLimitsKey) ?? "{}");
+    if (!raw || typeof raw !== "object") return {};
+    const out: SeenLowLimits = {};
+    for (const [k, v] of Object.entries(raw)) if (typeof v === "number") out[k] = v;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function saveSeenLimits(seen: SeenLowLimits) {
+  try {
+    if (Object.keys(seen).length) localStorage.setItem(seenLimitsKey, JSON.stringify(seen));
+    else localStorage.removeItem(seenLimitsKey);
+  } catch {
+    // Storage may be unavailable in restricted environments.
+  }
+}
 
 // The overview (docs/overview-usage.md): Live is what goes on now, which asks for no counts: what needs the owner
 // beyond the session list, the link map of grants, machines and projects, what runs and what finished last. What
@@ -28,6 +50,25 @@ export function Overview() {
   const [usage, setUsage] = useState(usageStart);
   // A node picked on the map (a grant, machine or project) turns In Progress into the sessions through it.
   const [pick, setPick] = useState("");
+  const cards = useMemo(() => agentLimits(st.machines, now), [st.machines, now]);
+  const [seenLimits, setSeenLimits] = useState<SeenLowLimits>(loadSeenLimits);
+  const hasUnseenLow = hasUnseenLowLimits(cards, seenLimits, now);
+  const limitDot = view !== "limits" && hasUnseenLow;
+  const markSeen = () => {
+    setSeenLimits((prev) => {
+      const next = markLowLimitsSeen(cards, prev, now);
+      saveSeenLimits(next);
+      return next;
+    });
+  };
+  // Any low limits discovered while the owner is already on Limits are marked seen too.
+  useEffect(() => {
+    if (view === "limits" && hasUnseenLow) markSeen();
+  }, [view, hasUnseenLow, cards, now]);
+  const openView = (v: (typeof views)[number]) => {
+    if (v === "limits" && hasUnseenLow) markSeen();
+    setView(v);
+  };
   return (
     <>
       <div className="ctool drag">
@@ -42,7 +83,10 @@ export function Overview() {
             </div>
             <div className="seg" role="tablist" aria-label={t("views.label")}>
               {views.map((v) => (
-                <button key={v} role="tab" aria-selected={view === v} className={view === v ? "on" : ""} onClick={() => setView(v)}>{t(`views.${v}`)}</button>
+                <button key={v} role="tab" aria-selected={view === v} className={view === v ? "on" : ""} onClick={() => openView(v)}>
+                  {t(`views.${v}`)}
+                  {v === "limits" && limitDot && <span className="dotc warn" data-testid="limits-low-dot" aria-hidden="true" />}
+                </button>
               ))}
             </div>
           </div>
@@ -50,7 +94,7 @@ export function Overview() {
             <>
               <HerNotOn />
               {st.sessionsUnreachable.length > 0 && <Unreachable now={now} />}
-              <Attention now={now} onLimits={() => setView("limits")} />
+              <Attention now={now} />
               <section aria-label={t("map.title")}>
                 <LinkMap pick={pick} onPick={setPick} now={now} />
               </section>

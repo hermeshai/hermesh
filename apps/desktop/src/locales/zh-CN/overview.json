@@ -171,12 +171,6 @@
       "hours_other": "{{count}} 小时窗口",
       "days_other": "{{count}} 天窗口"
     },
-    "short": {
-      "m300": "5 小时",
-      "m10080": "每周",
-      "hours_other": "{{count}} 小时",
-      "days_other": "{{count}} 天"
-    },
     "resets": "{{time}} 重置",
     "resetsOn": "{{day}} {{time}} 重置",
     "untilHours": "还有 {{h}} 小时 {{m}} 分",
@@ -186,9 +180,6 @@
     "notYet": "还没有读到，用订阅账号登录后显示",
     "stale": "窗口已重置，下次查询或运行后更新",
     "notStarted": "使用后开始计时",
-    "foot": "额度由各提供方给出：打开此页时向这台 Mac 上的 Claude Code、Codex 和 Antigravity 查询，运行任务时也会更新。Hermesh 只转述，不读取账号。其他电脑上的，是它们上次给出的数。",
-    "needTitle": "{{agent}} 的 {{window}}额度剩 {{left}}%",
-    "needTitleGroup": "{{agent}} 的 {{group}} {{window}}额度剩 {{left}}%",
-    "see": "查看"
+    "foot": "额度由各提供方给出：打开此页时向这台 Mac 上的 Claude Code、Codex 和 Antigravity 查询，运行任务时也会更新。Hermesh 只转述，不读取账号。其他电脑上的，是它们上次给出的数。"
   }
 }

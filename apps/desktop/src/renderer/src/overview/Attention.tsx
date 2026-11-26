@@ -2,13 +2,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import type { Client, PairingDetails } from "@hermesh/proto/local";
 import { PairingKind } from "@hermesh/proto/identity";
-import { agentLimits, codingAgentTitle, dateOf, displayTitle, lowLimits, pendingQuestion } from "@hermesh/core";
+import { dateOf, displayTitle, pendingQuestion } from "@hermesh/core";
 import { i18n } from "../../../shared/i18n";
 import { opensActivityMonitor, problemBody, problemsOf, problemTitle, severe } from "../health";
 import { Icon } from "../icons";
 import { senderLine } from "../Sidebar";
 import { useStore, type Store } from "../store";
-import { reportedText, resetText, windowName } from "./Limits";
 import { QuickAnswer, useTeam } from "../team";
 
 const day = 86_400_000;
@@ -26,24 +25,23 @@ export function expiringClients(st: Store, now: Date): Client[] {
  * (docs/overview-usage.md §4.1). Machines kept from working first; then who
  * waits: the sessions that ask a question, answered here when one click can
  * (docs/her-team.md §14.4), and pairing requests; then the sessions whose
- * turn failed; then a limit running low (onLimits shows them all), grants
- * about to expire, and an older signer than the app's (Windows).
+ * turn failed; then grants about to expire, and an older signer than the app's
+ * (Windows).
  * A machine only has only its own health here.
  */
-export function Attention({ now, onLimits }: { now: Date; onLimits: () => void }) {
+export function Attention({ now }: { now: Date }) {
   const { t } = useTranslation("overview");
   const st = useStore();
   const owner = !st.status?.machineOnly;
   const expiring = owner ? expiringClients(st, now) : [];
   const sick = st.machines.flatMap((m) => problemsOf(m).map((p) => ({ m, p })));
   const team = useTeam();
-  const low = owner ? lowLimits(agentLimits(st.machines, now)) : [];
   // The signer the app carries, newer than the one set up: it signs what the old one can't show.
   const [signer, setSigner] = useState<string>();
   useEffect(() => {
     if (owner) window.hermesh?.signerUpdate().then(setSigner, () => {});
   }, [owner]);
-  const count = sick.length + team.waiting.length + team.failed.length + st.pairings.length + low.length + expiring.length + (signer ? 1 : 0);
+  const count = sick.length + team.waiting.length + team.failed.length + st.pairings.length + expiring.length + (signer ? 1 : 0);
   if (count === 0) return null;
   return (
     <section aria-label={t("attention.title")}>
@@ -93,17 +91,6 @@ export function Attention({ now, onLimits }: { now: Date; onLimits: () => void }
         {team.failed.map((s) => (
           <Row key={s.sessionId} icon="alert" tint="r" title={displayTitle(s)} detail={`${senderLine(st, s)} · ${s.progress?.lastFailure?.message || i18n.t("common:team.lastTurnFailed")}`}>
             <button className="btn" onClick={() => st.select(s.sessionId)}>{t("attention.open")}</button>
-          </Row>
-        ))}
-        {low.map(({ card, window: w }) => (
-          <Row
-            key={`limit:${card.agent}`}
-            icon="gauge"
-            tint="y"
-            title={t(w.group ? "limits.needTitleGroup" : "limits.needTitle", { agent: codingAgentTitle(card.agent), group: w.group, window: windowName(w.minutes, true), left: w.left })}
-            detail={`${reportedText(st, card, now)} · ${resetText(w, now)}`}
-          >
-            <button className="btn" onClick={onLimits}>{t("limits.see")}</button>
           </Row>
         ))}
         {expiring.map((c) => {

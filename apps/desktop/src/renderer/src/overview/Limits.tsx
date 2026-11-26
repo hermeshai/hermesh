@@ -15,9 +15,9 @@ import { useStore, type Store } from "../store";
 /** The agents that report their limits (the others never will). */
 const reporting = new Set(["claude", "codex", "antigravity"]);
 
-/** "5-Hour Window", "Weekly Window"; short: "5-hour", "weekly". */
-export function windowName(minutes: number, short = false): string {
-  const k = short ? "overview:limits.short" : "overview:limits.window";
+/** "5-Hour Window", "Weekly Window". */
+function windowName(minutes: number): string {
+  const k = "overview:limits.window";
   if (minutes === 300 || minutes === 10080) return i18n.t(`${k}.m${minutes}`);
   return minutes < 1440 ? i18n.t(`${k}.hours`, { count: Math.round(minutes / 60) }) : i18n.t(`${k}.days`, { count: Math.round(minutes / 1440) });
 }
@@ -26,7 +26,7 @@ export function windowName(minutes: number, short = false): string {
  * "Resets at 16:40", or on another day "Resets Thu 09:00"; for a window of a day or less, with how long is left. One
  * not started: that it counts from its first use.
  */
-export function resetText(w: LimitShown, now: Date): string {
+function resetText(w: LimitShown, now: Date): string {
   if (!w.resetsAt) return i18n.t("overview:limits.notStarted");
   const time = hourMinute(w.resetsAt);
   const at = sameDay(w.resetsAt, now) ? i18n.t("overview:limits.resets", { time }) : i18n.t("overview:limits.resetsOn", { day: weekday(w.resetsAt), time });
@@ -40,7 +40,7 @@ export function resetText(w: LimitShown, now: Date): string {
 }
 
 /** Who said it and when: "Reported by MacBook Pro · 2 min ago". */
-export function reportedText(st: Store, c: AgentLimitsCard, now: Date): string {
+function reportedText(st: Store, c: AgentLimitsCard, now: Date): string {
   const machine = st.machines.find((m) => m.machineId === c.machineId)?.local ? i18n.t("overview:thisMac") : machineName(st, c.machineId);
   return i18n.t("overview:limits.reported", { machine, ago: c.observedAt ? agoText(c.observedAt, now) : "" });
 }
