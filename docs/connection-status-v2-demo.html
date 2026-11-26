@@ -1,0 +1,1465 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>连接状态改版 · 原位融合原型 (v2)</title>
+<style>
+:root {
+  --font-ios: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  --font-mac: "Google Sans Flex", "Google Sans", -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --orange: #e8890c;
+  --red: #e5484d;
+  --green: #30b45c;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+
+  /* Brand Aurora Mark stops (light) */
+  --aurora-g0: #0891b2;
+  --aurora-g1: #008cc2;
+  --aurora-g2: #0084d3;
+  --aurora-g3: #0079e3;
+  --aurora-g4: #2f6bf0;
+  --aurora-g5: #4361f2;
+  --aurora-g6: #5356f3;
+  --aurora-g7: #614af2;
+  --aurora-g8: #6d3cf0;
+  --beam-opacity: 0.72;
+  --beam-blend: multiply;
+}
+[data-theme="light"] {
+  --page: #ebebf0;
+  --page-fg: #1b1c22;
+  --page-fg2: #60636e;
+  --page-fg3: #8e919d;
+  --card: #ffffff;
+  --card-bd: rgba(0, 0, 0, 0.08);
+  /* iPhone */
+  --bg: #fbfbfc;
+  --l1: rgba(0, 0, 0, 0.88);
+  --l2: rgba(0, 0, 0, 0.55);
+  --l3: rgba(0, 0, 0, 0.32);
+  --l4: rgba(0, 0, 0, 0.13);
+  --fill: rgba(0, 0, 0, 0.045);
+  --fill2: rgba(0, 0, 0, 0.075);
+  --sep: rgba(0, 0, 0, 0.08);
+  --glass: rgba(250, 250, 252, 0.78);
+  --glass-sh: 0 0 0 0.5px rgba(0, 0, 0, 0.10), 0 10px 30px rgba(20, 24, 40, 0.10), 0 2px 6px rgba(20, 24, 40, 0.06);
+  --sheet: #f2f2f7;
+  --group: #ffffff;
+  --reply: #f1f2f5;
+  --accent: #3d5bff;
+  --accent-bg: rgba(61, 91, 255, 0.10);
+  --warn: #c2680a;
+  --scrim: rgba(0, 0, 0, 0.20);
+  /* Mac */
+  --win: #ffffff;
+  --win2: #f4f4f7;
+  --side: #f4f4f7;
+  --side-sel: rgba(0, 0, 0, 0.075);
+  --pill: #ffffff;
+  --pill-bd: rgba(0, 0, 0, 0.10);
+  --code: #f6f7fa;
+  --mglass: rgba(255, 255, 255, 0.75);
+  --shadow-win: 0 0 0 0.5px rgba(0, 0, 0, 0.20), 0 24px 70px rgba(10, 20, 50, 0.26), 0 8px 22px rgba(10, 20, 50, 0.12);
+}
+[data-theme="dark"] {
+  --page: #0e0f13;
+  --page-fg: #ececf1;
+  --page-fg2: #9a9ca8;
+  --page-fg3: #686b78;
+  --card: #191a20;
+  --card-bd: rgba(255, 255, 255, 0.08);
+  --bg: #000000;
+  --l1: rgba(255, 255, 255, 0.92);
+  --l2: rgba(255, 255, 255, 0.58);
+  --l3: rgba(255, 255, 255, 0.34);
+  --l4: rgba(255, 255, 255, 0.14);
+  --fill: rgba(255, 255, 255, 0.06);
+  --fill2: rgba(255, 255, 255, 0.10);
+  --sep: rgba(255, 255, 255, 0.10);
+  --glass: rgba(32, 32, 36, 0.78);
+  --glass-sh: 0 0 0 0.5px rgba(255, 255, 255, 0.11), 0 10px 30px rgba(0, 0, 0, 0.52);
+  --sheet: #111114;
+  --group: #1c1c1f;
+  --reply: rgba(255, 255, 255, 0.075);
+  --accent: #4a66ff;
+  --accent-bg: rgba(74, 102, 255, 0.20);
+  --warn: #f0a43a;
+  --scrim: rgba(0, 0, 0, 0.48);
+  --win: #1e1e21;
+  --win2: #29292d;
+  --side: #25252a;
+  --side-sel: rgba(255, 255, 255, 0.10);
+  --pill: #29292d;
+  --pill-bd: rgba(255, 255, 255, 0.12);
+  --code: #18181b;
+  --mglass: rgba(44, 44, 48, 0.74);
+  --shadow-win: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 24px 70px rgba(0, 0, 0, 0.6), 0 8px 22px rgba(0, 0, 0, 0.35);
+
+  --aurora-g0: #22e1c9;
+  --aurora-g1: #00d0de;
+  --aurora-g2: #00b9f1;
+  --aurora-g3: #009cfe;
+  --aurora-g4: #3e7bff;
+  --aurora-g5: #5175ff;
+  --aurora-g6: #616eff;
+  --aurora-g7: #6e68ff;
+  --aurora-g8: #7b61ff;
+  --beam-opacity: 0.65;
+  --beam-blend: plus-lighter;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--page);
+  color: var(--page-fg);
+  font: 14px/1.5 var(--font-ios);
+  min-height: 100vh;
+  padding-bottom: 40px;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+svg { display: block; }
+
+/* ---------- Top Header & Controls ---------- */
+.hdr {
+  max-width: 1520px;
+  margin: 0 auto;
+  padding: 18px 20px 8px;
+}
+.hdr-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.hdr h1 { font-size: 19px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+.hdr p { margin: 4px 0 0; color: var(--page-fg2); font-size: 13px; max-width: 980px; }
+
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  background: color-mix(in srgb, var(--page) 86%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--card-bd);
+  padding: 8px 16px;
+}
+.toolbar-in {
+  max-width: 1520px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+}
+.cg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  max-width: 100%;
+  scrollbar-width: none;
+}
+.cg::-webkit-scrollbar { display: none; }
+.cg > b {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--page-fg2);
+  margin-right: 2px;
+  white-space: nowrap;
+}
+.seg {
+  display: inline-flex;
+  padding: 2.5px;
+  border-radius: 9px;
+  background: var(--fill2);
+  gap: 2px;
+}
+.seg button {
+  padding: 4px 10px;
+  border-radius: 6.5px;
+  font-size: 12.5px;
+  color: var(--page-fg2);
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.seg button.on {
+  background: var(--card);
+  color: var(--page-fg);
+  font-weight: 600;
+  box-shadow: 0 1px 2.5px rgba(0, 0, 0, 0.10);
+}
+.act-btn {
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.act-btn:active { opacity: 0.78; }
+
+/* ---------- Layout ---------- */
+.main {
+  max-width: 1520px;
+  margin: 0 auto;
+  padding: 16px 20px;
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+#stageWrap {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  max-width: 100%;
+}
+#stageScaler {
+  transform-origin: top center;
+}
+
+.notes {
+  width: 390px;
+  max-width: 100%;
+  background: var(--card);
+  border: 1px solid var(--card-bd);
+  border-radius: 16px;
+  padding: 16px 18px;
+  font-size: 13px;
+  line-height: 1.62;
+}
+.notes h3 { margin: 0 0 6px; font-size: 14.5px; display: flex; align-items: center; gap: 6px; }
+.notes .pill-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.notes ul { margin: 6px 0 0; padding-left: 18px; }
+.notes li { margin: 5px 0; color: var(--page-fg2); }
+.notes li b { color: var(--page-fg); }
+.notes .blk { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--card-bd); }
+.notes .blk > b { display: block; margin-bottom: 4px; font-size: 13.5px; }
+.notes p { margin: 0; color: var(--page-fg2); }
+.notes table { border-collapse: collapse; width: 100%; margin-top: 6px; font-size: 12.5px; }
+.notes td { padding: 5px 0; vertical-align: top; border-top: 1px solid var(--card-bd); }
+.notes td:first-child { white-space: nowrap; padding-right: 10px; font-weight: 600; color: var(--page-fg); }
+.notes td:nth-child(2) { color: var(--page-fg2); }
+.notes code { font: 11.5px var(--mono); background: var(--fill); padding: 1px 5px; border-radius: 4px; color: var(--page-fg); }
+
+/* ---------- Brand Aurora Mark & Shared Motion ---------- */
+.ic { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.hm-mark { flex: none; overflow: visible; }
+.hm-beam { opacity: var(--beam-opacity); mix-blend-mode: var(--beam-blend); transition: opacity 0.35s; }
+.hm-mono .hm-beam { opacity: 1; mix-blend-mode: normal; }
+.hm-bg { transition: transform 0.45s var(--ease-out), opacity 0.45s, filter 0.45s; }
+
+/* seq: agent actively working */
+.hm-seq .hm-beam { opacity: 0.28; animation: hm-seq 1.2s linear infinite; }
+.hm-seq .hm-b1 { animation-delay: 0.4s; }
+.hm-seq .hm-b2 { animation-delay: 0.8s; }
+@keyframes hm-seq { 0%, 60%, 100% { opacity: 0.28; } 30% { opacity: 1; } }
+
+/* wait: waiting for connection / retrying */
+.hm-wait .hm-bg {
+  transform: translate(var(--dx), var(--dy));
+  opacity: 0.58;
+  animation: hm-breathe 2.2s var(--ease-in-out) infinite alternate;
+}
+@keyframes hm-breathe {
+  to { transform: translate(calc(var(--dx) * 0.32), calc(var(--dy) * 0.32)); opacity: 1; }
+}
+
+/* rest/faint: offline or no network */
+.hm-rest .hm-bg { opacity: 0.38; filter: grayscale(0.85); }
+
+.bdot { width: 7px; height: 7px; border-radius: 50%; background: var(--orange); flex: none; animation: breathe 1.65s ease-in-out infinite; }
+@keyframes breathe { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+.hdot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--l2); flex: none; }
+
+/* Light sweep (2.4s, same as HerTyping & BusyBubble) */
+.sweep {
+  -webkit-mask-image: linear-gradient(90deg, #000 38%, rgba(0, 0, 0, 0.28) 50%, #000 62%);
+  mask-image: linear-gradient(90deg, #000 38%, rgba(0, 0, 0, 0.28) 50%, #000 62%);
+  -webkit-mask-size: 300% 100%;
+  mask-size: 300% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  animation: sweep 2.4s linear infinite;
+}
+@keyframes sweep {
+  from { -webkit-mask-position: 100% 0; mask-position: 100% 0; }
+  to { -webkit-mask-position: 0% 0; mask-position: 0% 0; }
+}
+
+/* ---------- Inline WorkLine (Session & New Session Scheme A) ---------- */
+.workline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--l2);
+  max-width: 100%;
+  animation: fade-in 0.2s var(--ease-out);
+}
+.mac .workline { font-size: 13.5px; line-height: 19px; }
+.workline.tap { cursor: pointer; border-radius: 8px; padding: 3px 6px 3px 0; margin: -3px 0; }
+.workline.tap:active { opacity: 0.65; }
+.workline .wl-txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.workline .wl-txt b { font-weight: 500; color: var(--l1); }
+.workline .wl-sep { color: var(--l3); margin: 0 5px; }
+.workline .wl-timer { font-size: 12px; color: var(--l3); font-variant-numeric: tabular-nums; flex: none; }
+.workline .wl-ic { width: 15px; height: 15px; color: var(--orange); flex: none; stroke-width: 1.85; }
+.workline .wl-chev { width: 11px; height: 11px; color: var(--l3); flex: none; stroke-width: 2.2; margin-left: -2px; }
+@keyframes fade-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+
+/* ---------- Her BusyBubble / Typing Bubble (Scheme A) ---------- */
+.hbub {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  max-width: 90%;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--reply);
+  box-shadow: inset 0 0 0 0.5px var(--sep);
+  color: var(--l2);
+  font-size: 14.5px;
+  animation: fade-in 0.22s var(--ease-out);
+}
+.hbub.tap { cursor: pointer; }
+.hbub.tap:active { opacity: 0.72; }
+.mac .hbub {
+  min-height: 36px;
+  border-radius: 12px;
+  background: var(--win2);
+  font-size: 13.5px;
+  padding: 0 13px;
+}
+.hbub .dots { display: inline-flex; gap: 3.5px; flex: none; align-items: center; }
+.hbub .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--l2); }
+.hbub .hb-inner { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; }
+.hbub .hb-txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.hbub .hb-txt b { font-weight: 500; color: var(--l1); }
+.hbub .hb-ic { width: 15px; height: 15px; color: var(--orange); flex: none; stroke-width: 1.85; }
+.hbub .hb-chev { width: 12px; height: 12px; color: var(--l3); flex: none; stroke-width: 2.1; margin-left: 1px; }
+
+/* ---------- Legacy Capsule ("现在 · 玻璃条" for side-by-side comparison) ---------- */
+.cap {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  transform: translate(-50%, 8px) scale(0.92);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease-out, transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+.cap.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.cap .t { color: var(--l2); }
+.cap .t b { font-weight: 500; color: var(--l1); }
+.cap .chev { color: var(--l3); width: 11px; height: 11px; stroke-width: 2.3; }
+.cap .ic.g { color: var(--l2); width: 15px; height: 15px; }
+.cap.warn .ic.g { color: var(--orange); }
+.phone .cap {
+  height: 34px;
+  padding: 0 13px 0 12px;
+  margin-bottom: 9px;
+  border-radius: 17px;
+  font-size: 14px;
+  font-weight: 500;
+  background: var(--glass);
+  box-shadow: var(--glass-sh);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+}
+.mac .cap {
+  height: 28px;
+  padding: 0 11px;
+  margin-bottom: 9px;
+  border-radius: 14px;
+  font-size: 12.5px;
+  font-weight: 500;
+  background: var(--mglass);
+  backdrop-filter: blur(20px) saturate(1.6);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow: 0 0 0 0.5px var(--pill-bd), 0 4px 14px rgba(0, 0, 0, 0.09);
+}
+
+/* ---------- iPhone (402 × 852 pt) ---------- */
+.phone {
+  width: 402px;
+  height: 852px;
+  border-radius: 56px;
+  background: var(--bg);
+  position: relative;
+  overflow: hidden;
+  flex: none;
+  box-shadow: 0 0 0 10px #1b1b1e, 0 0 0 11.5px #3a3a3f, 0 28px 75px rgba(10, 20, 50, 0.28);
+  color: var(--l1);
+  font: 16.5px/1.35 var(--font-ios);
+}
+.island { position: absolute; top: 11px; left: 50%; transform: translateX(-50%); width: 122px; height: 35px; border-radius: 20px; background: #000; z-index: 8; }
+.status { position: absolute; top: 0; left: 0; right: 0; height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 6px 32px 0 44px; font-weight: 600; font-size: 16px; z-index: 7; }
+.status .r { display: flex; gap: 6px; align-items: center; }
+.status .r .ic { width: 17px; height: 17px; }
+.gb {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: var(--glass); box-shadow: var(--glass-sh);
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  position: relative;
+}
+.gb .pdot { position: absolute; top: 11px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+/* Session Bar on iPhone */
+.nav { position: absolute; top: 54px; left: 0; right: 0; height: 48px; display: flex; align-items: center; justify-content: center; z-index: 5; padding: 0 16px; }
+.nav .menu { position: absolute; left: 16px; }
+.nav .tcap {
+  height: 44px; max-width: 220px; padding: 0 16px; border-radius: 22px;
+  background: var(--glass); box-shadow: var(--glass-sh);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; line-height: 1.18;
+}
+.nav .tcap h2 { margin: 0; font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+.nav .tcap small { font-size: 11px; color: var(--l2); white-space: nowrap; margin-top: 1px; }
+.nav .plain-ttl { font-size: 17px; font-weight: 600; }
+.nav .more-btn { position: absolute; right: 16px; }
+
+/* Her Header on iPhone */
+.hhead { position: absolute; top: 52px; left: 0; right: 0; height: 124px; z-index: 5; padding: 2px 16px 0; }
+.hhead .btns { display: flex; justify-content: space-between; }
+.hid { position: absolute; left: 0; right: 0; top: 2px; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+.hid > * { pointer-events: auto; }
+.tag {
+  margin-top: -15px; height: 36px; max-width: 320px; padding: 0 14px; border-radius: 18px;
+  background: var(--glass); box-shadow: var(--glass-sh);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  display: flex; align-items: center; gap: 7px;
+  font-size: 14.5px; font-weight: 500; white-space: nowrap; position: relative; z-index: 1;
+}
+.tag.tap { cursor: pointer; }
+.tag b { font-size: 16.5px; font-weight: 600; }
+.tag .bar { width: 1px; height: 13px; background: var(--l3); flex: none; }
+.tag .logos { display: flex; flex: none; }
+.tag .logos i { width: 18px; height: 18px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font: 600 10px var(--font-ios); color: #fff; box-shadow: 0 0 0 1.5px var(--glass); }
+.tag .t-sub { color: var(--l2); overflow: hidden; text-overflow: ellipsis; }
+
+/* Conversations on iPhone */
+.hconv, .tconv {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 0 18px;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.hconv {
+  top: 182px;
+  padding-bottom: 106px;
+  gap: 10px;
+  font-size: 16px;
+  line-height: 1.42;
+  justify-content: flex-end;
+  transition: padding-bottom 0.28s var(--ease-out);
+}
+.capped .hconv { padding-bottom: 148px; }
+.tconv {
+  top: 110px;
+  padding-bottom: 106px;
+  gap: 12px;
+  font-size: 15.5px;
+  line-height: 1.5;
+  justify-content: flex-end;
+  transition: padding-bottom 0.28s var(--ease-out);
+}
+.capped .tconv { padding-bottom: 148px; }
+
+.b { max-width: 82%; padding: 9px 14px; border-radius: 20px; }
+.b.me { align-self: flex-end; background: var(--accent); color: #fff; }
+.b.her { align-self: flex-start; background: var(--reply); }
+.wt { align-self: flex-end; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 82%; }
+.wt .b { max-width: 100%; opacity: 0.62; }
+.wt small { font-size: 12px; color: var(--l3); }
+.wt small b { font-weight: 600; color: var(--l2); margin-left: 8px; }
+.fcard { align-self: flex-start; display: flex; gap: 10px; align-items: center; padding: 9px 14px 9px 10px; border-radius: 16px; background: var(--reply); font-size: 14.5px; }
+.fcard span { display: block; color: var(--l2); font-size: 12px; }
+.fi { flex: none; width: 28px; height: 35px; border-radius: 6px; background: rgba(229, 72, 77, 0.14); color: var(--red); font: 700 8px/1 var(--font-ios); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 5px; }
+
+.um { align-self: flex-end; max-width: 82%; background: var(--accent); color: #fff; border-radius: 18px; padding: 9px 14px; }
+.am { color: var(--l1); }
+.step-row {
+  display: flex; align-items: center; gap: 7px;
+  font: 12.5px var(--mono); color: var(--l2);
+  background: var(--fill); border-radius: 10px; padding: 7px 11px;
+}
+.step-row .ic { width: 14px; height: 14px; color: var(--l3); }
+
+/* New Session Ask on iPhone */
+.ask {
+  position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 0 28px 115px; text-align: center;
+}
+.ask h1 { margin: 0; font-size: 27px; font-weight: 650; line-height: 1.26; letter-spacing: -0.01em; }
+.ask h1 u { text-decoration-color: var(--l3); text-underline-offset: 5px; text-decoration-thickness: 1.5px; }
+.ask .env {
+  margin-top: 15px; display: inline-flex; align-items: center; gap: 6px;
+  color: var(--l2); font-size: 14.5px; max-width: 100%;
+  padding: 4px 10px; border-radius: 99px;
+}
+.ask .env.tap:active { background: var(--fill); }
+.ask .env .ic { width: 16px; height: 16px; }
+.ask .env .off { width: 6px; height: 6px; border-radius: 50%; background: var(--l3); flex: none; }
+.ask-after {
+  height: 0;
+  overflow: visible;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+.ask-after-in {
+  padding-top: 10px;
+}
+
+/* Composer Dock on iPhone */
+.dock { position: absolute; left: 0; right: 0; bottom: 30px; padding: 0 12px; display: flex; flex-direction: column; gap: 7px; z-index: 6; }
+.stack { position: relative; display: flex; flex-direction: column; gap: 7px; }
+.place { display: flex; gap: 6px; padding: 0 4px; }
+.qchip { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px; border-radius: 15px; font-size: 12.5px; color: var(--l2); background: var(--fill); }
+.qchip .ic { width: 14px; height: 14px; stroke-width: 1.6; }
+.qchip .chev { width: 11px; height: 11px; stroke-width: 2; color: var(--l3); }
+.qchip b { font: 500 12px var(--mono); color: var(--l1); }
+.box {
+  background: var(--glass); border-radius: 25px; box-shadow: var(--glass-sh);
+  backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  padding: 6px; position: relative;
+}
+.row { display: flex; align-items: flex-end; gap: 8px; position: relative; }
+.row input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: none;
+  color: var(--l1); font: 16.5px/22px var(--font-ios); padding: 7px 4px 7px 6px; height: 36px;
+  caret-color: var(--accent);
+}
+.row input::placeholder { color: var(--l3); }
+.cbtn { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; background: var(--fill2); color: var(--l1); }
+.cbtn.stop { background: var(--fill2); }
+.cbtn.stop i { width: 11px; height: 11px; border-radius: 2.5px; background: var(--l1); display: block; }
+.send { background: var(--accent); color: #fff; opacity: 0.4; }
+.send.ready { opacity: 1; }
+.send .ic { width: 18px; height: 18px; stroke-width: 2.3; }
+.home { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 136px; height: 5px; border-radius: 3px; background: var(--l1); z-index: 20; opacity: 0.85; }
+
+/* Diagnostics Sheet on iPhone */
+.scrim { position: absolute; inset: 0; background: var(--scrim); opacity: 0; pointer-events: none; transition: opacity 0.25s; z-index: 10; }
+.sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 540px;
+  background: var(--sheet); border-radius: 34px 34px 0 0;
+  transform: translateY(105%); transition: transform 0.34s cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 11; padding: 8px 16px 36px; box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.16);
+  overflow: hidden; font-size: 15.5px;
+}
+.phone.diag .scrim { opacity: 1; pointer-events: auto; }
+.phone.diag .sheet { transform: none; }
+.grab { width: 36px; height: 5px; border-radius: 3px; background: var(--l4); margin: 0 auto 6px; }
+.shead { display: flex; align-items: center; justify-content: center; position: relative; height: 40px; margin-bottom: 6px; }
+.shead b { font-size: 17px; }
+.shead button { position: absolute; right: 0; height: 34px; padding: 0 14px; border-radius: 17px; background: var(--fill2); font-weight: 600; font-size: 14.5px; }
+.group { background: var(--group); border-radius: 14px; overflow: hidden; margin-bottom: 12px; }
+.sec { font-size: 12.5px; color: var(--l2); margin: 0 16px 5px; }
+.hero { display: flex; gap: 12px; align-items: center; padding: 13px 16px; }
+.hero .hi { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; }
+.hero b { display: block; font-size: 15.5px; font-weight: 600; color: var(--l1); }
+.hero span { display: block; font-size: 12.5px; color: var(--l2); }
+.drow { display: flex; align-items: center; gap: 12px; padding: 9px 16px; position: relative; }
+.drow + .drow::before { content: ""; position: absolute; top: 0; left: 56px; right: 0; height: 0.5px; background: var(--sep); }
+.drow .di { width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #fff; flex: none; }
+.drow .di .ic { width: 16px; height: 16px; }
+.drow .tt { flex: 1; min-width: 0; }
+.drow .tt b { display: block; font-weight: 500; font-size: 15px; }
+.drow .tt span { display: block; font-size: 12px; color: var(--l2); }
+.pillb { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 9px; }
+.recon { width: 100%; height: 46px; color: var(--accent); font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.recon .ic { width: 17px; height: 17px; }
+
+/* ---------- Mac (1040 × 690 px) ---------- */
+.mac {
+  position: relative;
+  width: 1040px;
+  height: 690px;
+  display: flex;
+  background: var(--win);
+  border-radius: 12px;
+  box-shadow: var(--shadow-win);
+  overflow: hidden;
+  font: 13px/1.4 var(--font-mac);
+  color: var(--l1);
+  flex: none;
+}
+.mac .ic { width: 16px; height: 16px; stroke-width: 1.45; }
+.tl { position: absolute; left: 13px; top: 15px; display: flex; gap: 8px; z-index: 5; }
+.tl i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
+.tl i:nth-child(2) { background: #febc2e; }
+.tl i:nth-child(3) { background: #28c840; }
+
+.side { width: 232px; flex: none; background: var(--side); border-right: 0.5px solid var(--sep); display: flex; flex-direction: column; padding: 46px 8px 8px; }
+.nav-i { display: flex; align-items: center; gap: 9px; height: 32px; padding: 0 9px; border-radius: 8px; font-size: 13.5px; width: 100%; text-align: left; }
+.nav-i .ic { width: 17px; height: 17px; }
+.nav-i.sel, .live.sel { background: var(--side-sel); font-weight: 500; }
+.lhead { font-size: 11.5px; color: var(--l2); padding: 14px 10px 4px; }
+.live { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 9px; border-radius: 8px; font-size: 13px; width: 100%; text-align: left; }
+.live .n { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lgo { width: 16px; height: 16px; border-radius: 4.5px; flex: none; display: inline-flex; align-items: center; justify-content: center; font: 600 9.5px var(--font-mac); color: #fff; }
+.sfoot { margin-top: auto; display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 8px; }
+.sfoot .av { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; }
+.sfoot b { display: block; font-size: 13px; font-weight: 600; }
+.sfoot span { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--l2); }
+.sfoot .dotc { width: 6px; height: 6px; border-radius: 50%; background: var(--orange); }
+
+.content { position: relative; flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.ctool { height: 44px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 16px 0 22px; border-bottom: 0.5px solid var(--sep); }
+.ctool h2 { margin: 0; font-size: 14px; font-weight: 550; white-space: nowrap; }
+.ctool .where { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--l2); white-space: nowrap; }
+.ctool .where .ic { width: 13px; height: 13px; }
+.col { width: 100%; max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; }
+
+.mask { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 24px 165px; text-align: center; }
+.mask h1 { margin: 0; font-size: 25px; font-weight: 560; letter-spacing: -0.01em; }
+.mask h1 u { text-decoration: none; display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 0; border-bottom: 1.5px solid var(--l4); }
+.mask .on { margin-top: 12px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--l2); padding: 4px 8px; border-radius: 6px; }
+.mask .on:hover { background: var(--fill); color: var(--l1); }
+.mask .on .ic { width: 14px; height: 14px; }
+.mask .on .off { width: 6px; height: 6px; border-radius: 50%; background: var(--l3); }
+
+.mchat { flex: 1; min-height: 0; overflow: hidden; padding: 18px 24px 96px; display: flex; flex-direction: column; justify-content: flex-end; }
+.mac.capped .mchat { padding-bottom: 130px; }
+.mum { display: flex; justify-content: flex-end; margin: 0 0 14px; }
+.mum .bub { max-width: 78%; background: var(--accent); color: #fff; border-radius: 12px; padding: 9px 15px; font-size: 14px; line-height: 1.58; }
+.mam { font-size: 14px; line-height: 1.68; margin: 0 0 12px; color: var(--l1); }
+.mstep { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 11px; margin: 0 0 10px; border-radius: 8px; background: var(--code); box-shadow: inset 0 0 0 0.5px var(--sep); font: 12px/1 var(--mono); color: var(--l2); }
+.mwt { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin: 0 0 14px; }
+.mwt .bub { max-width: 78%; background: var(--accent); color: #fff; border-radius: 12px; padding: 9px 15px; font-size: 14px; line-height: 1.58; opacity: 0.62; }
+.mwt small { font-size: 11.5px; color: var(--l3); }
+.mwt small b { color: var(--l2); margin-left: 8px; }
+.mher { display: flex; justify-content: flex-start; margin: 0 0 10px; }
+.mher .bub { max-width: 78%; background: var(--win2); box-shadow: inset 0 0 0 0.5px var(--sep); border-radius: 12px; padding: 9px 15px; font-size: 14px; line-height: 1.58; }
+
+.mhh { flex: none; height: 92px; position: relative; }
+.mhh .mid { position: absolute; left: 0; right: 0; top: 10px; display: flex; flex-direction: column; align-items: center; }
+.mcap {
+  margin-top: -10px; height: 26px; max-width: 340px; padding: 0 11px; border-radius: 13px;
+  background: var(--win); box-shadow: 0 0 0 0.5px var(--sep), 0 2px 8px rgba(0, 0, 0, 0.08);
+  display: flex; align-items: center; gap: 6px; font-size: 12px; position: relative; z-index: 1; white-space: nowrap;
+}
+.mcap b { font-weight: 600; font-size: 13px; }
+.mcap .bar { width: 1px; height: 12px; background: var(--l3); flex: none; }
+
+.zone { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; padding: 24px 16px 14px; background: linear-gradient(to bottom, transparent, var(--win) 24px); }
+.zcol { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; position: relative; }
+.mabove { display: flex; align-items: center; gap: 6px; min-height: 26px; margin: 0 0 -2px; }
+.mb { height: 26px; border-radius: 6px; padding: 0 7px; display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--l2); white-space: nowrap; }
+.mb:hover { background: var(--fill); }
+.mb .ic { width: 14px; height: 14px; }
+.mb .chev { width: 10px; height: 10px; stroke-width: 1.8; color: var(--l3); }
+.mb b { font: 500 12px var(--mono); color: var(--l1); }
+.cmp {
+  position: relative; background: var(--pill); border-radius: 12px;
+  box-shadow: 0 0 0 0.5px var(--pill-bd), 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 20px rgba(0, 0, 0, 0.06);
+  padding: 6px; display: flex; align-items: flex-end; gap: 6px;
+}
+.cmp input { flex: 1; min-width: 0; border: 0; outline: none; background: none; font: inherit; font-size: 14.5px; line-height: 20px; color: var(--l1); padding: 6px 4px; height: 32px; }
+.cmp input::placeholder { color: var(--l3); }
+.mcb { width: 32px; height: 32px; border-radius: 6px; color: var(--l2); display: flex; align-items: center; justify-content: center; flex: none; }
+.mcb:hover { background: var(--fill); }
+.mcb .ic { width: 18px; height: 18px; stroke-width: 1.8; }
+.mstop { width: 32px; height: 32px; border-radius: 6px; background: var(--fill2); color: var(--l1); display: flex; align-items: center; justify-content: center; flex: none; }
+.mstop i { width: 10px; height: 10px; border-radius: 2px; background: var(--l1); display: block; }
+.msend { width: 32px; height: 32px; border-radius: 6px; background: var(--fill2); color: var(--l3); display: flex; align-items: center; justify-content: center; flex: none; }
+.msend.ready { background: var(--accent); color: #fff; }
+.msend .ic { width: 16px; height: 16px; stroke-width: 2.4; }
+
+@media (max-width: 860px) {
+  .hdr { padding: 14px 14px 6px; }
+  .hdr h1 { font-size: 17px; }
+  .main { padding: 12px 12px; gap: 18px; }
+  .notes { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-row">
+    <h1>连接状态改版 · 去掉玻璃条，归位页面原有状态区</h1>
+  </div>
+  <p>对比核心：把「会话状态」切到<b>运行中 / 忙碌</b>，再点<b>模拟断连恢复</b>或切换连接状态，对比「方案 A（推荐）」与「现在（玻璃条）」的打扰感差异。</p>
+</div>
+
+<div class="toolbar" id="ctl">
+  <div class="toolbar-in">
+    <div class="cg"><b>平台</b>
+      <div class="seg">
+        <button data-k="plat" data-v="iphone" class="on">iPhone</button>
+        <button data-k="plat" data-v="mac">Mac</button>
+      </div>
+    </div>
+    <div class="cg"><b>页面</b>
+      <div class="seg">
+        <button data-k="page" data-v="session" class="on">会话</button>
+        <button data-k="page" data-v="her">Her</button>
+        <button data-k="page" data-v="new">新会话</button>
+      </div>
+    </div>
+    <div class="cg"><b>工作态</b>
+      <div class="seg">
+        <button data-k="busy" data-v="run" class="on">运行中 / 忙碌</button>
+        <button data-k="busy" data-v="idle">空闲</button>
+      </div>
+    </div>
+    <div class="cg"><b>连接</b>
+      <div class="seg">
+        <button data-k="st" data-v="ok" class="on">正常</button>
+        <button data-k="st" data-v="connecting">正在连接</button>
+        <button data-k="st" data-v="relay">连不上中继</button>
+        <button data-k="st" data-v="offline">机器离线</button>
+        <button data-k="st" data-v="noanswer">机器没回应</button>
+        <button data-k="st" data-v="nonet">无网络</button>
+      </div>
+    </div>
+    <div class="cg"><b>方案</b>
+      <div class="seg">
+        <button data-k="ver" data-v="a" class="on">A · 底部状态位 (推荐)</button>
+        <button data-k="ver" data-v="b">B · 名牌 / 环境行内联</button>
+        <button data-k="ver" data-v="old">现在 · 玻璃条</button>
+      </div>
+    </div>
+    <div class="cg">
+      <button class="act-btn" id="simSlow">⚡ 模拟断连恢复</button>
+      <button class="act-btn" id="simFast">⚡ 瞬间闪断 (&lt;1s)</button>
+      <div class="seg">
+        <button data-k="theme" data-v="light" class="on">浅色</button>
+        <button data-k="theme" data-v="dark">深色</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <div id="stageWrap">
+    <div id="stageScaler">
+      <div id="stage"></div>
+    </div>
+  </div>
+
+  <div class="notes" id="notesBox"></div>
+</div>
+
+<script>
+const S = {
+  plat: "iphone",
+  page: "session",
+  busy: "run",
+  st: "ok",
+  ver: "a",
+  theme: "light",
+  diag: false,
+  sent: [],
+};
+const M = "work-mac";
+
+// Connection timing thresholds (mirrors ConnectionNotice.swift / connection.ts)
+const DELAY = { ok: Infinity, nonet: 0, connecting: 1000, relay: 10000, offline: 0, noanswer: 15000 };
+let since = Date.now() - 60000;
+let runStartedAt = Date.now() - 18000;
+let shownState = null; // { k, at }
+let simTimers = [];
+let draft = "";
+
+const P = {
+  menu: "M5 8h14M5 12h14M5 16h14",
+  plus: "M12 5v14M5 12h14",
+  up: "M12 19V5M6 11l6-6 6 6",
+  chevR: "M9 6l6 6-6 6",
+  chevD: "M6 9l6 6 6-6",
+  more: "M6 12h.01M12 12h.01M18 12h.01",
+  pulse: "M3 12h4l2-6 4 12 2-6h6",
+  wifi: "M2 9a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0M12 19h.01",
+  wifiOff: "M3 3l18 18M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 5.2-2.8M14.1 10.2A10 10 0 0 1 19 12.9M2 9.4a15 15 0 0 1 4.4-2.9M10.6 5.1A15 15 0 0 1 22 9.4M12 19.5h.01",
+  cloudOff: "M3 3l18 18M8 6.3A6 6 0 0 1 17.7 10H18a4 4 0 0 1 2.4 7.2M17 18H7a5 5 0 0 1-1.6-9.7",
+  server: "M3 4h18v7H3zM3 13h18v7H3zM7 7.5h.01M7 16.5h.01",
+  laptop: "M4 6h16v10H4zM2 19h20",
+  branch: "M6 4v10a4 4 0 0 0 4 4h4M6 8a3 3 0 1 0 0-.01M18 18a3 3 0 1 0 0-.01",
+  retry: "M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6",
+  sparkle: "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z",
+  cloud: "M7 18a5 5 0 0 1-.6-10A6 6 0 0 1 17.7 10H18a4 4 0 0 1 0 8z",
+  face: "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM9 10h.01M15 10h.01M9 14.5c1.6 1.3 4.4 1.3 6 0",
+  terminal: "M5 8l4 4-4 4M11 16h7",
+};
+const ic = (n, cls = "") => `<svg class="ic ${cls}" viewBox="0 0 24 24"><path d="${P[n]}"/></svg>`;
+
+// Authentic Hermesh 3-beam Aurora Mark (packages/ui/src/mark.tsx)
+let markSeq = 0;
+const BEAMS = [0, 1, 2].map((i) => {
+  const a = (i * Math.PI) / 3;
+  const d = [Math.cos(a), Math.sin(a)];
+  const n = [-d[1], d[0]];
+  const m = [n[0] * 10, n[1] * 10];
+  return {
+    p0: [+(m[0] - d[0] * 37).toFixed(2), +(m[1] - d[1] * 37).toFixed(2)],
+    p1: [+(m[0] + d[0] * 37).toFixed(2), +(m[1] + d[1] * 37).toFixed(2)],
+    dx: +(n[0] * 9).toFixed(2),
+    dy: +(n[1] * 9).toFixed(2),
+  };
+});
+function auroraMark(size = 18, variant = "seq", mono = false) {
+  const id = "hm" + (++markSeq);
+  const pad = variant === "wait" ? 18 : 4;
+  const vb = `${-43 - pad} ${-43 - pad} ${86 + 2 * pad} ${86 + 2 * pad}`;
+  const defs = mono ? "" : `<defs>${BEAMS.map((b, i) => `<linearGradient id="${id}-${i}" gradientUnits="userSpaceOnUse" x1="${b.p0[0]}" y1="${b.p0[1]}" x2="${b.p1[0]}" y2="${b.p1[1]}">
+    ${[0,1,2,3,4,5,6,7,8].map((k) => `<stop offset="${k / 8}" style="stop-color:var(--aurora-g${k})"/>`).join("")}
+  </linearGradient>`).join("")}</defs>`;
+  const paths = BEAMS.map((b, i) => {
+    const stroke = mono ? "currentColor" : `url(#${id}-${i})`;
+    return `<g class="hm-bg" style="--dx:${b.dx}px;--dy:${b.dy}px"><path d="M${b.p0[0]} ${b.p0[1]}L${b.p1[0]} ${b.p1[1]}" class="hm-beam hm-b${i}" stroke="${stroke}" stroke-width="12" stroke-linecap="round" fill="none"/></g>`;
+  }).join("");
+  return `<svg viewBox="${vb}" width="${size}" height="${size}" class="hm-mark hm-${variant}${mono ? " hm-mono" : ""}" aria-hidden="true">${defs}<g style="isolation:isolate">${paths}</g></svg>`;
+}
+
+// Her Cat Avatar
+let catSeq = 0;
+function catAvatar(size) {
+  const id = "cat" + (++catSeq);
+  const ear = `<path d="M30 53L26 25L50 37Z" fill="#cbd3fb" stroke="#cbd3fb" stroke-width="8" stroke-linejoin="round"/>`;
+  const eye = (x) => `<ellipse cx="${x}" cy="64" rx="4.1" ry="4.7" fill="#3c2f3a"/><circle cx="${x + 1.3}" cy="62.4" r="1.25" fill="#fff"/>`;
+  return `<svg width="${size}" height="${size}" viewBox="8 16 104 104"><defs><radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="44" cy="50" r="72"><stop offset="0" stop-color="#f1f3ff"/><stop offset=".55" stop-color="#d7ddff"/><stop offset="1" stop-color="#b3bcf2"/></radialGradient></defs>
+    ${ear}<g transform="translate(120 0) scale(-1 1)">${ear}</g>
+    <path d="M60 30C84 30 100 48 103 72C106 96 92 110 60 110C28 110 14 96 17 72C20 48 36 30 60 30Z" fill="url(#${id})"/>
+    <path d="M46 47H74C86 47 92 55 92 65.5C92 80 82 88 60 88C38 88 28 80 28 65.5C28 55 34 47 46 47Z" fill="#fafbff"/>
+    <ellipse cx="37" cy="73" rx="6.5" ry="4.4" fill="#ffa3be" opacity=".5"/><ellipse cx="83" cy="73" rx="6.5" ry="4.4" fill="#ffa3be" opacity=".5"/>
+    ${eye(48.5)}${eye(71.5)}
+    <path d="M55.2 71.2q2.4 3.3 4.8 0q2.4 3.3 4.8 0" fill="none" stroke="#3c2f3a" stroke-width="2.1" stroke-linecap="round"/></svg>`;
+}
+
+function fmtClock(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s < 10 ? "0" : ""}${s}`;
+}
+
+// Evaluate effective connection notice with 1s delay & 0.5s minimum display time
+function activeNoticeKey(now = Date.now()) {
+  const raw = S.st !== "ok" && (now - since) >= DELAY[S.st] ? S.st : null;
+  if (raw) {
+    if (!shownState || shownState.k !== raw) shownState = { k: raw, at: shownState?.at ?? now };
+    return raw;
+  }
+  if (shownState && now - shownState.at < 500) return shownState.k;
+  shownState = null;
+  return null;
+}
+
+// Connection notice descriptors (exact copy from Localizable.xcstrings)
+function noticeInfo(k) {
+  if (!k) return null;
+  switch (k) {
+    case "nonet":
+      return { k, retrying: false, icon: "wifiOff", full: "当前无网络连接", short: "无网络连接" };
+    case "connecting":
+      return { k, retrying: true, icon: "wait", full: `正在连接 ${M}…`, short: `正在连接 ${M}…` };
+    case "relay":
+      return { k, retrying: true, icon: "cloudOff", full: `暂时连不上 Hermesh · 正在重试`, short: `连不上 Hermesh · 重试中` };
+    case "offline":
+      return { k, retrying: false, icon: "ring", full: `<b>${M}</b> 离线 · 消息会排队到它上线`, short: `离线 · 消息将排队` };
+    case "noanswer":
+      return { k, retrying: true, icon: "wait", full: `<b>${M}</b> 暂时没有回应 · 正在重试`, short: `暂时没有回应 · 重试中` };
+  }
+  return null;
+}
+
+// ---------- Components for the 3 Schemes ----------
+
+// 1. Session WorkLine (shared by Scheme A & Scheme B: inline at end of conversation)
+function renderSessionWorkLine(notice, isPhone) {
+  const running = S.busy === "run";
+  const sec = Math.max(1, Math.floor((Date.now() - runStartedAt) / 1000));
+  const chev = isPhone ? `<svg class="ic wl-chev" viewBox="0 0 24 24"><path d="${P.chevR}"/></svg>` : "";
+
+  // Old scheme keeps original WorkLine untouched (and stacks floating capsule below!)
+  if (S.ver === "old" || !notice) {
+    if (!running) return "";
+    return `<div class="workline">${auroraMark(18, "seq")}<span class="wl-txt sweep">正在运行工具…</span><span class="wl-timer">${fmtClock(sec)}</span></div>`;
+  }
+
+  // Scheme A / B: Merge connection status right into WorkLine!
+  const lead = notice.icon === "wifiOff" ? ic("wifiOff", "wl-ic")
+    : notice.icon === "cloudOff" ? ic("cloudOff", "wl-ic")
+    : notice.icon === "ring" ? `<i class="hdot"></i>`
+    : auroraMark(18, "wait");
+
+  let textHtml = "";
+  if (running && notice.retrying) {
+    // Running + retrying: preserve context ("正在运行工具") + connection status in one single line
+    const tail = notice.k === "connecting" ? `正在连接 ${M}…`
+      : notice.k === "relay" ? `暂时连不上 Hermesh · 正在重试`
+      : `${M} 暂时没有回应 · 正在重试`;
+    textHtml = `<span class="wl-txt">正在运行工具<span class="wl-sep">·</span><span class="sweep">${tail}</span></span>`;
+  } else {
+    textHtml = `<span class="wl-txt ${notice.retrying ? "sweep" : ""}">${notice.full}</span>`;
+  }
+  return `<button type="button" class="workline ${isPhone ? "tap" : ""}" data-open-diag="1" title="${isPhone ? "点击查看连接诊断" : ""}">${lead}${textHtml}${chev}</button>`;
+}
+
+// 2. Her Bottom Bubble (`···` bubble in Scheme A)
+function renderHerBottom(notice, isPhone) {
+  const busy = S.busy === "run";
+  const chev = `<svg class="ic hb-chev" viewBox="0 0 24 24"><path d="${P.chevR}"/></svg>`;
+
+  // In Scheme B or Old scheme, bottom bubble only shows Her's own typing `···` bubble
+  if (S.ver !== "a" || !notice) {
+    if (!busy) return "";
+    return `<div class="hbub"><span class="hb-inner sweep"><span class="dots"><i></i><i></i><i></i></span></span></div>`;
+  }
+
+  // Scheme A: Reuse the `···` bubble at the foot of Her's conversation!
+  if (notice.retrying) {
+    return `<button type="button" class="hbub ${isPhone ? "tap" : ""}" data-open-diag="1">
+      <span class="hb-inner sweep"><span class="dots"><i></i><i></i><i></i></span><span class="hb-txt">${notice.full}</span></span>
+      ${isPhone ? chev : ""}
+    </button>`;
+  } else {
+    // Static states (offline / no network): calm icon, no sweep animation
+    const glyph = notice.icon === "wifiOff" ? ic("wifiOff", "hb-ic") : `<i class="hdot"></i>`;
+    return `<button type="button" class="hbub ${isPhone ? "tap" : ""}" data-open-diag="1">
+      <span class="hb-inner">${glyph}<span class="hb-txt">${notice.full}</span></span>
+      ${isPhone ? chev : ""}
+    </button>`;
+  }
+}
+
+// 3. Her Top Tag (Scheme B puts connection inside Her's tag; Scheme A & Old keep team status clean)
+function renderHerTagInner(notice, isPhone) {
+  const busy = S.busy === "run";
+  if (S.ver === "b" && notice) {
+    const dot = notice.icon === "wifiOff" || notice.icon === "cloudOff"
+      ? `<i class="bdot" style="animation:none"></i>`
+      : notice.icon === "ring"
+      ? `<i class="hdot"></i>`
+      : `<i class="bdot"></i>`;
+    return `<b>Her</b><i class="bar"></i>${dot}<span class="t-sub ${notice.retrying ? "sweep" : ""}">${notice.short}</span>`;
+  }
+  const left = busy && !(S.ver === "a" && notice) ? `<span class="t-sub sweep" style="font-weight:500">正在输入…</span>` : `<b>Her</b>`;
+  const team = `<i class="bar"></i><span class="logos"><i style="background:#2b2b30">C</i></span><span class="t-sub ${busy ? "sweep" : ""}">1 个在忙</span>`;
+  return `${left}${team}`;
+}
+
+// 4. New Session Ask Environment & After-line
+function renderNewSessionAsk(notice, isPhone) {
+  const chevR = `<svg class="ic" viewBox="0 0 24 24" style="width:12px;height:12px;color:var(--l3)"><path d="${P.chevR}"/></svg>`;
+  const chevD = `<svg class="ic" viewBox="0 0 24 24" style="width:12px;height:12px;color:var(--l3)"><path d="${P.chevD}"/></svg>`;
+
+  if (S.ver === "b" && notice) {
+    // Scheme B: inline right inside the `work-mac` environment selector row
+    const badge = notice.retrying
+      ? `<span class="sweep" style="color:var(--l2)">· ${notice.short}</span>`
+      : `<span style="color:${notice.k === "nonet" ? "var(--orange)" : "var(--l2)"}">· ${notice.short}</span>`;
+    if (isPhone) {
+      return `<h1>要在<br><u>fresh-app</u> 里做什么？</h1>
+        <button type="button" class="env tap" data-open-diag="1">${ic("server")}<span>${M}</span>${badge}${chevR}</button>`;
+    }
+    return `<h1>要在 <u>fresh-app${chevD}</u> 里做什么？</h1>
+      <button type="button" class="on">${ic("server")}<span>${M}</span>${badge}${chevR}</button>`;
+  }
+
+  // Scheme A: Keep `work-mac ›` clean for picking machine, render zero-height `.ask-after` WorkLine right beneath it!
+  const offDot = S.st === "offline" && S.ver === "old" ? `<i class="off"></i>` : "";
+  let afterHtml = "";
+  if (S.ver === "a" && notice) {
+    const lead = notice.icon === "wifiOff" ? ic("wifiOff", "wl-ic")
+      : notice.icon === "cloudOff" ? ic("cloudOff", "wl-ic")
+      : notice.icon === "ring" ? `<i class="hdot"></i>`
+      : auroraMark(16, "wait");
+    const c = isPhone ? `<svg class="ic wl-chev" viewBox="0 0 24 24"><path d="${P.chevR}"/></svg>` : "";
+    afterHtml = `<div class="ask-after"><div class="ask-after-in">
+      <button type="button" class="workline ${isPhone ? "tap" : ""}" data-open-diag="1">${lead}<span class="wl-txt ${notice.retrying ? "sweep" : ""}">${notice.full}</span>${c}</button>
+    </div></div>`;
+  }
+
+  if (isPhone) {
+    return `<h1>要在<br><u>fresh-app</u> 里做什么？</h1>
+      <div class="env">${ic("server")}<span>${M}</span>${offDot}${chevR}</div>${afterHtml}`;
+  }
+  return `<h1>要在 <u>fresh-app${chevD}</u> 里做什么？</h1>
+    <span class="on">${ic("server")}<span>${M}</span>${offDot}${chevR}</span>${afterHtml}`;
+}
+
+// Legacy floating glass capsule (only active when S.ver === "old")
+function renderLegacyCapsule(notice, isPhone) {
+  if (S.ver !== "old" || !notice) return `<button class="cap" id="cap"></button>`;
+  const g = notice.icon === "wifiOff" ? ic("wifiOff", "g")
+    : notice.icon === "cloudOff" ? ic("cloudOff", "g")
+    : notice.icon === "ring" ? `<i class="hdot"></i>`
+    : `<i class="bdot"></i>`;
+  const warn = notice.icon === "wifiOff" || notice.icon === "cloudOff";
+  const txt = notice.retrying
+    ? (notice.k === "connecting" ? `<span class="sweep">${notice.full}</span>` : notice.full.replace("正在重试", `<span class="sweep">正在重试</span>`))
+    : notice.full;
+  return `<button class="cap on ${warn ? "warn" : ""}" id="cap" data-open-diag="1">${g}<span class="t">${txt}</span>${isPhone ? `<svg class="ic chev" viewBox="0 0 24 24"><path d="${P.chevR}"/></svg>` : ""}</button>`;
+}
+
+// ---------- iPhone Screens ----------
+function statusBar() {
+  return `<div class="island"></div><div class="status"><span>9:41</span><span class="r">${S.st === "nonet" ? "" : ic("wifi")}
+    <svg viewBox="0 0 28 14" width="26" height="12"><rect x=".5" y=".5" width="23" height="13" rx="4" fill="none" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="19" height="9" rx="2.5" fill="currentColor"/><rect x="25" y="4.5" width="2" height="5" rx="1" fill="currentColor" opacity=".4"/></svg></span></div>`;
+}
+
+function phoneSession(notice) {
+  const running = S.busy === "run";
+  const sent = S.sent.map((m) => m.waiting
+    ? `<div class="wt"><div class="um" style="max-width:100%;opacity:.62">${m.t}</div><small>等 ${M} 在线后送达<b>丢弃</b></small></div>`
+    : `<div class="um">${m.t}</div>`).join("");
+
+  const convo = running ? `
+    <div class="um">把登录成功后的跳转改成回到来源地址，顺便补上单测</div>
+    <div class="am">我先检查一下路由守卫里对 <code>redirect</code> 参数的处理，然后补上登录回调测试。</div>
+    <div class="step-row">${ic("terminal")}<span>运行了 3 条命令 · auth_redirect_test.go</span></div>
+    ${sent}
+    ${renderSessionWorkLine(notice, true)}
+  ` : `
+    <div class="um">把登录成功后的跳转改成回到来源地址，顺便补上单测</div>
+    <div class="step-row">${ic("terminal")}<span>运行了 3 条命令 · 2 个文件已修改</span></div>
+    <div class="am">改好了：登录成功后会优先跳回进入登录页之前的地址，没有来源参数时回到首页，两项单测均已通过。</div>
+    ${sent}
+    ${renderSessionWorkLine(notice, true)}
+  `;
+
+  const ph = running ? "补充说明，会在下一轮带上" : "继续推进…";
+  return `${statusBar()}
+    <div class="nav">
+      <button class="gb menu">${ic("menu")}</button>
+      <div class="tcap"><h2>登录后跳回原来的页面</h2><small>${M}/fresh-app</small></div>
+      <button class="gb more-btn">${ic("more")}</button>
+    </div>
+    <div class="tconv">${convo}</div>
+    <div class="dock"><div class="stack">
+      ${renderLegacyCapsule(notice, true)}
+      <div class="box"><div class="row">
+        <button class="cbtn">${ic("plus")}</button>
+        <input id="ta" placeholder="${ph}">
+        ${running ? `<button class="cbtn stop" title="停止"><i></i></button>` : ""}
+        <button class="cbtn send" id="send">${ic("up")}</button>
+      </div></div>
+    </div></div>`;
+}
+
+function phoneHer(notice) {
+  const sent = S.sent.map((m) => m.waiting
+    ? `<div class="wt"><div class="b me">${m.t}</div><small>等 ${M} 在线后送达<b>丢弃</b></small></div>`
+    : `<div class="b me">${m.t}</div>`).join("");
+  const tagTap = S.ver === "b" && notice ? `data-open-diag="1"` : "";
+  return `${statusBar()}
+    <div class="hhead">
+      <div class="btns"><button class="gb">${ic("menu")}</button><button class="gb">${ic("pulse")}<i class="pdot"></i></button></div>
+      <div class="hid">${catAvatar(72)}<button type="button" class="tag ${tagTap ? "tap" : ""}" ${tagTap}>${renderHerTagInner(notice, true)}</button></div>
+    </div>
+    <div class="hconv">
+      <div class="b me">帮我把上周周报整理成 PDF，另外看下可推进的 Bug</div>
+      <div class="b her">周报整理好了，一共 3 页，重点放在连接器那部分。</div>
+      <div class="fcard"><i class="fi">PDF</i><div><b>周报 · 11 月第 3 周.pdf</b><span>3 页 · 刚刚</span></div></div>
+      ${S.busy === "idle" ? `<div class="b her">近期 issue 我也筛了一遍，挑出了 2 个可以直接修的放在进展里了。</div>` : ""}
+      ${sent}
+      ${renderHerBottom(notice, true)}
+    </div>
+    <div class="dock"><div class="stack">
+      ${renderLegacyCapsule(notice, true)}
+      <div class="box"><div class="row">
+        <button class="cbtn">${ic("plus")}</button>
+        <input id="ta" placeholder="发消息给 Her">
+        <button class="cbtn send" id="send">${ic("up")}</button>
+      </div></div>
+    </div></div>`;
+}
+
+function phoneNew(notice) {
+  return `${statusBar()}
+    <div class="nav"><button class="gb menu">${ic("menu")}</button><span class="plain-ttl">新会话</span></div>
+    <div class="ask">${renderNewSessionAsk(notice, true)}</div>
+    <div class="dock"><div class="stack">
+      ${renderLegacyCapsule(notice, true)}
+      <div class="place">
+        <span class="qchip">${ic("branch")}独立 worktree<svg class="ic chev" viewBox="0 0 24 24"><path d="${P.chevD}"/></svg></span>
+        <span class="qchip">基于 <b>main</b><svg class="ic chev" viewBox="0 0 24 24"><path d="${P.chevR}"/></svg></span>
+      </div>
+      <div class="box"><div class="row">
+        <button class="cbtn">${ic("plus")}</button>
+        <input id="ta" placeholder="描述要构建、调试或规划的内容">
+        <button class="cbtn send" id="send">${ic("up")}</button>
+      </div></div>
+    </div></div>`;
+}
+
+function diagSheet() {
+  const st = S.st, host = "relay.hermesh.ai";
+  const badge = (t, c) => `<span class="pillb" style="color:${c};background:color-mix(in srgb,${c} 14%,transparent)">${t}</span>`;
+  const G = "var(--green)", O = "var(--orange)", R = "var(--red)", Gr = "var(--l2)";
+  const relayUp = !(st === "nonet" || st === "relay");
+  const mach = st === "ok" ? { s: "QUIC 局域网直连", b: "12 ms", c: G }
+    : st === "offline" ? { s: "离线", b: "离线", c: Gr }
+    : st === "noanswer" ? { s: "不可达", b: "不可达", c: R }
+    : { s: "正在重新连接…", b: "重连中", c: O };
+  const hero = st === "nonet" ? { i: "wifiOff", c: R, t: "当前无网络连接", s: "请检查 Wi-Fi 或蜂窝网络" }
+    : st === "ok" ? { i: "sparkle", c: G, t: `已直连 · ${M}`, s: "QUIC 局域网直连 · 12 ms" }
+    : st === "offline" ? { i: "laptop", c: Gr, t: `${M} 离线了`, s: "3 分钟前在线" }
+    : relayUp ? { i: "retry", c: O, t: `正在恢复与 ${M} 的连接…`, s: `${host} · 38 ms` }
+    : { i: "retry", c: O, t: "正在重新连接 Hermesh…", s: "Wi-Fi" };
+  return `<div class="grab"></div><div class="shead"><b>连接诊断</b><button id="diagDone">完成</button></div>
+    <div class="group"><div class="hero"><span class="hi" style="background:color-mix(in srgb,${hero.c} 15%,transparent);color:${hero.c}">${ic(hero.i)}</span><span><b>${hero.t}</b><span>${hero.s}</span></span></div></div>
+    <div class="sec">连接链路</div>
+    <div class="group">
+      <div class="drow"><span class="di" style="background:${st === "nonet" ? R : "#3d7bff"}">${ic(st === "nonet" ? "wifiOff" : "wifi")}</span><span class="tt"><b>iPhone</b><span>${st === "nonet" ? "离线" : "Wi-Fi"}</span></span>${st === "nonet" ? badge("无网络", R) : badge("正常", G)}</div>
+      <div class="drow"><span class="di" style="background:${relayUp ? G : O}">${ic("cloud")}</span><span class="tt"><b>中继服务</b><span>${host}</span></span>${relayUp ? badge("38 ms", G) : badge("重连中", O)}</div>
+    </div>
+    <div class="sec">环境</div>
+    <div class="group"><div class="drow"><span class="di" style="background:${mach.c}">${ic("laptop")}</span><span class="tt"><b>${M}</b><span>${mach.s}</span></span>${badge(mach.b, mach.c)}</div></div>
+    <div class="group"><button class="recon" id="reconBtn">${ic("retry")}立即重连</button></div>`;
+}
+
+function renderPhone(notice) {
+  const capped = S.ver === "old" && !!notice;
+  const inner = S.page === "her" ? phoneHer(notice) : S.page === "session" ? phoneSession(notice) : phoneNew(notice);
+  return `<div class="phone ${S.diag ? "diag" : ""} ${capped ? "capped" : ""}" id="dev">
+    ${inner}
+    <div class="scrim" id="scrim"></div>
+    <div class="sheet">${diagSheet()}</div>
+    <div class="home"></div>
+  </div>`;
+}
+
+// ---------- Mac Screens ----------
+function macSide() {
+  const notConn = S.st === "nonet" || S.st === "relay";
+  return `<div class="side">
+    <button class="nav-i ${S.page === "new" ? "sel" : ""}" data-go="new">${ic("plus")}新会话</button>
+    <button class="nav-i ${S.page === "her" ? "sel" : ""}" data-go="her">${ic("face")}Her</button>
+    <div class="lhead">任务</div>
+    <button class="live ${S.page === "session" ? "sel" : ""}" data-go="session">
+      <span class="lgo" style="background:#c8664a">C</span>
+      <span class="n">登录后跳回原来的页面</span>
+      ${S.busy === "run" ? auroraMark(14, "seq") : ""}
+    </button>
+    <button class="live"><span class="lgo" style="background:#2b2b30">C</span><span class="n">整理 README 的安装步骤</span></button>
+    <div class="sfoot"><span class="av">Y</span><span><b>Hermesh</b><span>${notConn ? `<i class="dotc"></i>未连接` : "已连接"}</span></span></div>
+  </div>`;
+}
+
+function macComposer(ph, showStop = false) {
+  return `<div class="cmp">
+    <button class="mcb">${ic("plus")}</button>
+    <input id="ta" placeholder="${ph}">
+    ${showStop ? `<button class="mstop" title="停止"><i></i></button>` : ""}
+    <button class="msend" id="send">${ic("up")}</button>
+  </div>`;
+}
+
+function macSession(notice) {
+  const running = S.busy === "run";
+  const sent = S.sent.map((m) => m.waiting
+    ? `<div class="mwt"><div class="bub">${m.t}</div><small>等 ${M} 在线后送达<b>丢弃</b></small></div>`
+    : `<div class="mum"><div class="bub">${m.t}</div></div>`).join("");
+
+  const body = running ? `
+    <div class="mum"><div class="bub">把登录成功后的跳转改成回到来源地址，顺便补上单测</div></div>
+    <div class="mam">我先检查一下路由守卫里对 <code>redirect</code> 参数的处理，然后补上登录回调测试。</div>
+    <div class="mstep">${ic("terminal")}<span>运行了 3 条命令 · auth_redirect_test.go</span></div>
+    ${sent}
+    <div style="padding-top:4px">${renderSessionWorkLine(notice, false)}</div>
+  ` : `
+    <div class="mum"><div class="bub">把登录成功后的跳转改成回到来源地址，顺便补上单测</div></div>
+    <div class="mstep">${ic("terminal")}<span>运行了 3 条命令 · 2 个文件已修改</span></div>
+    <div class="mam">改好了：登录成功后会优先跳回进入登录页之前的地址，没有来源参数时回到首页，两项单测均已通过。</div>
+    ${sent}
+    ${renderSessionWorkLine(notice, false) ? `<div style="padding-top:4px">${renderSessionWorkLine(notice, false)}</div>` : ""}
+  `;
+
+  return `<div class="content">
+    <div class="ctool"><h2>登录后跳回原来的页面</h2><span class="where">${ic("server")}${M} · fresh-app</span></div>
+    <div class="mchat"><div class="col">${body}</div></div>
+    <div class="zone"><div class="zcol">${renderLegacyCapsule(notice, false)}${macComposer(running ? "补充说明，会在下一轮带上…" : "继续聊…", running)}</div></div>
+  </div>`;
+}
+
+function macHer(notice) {
+  const sent = S.sent.map((m) => m.waiting
+    ? `<div class="mwt"><div class="bub">${m.t}</div><small>等 ${M} 在线后送达<b>丢弃</b></small></div>`
+    : `<div class="mum"><div class="bub">${m.t}</div></div>`).join("");
+  const bottom = renderHerBottom(notice, false);
+  return `<div class="content">
+    <div class="mhh"><div class="mid">${catAvatar(52)}<div class="mcap">${renderHerTagInner(notice, false)}</div></div></div>
+    <div class="mchat"><div class="col">
+      <div class="mum"><div class="bub">帮我把上周周报整理成 PDF，另外看下可推进的 Bug</div></div>
+      <div class="mher"><div class="bub">周报整理好了，一共 3 页，重点放在连接器那部分。</div></div>
+      ${S.busy === "idle" ? `<div class="mher"><div class="bub">近期 issue 我也筛了一遍，挑出了 2 个可以直接修的放在进展里了。</div></div>` : ""}
+      ${sent}
+      ${bottom ? `<div style="margin:2px 0 10px;display:flex">${bottom}</div>` : ""}
+    </div></div>
+    <div class="zone"><div class="zcol">${renderLegacyCapsule(notice, false)}${macComposer("发消息给 Her")}</div></div>
+  </div>`;
+}
+
+function macNew(notice) {
+  return `<div class="content">
+    <div class="ctool"><h2>新会话</h2></div>
+    <div class="mask">${renderNewSessionAsk(notice, false)}</div>
+    <div class="zone"><div class="zcol">
+      ${renderLegacyCapsule(notice, false)}
+      <div class="mabove">
+        <span class="mb">${ic("branch")}独立 worktree<svg class="ic chev" viewBox="0 0 24 24"><path d="${P.chevD}"/></svg></span>
+        <span class="mb">基于 <b>main</b><svg class="ic chev" viewBox="0 0 24 24"><path d="${P.chevD}"/></svg></span>
+      </div>
+      ${macComposer("描述要开发、调试或规划的任务…")}
+    </div></div>
+  </div>`;
+}
+
+function renderMac(notice) {
+  const capped = S.ver === "old" && !!notice;
+  const inner = S.page === "her" ? macHer(notice) : S.page === "session" ? macSession(notice) : macNew(notice);
+  return `<div class="mac ${capped ? "capped" : ""}" id="dev"><div class="tl"><i></i><i></i><i></i></div>${macSide()}${inner}</div>`;
+}
+
+// ---------- Design Notes Panel ----------
+function renderNotes() {
+  const isA = S.ver === "a";
+  const isB = S.ver === "b";
+  return `
+    <h3>${isA ? `方案 A：归位底部状态区 <span class="pill-tag">推荐</span>` : isB ? `方案 B：名牌 / 环境行内联` : `现在：输入框上方液态玻璃条`}</h3>
+    <ul>
+      <li><b>核心变化</b>：彻底去掉悬浮在输入框上方的玻璃胶囊，没有任何带阴影/毛玻璃的横条压在输入框上，对话高度也不再因为胶囊进出而上下推移。</li>
+      <li><b>会话页（运行中 / 空闲）</b>：直接复用对话末尾原有的 <code>WorkLine</code>。
+        <ul>
+          <li><b>运行中重连</b>：同一个品牌图标从工作态（<code>seq</code> 依次点亮）平滑变成等待对端态（<code>wait</code> 呼吸张开），文案原地变成「<code>正在运行工具 · 正在连接 work-mac…</code>」，连上瞬间无缝恢复计时，<b>0 新增行、0 跳动</b>。</li>
+          <li><b>空闲有消息</b>：断连 ≥1s 时才在最后一条消息下方安静浮现同一行状态，连上即消。</li>
+        </ul>
+      </li>
+      <li><b>Her 页</b>：${isB
+        ? `<b>方案 B</b> 把连接状态放进头像下的名牌胶囊里。优点是对话区零新增；但视线离底部打字区较远，长句（如「消息会排队到它上线」）放不下，且点名牌打开「团队面板」与「连接诊断」有手势冲突。`
+        : `<b>方案 A</b> 直接复用对话左下角原有的 <code>···</code> 气泡（<code>HerTyping</code> / <code>BusyBubble</code>）！重连时三个点与文字一起扫过流光；Her 或子智能体本来在忙时原地合并为一条气泡；离线/无网络时静止不扫光。`}
+      </li>
+      <li><b>新会话页</b>：${isB
+        ? `<b>方案 B</b> 直接拼在中间 <code>work-mac ›</code> 环境行后面，极致紧凑，但和切换机器共享同一个按钮。`
+        : `<b>方案 A</b> 利用中间 <code>work-mac ›</code> 正下方已有的零高度槽位（<code>.th-ask-after</code>），浮现一行轻量状态——大标题纹丝不动，输入框上方干干净净，点击还能独立打开连接诊断。`}
+      </li>
+    </ul>
+    <div class="blk">
+      <b>全部五种状态的视觉区分</b>
+      <table>
+        <tr><td>正在连接 (&gt;1s)</td><td>动态呼吸光束 / <code>···</code> 流光 · <code>正在连接 work-mac…</code></td></tr>
+        <tr><td>连不上中继 (&gt;10s)</td><td>云端断开图标 + 流光 · <code>暂时连不上 Hermesh · 正在重试</code></td></tr>
+        <tr><td>机器没回应 (&gt;15s)</td><td>动态呼吸光束 / <code>···</code> 流光 · <code>work-mac 暂时没有回应 · 正在重试</code></td></tr>
+        <tr><td>机器离线 (立即)</td><td>静止空心圆环（无流光） · <code>work-mac 离线 · 消息会排队到它上线</code></td></tr>
+        <tr><td>无网络 (立即)</td><td>静止橙色断网图标 · <code>当前无网络连接</code></td></tr>
+      </table>
+    </div>
+    <div class="blk">
+      <b>保留不变的防抖与诊断体验</b>
+      <p>依然遵守「断开未满 1 秒不显示、一旦显示至少停留 0.5 秒」；iPhone 上点击该状态行（末尾带轻量 <code>›</code>）照常拉起「连接诊断」面板与「立即重连」。试试在输入框里打字发送，离线排队气泡完全不受影响。</p>
+    </div>
+  `;
+}
+
+// ---------- Responsive Scaling (works cleanly on iPhone WebView & Desktop) ----------
+function fitStage() {
+  const wrap = document.getElementById("stageWrap");
+  const scaler = document.getElementById("stageScaler");
+  const dev = document.getElementById("dev");
+  if (!wrap || !scaler || !dev) return;
+  const naturalW = S.plat === "mac" ? 1040 : 402;
+  const naturalH = S.plat === "mac" ? 690 : 852;
+  const availW = Math.min(window.innerWidth - 24, wrap.parentElement.clientWidth - 24);
+  const scale = Math.min(1, availW / naturalW);
+  scaler.style.width = `${naturalW}px`;
+  scaler.style.height = `${naturalH}px`;
+  scaler.style.transform = scale < 1 ? `scale(${scale.toFixed(4)})` : "none";
+  wrap.style.width = `${Math.round(naturalW * scale)}px`;
+  wrap.style.height = `${Math.round(naturalH * scale)}px`;
+}
+window.addEventListener("resize", fitStage);
+
+// ---------- Render & Live Loop ----------
+let lastSnap = "";
+function render(forceNotes = false) {
+  markSeq = 0;
+  catSeq = 0;
+  const notice = noticeInfo(activeNoticeKey());
+  const stage = document.getElementById("stage");
+  const focusTa = document.activeElement?.id === "ta";
+
+  stage.innerHTML = S.plat === "mac" ? renderMac(notice) : renderPhone(notice);
+  if (forceNotes || !document.getElementById("notesBox").innerHTML) {
+    document.getElementById("notesBox").innerHTML = renderNotes();
+  }
+
+  const ta = document.getElementById("ta");
+  if (ta) {
+    ta.value = draft;
+    if (focusTa) {
+      ta.focus();
+      ta.setSelectionRange(draft.length, draft.length);
+    }
+    const sendBtn = document.getElementById("send");
+    sendBtn.classList.toggle("ready", !!draft.trim());
+    ta.oninput = () => {
+      draft = ta.value;
+      sendBtn.classList.toggle("ready", !!draft.trim());
+    };
+    ta.onkeydown = (e) => { if (e.key === "Enter") sendMsg(); };
+    sendBtn.onclick = sendMsg;
+  }
+  fitStage();
+}
+
+function tick() {
+  const k = activeNoticeKey();
+  const sec = S.busy === "run" && S.page === "session" ? Math.floor((Date.now() - runStartedAt) / 1000) : 0;
+  const snap = `${k}|${sec}|${S.plat}|${S.page}|${S.busy}|${S.ver}|${S.diag}`;
+  if (snap !== lastSnap) {
+    // If only the running clock changed and user is typing, update timer text directly without touching DOM input
+    const onlyClock = lastSnap && snap.split("|").slice(2).join("|") === lastSnap.split("|").slice(2).join("|") && snap.split("|")[0] === lastSnap.split("|")[0];
+    lastSnap = snap;
+    if (onlyClock) {
+      const el = document.querySelector(".wl-timer");
+      if (el) { el.textContent = fmtClock(sec); return; }
+    }
+    render(false);
+  }
+}
+setInterval(tick, 120);
+
+function sendMsg() {
+  const t = draft.trim();
+  if (!t) return;
+  const waiting = S.st === "offline" || S.st === "nonet" || S.st === "relay" || S.st === "noanswer";
+  S.sent.push({ t, waiting });
+  draft = "";
+  if (S.page === "new") {
+    S.page = "session";
+    S.busy = waiting ? "idle" : "run";
+    runStartedAt = Date.now();
+    syncToolbar();
+  }
+  lastSnap = "";
+  render(false);
+}
+
+function setState(st, immediate = true) {
+  S.st = st;
+  since = immediate ? Date.now() - 60000 : Date.now();
+  if (st === "ok") shownState = shownState ? shownState : null;
+  else if (immediate) shownState = { k: st, at: Date.now() - 2000 };
+  syncToolbar();
+  lastSnap = "";
+  render(false);
+}
+
+function runSim(dropDurationMs) {
+  simTimers.forEach(clearTimeout);
+  shownState = null;
+  S.st = "ok";
+  since = Date.now();
+  syncToolbar();
+  lastSnap = "";
+  render(false);
+  simTimers = [
+    setTimeout(() => {
+      S.st = "connecting";
+      since = Date.now(); // will wait 1000ms before appearing!
+      syncToolbar();
+    }, 350),
+    setTimeout(() => {
+      S.st = "ok";
+      since = Date.now();
+      syncToolbar();
+    }, 350 + dropDurationMs),
+  ];
+}
+
+document.getElementById("simSlow").onclick = () => runSim(3100);
+document.getElementById("simFast").onclick = () => runSim(700);
+
+function syncToolbar() {
+  document.querySelectorAll("#ctl [data-k]").forEach((b) => {
+    b.classList.toggle("on", S[b.dataset.k] === b.dataset.v);
+  });
+  document.documentElement.dataset.theme = S.theme;
+}
+
+document.getElementById("ctl").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-k]");
+  if (!b) return;
+  simTimers.forEach(clearTimeout);
+  const k = b.dataset.k, v = b.dataset.v;
+  if (k === "st") {
+    shownState = null;
+    setState(v, true);
+    return;
+  }
+  if (k === "page" || k === "plat") S.sent = [];
+  if (k === "busy" && v === "run") runStartedAt = Date.now() - 18000;
+  S[k] = v;
+  S.diag = false;
+  syncToolbar();
+  lastSnap = "";
+  render(k === "ver");
+});
+
+document.getElementById("stage").addEventListener("click", (e) => {
+  if (e.target.closest("[data-open-diag]") && S.plat === "iphone") {
+    S.diag = true;
+    lastSnap = "";
+    render(false);
+    return;
+  }
+  if (e.target.closest("#scrim, #diagDone")) {
+    S.diag = false;
+    lastSnap = "";
+    render(false);
+    return;
+  }
+  if (e.target.closest("#reconBtn")) {
+    S.diag = false;
+    runSim(2200);
+    return;
+  }
+  const go = e.target.closest("[data-go]");
+  if (go) {
+    S.page = go.dataset.go;
+    S.sent = [];
+    syncToolbar();
+    lastSnap = "";
+    render(false);
+  }
+});
+
+// Auto-pick Mac or iPhone depending on screen width on initial load? Keep iPhone default since user mentioned mobile first, fitStage handles both!
+syncToolbar();
+render(true);
+</script>
+</body>
+</html>

@@ -49,71 +49,74 @@ struct HerConversation: View {
         let rows = herWithOnboarding(said + waiting, place, at: chat.flow?.at ?? .now)
         let busy = chat.live.flatMap(herBusyBubble)
         let asking = chat.convUp ? chat.live.flatMap(herPendingApproval) : nil
-        ScrollViewReader { proxy in
-            ScrollView {
-                HerRows(chat: chat, rows: rows, earlier: chat.live?.before != nil, busy: busy, machine: machine, marked: marked,
-                        topSeen: $topSeen, preview: $preview, page: $page, selecting: $selecting)
-                    .equatable()
-                    .background(HerScrollFinder(box: scrollView))
+        FollowingConnection(machine: machine, linkUp: herLinkUp(chat, state: state), chat: chat, state: state) { notice, openDiagnostics in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    HerRows(chat: chat, rows: rows, earlier: chat.live?.before != nil, busy: busy, notice: notice,
+                            openDiagnostics: openDiagnostics, machine: machine, marked: marked,
+                            topSeen: $topSeen, preview: $preview, page: $page, selecting: $selecting)
+                        .equatable()
+                        .background(HerScrollFinder(box: scrollView))
+                }
+                // A page read while the top is still near: the next one.
+                .onChange(of: chat.live?.before) { if topSeen || nearTop { Task { await chat.earlier() } } }
+                // A run's message, asked for from its page: brought into view and marked a moment.
+                .onChange(of: chat.revealRun, initial: true) {
+                    guard let run = chat.revealRun else { return }
+                    chat.revealRun = nil
+                    guard let key = rows.first(where: { $0.source?.runID == run })?.key else { return }
+                    reveal(key, in: proxy, after: .milliseconds(450))
+                }
+                // The message a reply quotes, asked for from its quote: the same. One that is not among those read
+                // here (earlier history) says so.
+                .onChange(of: chat.revealMessage, initial: true) {
+                    guard let key = chat.revealMessage else { return }
+                    chat.revealMessage = nil
+                    guard rows.contains(where: { $0.key == key }) else { return model.show(String(localized: "The message this replies to isn’t here anymore")) }
+                    reveal(key, in: proxy, after: .zero)
+                }
             }
-            // A page read while the top is still near: the next one.
-            .onChange(of: chat.live?.before) { if topSeen || nearTop { Task { await chat.earlier() } } }
-            // A run's message, asked for from its page: brought into view and marked a moment.
-            .onChange(of: chat.revealRun, initial: true) {
-                guard let run = chat.revealRun else { return }
-                chat.revealRun = nil
-                guard let key = rows.first(where: { $0.source?.runID == run })?.key else { return }
-                reveal(key, in: proxy, after: .milliseconds(450))
+            // As a session's page: open at the end, and stay there as it grows unless the owner scrolled up.
+            .scrollPosition($position)
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
+            // Earlier messages are read while the top is still two screens away (read only once the top showed, the
+            // page was at its very top, pulled past it even, and stayed there, showing the page just read and reading the
+            // next, to the first message).
+            .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top < 2 * $0.containerSize.height } action: { _, near in
+                nearTop = near
+                if near { Task { await chat.earlier() } }
             }
-            // The message a reply quotes, asked for from its quote: the same. One that is not among those read
-            // here (earlier history) says so.
-            .onChange(of: chat.revealMessage, initial: true) {
-                guard let key = chat.revealMessage else { return }
-                chat.revealMessage = nil
-                guard rows.contains(where: { $0.key == key }) else { return model.show(String(localized: "The message this replies to isn’t here anymore")) }
-                reveal(key, in: proxy, after: .zero)
+            // Put above what was first, they push what is in sight down by as much as they take: unless the end is
+            // followed, it is scrolled as far again, in the layout that puts them there. On the scroll view itself: that takes it while the finger is
+            // still on the page or it is still gliding, where a scroll asked of SwiftUI then (ScrollPosition, a
+            // ScrollViewReader's) was dropped, and what was in sight went a page away.
+            .onScrollGeometryChange(for: HerGrowth.self) { HerGrowth(first: said.first?.key, height: $0.contentSize.height) } action: { was, now in
+                guard !atEnd, was.first != now.first, let first = was.first, said.contains(where: { $0.key == first }), now.height > was.height,
+                      let view = scrollView.view else { return }
+                view.contentOffset.y += now.height - was.height
             }
-        }
-        // As a session's page: open at the end, and stay there as it grows unless the owner scrolled up.
-        .scrollPosition($position)
-        .defaultScrollAnchor(.bottom, for: .initialOffset)
-        // Earlier messages are read while the top is still two screens away (read only once the top showed, the
-        // page was at its very top, pulled past it even, and stayed there, showing the page just read and reading the
-        // next, to the first message).
-        .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top < 2 * $0.containerSize.height } action: { _, near in
-            nearTop = near
-            if near { Task { await chat.earlier() } }
-        }
-        // Put above what was first, they push what is in sight down by as much as they take: unless the end is
-        // followed, it is scrolled as far again, in the layout that puts them there. On the scroll view itself: that takes it while the finger is
-        // still on the page or it is still gliding, where a scroll asked of SwiftUI then (ScrollPosition, a
-        // ScrollViewReader's) was dropped, and what was in sight went a page away.
-        .onScrollGeometryChange(for: HerGrowth.self) { HerGrowth(first: said.first?.key, height: $0.contentSize.height) } action: { was, now in
-            guard !atEnd, was.first != now.first, let first = was.first, said.contains(where: { $0.key == first }), now.height > was.height,
-                  let view = scrollView.view else { return }
-            view.contentOffset.y += now.height - was.height
-        }
-        .onScrollPhaseChange { _, phase in scrolling = phase == .interacting || phase == .decelerating }
-        .onScrollGeometryChange(for: Bool.self) { fromEnd($0) < 80 } action: { _, end in
-            if scrolling { atEnd = end }
-        }
-        // As it grows, and as less of it shows (the keyboard comes up): what was last stays in view.
-        .onScrollGeometryChange(for: [CGFloat].self) { [$0.contentSize.height, $0.containerSize.height] } action: { _, _ in
-            if atEnd && !scrolling { position.scrollTo(edge: .bottom) }
-        }
-        .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, away in far.away = away }
-        .scrollDismissesKeyboard(.interactively)
-        .keyboardAwayOnTap()
-        .overlay {
-            if rows.isEmpty && busy == nil { HerEmpty(chat: chat, machine: machine, loading: noModel || (chat.session == nil && state == .ready)) }
-        }
-        .safeAreaInset(edge: .bottom) {
-            HerToEnd(far: far) {
-                atEnd = true
-                withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
-            } over: {
-                VStack(spacing: 0) {
-                    ConnectionCapsule(machine: machine, linkUp: herLinkUp(chat, state: state), chat: chat, state: state)
+            .onScrollPhaseChange { _, phase in scrolling = phase == .interacting || phase == .decelerating }
+            .onScrollGeometryChange(for: Bool.self) { fromEnd($0) < 80 } action: { _, end in
+                if scrolling { atEnd = end }
+            }
+            // As it grows, and as less of it shows (the keyboard comes up): what was last stays in view.
+            .onScrollGeometryChange(for: [CGFloat].self) { [$0.contentSize.height, $0.containerSize.height] } action: { _, _ in
+                if atEnd && !scrolling { position.scrollTo(edge: .bottom) }
+            }
+            .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, away in far.away = away }
+            .scrollDismissesKeyboard(.interactively)
+            .keyboardAwayOnTap()
+            .overlay {
+                if rows.isEmpty && busy == nil {
+                    HerEmpty(chat: chat, machine: machine, loading: noModel || (chat.session == nil && state == .ready),
+                             notice: notice, openDiagnostics: openDiagnostics)
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                HerToEnd(far: far) {
+                    atEnd = true
+                    withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
+                } over: {
                     if let asking {
                         HerApprovalPanel(chat: chat, approval: asking.approval, agent: asking.agent, waiting: asking.waiting).id(asking.approval.callID)
                     } else {
@@ -235,6 +238,9 @@ private struct HerRows: View, Equatable {
     let earlier: Bool
     /// What the busy bubble shows while Her answers.
     let busy: HerBusyBubble?
+    /// Connection notice shown in the bottom `···` bubble while Her's connection is down.
+    let notice: ConnectionNotice?
+    let openDiagnostics: () -> Void
     let machine: HerMachine
     let marked: String?
     @Binding var topSeen: Bool
@@ -243,7 +249,7 @@ private struct HerRows: View, Equatable {
     @Binding var selecting: HerSelecting?
 
     nonisolated static func == (a: HerRows, b: HerRows) -> Bool {
-        a.rows == b.rows && a.earlier == b.earlier && a.busy == b.busy && a.marked == b.marked && a.machine == b.machine
+        a.rows == b.rows && a.earlier == b.earlier && a.busy == b.busy && a.notice == b.notice && a.marked == b.marked && a.machine == b.machine
     }
 
     var body: some View {
@@ -260,7 +266,12 @@ private struct HerRows: View, Equatable {
             ForEach(Array(rows.enumerated()), id: \.element.key) { i, row in
                 HerRow(chat: chat, row: row, previous: i > 0 ? rows[i - 1] : nil, machine: machine, preview: $preview, page: $page, selecting: $selecting, marked: marked == row.key)
             }
-            if let busy { HerTyping(her: busy.her, agents: busy.agents).padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her)) }
+            if let notice, !rows.isEmpty || busy != nil {
+                HerConnectionBubble(notice: notice, machine: machine, openDiagnostics: openDiagnostics)
+                    .padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her))
+            } else if let busy {
+                HerTyping(her: busy.her, agents: busy.agents).padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her))
+            }
         }
         // As wide as the page with nothing in it too: the scroll view is as wide as this, and what shows over it
         // while the conversation is empty (her greeting) was laid out 40 points wide.
@@ -1041,9 +1052,12 @@ struct HerTyping: View {
 
 /// A new conversation, or one that can't be read now: Her's mark, her name, and a line; or the wait.
 private struct HerEmpty: View {
+    @Environment(\.scenePhase) private var phase
     let chat: HerChat
     let machine: HerMachine
     let loading: Bool
+    let notice: ConnectionNotice?
+    let openDiagnostics: () -> Void
 
     var body: some View {
         if loading {
@@ -1060,6 +1074,24 @@ private struct HerEmpty: View {
                     }
                 }
                 .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                if let notice {
+                    Button(action: openDiagnostics) {
+                        HStack(spacing: 8) {
+                            connectionGlyph(notice, markSize: 18)
+                            connectionNoticeWords(notice, machine: machine)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .shimmer(notice.retrying, paused: phase != .active)
+                            Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+                        }
+                        .font(.footnote)
+                        .padding(.vertical, 4)
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(Text("Opens connection diagnostics"))
+                    .accessibilityIdentifier("connection-line")
+                }
             }
             .padding(.horizontal, 40)
         }

@@ -19,9 +19,11 @@
 /* A new session: its question in the middle of what the box at the bottom leaves (the project a menu in it), the
    environment under it; the box where a session's is (her.css .cmp-zone). */
 .th-ask{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 32px 150px;text-align:center}
-/* Under a new session's question once sent: kept out of the layout (the question stays where it is), shown after 400 ms. */
+/* Under a new session's question: kept out of the layout (the question stays where it is); connection notices show
+   under their own waits, while Starting… waits 400 ms. */
 .th-ask-after{height:0;min-height:0;margin-top:-14px;display:flex;justify-content:center;overflow:visible}
-.th-ask-after .th-work{padding-top:26px;animation:th-work-in .2s ease-out .4s both}
+.th-ask-after .th-work{padding-top:26px;animation:th-work-in .18s ease-out both}
+.th-ask-after .th-work.delayed{animation-delay:.4s}
 @keyframes th-work-in{from{opacity:0}to{opacity:1}}
 /* A session at work, at the end of its conversation: the mark, what it does, for how long. One more row of it: as far
    under the last one as rows are apart (app.css .tr), starting where they start. */

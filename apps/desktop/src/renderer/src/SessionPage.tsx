@@ -27,12 +27,10 @@ import {
   applySessionEvent,
   backgroundTasksOf,
   clampRuntimeMode,
-  clockText,
   cycleReasoningSelection,
   dateOf,
   defaultModelSelectionFor,
   displayTitle,
-  elapsedSeconds,
   findProviderInstance,
   groupSteps,
   isSessionRunningOrWaiting,
@@ -49,14 +47,13 @@ import {
   statusTitle,
   updatedDate,
 } from "@hermesh/core";
-import { Mark } from "@hermesh/ui";
 import { local, sessions as sessionApi } from "./api";
-import { ConnectionCapsule } from "./ConnectionCapsule";
+import { ConnectionLine } from "./ConnectionCapsule";
 import { Icon } from "./icons";
 import { layoutOf, setCard } from "./layout";
 import { keys, ownKeys } from "./platform";
 import { TitleInput, grantLabel, unarchive } from "./Sidebar";
-import { errorText, useNow, useStore } from "./store";
+import { errorText, useStore } from "./store";
 import { Background, BackgroundLine } from "./session/Background";
 import { ChatFrame, Failed, PromptNote, Row, Stale, Unread, UserBubble, rowHeights, rowsOf, type ChatRow } from "./session/Chat";
 import { keepAttachmentBlob } from "./session/attachments";
@@ -599,7 +596,7 @@ export function SessionPage() {
       choice={choice}
       onMachine={pickMachine}
       onProject={(pid) => pickProject(machineId, pid)}
-      after={busySend && <WorkLine text={t("work.starting")} />}
+      after={<ConnectionLine machine={targetMachine} linkUp={reachable} work={busySend ? { text: t("work.starting") } : undefined} delayWork />}
       onAddProject={() =>
         st.set({
           sheet: {
@@ -709,11 +706,11 @@ export function SessionPage() {
   const ends = useMemo(() => replyEnds(steps, running), [steps, running]);
   const failure = sessionFailure(currentSession);
   const activeRun = activeProjection?.runs.find((r) => r.runId === currentSession?.activeRunId);
-  const workLine =
-    currentSession?.status === SessionStatus.PREPARING ? <WorkLine text={t("work.starting")} />
-    : currentSession?.status === SessionStatus.QUEUED && !currentSession.offlineQueued ? <WorkLine text={statusTitle(SessionStatus.QUEUED)} />
-    : currentSession?.status === SessionStatus.RUNNING ? <WorkLine text={t(`work.${sessionWork(activeProjection)}`)} since={dateOf(activeRun?.startedAt)} />
-    : null;
+  const work =
+    currentSession?.status === SessionStatus.PREPARING ? { text: t("work.starting") }
+    : currentSession?.status === SessionStatus.QUEUED && !currentSession.offlineQueued ? { text: statusTitle(SessionStatus.QUEUED) }
+    : currentSession?.status === SessionStatus.RUNNING ? { text: t(`work.${sessionWork(activeProjection)}`), since: dateOf(activeRun?.startedAt) }
+    : undefined;
   const writing = useMemo(() => sessionLiveReplies(activeProjection), [activeProjection]);
   // Whose files the replies' links are (docs/session-files.md §3): the session's machine, this Mac or another.
   const sessionMachine = currentSession?.machineId ?? "";
@@ -848,9 +845,9 @@ export function SessionPage() {
                     : <PromptNote kind="sending" />}
                 />
               )}
+              foot={<ConnectionLine machine={targetMachine} linkUp={reachable} />}
               control={(onHeight) => (
                 <ComposerZone onHeight={onHeight}>
-                  <ConnectionCapsule machine={targetMachine} linkUp={reachable} />
                   <ThreadComposer
                     {...composerProps}
                     value={prompt}
@@ -875,7 +872,6 @@ export function SessionPage() {
             {ask}
             <div className="cmp-zone">
               <div className="cmp-col">
-                <ConnectionCapsule machine={targetMachine} linkUp={reachable} />
                 {slashRow}
                 {placeRow}
                 <ThreadComposer
@@ -939,7 +935,7 @@ export function SessionPage() {
                 foot={
                   session && (
                     <>
-                      {workLine}
+                      <ConnectionLine machine={targetMachine} linkUp={archived || (following && reachable)} work={work} />
                       <BackgroundLine tasks={activeBgTasks} />
                       <Stale s={session} behind={behind} />
                       {failure && <Failed s={session} failure={failure} grant={grant} />}
@@ -948,7 +944,6 @@ export function SessionPage() {
                 }
                 control={archived ? undefined : (onHeight) => (
                   <ComposerZone onHeight={onHeight}>
-                    <ConnectionCapsule machine={targetMachine} linkUp={following && reachable} />
                     {requestCard}
                     {queueCard}
                     {slashRow}
@@ -990,18 +985,6 @@ export function SessionPage() {
 function startingRow(st: Starting): ChatRow {
   const it = { kind: "user" as const, seq: 1n, text: st.req.initialPrompt ?? "", attachments: st.files, at: st.at, asker: "owner" };
   return { key: "starting", kind: "user", it, end: false, live: false, previous: undefined };
-}
-
-/** A session at work, in a line at the end of its conversation (as the iPhone's): the mark, its beams lighting up in turn, what it does and, while the agent works, for how long. */
-function WorkLine({ text, since }: { text: string; since?: Date }) {
-  const now = useNow(1000);
-  return (
-    <div className="th-work" data-testid="thread-working">
-      <Mark size={18} variant="seq" />
-      <span className="shimmer">{text}</span>
-      {since && <span className="el">· {clockText(elapsedSeconds(since, now))}</span>}
-    </div>
-  );
 }
 
 /** The box at the bottom of the conversation, as Her's (her.css .cmp-zone), telling the conversation how much of it it covers. */

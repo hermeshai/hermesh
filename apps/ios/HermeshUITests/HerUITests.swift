@@ -974,8 +974,8 @@ extension HermeshUITests {
     }
 
     func herOffline() throws {
-        // Connected, nothing over the box; the Mac offline, the line over the box says so, and what sending does.
-        let line = app.descendants(matching: .any)["connection-capsule"].firstMatch
+        // Connected, no connection bubble at the foot; the Mac offline, the bubble at the foot says so, and what sending does.
+        let line = app.descendants(matching: .any)["connection-line"].firstMatch
         XCTAssertFalse(line.exists, "nothing said while the Mac answers")
         _ = try control("machine?up=0", method: "POST")
         XCTAssertTrue(line.waitForExistence(timeout: 120), "the line that says the Mac is offline")

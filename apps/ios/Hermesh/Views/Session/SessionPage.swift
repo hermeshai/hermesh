@@ -269,12 +269,9 @@ struct SessionPage: View {
         .scrollBounceBehavior(.always)
         .scrollDismissesKeyboard(.immediately)
         .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 0) {
-                ConnectionCapsule(machine: machine, linkUp: reachable)
-                VStack(spacing: 6) {
-                    placeRow
-                    box
-                }
+            VStack(spacing: 6) {
+                placeRow
+                box
             }
             .padding(.bottom, 4)
         }
@@ -314,31 +311,35 @@ struct SessionPage: View {
             .multilineTextAlignment(.center)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("new-session-title")
-            Menu {
-                Section("Environment") {
-                    ForEach(model.machines, id: \.machineID) { m in
-                        let note: String? = !m.online && !m.local ? String(localized: "Offline · messages wait until it’s back") : nil
-                        Button { pick(machine: m.machineID) } label: {
-                            if let note {
-                                Label { Text(m.machineName); Text(note) } icon: { if m.machineID == machineID { Image(systemName: "checkmark") } }
-                            } else {
-                                Label { Text(m.machineName) } icon: { if m.machineID == machineID { Image(systemName: "checkmark") } }
+            VStack(spacing: 8) {
+                Menu {
+                    Section("Environment") {
+                        ForEach(model.machines, id: \.machineID) { m in
+                            let note: String? = !m.online && !m.local ? String(localized: "Offline · messages wait until it’s back") : nil
+                            Button { pick(machine: m.machineID) } label: {
+                                if let note {
+                                    Label { Text(m.machineName); Text(note) } icon: { if m.machineID == machineID { Image(systemName: "checkmark") } }
+                                } else {
+                                    Label { Text(m.machineName) } icon: { if m.machineID == machineID { Image(systemName: "checkmark") } }
+                                }
                             }
+                            .accessibilityIdentifier("machine-\(m.machineName)")
                         }
-                        .accessibilityIdentifier("machine-\(m.machineName)")
                     }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: m_icon)
+                        Text(verbatim: machine?.machineName ?? "").lineLimit(1)
+                        if !online { Circle().fill(.tertiary).frame(width: 6, height: 6) }
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                    }
+                    .font(.subheadline).foregroundStyle(.secondary)
                 }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: m_icon)
-                    Text(verbatim: machine?.machineName ?? "").lineLimit(1)
-                    if !online { Circle().fill(.tertiary).frame(width: 6, height: 6) }
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                }
-                .font(.subheadline).foregroundStyle(.secondary)
+                .tint(.secondary)
+                .accessibilityIdentifier("thread-machine")
+                ConnectionLine(machine: machine, linkUp: reachable, centered: true)
+                    .frame(minHeight: 24)
             }
-            .tint(.secondary)
-            .accessibilityIdentifier("thread-machine")
         }
         .padding(.horizontal, 28)
     }
@@ -358,6 +359,7 @@ struct SessionPage: View {
                 }
                 PromptBubble(text: text, sent: st.at, attachments: st.request.attachments, machineID: st.request.machineID,
                              faded: st.refused == nil, note: note) { EmptyView() }
+                ConnectionLine(machine: machine, linkUp: reachable)
             }
             .padding(.horizontal, 20)
             .padding(.top, 13).padding(.bottom, 21)
@@ -365,11 +367,7 @@ struct SessionPage: View {
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .keyboardAwayOnTap()
         .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 0) {
-                ConnectionCapsule(machine: machine, linkUp: reachable)
-                box
-            }
-            .padding(.bottom, 4)
+            box.padding(.bottom, 4)
         }
         .sessionBar(nil, renaming: $renaming, deleting: $deleting,
                     starting: .init(title: firstLine(text), place: "\(machine?.machineName ?? "")/\(projectID)"))
@@ -405,20 +403,9 @@ struct SessionPage: View {
                     model.path.append(route)
                     return .handled
                 })
-                workLine(activeProj).frame(maxWidth: .infinity, alignment: .leading)
+                ConnectionLine(machine: machine, linkUp: s.status == .archived || (following && reachable), work: sessionWorkStatus(activeProj, steps: steps))
                 if let f = sessionFailure(currentSession) {
                     FailedView(session: s, failure: f, grant: grant)
-                } else if currentSession?.status == .idle, let last = steps.last {
-                    // A turn that went well needs no line; one whose background tasks still run says it waits on them.
-                    if case .item(.turnEnd) = last {} else if (currentSession?.activeBackgroundCount ?? 0) > 0 || activeBgTasks.contains(where: \.awaited) {
-                        let count = max(Int(currentSession?.activeBackgroundCount ?? 0), activeBgTasks.filter(\.awaited).count)
-                        let since = activeBgTasks.first(where: \.awaited).flatMap { dateOf($0.startedAt, set: $0.hasStartedAt) }
-                        WorkLine(
-                            text: Text("This reply finished; waiting for \(count) background task(s) to report back…"),
-                            since: since
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
                 }
             }
             .padding(.horizontal, 20)
@@ -428,21 +415,18 @@ struct SessionPage: View {
         .keyboardAwayOnTap()
         .followsEnd(id: sessionID, ready: historyReady(s), spoken: spoken, atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
             if s.status != .archived {
-                VStack(spacing: 0) {
-                    ConnectionCapsule(machine: machine, linkUp: following && reachable)
-                    VStack(spacing: 6) {
-                        if let req = pendingRequest(of: activeProj) {
-                            requestPanel(req, s)
-                        } else if let q = s.pendingQuestion {
-                            QuestionPanel(session: s, question: q) { answers, decline in
-                                if await model.answer(s, answers: answers, decline: decline) { spoken += 1 }
-                            }
-                            .id(q.questionID)
+                VStack(spacing: 6) {
+                    if let req = pendingRequest(of: activeProj) {
+                        requestPanel(req, s)
+                    } else if let q = s.pendingQuestion {
+                        QuestionPanel(session: s, question: q) { answers, decline in
+                            if await model.answer(s, answers: answers, decline: decline) { spoken += 1 }
                         }
-                        backgroundBar
-                        queue(activeProj)
-                        box
+                        .id(q.questionID)
                     }
+                    backgroundBar
+                    queue(activeProj)
+                    box
                 }
                 .padding(.bottom, 4)
             }
@@ -547,20 +531,33 @@ struct SessionPage: View {
         }
     }
 
-    @ViewBuilder private func workLine(_ activeProj: Hermesh_Session_V1_SessionProjection?) -> some View {
+    private func sessionWorkStatus(_ activeProj: Hermesh_Session_V1_SessionProjection?, steps: [Step]) -> SessionWorkStatus? {
         switch currentSession?.status {
-        case .preparing: WorkLine(text: Text("Starting…"))
-        case .queued where currentSession?.offlineQueued != true: WorkLine(text: Text(statusTitle(.queued)))
+        case .preparing:
+            return SessionWorkStatus(text: String(localized: "Starting…"))
+        case .queued where currentSession?.offlineQueued != true:
+            return SessionWorkStatus(text: statusTitle(.queued))
         case .running:
             let run = activeProj?.runs.first { $0.runID == currentSession?.activeRunID }
             let text = switch sessionWork(activeProj) {
-            case .tool: Text("Running tools…")
-            case .thinking: Text("Thinking…")
-            case .replying: Text("Replying…")
-            case .working: Text("Working…")
+            case .tool: String(localized: "Running tools…")
+            case .thinking: String(localized: "Thinking…")
+            case .replying: String(localized: "Replying…")
+            case .working: String(localized: "Working…")
             }
-            WorkLine(text: text, since: run.flatMap { dateOf($0.startedAt, set: $0.hasStartedAt) })
-        default: EmptyView()
+            return SessionWorkStatus(text: text, since: run.flatMap { dateOf($0.startedAt, set: $0.hasStartedAt) })
+        case .idle where sessionFailure(currentSession) == nil:
+            guard let last = steps.last else { return nil }
+            if case .item(.turnEnd) = last { return nil }
+            guard (currentSession?.activeBackgroundCount ?? 0) > 0 || activeBgTasks.contains(where: \.awaited) else { return nil }
+            let count = max(Int(currentSession?.activeBackgroundCount ?? 0), activeBgTasks.filter(\.awaited).count)
+            let since = activeBgTasks.first(where: \.awaited).flatMap { dateOf($0.startedAt, set: $0.hasStartedAt) }
+            return SessionWorkStatus(
+                text: String(localized: "This reply finished; waiting for \(count) background task(s) to report back…"),
+                since: since
+            )
+        default:
+            return nil
         }
     }
 
@@ -1163,22 +1160,6 @@ struct SessionPage: View {
         r.operation = op
         if op == .promoteToSteer { spoken += 1 }
         Task { do { _ = try await model.api?.manageQueue(r) } catch { model.report(error) } }
-    }
-}
-
-private struct WorkLine: View {
-    let text: Text
-    var since: Date?
-
-    var body: some View {
-        HStack(spacing: 8) {
-            MovingMark(size: 18, motion: .seq)
-            text.foregroundStyle(.secondary)
-            if let since { Text(since, style: .timer).monospacedDigit().foregroundStyle(.tertiary) }
-        }
-        .font(.footnote).lineLimit(1)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("thread-working")
     }
 }
 

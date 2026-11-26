@@ -24,8 +24,8 @@ extension HermeshUITests {
         XCTAssertTrue(chip("thread-project", contains: "临时工作区"), app.buttons["thread-project"].label)
 
         // Add a Project from the project menu: work-mac's own folders, browsed from here, and a folder made there. Only
-        // once work-mac answers (until then the line over the box says it connects, and Add Project is off).
-        XCTAssertTrue(app.descendants(matching: .any)["connection-capsule"].firstMatch.waitForNonExistence(timeout: 60), "work-mac connected")
+        // once work-mac answers (until then the line under the environment says it connects, and Add Project is off).
+        XCTAssertTrue(app.descendants(matching: .any)["connection-line"].firstMatch.waitForNonExistence(timeout: 60), "work-mac connected")
         tap("thread-project")
         tap("thread-add-project")
         XCTAssertTrue(app.navigationBars["添加项目"].waitForExistence(timeout: 10))
@@ -242,39 +242,99 @@ extension HermeshUITests {
         XCTAssertEqual(kept.value as? String, "高", "how hard it thinks, kept")
         tap("model-done")
 
-        // Aimed at owner-mac while it answers: nothing over the box. Gone offline, the line over the box says so and
-        // what sending does; a tap opens the diagnostics, about owner-mac first. Back, the line goes.
+        // Aimed at owner-mac while it answers: nothing under the environment. Gone offline, the line under the
+        // environment says so and what sending does; a tap opens the diagnostics, about owner-mac first. Back, it goes.
         pickMachine("owner-mac")
-        let capsule = app.descendants(matching: .any)["connection-capsule"].firstMatch
+        let line = app.descendants(matching: .any)["connection-line"].firstMatch
         sleep(2)
-        XCTAssertFalse(capsule.exists, "nothing said while owner-mac answers")
+        XCTAssertFalse(line.exists, "nothing said while owner-mac answers")
         _ = try control("machine?up=0", method: "POST")
-        XCTAssertTrue(capsule.waitForExistence(timeout: 120), "the line over the box")
-        XCTAssertTrue(waitUntil(timeout: 120) { capsule.label.contains("owner-mac 离线 · 消息会排队到它上线") }, capsule.label)
-        XCTAssertLessThan(capsule.frame.maxY, app.descendants(matching: .any)["thread-composer"].firstMatch.frame.minY, "over the box")
+        XCTAssertTrue(line.waitForExistence(timeout: 120), "the line under the environment")
+        XCTAssertTrue(waitUntil(timeout: 120) { line.label.contains("owner-mac 离线 · 消息会排队到它上线") }, line.label)
+        XCTAssertGreaterThan(line.frame.minY, app.buttons["thread-machine"].frame.maxY - 4, "under the environment")
+        XCTAssertLessThan(line.frame.maxY, app.descendants(matching: .any)["thread-composer"].firstMatch.frame.minY, "over the box")
         shot("composer-machine-offline")
-        capsule.tap()
+        line.tap()
         XCTAssertTrue(app.navigationBars["连接诊断"].waitForExistence(timeout: 10), "the diagnostics")
         XCTAssertTrue(text("owner-mac 离线了").waitForExistence(timeout: 10), "about owner-mac first")
         shot("composer-machine-offline-diagnostics")
         app.navigationBars["连接诊断"].buttons["完成"].tap()
         _ = try control("machine?up=1", method: "POST")
-        XCTAssertTrue(capsule.waitForNonExistence(timeout: 120), "gone once owner-mac is back")
+        XCTAssertTrue(line.waitForNonExistence(timeout: 120), "gone once owner-mac is back")
 
         // Sent while owner-mac is offline: the session's page at once, the message faded and, under it, that it goes
-        // once owner-mac is back, with Discard; nothing at work at the end, nothing over the box.
+        // once owner-mac is back, with Discard; nothing at work, and the inline connection line at the conversation's end.
         _ = try control("machine?up=0", method: "POST")
-        XCTAssertTrue(waitUntil(timeout: 120) { capsule.exists && capsule.label.contains("owner-mac 离线") }, "offline again")
+        XCTAssertTrue(waitUntil(timeout: 120) { line.exists && line.label.contains("owner-mac 离线") }, "offline again")
         send("say while_offline")
         let waiting = app.descendants(matching: .any)["prompt-note"].firstMatch
         XCTAssertTrue(waiting.waitForExistence(timeout: 30), "said under the message")
         XCTAssertTrue(text("等 owner-mac 在线后送达").waitForExistence(timeout: 30), "it goes once owner-mac is back")
         XCTAssertFalse(app.descendants(matching: .any)["thread-queued-0"].exists, "the message is its bubble, not the queue's")
         XCTAssertFalse(app.descendants(matching: .any)["thread-working"].exists, "nothing at work")
+        XCTAssertTrue(line.exists && line.label.contains("owner-mac 离线"), "inline connection line at the conversation's end")
         XCTAssertFalse(app.descendants(matching: .any)["thread-offline-queued"].exists, "nothing more over the box")
         shot("composer-offline-message")
         tap("prompt-discard")
         XCTAssertTrue(toast(containing: "已删除"), "discarded")
+        _ = try control("machine?up=1", method: "POST")
+    }
+
+    /// Inline connection status (Scheme A) on iPhone: under the environment picker on New Session, merged in place with
+    /// WorkLine while a session turn is running, and at the conversation's end while idle/offline-queued; tapping any
+    /// of them opens Connection Diagnostics.
+    ///
+    ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testConnectionLine go test ./e2e -run TestIPhone -v -timeout 20m
+    @objc func testConnectionLine() throws {
+        try join()
+
+        openMenu()
+        tap("new-session-place")
+        XCTAssertTrue(app.descendants(matching: .any)["new-session-title"].waitForExistence(timeout: 10))
+        pickMachine("owner-mac")
+
+        let line = app.descendants(matching: .any)["connection-line"].firstMatch
+        sleep(2)
+        XCTAssertFalse(line.exists, "nothing said while owner-mac answers")
+
+        // 1. New Session: under the environment picker, over the box; tapping opens Connection Diagnostics.
+        _ = try control("machine?up=0", method: "POST")
+        XCTAssertTrue(line.waitForExistence(timeout: 120), "the line under the environment")
+        XCTAssertTrue(waitUntil(timeout: 120) { line.label.contains("owner-mac 离线 · 消息会排队到它上线") }, line.label)
+        XCTAssertGreaterThan(line.frame.minY, app.buttons["thread-machine"].frame.maxY - 4, "under the environment")
+        XCTAssertLessThan(line.frame.maxY, app.descendants(matching: .any)["thread-composer"].firstMatch.frame.minY, "over the box")
+        line.tap()
+        XCTAssertTrue(app.navigationBars["连接诊断"].waitForExistence(timeout: 10), "the diagnostics")
+        XCTAssertTrue(text("owner-mac 离线了").waitForExistence(timeout: 10), "about owner-mac first")
+        app.navigationBars["连接诊断"].buttons["完成"].tap()
+        _ = try control("machine?up=1", method: "POST")
+        XCTAssertTrue(line.waitForNonExistence(timeout: 120), "gone once owner-mac is back")
+
+        // 2. Running Session: start a long tool run on owner-mac, then take owner-mac offline so WorkLine merges the
+        // connection notice in place.
+        send("shell sleep 1800")
+        let working = app.descendants(matching: .any)["thread-working"].firstMatch
+        XCTAssertTrue(working.waitForExistence(timeout: 30), "working line while running")
+        XCTAssertFalse(line.exists, "no connection notice while connected")
+        _ = try control("machine?up=0", method: "POST")
+        XCTAssertTrue(line.waitForExistence(timeout: 120), "connection notice merged in place")
+        XCTAssertTrue(working.exists, "still one working container")
+        XCTAssertTrue(waitUntil(timeout: 120) { line.label.contains("owner-mac 离线 · 消息会排队到它上线") }, line.label)
+        _ = try control("machine?up=1", method: "POST")
+        XCTAssertTrue(line.waitForNonExistence(timeout: 120), "connection notice gone once owner-mac is back")
+
+        // 3. Offline-queued Session: nothing at work, inline connection line at the conversation's end.
+        openMenu()
+        tap("new-session-place")
+        XCTAssertTrue(app.descendants(matching: .any)["new-session-title"].waitForExistence(timeout: 10))
+        pickMachine("owner-mac")
+        _ = try control("machine?up=0", method: "POST")
+        XCTAssertTrue(waitUntil(timeout: 120) { line.exists && line.label.contains("owner-mac 离线") }, "offline again")
+        send("say while_offline")
+        let waiting = app.descendants(matching: .any)["prompt-note"].firstMatch
+        XCTAssertTrue(waiting.waitForExistence(timeout: 30), "said under the message")
+        XCTAssertFalse(app.descendants(matching: .any)["thread-working"].exists, "nothing at work")
+        XCTAssertTrue(line.exists && line.label.contains("owner-mac 离线"), "inline connection line at the conversation's end")
         _ = try control("machine?up=1", method: "POST")
     }
 

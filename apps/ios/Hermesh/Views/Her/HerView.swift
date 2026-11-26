@@ -179,7 +179,8 @@ private struct HerPage: View {
 }
 
 /// Her's name tag under her avatar: her name, and what the team is doing; while Her answers (and isn't awaiting
-/// approval), her live status replaces her name in place. The connection is said above the box (ConnectionCapsule).
+/// approval), her live status replaces her name in place. The connection is said in the `···` bubble at the foot of
+/// her conversation (`HerConnectionBubble`).
 private struct HerTag: View {
     @Environment(\.accessibilityReduceMotion) private var still
     let name: String
