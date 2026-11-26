@@ -531,6 +531,58 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(map.waitForExistence(timeout: 10))
     }
 
+    /// Where the screen has side safe-area insets (iPhone Duo's side bar, or an iPhone turned on its side),
+    /// the deck clips at the column's edge and pages by the card's width, never bleeding the next card into the margin.
+    func testOverviewDeckSafeAreaClipping() {
+        app.terminate()
+        app.launchArguments += ["-HermeshTestTurns", "YES"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        addTeardownBlock { XCUIDevice.shared.orientation = .portrait }
+
+        enterWorkDemo()
+        let any = app.descendants(matching: .any)
+        let views = any["overview-views"].firstMatch
+        let deck = any["needs"].firstMatch
+        let front = any["needs-place"].firstMatch
+        let answer = any["quick-answer-Hello, world!"].firstMatch
+        let verify = any["verify-pairing"].firstMatch
+        XCTAssertTrue(views.waitForExistence(timeout: 15) && front.waitForExistence(timeout: 5))
+
+        for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
+            XCUIDevice.shared.orientation = orientation
+            sleep(2)
+            XCTAssertTrue(front.label.hasPrefix("1 / "), front.label)
+            let column = views.frame
+            // The deck's scroller stays inside the safe-area column rather than bleeding into side bars or margins.
+            XCTAssertEqual(deck.frame.minX, column.minX, accuracy: 2, "deck leading edge matches column (\(orientation.rawValue))")
+            XCTAssertEqual(deck.frame.maxX, column.maxX, accuracy: 2, "deck trailing edge matches column (\(orientation.rawValue))")
+            XCTAssertGreaterThanOrEqual(answer.frame.minX, column.minX - 1)
+            XCTAssertLessThanOrEqual(answer.frame.maxX, column.maxX + 1)
+            XCTAssertGreaterThan(verify.frame.minX, column.maxX, "next card clipped outside column (\(orientation.rawValue))")
+
+            if !answer.isHittable || answer.frame.maxY > app.frame.height - 65 {
+                let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
+                let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+                from.press(forDuration: 0.05, thenDragTo: to)
+            }
+            checkpoint("overview-deck-1-\(orientation.rawValue)")
+            deck.swipeLeft()
+            XCTAssertTrue(wait { front.label.hasPrefix("2 / ") }, front.label)
+            XCTAssertTrue(verify.waitForExistence(timeout: 5) && verify.isHittable)
+            XCTAssertGreaterThanOrEqual(verify.frame.minX, column.minX - 1, "second card aligned with column leading edge (\(orientation.rawValue))")
+            XCTAssertLessThanOrEqual(verify.frame.maxX, column.maxX + 1, "second card aligned with column trailing edge (\(orientation.rawValue))")
+            checkpoint("overview-deck-2-\(orientation.rawValue)")
+
+            deck.swipeRight()
+            XCTAssertTrue(wait { front.label.hasPrefix("1 / ") }, front.label)
+            if orientation == .portrait {
+                // Keep the scroll at the top before turning sideways.
+                app.swipeDown()
+            }
+        }
+    }
+
     private func wait(_ timeout: TimeInterval = 5, _ done: () -> Bool) -> Bool {
         let end = Date().addingTimeInterval(timeout)
         while !done() && Date() < end { RunLoop.current.run(until: Date().addingTimeInterval(0.2)) }
