@@ -153,28 +153,48 @@ public enum SessionGrouping: String, CaseIterable, Codable, Sendable {
     case status, date, project, agent, machine
 }
 
-/// How the session list is laid out: its grouping, which way it sorts by
-/// last activity, and whether rows show their metadata line (grant, coding
-/// agent, project and time). The same as the Mac's.
+/// How the session list sorts each section: workbench default (active by creation, others by last activity), creation time, or last activity.
+public enum SessionSort: String, CaseIterable, Codable, Sendable {
+    case `default`, created, updated
+}
+
+/// How the session list is laid out: its grouping, how each section sorts,
+/// which direction it goes, and whether rows show their metadata line (grant,
+/// coding agent, project and time). The same as the Mac's.
 public struct SessionListLayout: Equatable, Codable, Sendable {
     public var group: SessionGrouping = .status
+    public var sort: SessionSort = .default
     public var newestFirst = true
     public var metadata = false
 
-    /// By status, newest first, titles alone, until the owner picks a view (docs/her-team.md §16).
-    public init(group: SessionGrouping = .status, newestFirst: Bool = true, metadata: Bool = false) {
+    /// By status, workbench sort, newest first, titles alone, until the owner picks a view (docs/her-team.md §16).
+    public init(group: SessionGrouping = .status, sort: SessionSort = .default, newestFirst: Bool = true, metadata: Bool = false) {
         self.group = group
+        self.sort = sort
         self.newestFirst = newestFirst
         self.metadata = metadata
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case group, sort, newestFirst, metadata
+    }
+
+    public init(from decoder: Swift.Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        group = try c.decodeIfPresent(SessionGrouping.self, forKey: .group) ?? .status
+        sort = try c.decodeIfPresent(SessionSort.self, forKey: .sort) ?? .default
+        newestFirst = try c.decodeIfPresent(Bool.self, forKey: .newestFirst) ?? true
+        metadata = try c.decodeIfPresent(Bool.self, forKey: .metadata) ?? false
+    }
 }
 
-/// A state or a day: what a section is called when the list groups by status or date.
+/// Pinned, a state or a day: what a section is called when the list groups by status or date.
 public enum SessionBucket: String, CaseIterable, Sendable {
-    case attention, active, done, today, yesterday, week, earlier, archived
+    case pinned, attention, active, done, today, yesterday, week, earlier, archived
 
     public var title: String {
         switch self {
+        case .pinned: String(localized: "Pinned", bundle: .module)
         case .attention: String(localized: "Needs You", bundle: .module)
         case .active: String(localized: "In Progress", bundle: .module)
         case .done: String(localized: "Done", bundle: .module)
@@ -190,6 +210,20 @@ public enum SessionBucket: String, CaseIterable, Sendable {
 /// Needs the owner, runs, or is done.
 public func statusOf(_ s: Session) -> SessionBucket {
     s.needsAttention ? .attention : s.isActive ? .active : .done
+}
+
+/// When a session's current state began for activity sorting without intra-turn heartbeat jitter.
+public func activityDate(_ s: Session) -> Date {
+    s.isActive && !s.needsAttention ? (s.turnStartedDate ?? s.createdDate) : s.updatedDate
+}
+
+/// Places `movedID` at insertion slot `slot` (0...currentIDs.count) among `currentIDs`.
+public func reorderIDs(_ currentIDs: [String], movedID: String, slot: Int) -> [String] {
+    let orig = currentIDs.firstIndex(of: movedID)
+    var without = currentIDs.filter { $0 != movedID }
+    let idx = if let orig, orig < slot { slot - 1 } else { slot }
+    without.insert(movedID, at: max(0, min(without.count, idx)))
+    return without
 }
 
 /// The day it was last active; "week" is the six days before today, not the calendar week.
@@ -229,28 +263,63 @@ public struct SessionFilter: Equatable, Sendable {
 }
 
 public struct SessionSection: Identifiable {
-    /// The grouping, or nil for the archived sessions' own section.
+    /// The grouping, or nil for the pinned and archived sessions' own sections.
     public let grouping: SessionGrouping?
     /// A state or a day (a SessionBucket's raw value), a project, a coding agent, or a machine id.
     public let key: String
     public let sessions: [Session]
-    public var id: String { "\(grouping?.rawValue ?? "archived"):\(key)" }
+    public var id: String { "\(grouping?.rawValue ?? key):\(key)" }
 }
 
-/// The list as the view lays it out, each section sorted by last activity.
-/// States keep their order (needs you, running, done); days follow the sort;
-/// projects and coding agents go by name, machines in the order given
-/// (unknown ones last). Archived sessions, when shown, are a section of their own at the end.
+private func sortWithManualOrder(
+    _ list: [Session],
+    timeOf: (Session) -> Date,
+    newestFirst: Bool,
+    manualOrder: [String] = [],
+    manualApplies: (Session) -> Bool = { _ in true }
+) -> [Session] {
+    func cmp(_ a: Date, _ b: Date) -> Bool { newestFirst ? a > b : a < b }
+    if manualOrder.isEmpty {
+        return list.sorted { cmp(timeOf($0), timeOf($1)) }
+    }
+    var present: [String: Session] = [:]
+    for s in list where manualApplies(s) { present[s.sessionID] = s }
+    let orderedIDs = manualOrder.filter { present[$0] != nil }
+    if orderedIDs.isEmpty {
+        return list.sorted { cmp(timeOf($0), timeOf($1)) }
+    }
+    let slotTimes = orderedIDs.map { timeOf(present[$0]!) }.sorted(by: cmp)
+    var assigned: [String: (Date, Int)] = [:]
+    for (rank, id) in orderedIDs.enumerated() { assigned[id] = (slotTimes[rank], rank) }
+    return list.sorted { a, b in
+        let ma = assigned[a.sessionID], mb = assigned[b.sessionID]
+        let ta = ma?.0 ?? timeOf(a), tb = mb?.0 ?? timeOf(b)
+        if ta != tb { return cmp(ta, tb) }
+        if let ma, let mb { return ma.1 < mb.1 }
+        return false
+    }
+}
+
+/// The list as the view lays it out. Pinned sessions sit in their own section
+/// at the top (whatever the grouping); active sessions sort by creation time
+/// (plus any manual drag order) so concurrent tool heartbeats never jump rows,
+/// while sessions needing attention or done sort by when they settled.
 ///
 /// alwaysActive: by status, the running section stays while nothing runs, empty, so the menu always shows it
 /// (docs/her-team.md §16); not while there is no session at all.
 public func sessionSections(_ sessions: [Session], view: SessionListLayout, archived: Bool, now: Date, machines: [String] = [],
-                            alwaysActive: Bool = false, calendar: Calendar = .current) -> [SessionSection] {
+                            alwaysActive: Bool = false, pinnedOrder: [String] = [], activeOrder: [String] = [],
+                            calendar: Calendar = .current) -> [SessionSection] {
     var by: [String: [Session]] = [:]
+    var pinned: [Session] = []
     var gone: [Session] = []
     for s in sessions {
         if s.status == .archived {
             if archived { gone.append(s) }
+            continue
+        }
+        if s.pinned {
+            pinned.append(s)
             continue
         }
         let k = switch view.group {
@@ -270,12 +339,33 @@ public func sessionSections(_ sessions: [Session], view: SessionListLayout, arch
     case .agent: by.keys.sorted { agentTitle($0).localizedStandardCompare(agentTitle($1)) == .orderedAscending }
     case .machine: by.keys.sorted { (machines.firstIndex(of: $0) ?? .max, $0) < (machines.firstIndex(of: $1) ?? .max, $1) }
     }
-    func sorted(_ list: [Session]) -> [Session] {
-        list.sorted { view.newestFirst ? $0.updatedDate > $1.updatedDate : $0.updatedDate < $1.updatedDate }
+    func timeFor(_ s: Session) -> Date {
+        switch view.sort {
+        case .created: s.createdDate
+        case .updated: activityDate(s)
+        case .default: s.isActive && !s.needsAttention ? s.createdDate : s.updatedDate
+        }
+    }
+    func sorted(_ list: [Session], isActiveBucket: Bool = false) -> [Session] {
+        sortWithManualOrder(list, timeOf: timeFor, newestFirst: view.newestFirst, manualOrder: activeOrder) {
+            isActiveBucket || ($0.isActive && !$0.needsAttention)
+        }
     }
     let active = SessionBucket.active.rawValue
-    let keep = alwaysActive && view.group == .status && !by.isEmpty
-    var out = order.compactMap { k in by[k].map { SessionSection(grouping: view.group, key: k, sessions: sorted($0)) } ?? (keep && k == active ? SessionSection(grouping: .status, key: k, sessions: []) : nil) }
+    let keep = alwaysActive && view.group == .status && (!by.isEmpty || !pinned.isEmpty)
+    var out: [SessionSection] = []
+    if !pinned.isEmpty {
+        let pinTime: (Session) -> Date = { view.sort == .updated ? activityDate($0) : $0.createdDate }
+        let sortedPinned = sortWithManualOrder(pinned, timeOf: pinTime, newestFirst: view.newestFirst, manualOrder: pinnedOrder)
+        out.append(SessionSection(grouping: nil, key: SessionBucket.pinned.rawValue, sessions: sortedPinned))
+    }
+    for k in order {
+        if let list = by[k] {
+            out.append(SessionSection(grouping: view.group, key: k, sessions: sorted(list, isActiveBucket: view.group == .status && k == active)))
+        } else if keep && k == active {
+            out.append(SessionSection(grouping: .status, key: k, sessions: []))
+        }
+    }
     if !gone.isEmpty { out.append(SessionSection(grouping: nil, key: SessionBucket.archived.rawValue, sessions: sorted(gone))) }
     return out
 }

@@ -73,7 +73,8 @@
     "pairing": "连接请求",
     "sentByYou": "你派的",
     "signedIn": "已登录",
-    "signedOut": "未登录"
+    "signedOut": "未登录",
+    "pinDrop": "拖到这里置顶"
   },
   "accountMenu": {
     "settings": "设置…",
@@ -84,6 +85,8 @@
   },
   "sessionMenu": {
     "open": "打开",
+    "pin": "置顶",
+    "unpin": "取消置顶",
     "rename": "重命名",
     "archive": "归档",
     "unarchive": "取消归档",
@@ -114,7 +117,10 @@
     "byProject": "按项目",
     "byAgent": "按 Agent",
     "byMachine": "按环境",
+    "defaultSort": "默认（进行中按创建）",
+    "created": "创建时间",
     "lastActive": "最后活跃时间",
+    "resetOrder": "恢复默认顺序",
     "newestFirst": "最新在前",
     "oldestFirst": "最早在前",
     "metadata": "元数据",

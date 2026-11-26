@@ -76,7 +76,8 @@
     "pairing": "Request to connect",
     "sentByYou": "Sent by You",
     "signedIn": "Signed in",
-    "signedOut": "Not signed in"
+    "signedOut": "Not signed in",
+    "pinDrop": "Drop here to pin"
   },
   "accountMenu": {
     "settings": "Settings…",
@@ -87,6 +88,8 @@
   },
   "sessionMenu": {
     "open": "Open",
+    "pin": "Pin",
+    "unpin": "Unpin",
     "rename": "Rename",
     "archive": "Archive",
     "unarchive": "Unarchive",
@@ -117,7 +120,10 @@
     "byProject": "By Project",
     "byAgent": "By Agent",
     "byMachine": "By Environment",
+    "defaultSort": "Default (In Progress by Created)",
+    "created": "Created",
     "lastActive": "Last Active",
+    "resetOrder": "Reset Custom Order",
     "newestFirst": "Newest First",
     "oldestFirst": "Oldest First",
     "metadata": "Metadata",

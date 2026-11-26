@@ -99,6 +99,11 @@ struct SessionActions: View {
     @Binding var deleting: Bool
 
     var body: some View {
+        if session.status != .archived {
+            Button(session.pinned ? "Unpin" : "Pin", systemImage: session.pinned ? "pin.slash" : "pin") {
+                Task { await model.setPinned(session, !session.pinned) }
+            }
+        }
         Button("Rename", systemImage: "pencil") { renaming = true }
         if session.status == .archived {
             Button("Unarchive", systemImage: "tray.and.arrow.up") { Task { await model.setArchived(session, false) } }
@@ -178,10 +183,23 @@ struct ViewMenu: View {
                 Text(groupName(model.listView.group))
             }
             Menu {
-                Picker("Sort By", selection: .constant(0)) { Text("Last Active").tag(0) }
+                Picker("Sort By", selection: $model.listView.sort) {
+                    Text("Default (In Progress by Created)").tag(SessionSort.default)
+                    Text("Created").tag(SessionSort.created)
+                    Text("Last Active").tag(SessionSort.updated)
+                }
+                .pickerStyle(.inline)
                 Picker("Order", selection: $model.listView.newestFirst) {
                     Text("Newest First").tag(true)
                     Text("Oldest First").tag(false)
+                }
+                .pickerStyle(.inline)
+                if !model.activeOrder.isEmpty || !model.pinnedOrder.isEmpty {
+                    Divider()
+                    Button("Reset Custom Order") {
+                        model.activeOrder = []
+                        model.pinnedOrder = []
+                    }
                 }
             } label: {
                 Text("Sort")

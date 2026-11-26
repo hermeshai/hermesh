@@ -1,6 +1,6 @@
 {
   "nav": {
-    "newThread": "新会话",
+    "newThread": "新建",
     "threads": "原生会话",
     "newIn": "在 {{project}} 里新建会话"
   },

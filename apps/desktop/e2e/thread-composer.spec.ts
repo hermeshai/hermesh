@@ -16,7 +16,7 @@ test("a session on another machine: its folder added as a project, the model pic
   try {
     // New Session sits over Her; it opens the composer.
     const nav = page.locator(".side-nav").getByRole("button");
-    await expect(nav.first()).toContainText("新会话");
+    await expect(nav.first()).toContainText("新建");
     await page.getByTestId("nav-new-thread").click();
     await expect(page.getByTestId("thread-launch-card")).toBeVisible();
     await expect(page.getByTestId("thread-title")).toHaveText("新会话");

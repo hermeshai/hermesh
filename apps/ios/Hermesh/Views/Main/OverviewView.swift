@@ -366,7 +366,7 @@ struct TasksView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let sections = sessionSections(model.sessions, view: SessionListLayout(group: .date), archived: false, now: model.now)
+        let sections = sessionSections(model.sessions, view: SessionListLayout(group: .date), archived: false, now: model.now, pinnedOrder: model.pinnedOrder, activeOrder: model.activeOrder)
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 8) {
                 ForEach(sections) { section in

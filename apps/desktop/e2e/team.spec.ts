@@ -33,7 +33,7 @@ test("the sidebar is Her, the overview and every session; hidden, it is gone and
   const { app, page } = await launch();
   await page.setViewportSize({ width: 1240, height: 800 });
   const sidebar = page.getByRole("complementary", { name: "边栏" });
-  await expect(page.locator(".side-nav .nav-i")).toHaveText([/^新会话/, /^Her/, /^概览/]);
+  await expect(page.locator(".side-nav .nav-i")).toHaveText([/^新建/, /^Her/, /^概览/]);
   // The overview's row: a dot while something waits on the owner, nothing while sessions run; no numbers.
   const overview = page.locator(".side-nav").getByRole("button", { name: /^概览/ });
   await expect(overview.getByRole("img", { name: /项需要处理/ })).toBeVisible();

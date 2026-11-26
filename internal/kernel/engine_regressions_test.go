@@ -183,6 +183,9 @@ func TestPinKeepsGrantCeiling(t *testing.T) {
 	if res.Session.MaxRuntimeMode != l.Session.MaxRuntimeMode || res.Session.EffectiveRuntimeMode != l.Session.EffectiveRuntimeMode {
 		t.Errorf("pinning changed runtime ceiling/mode of a grant-created session")
 	}
+	if !res.Session.UpdatedAt.AsTime().Equal(l.Session.UpdatedAt.AsTime()) {
+		t.Errorf("pinning changed UpdatedAt: got %v, want %v", res.Session.UpdatedAt.AsTime(), l.Session.UpdatedAt.AsTime())
+	}
 }
 
 // Regression: ForkSession never checks allowsAgent on req.ModelSelection, and DispatchMessage only
