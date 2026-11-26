@@ -42,7 +42,7 @@ test("the sidebar keeps one rhythm, one heading per group and a quiet foot", asy
   const her = await box(nav.getByRole("button", { name: /^Her/ }));
   const overview = await box(nav.getByRole("button", { name: /^概览/ }));
   expect(overview.height).toBe(32);
-  expect(overview.y - her.y).toBe(34);
+  expect(overview.y - her.y).toBe(38);
   // Search shares the top band with the toggle, at its end.
   const search = page.locator(".side-top").getByRole("button", { name: "搜索" });
   expect(Math.abs((await centre(search)) - hide)).toBeLessThanOrEqual(1);
@@ -60,7 +60,7 @@ test("the sidebar keeps one rhythm, one heading per group and a quiet foot", asy
   const title = list.getByRole("listitem").first().locator(".stitle");
   expect(await title.evaluate((el) => [getComputedStyle(el).fontSize, getComputedStyle(el).lineHeight])).toEqual(["14px", "20px"]);
   expect(await heading.evaluate((el) => getComputedStyle(el).fontSize)).toBe("12.5px");
-  expect(await list.locator(".grp-h").first().evaluate((el) => getComputedStyle(el).fontSize)).toBe("13px");
+  expect(await list.locator(".grp-h").first().evaluate((el) => getComputedStyle(el).fontSize)).toBe("12px");
   // No numbers: the group headings are their names alone.
   for (const h of await list.locator(".grp-h").allInnerTexts()) expect(h).not.toMatch(/\d/);
 

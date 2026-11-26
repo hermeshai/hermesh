@@ -218,9 +218,11 @@ button{font:inherit;color:inherit}
 .tb{height:28px;min-width:28px;border:0;background:transparent;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--l2);gap:5px;padding:0 6px}
 .tb:hover{background:var(--fill2);color:var(--l1)}
 .tb.on{background:var(--fill2);color:var(--l1)}
+/* Toolbar glyphs a step heavier than those in text, so a 28px button reads at a glance. */
+.tb .ic{stroke-width:1.45}
 /* Her and the overview, rows 32 high, 34 apart; then the sessions, with no line between. */
-.side-nav{padding:0 8px 8px;display:flex;flex-direction:column;gap:2px;flex:none}
-.nav-i{display:flex;align-items:center;gap:9px;height:32px;padding:0 9px;border-radius:8px;font-size:14px;color:var(--side-fg);border:0;background:none;width:100%;text-align:left}
+.side-nav{padding:12px 8px 8px;display:flex;flex-direction:column;gap:6px;flex:none}
+.nav-i{display:flex;align-items:center;gap:6px;height:32px;padding:0 9px;border-radius:8px;font-size:14px;color:var(--side-fg);border:0;background:none;width:100%;text-align:left}
 .nav-i .ic{width:18px;height:18px;color:currentColor}
 /* The shortcut shows on hover only: the menus say it too. */
 .nav-i .kbd{margin-left:auto;opacity:0;transition:opacity .12s}
@@ -247,7 +249,7 @@ button{font:inherit;color:inherit}
 .side-empty{display:flex;flex-direction:column;gap:3px;text-align:center;padding:60px 14px;color:var(--l3);font-size:12.5px;line-height:1.6}
 .side-empty b{color:var(--l2);font-weight:var(--font-weight-medium);font-size:var(--fs-text)}
 /* A group's heading: its title and ▾ (▸ when collapsed); a click collapses or opens it. */
-.grp-h{position:sticky;top:0;z-index:2;font:inherit;font-size:13px;font-weight:400;color:var(--l2);padding:14px 10px 5px;margin-bottom:1px;display:flex;align-items:center;gap:6px;background:var(--side-head);border:0;width:100%;text-align:left}
+.grp-h{position:sticky;top:0;z-index:2;font:inherit;font-size:12px;font-weight:var(--font-weight-medium);line-height:16px;letter-spacing:-.015em;color:var(--l2);padding:14px 10px 5px;margin-bottom:1px;display:flex;align-items:center;gap:6px;background:var(--side-head);border:0;width:100%;text-align:left}
 .side-sessions>[role=group]:first-child .grp-h{padding-top:6px}
 .grp-h:hover{color:var(--l1)}
 .grp-h .ic{width:16px;height:16px;color:var(--l2);transition:transform .15s var(--ease-out)}
@@ -293,10 +295,10 @@ html.vibrant .grp-hrow{position:static;background:transparent}
 @keyframes stitle-run{0%{transform:translateX(-33.3333%)}93.75%,100%{transform:translateX(33.3333%)}}
 @keyframes stitle-run-back{0%{transform:translateX(100%)}93.75%,100%{transform:translateX(-100%)}}
 @media (prefers-reduced-motion:reduce){.stitle.run{color:inherit}.stitle .shine{display:none}}
-.smeta{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--l2);flex:none;font-variant-numeric:tabular-nums}
-.sl2{display:flex;align-items:baseline;gap:8px;font-size:11px;color:color-mix(in srgb,var(--l2) 78%,transparent);margin-top:2px}
+.smeta{display:inline-flex;align-items:center;gap:5px;font-size:12px;line-height:16px;color:var(--l2);flex:none;font-variant-numeric:tabular-nums}
+.sl2{display:flex;align-items:baseline;gap:8px;font-size:12px;line-height:16px;color:color-mix(in srgb,var(--l2) 78%,transparent);margin-top:2px}
 .sl2t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.stime{flex:none;font-size:11px;font-variant-numeric:tabular-nums}
+.stime{flex:none;font-size:12px;font-variant-numeric:tabular-nums}
 .srow.flash{animation:flash 1.2s ease-out}
 @keyframes flash{0%{background:var(--accent-bg)}100%{background:transparent}}
 .loadrow{display:flex;align-items:center;justify-content:center;gap:8px;height:40px;color:var(--l2);font-size:12px}
@@ -340,8 +342,8 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .cscroll{flex:1;overflow-y:auto;min-height:0}
 /* overview */
 .ov{padding:0 var(--sp-4) var(--sp-5);display:flex;flex-direction:column;gap:var(--sp-4);max-width:980px;margin:0 auto}
-/* The title row is as high as ＋ and sits on the sidebar's first button's line (the toolbar above is 44 high, and the sidebar's first button centres at 61). */
-.ov-h{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);height:32px;margin-bottom:calc(var(--sp-2) - var(--sp-4))}
+/* The title row is as high as ＋ and sits on the sidebar's first button's line (the toolbar above is 44 high, and the sidebar's first button centres at 72). */
+.ov-h{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);height:32px;margin-top:12px;margin-bottom:calc(var(--sp-2) - var(--sp-4))}
 .ov-t{display:flex;align-items:baseline;gap:var(--sp-2);min-width:0}
 .ov-h h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-.01em}
 .ov-h span{color:var(--l2);font-size:var(--fs-text)}
