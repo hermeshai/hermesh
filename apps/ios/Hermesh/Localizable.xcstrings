@@ -1,6 +1,256 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "(no output)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "（无输出）"
+          }
+        }
+      }
+    },
+    "Collapse Output": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起输出"
+          }
+        }
+      }
+    },
+    "Command result (exit code %lld):": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行结果（退出码 %lld）："
+          }
+        }
+      }
+    },
+    "Command stopped manually; output so far:": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行已手动停止，当前输出："
+          }
+        }
+      }
+    },
+    "Copy Command": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝命令"
+          }
+        }
+      }
+    },
+    "Copy Output": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拷贝输出"
+          }
+        }
+      }
+    },
+    "Direct shell": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "命令直通"
+          }
+        }
+      }
+    },
+    "Exit %lld · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出码 %1$lld · %2$@"
+          }
+        }
+      }
+    },
+    "Exit 0 · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出码 0 · %@"
+          }
+        }
+      }
+    },
+    "Expand Output": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "展开输出"
+          }
+        }
+      }
+    },
+    "Failed to run": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行失败"
+          }
+        }
+      }
+    },
+    "Hidden characters": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "含隐藏字符"
+          }
+        }
+      }
+    },
+    "Hide Secrets": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐藏敏感密钥"
+          }
+        }
+      }
+    },
+    "Rerun": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重跑"
+          }
+        }
+      }
+    },
+    "Reveal Masked Secrets": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示已遮罩密钥"
+          }
+        }
+      }
+    },
+    "Run": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行"
+          }
+        }
+      }
+    },
+    "Run Anyway": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认运行"
+          }
+        }
+      }
+    },
+    "Run in Workspace": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在当前工作区运行"
+          }
+        }
+      }
+    },
+    "Run…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行…"
+          }
+        }
+      }
+    },
+    "Send to Chat": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发入对话"
+          }
+        }
+      }
+    },
+    "Sent to chat": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已发入对话"
+          }
+        }
+      }
+    },
+    "Stopped · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已停止 · %@"
+          }
+        }
+      }
+    },
+    "This script contains destructive operations. Run it in the current workspace?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "包含删除或修改风险操作，确认在当前工作区执行吗？"
+          }
+        }
+      }
+    },
+    "Timed out · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "执行超时 · %@"
+          }
+        }
+      }
+    },
+    "Waiting for output…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待输出…"
+          }
+        }
+      }
+    },
     " (optional)": {
       "localizations": {
         "zh-Hans": {

@@ -232,6 +232,14 @@ public final class LocalAPI: @unchecked Sendable {
         return streamSession("SubscribeSession", r)
     }
 
+    public func runCommand(sessionID: String, command: String, machineID: String = "") -> AsyncThrowingStream<Hermesh_Session_V1_RunCommandEvent, Error> {
+        var r = Hermesh_Session_V1_RunCommandRequest()
+        r.machineID = machineID
+        r.sessionID = sessionID
+        r.command = command
+        return streamSession("RunCommand", r)
+    }
+
     public func dispatchMessage(_ req: Hermesh_Session_V1_DispatchMessageRequest) async throws -> Hermesh_Session_V1_DispatchMessageResponse {
         try await callSession("DispatchMessage", req, timeout: 20)
     }
