@@ -147,13 +147,13 @@ test("the page is the conversation alone: no tabs, and no line or link after a f
   await app.close();
 });
 
-test("the conversation and the box under it are one column: a reply's words, its code, steps and the work line start where the box starts, and a message ends where it ends", async () => {
+test("the conversation column sits 20px inside the composer at every width, with at least 32px composer and 52px content gutters from the sidebar", async () => {
   await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "对齐", "--prompt", "say 一句话\\n\\n```\\necho hi\\n```", "--wait");
   const { app, page } = await launch();
   await page.setViewportSize({ width: 1440, height: 800 });
   const log = page.getByRole("log", { name: "对话" });
   const box = async () => (await page.locator(".th-cmp").boundingBox())!;
-  /** How far a thing starts from where the box starts, and ends from where the box ends. */
+  /** How far a thing starts from where the box starts (+20px), and ends from where the box ends (-20px). */
   const edges = async (l: Locator) => {
     const [b, c] = [(await l.boundingBox())!, await box()];
     return { left: b.x - c.x, right: b.x + b.width - (c.x + c.width) };
@@ -161,21 +161,55 @@ test("the conversation and the box under it are one column: a reply's words, its
 
   await open(page, "对齐");
   const reply = log.locator(".am");
-  expect(Math.abs((await edges(reply.locator(".md p"))).left)).toBeLessThan(0.5);
-  for (const edge of Object.values(await edges(reply.locator(".cblock")))) expect(Math.abs(edge)).toBeLessThan(0.5);
-  expect(Math.abs((await edges(log.locator(".um .bub"))).right)).toBeLessThan(0.5);
-  // Copy, on hover under the reply: its glyph, not its plate, starts on that line.
+  expect(Math.abs((await edges(reply.locator(".md p"))).left - 20)).toBeLessThan(0.5);
+  expect(Math.abs((await edges(reply.locator(".cblock"))).left - 20)).toBeLessThan(0.5);
+  expect(Math.abs((await edges(reply.locator(".cblock"))).right + 20)).toBeLessThan(0.5);
+  expect(Math.abs((await edges(log.locator(".um .bub"))).right + 20)).toBeLessThan(0.5);
+  // Copy, on hover under the reply: its glyph, not its plate, starts on the content column's left line.
   await reply.hover();
-  expect(Math.abs((await edges(reply.locator(".msg-act").getByRole("button", { name: "拷贝" }).locator(".ic"))).left)).toBeLessThan(1);
+  expect(Math.abs((await edges(reply.locator(".msg-act").getByRole("button", { name: "拷贝" }).locator(".ic"))).left - 20)).toBeLessThan(1);
+
+  // Across widths (wide centered, default 1240 docked, narrow 900 with sidebar, and with the side panel open):
+  // the composer stays >= 32px from the sidebar, and the content column stays 20px further in (>= 52px).
+  const sideRight = async () => {
+    const s = await page.locator(".side").boundingBox();
+    return s ? s.x + s.width : 0;
+  };
+  for (const width of [1440, 1240, 900]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width);
+    const [sr, c, p, cb] = [await sideRight(), await box(), (await reply.locator(".md p").boundingBox())!, (await reply.locator(".cblock").boundingBox())!];
+    if (width === 1440) {
+      expect(c.x - sr).toBeGreaterThan(32);
+    } else {
+      expect(Math.abs(c.x - sr - 32)).toBeLessThan(1);
+    }
+    expect(Math.abs(p.x - sr - (c.x - sr + 20))).toBeLessThan(1);
+    expect(p.x - sr).toBeGreaterThanOrEqual(51.5);
+    expect(Math.abs((c.x + c.width) - (cb.x + cb.width) - 20)).toBeLessThan(1);
+  }
+  await page.setViewportSize({ width: 1240, height: 800 });
+  await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1240);
+  await page.getByTestId("toolbar-panel-btn").click();
+  await expect(page.getByTestId("side-panel")).toBeVisible();
+  {
+    const [sr, c, p, cb] = [await sideRight(), await box(), (await reply.locator(".md p").boundingBox())!, (await reply.locator(".cblock").boundingBox())!];
+    expect(Math.abs(c.x - sr - 32)).toBeLessThan(1);
+    expect(Math.abs(p.x - sr - 52)).toBeLessThan(1);
+    expect(Math.abs((c.x + c.width) - (cb.x + cb.width) - 20)).toBeLessThan(1);
+  }
+  await page.getByTestId("toolbar-panel-btn").click();
+  await page.setViewportSize({ width: 1440, height: 800 });
+  await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1440);
 
   await open(page, "写 hello");
-  expect(Math.abs((await edges(log.getByRole("button", { name: "编辑了 1 个文件、运行了 1 条命令" }))).left)).toBeLessThan(0.5);
-  expect(Math.abs((await edges(log.getByRole("button", { name: /^已编辑/ }))).left)).toBeLessThan(0.5);
+  expect(Math.abs((await edges(log.getByRole("button", { name: "编辑了 1 个文件、运行了 1 条命令" }))).left - 20)).toBeLessThan(0.5);
+  expect(Math.abs((await edges(log.getByRole("button", { name: /^已编辑/ }))).left - 20)).toBeLessThan(0.5);
 
   // A session at work: its line is one more row, as far under the step as steps are from each other.
   await open(page, "跑很久");
   const working = page.getByTestId("thread-working");
-  expect(Math.abs((await edges(working.locator(":scope > *").first())).left)).toBeLessThan(0.5);
+  expect(Math.abs((await edges(working.locator(":scope > *").first())).left - 20)).toBeLessThan(0.5);
   const step = (await log.getByRole("button", { name: /sleep 1800/ }).boundingBox())!;
   const mark = (await working.locator(":scope > *").first().boundingBox())!;
   const rowGap = await log.evaluate((el) => parseFloat(getComputedStyle(el).rowGap));

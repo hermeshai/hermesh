@@ -1,6 +1,6 @@
 /* A session started here (ThreadPage.tsx): a session's page (app.css .dwrap, session.css) with Her's box at the bottom. */
 /* With the cards docked, the box centres under the conversation as the conversation does (app.css .dwrap.dock). */
-.dwrap.dock .cmp-zone{padding-right:286px}
+.dwrap.dock .cmp-zone{padding-right:calc(270px + var(--cmp-gutter))}
 .th-badge{display:inline-flex;align-items:center;height:18px;padding:0 8px;border-radius:999px;background:var(--fill2);color:var(--l2);font-size:11px;margin-left:8px;flex:none}
 /* A question asks in Her's card, as a session's panel (app.css .qx) lays it out. */
 .appr.qx-card{padding:0;gap:0}
@@ -34,7 +34,7 @@
 }
 /* A new session: its question in the middle of what the box at the bottom leaves (the project a menu in it), the
    environment under it; the box where a session's is (her.css .cmp-zone). */
-.th-ask{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 32px 150px;text-align:center}
+.th-ask{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 var(--chat-gutter) 150px;text-align:center}
 /* Under a new session's question: kept out of the layout (the question stays where it is); connection notices show
    under their own waits, while Starting… waits 400 ms. */
 .th-ask-after{height:0;min-height:0;margin-top:-14px;display:flex;justify-content:center;overflow:visible}
