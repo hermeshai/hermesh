@@ -228,6 +228,7 @@ pub fn document() -> Value {
         (method::PROVIDERS_REMOVE, Some(name::<api::ProviderIdParams>(g)), name::<api::Empty>(g)),
         (method::MODELS_CONFIGURE, Some(name::<api::ModelsConfigureParams>(g)), name::<api::ModelsConfigureResult>(g)),
         (method::MODELS_CATALOG, Some(name::<api::ModelsCatalogParams>(g)), name::<api::ModelsCatalogResult>(g)),
+        (method::MODELS_TITLE, Some(name::<api::ModelsTitleParams>(g)), name::<api::ModelsTitleResult>(g)),
         (method::CHATGPT_LOGIN, Some(name::<api::ChatGptLoginParams>(g)), name::<api::ChatGptStatus>(g)),
         (method::CHATGPT_COMPLETE, Some(name::<api::ChatGptCompleteParams>(g)), name::<api::ChatGptStatus>(g)),
         (method::CHATGPT_STATUS, None, name::<api::ChatGptStatus>(g)),

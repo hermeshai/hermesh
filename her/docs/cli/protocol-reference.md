@@ -61,6 +61,7 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 | `models/list` | — | `ModelsListResult` |  |
 | `models/refresh` | `ModelsRefreshParams` | `ModelsRefreshResult` | Parameters of `models/refresh`. |
 | `models/show` | `ModelsShowParams` | `Empty` | Parameters of `models/show`. |
+| `models/title` | `ModelsTitleParams` | `ModelsTitleResult` | `models/title`: stateless, tool-free completion on the smallest available chat model. |
 | `resource/read` | `ResourceReadParams` | `ResourceReadResult` |  |
 | `server/shutdown` | — | `Empty` | The result of methods that return nothing: `{}`. |
 | `session/archive` | `SessionIdParams` | `Empty` | Parameters of `session/detach`, `session/close` and `session/delete`. |

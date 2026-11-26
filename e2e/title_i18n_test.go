@@ -3,12 +3,25 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1/machinev1connect"
+	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/session/v1/sessionv1connect"
+	"github.com/hermeshai/hermesh/internal/herhost/hertest"
+	"github.com/hermeshai/hermesh/internal/machine"
+	"github.com/hermeshai/hermesh/pkg/identity"
+	"github.com/hermeshai/hermesh/pkg/transport"
 )
 
 // TestInternationalizedSessionTitles verifies end-to-end across real hermeshd,
@@ -134,4 +147,102 @@ func TestInternationalizedSessionTitles(t *testing.T) {
 			t.Fatalf("after restart, session %s title = %q, want %q", id, byID[id], want)
 		}
 	}
+}
+
+// TestHerSmallestModelSessionTitleGeneration verifies end-to-end with the real
+// Rust `her` server and `her-mock` that when Her is turned on and has an
+// available model, coding sessions on hermeshd generate their titles via Her's
+// stateless `models/title` RPC even when the coding CLI itself has no title
+// generator enabled.
+func TestHerSmallestModelSessionTitleGeneration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	bin := hertest.Bin(t)
+	hertest.Home(t, bin)
+	console := t.TempDir()
+	_ = os.WriteFile(filepath.Join(console, "index.html"), []byte("<title>Her</title>"), 0o644)
+
+	w := newWorld(t, func(c *machine.Config) {
+		c.HerBin, c.HerConsole = bin, console
+	})
+	alpha := w.machines[0]
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	dev, _ := identity.GenerateKey()
+	cert, err := identity.Sign(&identityv1.OwnerDeviceCert{
+		OwnerId:         w.ownerID,
+		DevicePublicKey: identity.MarshalPublicKey(dev.Public()),
+		Label:           "title-e2e-device",
+		IssuedAt:        timestamppb.Now(),
+	}, w.app.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	creds := func() *identityv1.Credentials {
+		return &identityv1.Credentials{RootChain: w.rootChain, Subject: &identityv1.Credentials_DeviceCert{DeviceCert: cert}}
+	}
+	relayConn, err := (&transport.Dialer{RelayURL: w.relayURL, Role: relayv1.Role_ROLE_OWNER, Key: dev, Credentials: creds, HTTPClient: http.DefaultClient}).Dial(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer relayConn.Close()
+	raw, err := relayConn.OpenTunnel(alpha.MachineID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tc, _, err := transport.ClientHandshake(ctx, raw, dev.CryptoSigner(), creds, w.trust, alpha.MachineID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h2, err := transport.NewH2Client(tc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h2.Close()
+
+	const base = "https://machine"
+	info := machinev1connect.NewMachineServiceClient(h2, base, transport.ClientNoCompression)
+	admin := machinev1connect.NewMachineAdminServiceClient(h2, base, transport.ClientNoCompression)
+	sessions := sessionv1connect.NewSessionServiceClient(h2, base, transport.ClientNoCompression)
+
+	signedSetHer, err := identity.Sign(&identityv1.AdminCommand{
+		OwnerId:         w.ownerID,
+		TargetMachineId: alpha.MachineID(),
+		CommandId:       identity.RandomCode(16),
+		ExpiresAt:       timestamppb.New(time.Now().Add(5 * time.Minute)),
+		Command:         &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{Enabled: true}},
+	}, w.app.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.ApplyAdminCommand(ctx, &machinev1.ApplyAdminCommandRequest{Command: signedSetHer}); err != nil {
+		t.Fatalf("SetHer(true): %v", err)
+	}
+	eventually(t, 30*time.Second, "her model ready", func() bool {
+		res, iErr := info.GetInfo(ctx, &machinev1.GetInfoRequest{})
+		return iErr == nil && res.GetStatus().GetHer().GetRunning() && res.GetStatus().GetHer().GetModelReady()
+	})
+
+	// Start a coding session on alpha (whose scripted claude/codex drivers have
+	// TitleGenerator disabled): title generation MUST route through Her's models/title!
+	started, err := sessions.StartSession(ctx, &sessionv1.StartSessionRequest{
+		CommandId:      "cmd_e2e_her_title",
+		ProjectId:      "demo",
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "claude"},
+		InitialPrompt:  "say [[mock:say:{\"title\":\"Her 极速小模型标题\",\"provisional\":false}]] Investigate why long ongoing sessions stayed untitled",
+		Locale:         "zh-CN",
+	})
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	eventually(t, 15*time.Second, "session titled by Her smallest model", func() bool {
+		res, gErr := sessions.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: started.GetSession().GetSessionId()})
+		if gErr != nil || res.GetProjection().GetSession() == nil {
+			return false
+		}
+		s := res.GetProjection().GetSession()
+		return !s.TitleGenerating && s.Title == "Her 极速小模型标题" && s.TitleState == sessionv1.TitleState_TITLE_STATE_FINAL
+	})
 }

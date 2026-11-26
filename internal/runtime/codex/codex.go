@@ -1117,6 +1117,34 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 			s.mu.Unlock()
 		}
 
+	case "turn/plan/updated":
+		var p struct {
+			Explanation string `json:"explanation"`
+			Plan        []struct {
+				Step   string `json:"step"`
+				Status string `json:"status"`
+			} `json:"plan"`
+		}
+		if json.Unmarshal(params, &p) == nil && p.Plan != nil {
+			var steps []*sessionv1.TodoStep
+			for _, item := range p.Plan {
+				if txt := strings.TrimSpace(item.Step); txt != "" {
+					steps = append(steps, &sessionv1.TodoStep{
+						Text:   txt,
+						Status: runtime.NormalizeTodoStatus(item.Status),
+					})
+				}
+			}
+			expl := strings.TrimSpace(p.Explanation)
+			s.emit(runtime.Event{
+				Kind:      runtime.EventTodoUpdated,
+				ItemID:    "todo",
+				Text:      expl,
+				HasFocus:  expl != "",
+				TodoSteps: steps,
+			})
+		}
+
 	case "item/agentMessage/delta":
 		var p struct {
 			ItemID string `json:"itemId"`
@@ -1211,9 +1239,11 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 				Text              string          `json:"text"`
 				Prompt            string          `json:"prompt"`
 				Command           string          `json:"command"`
+				Cwd               string          `json:"cwd"`
 				ProcessID         string          `json:"processId"`
 				Server            string          `json:"server"`
 				Tool              string          `json:"tool"`
+				Arguments         json.RawMessage `json:"arguments"`
 				Query             string          `json:"query"`
 				Status            string          `json:"status"`
 				ExitCode          *int            `json:"exitCode"`
@@ -1225,6 +1255,7 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 				} `json:"error"`
 				Changes []struct {
 					Path string `json:"path"`
+					Diff string `json:"diff"`
 				} `json:"changes"`
 			} `json:"item"`
 		}
@@ -1273,7 +1304,8 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 					st.processID = p.Item.ProcessID
 				}
 				s.mu.Unlock()
-				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: p.Item.ID, ToolName: "CommandExecution", Command: p.Item.Command})
+				cmdIn := codexCmdInput(p.Item.Command, p.Item.Cwd)
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: p.Item.ID, ToolName: "CommandExecution", Command: p.Item.Command, Input: cmdIn})
 			} else {
 				exit := int32(0)
 				if p.Item.ExitCode != nil {
@@ -1323,7 +1355,7 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 						BackgroundAwaited:   false,
 					})
 				}
-				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: p.Item.ID, ToolName: "CommandExecution", Command: cmd, ExitCode: exit, HasExitCode: true, Output: kept})
+				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: p.Item.ID, ToolName: "CommandExecution", Command: cmd, Input: codexCmdInput(cmd, p.Item.Cwd), ExitCode: exit, HasExitCode: true, Output: kept})
 			}
 		case "collabAgentToolCall":
 			s.advanceFallbackMsgID()
@@ -1332,14 +1364,25 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 				toolLabel = "Subagent:" + p.Item.Tool
 			}
 			summary := strings.TrimSpace(p.Item.Prompt)
+			collabInMap := map[string]any{}
+			if p.Item.Tool != "" {
+				collabInMap["tool"] = p.Item.Tool
+			}
+			if summary != "" {
+				collabInMap["prompt"] = summary
+			}
+			if len(p.Item.ReceiverThreadIDs) > 0 {
+				collabInMap["receiverThreadIds"] = p.Item.ReceiverThreadIDs
+			}
+			collabIn := runtime.MarshalToolInput(collabInMap)
 			if !done {
-				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: p.Item.ID, ToolName: toolLabel, FilePath: summary})
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: p.Item.ID, ToolName: toolLabel, Input: collabIn, FilePath: summary})
 			} else {
 				exit := int32(0)
 				if p.Item.Status == "failed" {
 					exit = 1
 				}
-				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: p.Item.ID, ToolName: toolLabel, FilePath: summary, ExitCode: exit, HasExitCode: true})
+				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: p.Item.ID, ToolName: toolLabel, Input: collabIn, FilePath: summary, ExitCode: exit, HasExitCode: true})
 				var subEvents []runtime.Event
 				s.mu.Lock()
 				switch p.Item.Tool {
@@ -1406,11 +1449,12 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 			if p.Item.Server != "" && p.Item.Tool != "" {
 				name = "mcp__" + p.Item.Server + "__" + p.Item.Tool
 			}
+			mcpIn := runtime.FormatToolJSON(p.Item.Arguments)
 			if !done {
-				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: p.Item.ID, ToolName: name})
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: p.Item.ID, ToolName: name, Input: mcpIn})
 			} else {
 				exit := int32(0)
-				out := string(bytes.TrimSpace(p.Item.Result))
+				out := runtime.FormatToolJSON(p.Item.Result)
 				if p.Item.Error != nil && p.Item.Error.Message != "" {
 					exit = 1
 					out = p.Item.Error.Message
@@ -1418,20 +1462,24 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 					exit = 1
 				}
 				kept, _ := runtime.KeepOutput(out)
-				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: p.Item.ID, ToolName: name, ExitCode: exit, Output: kept})
+				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: p.Item.ID, ToolName: name, Input: mcpIn, ExitCode: exit, Output: kept})
 			}
 		case "webSearch":
 			s.advanceFallbackMsgID()
+			var wsIn string
+			if p.Item.Query != "" {
+				wsIn = runtime.MarshalToolInput(map[string]any{"query": p.Item.Query})
+			}
 			if !done {
-				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: p.Item.ID, ToolName: "WebSearch", FilePath: p.Item.Query})
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: p.Item.ID, ToolName: "WebSearch", Input: wsIn, FilePath: p.Item.Query})
 			} else {
-				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: p.Item.ID, ToolName: "WebSearch", FilePath: p.Item.Query})
+				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: p.Item.ID, ToolName: "WebSearch", Input: wsIn, FilePath: p.Item.Query})
 			}
 		case "fileChange":
 			s.advanceFallbackMsgID()
 			if done {
 				for _, ch := range p.Item.Changes {
-					s.emit(runtime.Event{Kind: runtime.EventFileChanged, ItemID: p.Item.ID + "_" + ch.Path, FilePath: ch.Path})
+					s.emit(runtime.Event{Kind: runtime.EventFileChanged, ItemID: p.Item.ID + "_" + ch.Path, FilePath: ch.Path, Diff: ch.Diff})
 				}
 			}
 		case "plan":
@@ -1547,4 +1595,15 @@ func (s *session) advanceFallbackMsgID() {
 		s.msgUsed = false
 	}
 	s.mu.Unlock()
+}
+
+func codexCmdInput(cmd, cwd string) string {
+	if cmd == "" {
+		return ""
+	}
+	m := map[string]any{"command": cmd}
+	if cwd != "" {
+		m["cwd"] = cwd
+	}
+	return runtime.MarshalToolInput(m)
 }

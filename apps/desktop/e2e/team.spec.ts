@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { launch, snap, sessionList } from "./app";
+import { cli, launch, snap, sessionList } from "./app";
 
 // Her and her team on the Mac (docs/her-team.md §14), on the fixture's world: this Mac with sessions in every
 // state, all sent by the agent "bot", and Her on nowhere.
@@ -33,7 +33,7 @@ test("the sidebar is Her, the overview and every session; hidden, it is gone and
   const { app, page } = await launch();
   await page.setViewportSize({ width: 1240, height: 800 });
   const sidebar = page.getByRole("complementary", { name: "边栏" });
-  await expect(page.locator(".side-nav .nav-i")).toHaveText([/^新会话/, /^Her/, /^概览/]);
+  await expect(page.locator(".side-nav .nav-i")).toHaveText([/^新建/, /^Her/, /^概览/]);
   // The overview's row: a dot while something waits on the owner, nothing while sessions run; no numbers.
   const overview = page.locator(".side-nav").getByRole("button", { name: /^概览/ });
   await expect(overview.getByRole("img", { name: /项需要处理/ })).toBeVisible();
@@ -94,4 +94,30 @@ test("The overview: what waits is listed and one click answers a simple question
   await expect(page.getByRole("heading", { name: "选颜色" })).toBeVisible();
   await expect(page.getByRole("log", { name: "对话" })).toContainText("蓝", { timeout: 30_000 });
   await app.close();
+});
+
+test("The overview summarizes a multi-question decision on a single concise line", async () => {
+  const title = "概览多问";
+  const started = JSON.parse(await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", title, "--prompt", "ask3", "-o", "json"));
+  const id = started.session.session_id as string;
+  await expect.poll(async () => JSON.parse(await cli("session", "get", id, "-o", "json")).session.status).toBe("waiting_input");
+
+  const { app, page } = await launch();
+  try {
+    const needs = page.getByRole("region", { name: "需要你处理" });
+    const row = needs.getByRole("listitem").filter({ hasText: title });
+    await expect(row).toContainText("共 3 个问题 · 推进节奏选哪种？");
+    await expect(row).not.toContainText("输出如何处理？");
+    await expect(row).not.toContainText("终端程序怎么选？");
+    await expect(row).not.toContainText("The agent has 3 questions.");
+    expect(await row.locator(".at span").evaluate((el) => getComputedStyle(el).whiteSpace)).toBe("nowrap");
+
+    await row.getByRole("button", { name: "打开" }).click();
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+    await page.getByTestId("pending-question-banner").getByRole("button", { name: "不回答" }).click();
+    await expect.poll(async () => JSON.parse(await cli("session", "get", id, "-o", "json")).session.status).toBe("idle");
+  } finally {
+    await cli("session", "interrupt", id).catch(() => {});
+    await app.close();
+  }
 });

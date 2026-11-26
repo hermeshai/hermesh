@@ -173,8 +173,8 @@ export function QuestionPanel({ s, q, answer }: { s: Session; q: Question; answe
     <div className="qx" role="group" aria-label={t("question.label")}>
       <div className="qx-h">
         <AgentLogo agent={s.agent} size={15} />
-        <span>{t("question.asks", { agent: codingAgentTitle(s.agent) })}</span>
-        {showHeader && <span className="qx-tag">{it.header}</span>}
+        <span className="qx-who">{t("question.asks", { agent: codingAgentTitle(s.agent) })}</span>
+        {showHeader && <span className="qx-tag" title={it.header}>{it.header}</span>}
         {it.multiSelect && <span className="qx-tag kind">{t("question.multiSelect")}</span>}
         <span className="qx-r">
           <Countdown q={q} />

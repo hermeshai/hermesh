@@ -29,6 +29,11 @@ public struct ToolItem: Equatable {
     }
 }
 
+/// Whether a call's event holds only the first 16 KiB of its input arguments.
+public func partialInput(_ c: ToolCall) -> Bool {
+    (c.inputTruncated && !c.inputBlobSha256.isEmpty) || c.inputSize > UInt64(c.input.utf8.count)
+}
+
 /// Whether a result's event holds only part of its output: a preview, or its first 16 KiB.
 public func partialOutput(_ r: ToolResult) -> Bool {
     r.preview || r.size > UInt64(r.summary.utf8.count)
@@ -154,6 +159,10 @@ private func toolItem(_ it: Hermesh_Session_V1_TurnItem, run: Hermesh_Session_V1
     var call = ToolCall()
     call.callID = it.itemID
     if it.status == "denied" { call.decision = "deny" }
+    call.input = it.input
+    call.inputTruncated = it.inputTruncated
+    call.inputBlobSha256 = it.inputBlobSha256
+    call.inputSize = it.inputSize
     var result = ToolResult()
     result.callID = it.itemID
     if it.kind == .fileChange {
@@ -166,7 +175,7 @@ private func toolItem(_ it: Hermesh_Session_V1_TurnItem, run: Hermesh_Session_V1
     let shell = it.kind == .commandExecution
     call.name = it.toolName.isEmpty && shell ? "Bash" : it.toolName
     call.kind = shell ? "shell" : sessionToolKind(call.name)
-    call.summary = shell ? it.command : (it.filePath.isEmpty ? it.text : it.filePath)
+    call.summary = shell ? it.command : it.filePath
     let running = it.status == "running" && (isRunActive(run) || activeBgItems.contains(it.itemID)) && call.decision != "deny"
     result.summary = it.output
     result.isError = it.status == "failed" || it.exitCode != 0
@@ -298,6 +307,123 @@ public func sessionWork(_ proj: Hermesh_Session_V1_SessionProjection?) -> Sessio
     if now.contains(where: { $0.kind == .reasoning && $0.streaming }) { return .thinking }
     if now.contains(where: { $0.kind == .assistantMessage && $0.streaming }) { return .replying }
     return .working
+}
+
+/// The `seq` values of replies the agent is still streaming, so their rows sweep in as they grow.
+public func sessionLiveReplies(_ proj: Hermesh_Session_V1_SessionProjection?) -> Set<UInt64> {
+    guard let proj else { return [] }
+    return Set(proj.items.filter { $0.kind == .assistantMessage && $0.streaming }.map(itemSeq))
+}
+
+public enum TodoStepStatus: String, Equatable, Sendable {
+    case pending
+    case inProgress = "in_progress"
+    case completed
+    case skipped
+    case failed
+}
+
+public struct TodoStepView: Equatable, Sendable {
+    public let text: String
+    public let status: TodoStepStatus
+
+    public init(text: String, status: TodoStepStatus) {
+        self.text = text
+        self.status = status
+    }
+}
+
+public func normalizeTodoStepStatus(_ raw: String) -> TodoStepStatus {
+    switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+    case "completed", "complete", "done": .completed
+    case "in_progress", "inprogress", "active", "running": .inProgress
+    case "skipped", "cancelled", "canceled": .skipped
+    case "failed", "error": .failed
+    default: .pending
+    }
+}
+
+private func currentTurnChainRunIDs(_ proj: Hermesh_Session_V1_SessionProjection) -> Set<String> {
+    var out = Set<String>()
+    let activeID = proj.session.activeRunID
+    var idx: Int? = activeID.isEmpty ? nil : proj.runs.firstIndex(where: { $0.runID == activeID })
+    if idx == nil {
+        idx = proj.runs.lastIndex(where: { $0.status != .queued && $0.status != .rolledBack })
+    }
+    guard var i = idx else {
+        if !activeID.isEmpty { out.insert(activeID) }
+        return out
+    }
+    while i >= 0 {
+        let r = proj.runs[i]
+        out.insert(r.runID)
+        if r.author.kind != .system { break }
+        i -= 1
+    }
+    return out
+}
+
+private func isSessionChecklistLive(_ proj: Hermesh_Session_V1_SessionProjection) -> Bool {
+    let s = proj.session
+    switch s.status {
+    case .preparing, .running, .waitingInput:
+        return true
+    case .idle:
+        return s.activeBackgroundCount > 0 || activeBackgroundTasks(of: proj).contains(where: \.awaited)
+    default:
+        return false
+    }
+}
+
+/// Steps for the floating live checklist above the composer while the session is working.
+/// Automatically returns `[]` once the turn settles or all steps are completed/skipped.
+public func activeTodoSteps(_ proj: Hermesh_Session_V1_SessionProjection?) -> [TodoStepView] {
+    guard let proj, isSessionChecklistLive(proj) else { return [] }
+    let chain = currentTurnChainRunIDs(proj)
+    guard !chain.isEmpty,
+          let latest = proj.items.last(where: { $0.kind == .todoList && chain.contains($0.runID) }),
+          !latest.todoSteps.isEmpty else {
+        return []
+    }
+    let steps = latest.todoSteps.compactMap { step -> TodoStepView? in
+        let text = step.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        return TodoStepView(text: text, status: normalizeTodoStepStatus(step.status))
+    }
+    if steps.isEmpty || steps.allSatisfy({ $0.status == .completed || $0.status == .skipped }) {
+        return []
+    }
+    return steps
+}
+
+/// Native live focus phrase for the bottom working line when the model is not actively streaming
+/// thoughts or reply prose; `nil` falls back to the localized generic work label.
+public func sessionFocusText(_ proj: Hermesh_Session_V1_SessionProjection?) -> String? {
+    guard let proj,
+          proj.session.status == .running,
+          !proj.session.activeRunID.isEmpty else {
+        return nil
+    }
+    let work = sessionWork(proj)
+    if work == .thinking || work == .replying { return nil }
+
+    let chain = currentTurnChainRunIDs(proj)
+    if let latestTodo = proj.items.last(where: { $0.kind == .todoList && chain.contains($0.runID) }) {
+        let focus = latestTodo.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !focus.isEmpty { return focus }
+    }
+
+    let activeRunID = proj.session.activeRunID
+    if let runningTool = proj.items.last(where: {
+        $0.runID == activeRunID &&
+        $0.status == "running" &&
+        ($0.kind == .commandExecution || $0.kind == .toolCall) &&
+        !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }) {
+        return runningTool.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    return activeTodoSteps(proj).first(where: { $0.status == .inProgress })?.text
 }
 
 /// Why the session stopped, or why the machine rejected what was sent, until the next run starts.

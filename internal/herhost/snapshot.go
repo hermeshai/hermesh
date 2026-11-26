@@ -45,6 +45,7 @@ type routine struct {
 type snapshot struct {
 	version    string
 	methods    []string // what the owner's devices may call: her's answered methods they are allowed
+	canTitle   bool     // whether her answers models/title
 	modelReady bool
 	bots       map[string]bot
 	latest     *machinev1.HerLatest
@@ -54,7 +55,12 @@ type snapshot struct {
 const latestText = 200
 
 func newSnapshot(version string, methods []string, bots []bot) *snapshot {
-	s := &snapshot{version: version, methods: openTo(methods), bots: map[string]bot{}}
+	s := &snapshot{
+		version:  version,
+		methods:  openTo(methods),
+		canTitle: len(methods) == 0 || slices.Contains(methods, "models/title"),
+		bots:     map[string]bot{},
+	}
 	for _, b := range bots {
 		s.bots[b.ID] = b
 	}

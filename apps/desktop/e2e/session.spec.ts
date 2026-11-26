@@ -98,10 +98,24 @@ test("a finished session shows both turns, what the agent did, and that it is do
   await expect(page.getByRole("region", { name: "这一轮" })).toHaveCount(0);
   await snap(page, "session-chat");
 
-  // A tool's output opens under it.
+  // A tool's input and output open under it, without any synthetic "completed" placeholder when stdout is empty.
   const shell = log.getByRole("button", { name: /^已运行.*echo ran/ });
   await shell.click();
   await expect(shell).toHaveAttribute("aria-expanded", "true");
+  const shellOut = shell.locator("..").locator(".out");
+  await expect(shellOut).toContainText("输入");
+  await expect(shellOut).toContainText('"command": "echo ran > ran.txt"');
+  await expect(shellOut).toContainText("输出");
+  await expect(shellOut).toContainText("（无输出）");
+  await expect(shellOut).not.toContainText("completed");
+
+  const editStep = log.getByRole("button", { name: /^已编辑\s*hello\.txt/ }).first();
+  await editStep.click();
+  const editOut = editStep.locator("..").locator(".out");
+  await expect(editOut).toContainText("输入");
+  await expect(editOut).toContainText('"content": "hello"');
+  await expect(editOut).toContainText("输出");
+  await expect(editOut).toContainText("wrote hello.txt");
 
   // A turn that writes several times is one reply: only its last words keep room below for when and Copy.
   const early = log.locator(".am").filter({ hasText: "先写文件" });
@@ -147,13 +161,13 @@ test("the page is the conversation alone: no tabs, and no line or link after a f
   await app.close();
 });
 
-test("the conversation and the box under it are one column: a reply's words, its code, steps and the work line start where the box starts, and a message ends where it ends", async () => {
+test("the conversation column sits 20px inside the composer at every width, with at least 32px composer and 52px content gutters from the sidebar", async () => {
   await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "对齐", "--prompt", "say 一句话\\n\\n```\\necho hi\\n```", "--wait");
   const { app, page } = await launch();
   await page.setViewportSize({ width: 1440, height: 800 });
   const log = page.getByRole("log", { name: "对话" });
   const box = async () => (await page.locator(".th-cmp").boundingBox())!;
-  /** How far a thing starts from where the box starts, and ends from where the box ends. */
+  /** How far a thing starts from where the box starts (+20px), and ends from where the box ends (-20px). */
   const edges = async (l: Locator) => {
     const [b, c] = [(await l.boundingBox())!, await box()];
     return { left: b.x - c.x, right: b.x + b.width - (c.x + c.width) };
@@ -161,21 +175,55 @@ test("the conversation and the box under it are one column: a reply's words, its
 
   await open(page, "对齐");
   const reply = log.locator(".am");
-  expect(Math.abs((await edges(reply.locator(".md p"))).left)).toBeLessThan(0.5);
-  for (const edge of Object.values(await edges(reply.locator(".cblock")))) expect(Math.abs(edge)).toBeLessThan(0.5);
-  expect(Math.abs((await edges(log.locator(".um .bub"))).right)).toBeLessThan(0.5);
-  // Copy, on hover under the reply: its glyph, not its plate, starts on that line.
+  expect(Math.abs((await edges(reply.locator(".md p"))).left - 20)).toBeLessThan(0.5);
+  expect(Math.abs((await edges(reply.locator(".cblock"))).left - 20)).toBeLessThan(0.5);
+  expect(Math.abs((await edges(reply.locator(".cblock"))).right + 20)).toBeLessThan(0.5);
+  expect(Math.abs((await edges(log.locator(".um .bub"))).right + 20)).toBeLessThan(0.5);
+  // Copy, on hover under the reply: its glyph, not its plate, starts on the content column's left line.
   await reply.hover();
-  expect(Math.abs((await edges(reply.locator(".msg-act").getByRole("button", { name: "拷贝" }).locator(".ic"))).left)).toBeLessThan(1);
+  expect(Math.abs((await edges(reply.locator(".msg-act").getByRole("button", { name: "拷贝" }).locator(".ic"))).left - 20)).toBeLessThan(1);
+
+  // Across widths (wide centered, default 1240 docked, narrow 900 with sidebar, and with the side panel open):
+  // the composer stays >= 32px from the sidebar, and the content column stays 20px further in (>= 52px).
+  const sideRight = async () => {
+    const s = await page.locator(".side").boundingBox();
+    return s ? s.x + s.width : 0;
+  };
+  for (const width of [1440, 1240, 900]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width);
+    const [sr, c, p, cb] = [await sideRight(), await box(), (await reply.locator(".md p").boundingBox())!, (await reply.locator(".cblock").boundingBox())!];
+    if (width === 1440) {
+      expect(c.x - sr).toBeGreaterThan(32);
+    } else {
+      expect(Math.abs(c.x - sr - 32)).toBeLessThan(1);
+    }
+    expect(Math.abs(p.x - sr - (c.x - sr + 20))).toBeLessThan(1);
+    expect(p.x - sr).toBeGreaterThanOrEqual(51.5);
+    expect(Math.abs((c.x + c.width) - (cb.x + cb.width) - 20)).toBeLessThan(1);
+  }
+  await page.setViewportSize({ width: 1240, height: 800 });
+  await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1240);
+  await page.getByTestId("toolbar-panel-btn").click();
+  await expect(page.getByTestId("side-panel")).toBeVisible();
+  {
+    const [sr, c, p, cb] = [await sideRight(), await box(), (await reply.locator(".md p").boundingBox())!, (await reply.locator(".cblock").boundingBox())!];
+    expect(Math.abs(c.x - sr - 32)).toBeLessThan(1);
+    expect(Math.abs(p.x - sr - 52)).toBeLessThan(1);
+    expect(Math.abs((c.x + c.width) - (cb.x + cb.width) - 20)).toBeLessThan(1);
+  }
+  await page.getByTestId("toolbar-panel-btn").click();
+  await page.setViewportSize({ width: 1440, height: 800 });
+  await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1440);
 
   await open(page, "写 hello");
-  expect(Math.abs((await edges(log.getByRole("button", { name: "编辑了 1 个文件、运行了 1 条命令" }))).left)).toBeLessThan(0.5);
-  expect(Math.abs((await edges(log.getByRole("button", { name: /^已编辑/ }))).left)).toBeLessThan(0.5);
+  expect(Math.abs((await edges(log.getByRole("button", { name: "编辑了 1 个文件、运行了 1 条命令" }))).left - 20)).toBeLessThan(0.5);
+  expect(Math.abs((await edges(log.getByRole("button", { name: /^已编辑/ }))).left - 20)).toBeLessThan(0.5);
 
   // A session at work: its line is one more row, as far under the step as steps are from each other.
   await open(page, "跑很久");
   const working = page.getByTestId("thread-working");
-  expect(Math.abs((await edges(working.locator(":scope > *").first())).left)).toBeLessThan(0.5);
+  expect(Math.abs((await edges(working.locator(":scope > *").first())).left - 20)).toBeLessThan(0.5);
   const step = (await log.getByRole("button", { name: /sleep 1800/ }).boundingBox())!;
   const mark = (await working.locator(":scope > *").first().boundingBox())!;
   const rowGap = await log.evaluate((el) => parseFloat(getComputedStyle(el).rowGap));
@@ -502,6 +550,28 @@ test("a question waits in the control area; the owner picks an option by key and
   await expect(ctl).toContainText("选哪个颜色");
   await expect(ctl).toContainText("还剩");
   await expect(ctl.getByTestId("question-step")).toHaveText("1 / 2");
+  // A long header tag truncates inside the card without wrapping the agent label or pushing controls off-card.
+  const overflow = await ctl.evaluate((el) => {
+    const tag = el.querySelector<HTMLElement>(".qx-tag");
+    const who = el.querySelector<HTMLElement>(".qx-who");
+    const right = el.querySelector<HTMLElement>(".qx-r");
+    if (!tag || !who || !right) return null;
+    const orig = tag.textContent;
+    tag.textContent = "我测量了两张截图的精确像素：输入框距侧栏 32px、内容区距侧栏 52px，这是一个非常非常长的头部标签用于验证不会溢出卡片或挤压右侧控件";
+    const cardRect = el.getBoundingClientRect();
+    const tagRect = tag.getBoundingClientRect();
+    const whoRect = who.getBoundingClientRect();
+    const rightRect = right.getBoundingClientRect();
+    const style = getComputedStyle(tag);
+    tag.textContent = orig;
+    return {
+      tagFits: tagRect.right <= cardRect.right + 1,
+      rightFits: rightRect.right <= cardRect.right + 1,
+      whoSingleLine: whoRect.height < 24,
+      ellipsis: style.textOverflow === "ellipsis" && style.overflow === "hidden",
+    };
+  });
+  expect(overflow).toEqual({ tagFits: true, rightFits: true, whoSingleLine: true, ellipsis: true });
   const answer = ctl.getByRole("button", { name: /^回答/ });
   await expect(answer).toBeDisabled();
   await snap(page, "session-question");
@@ -1151,13 +1221,15 @@ test("a reply shows as the agent writes it, never as raw Markdown, and stays whe
   // Every state of the agent's words while the reply grows (the prompt shows it raw), checked for Markdown that shows raw,
   // and whether one showed part of it only.
   await page.evaluate(() => {
-    const w = window as unknown as { __raw: string[]; __part: boolean };
+    const w = window as unknown as { __raw: string[]; __part: boolean; __wiped: boolean };
     w.__raw = [];
     w.__part = false;
+    w.__wiped = false;
     new MutationObserver(() => {
       const text = [...document.querySelectorAll("[role=log] .am")].map((el) => (el as HTMLElement).innerText).join("\n");
       if (/\||\*\*|```/.test(text)) w.__raw.push(text);
       if (text.includes("计划") && !text.includes("最后一段说明")) w.__part = true;
+      if (document.querySelector("[role=log] .am .md-wipe")) w.__wiped = true;
     }).observe(document.body, { subtree: true, childList: true, characterData: true });
   });
   await open(page, "流式");
@@ -1166,17 +1238,19 @@ test("a reply shows as the agent writes it, never as raw Markdown, and stays whe
   const stop = page.getByTestId("composer-stop-btn");
   await expect(agent.locator(".md")).toHaveText("准备好了");
   await cli("session", "send", streaming.session.session_id, "--message", `stream ${reply}\nsleep 4s`);
-  // Part of the reply shows while the turn runs, then all of it, still running.
+  // Part of the reply shows while the turn runs, swept in row by row, then all of it, still running.
   await expect(agent.last()).toContainText("最后一段说明");
   expect(await page.evaluate(() => (window as unknown as { __part: boolean }).__part)).toBe(true);
+  expect(await page.evaluate(() => (window as unknown as { __wiped: boolean }).__wiped)).toBe(true);
   await expect(stop).toBeVisible();
   await expect(log.getByRole("table")).toBeVisible();
   await expect(log.locator("pre code")).toHaveText("func main() {}");
   await log.locator(".cblock").evaluate((el) => ((el as unknown as { __kept: boolean }).__kept = true));
   await snap(page, "session-streaming");
-  // The stored message replaces it when the turn ends: the same, not a second one, and its code block not drawn anew.
+  // The stored message replaces it when the turn ends: the same, not a second one, its code block not drawn anew, and all wipe masks unwrapped.
   await expect(stop).toHaveCount(0);
   await expect(agent).toHaveCount(2);
+  await expect(agent.last().locator(".md-wipe")).toHaveCount(0);
   expect(await log.locator(".cblock").evaluate((el) => (el as unknown as { __kept?: boolean }).__kept === true)).toBe(true);
   await expect(agent.last().locator("strong")).toHaveText("这一段很长很长的加粗文字会跨过好几次刷新");
   expect(await page.evaluate(() => (window as unknown as { __raw: string[] }).__raw)).toEqual([]);
@@ -1202,6 +1276,56 @@ test("a message an agent writes to the session shows as a card that says who wro
   await expect(card).toContainText("say 收到");
   await snap(page, "session-message");
   await app.close();
+});
+
+test("a live ACP session shows its floating step checklist and focus while running, animates only on the compositor, and auto-collapses when all steps finish", async () => {
+  const { app, page } = await launch();
+  try {
+    const prompt = [
+      "focus 检查现有动效与测试约束",
+      "steps 检查现有动效实现=in_progress|重写侧边栏光环=pending|运行桌面端基准验证=skipped",
+      "sleep 5s",
+      "steps 检查现有动效实现=done|重写侧边栏光环=done|运行桌面端基准验证=skipped",
+      "say 全部优化已完成",
+    ].join("\n");
+    await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "原生进展", "--prompt", prompt);
+    await open(page, "原生进展");
+
+    const log = page.getByRole("log", { name: "对话" });
+    const todoCard = page.getByTestId("thread-todo-card");
+    await expect(todoCard).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("thread-todo-step-0")).toHaveAttribute("data-status", "in_progress");
+    await expect(page.getByTestId("thread-todo-step-0")).toContainText("检查现有动效实现");
+    await expect(page.getByTestId("thread-todo-step-1")).toHaveAttribute("data-status", "pending");
+    await expect(page.getByTestId("thread-todo-step-2")).toHaveAttribute("data-status", "skipped");
+
+    // Floating above the composer box, never leaked as tool rows in the transcript:
+    const [cardBox, cmpBox] = [(await todoCard.boundingBox())!, (await page.locator(".th-cmp").boundingBox())!];
+    expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(cmpBox.y);
+    await expect(log).not.toContainText("update_steps");
+    await expect(log).not.toContainText("update_focus");
+    await expect(log).not.toContainText("使用了");
+
+    // Bottom working line displays native update_focus text:
+    await expect(page.getByTestId("thread-working")).toContainText("检查现有动效与测试约束");
+
+    // Every animation inside the checklist card runs strictly on the compositor (transform / opacity only):
+    const animProps = await todoCard.evaluate((el) =>
+      el.getAnimations({ subtree: true }).flatMap((a) =>
+        [...new Set((a.effect as KeyframeEffect).getKeyframes().flatMap((k) => Object.keys(k)))].filter(
+          (p) => !["offset", "computedOffset", "easing", "composite"].includes(p),
+        ),
+      ),
+    );
+    expect(animProps.length).toBeGreaterThan(0);
+    for (const p of animProps) expect(p === "transform" || p === "opacity", `unexpected animated prop: ${p}`).toBe(true);
+
+    // Once all steps complete/skip and the turn settles, the floating card auto-collapses:
+    await expect(log).toContainText("全部优化已完成", { timeout: 15_000 });
+    await expect(todoCard).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
 });
 
 test("a conversation on a machine gone offline says why: one read before shows with a line under it, one never read says so instead of a blank page", async () => {

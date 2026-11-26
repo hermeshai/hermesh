@@ -4,7 +4,32 @@ export type QuestionStepItem = {
   multiSelect: boolean;
 };
 
+export type QuestionSummaryItem = {
+  text: string;
+  header: string;
+  optional: boolean;
+};
+
 const recPrefixRe = /^(?:\(Recommended\)|（推荐）)\s*/i;
+const genericQuestionTextRe = /^the agent has (?:a|\d+) questions?\.$/i;
+const freeFormPrefix = "Optional free-form answer to:";
+
+function itemPrompt(it: Pick<QuestionSummaryItem, "text" | "header">): string {
+  const text = it.text.trim();
+  const header = it.header.trim();
+  if (header && (!text || genericQuestionTextRe.test(text))) return header;
+  return text || header;
+}
+
+/** Concise single-line summary info (question count + first meaningful prompt) for Overview and Team Panel. */
+export function summarizeQuestion(items: readonly QuestionSummaryItem[]): { count: number; text: string } {
+  if (items.length === 0) return { count: 0, text: "" };
+  const meaningful = items.filter((i) => !i.text.trim().startsWith(freeFormPrefix));
+  const pool = meaningful.length > 0 ? meaningful : items;
+  const primary = pool.some((i) => !i.optional) ? pool.filter((i) => !i.optional) : pool;
+  const prompts = primary.map(itemPrompt).filter(Boolean);
+  return { count: primary.length, text: prompts[0] ?? "" };
+}
 
 export function parseOptionLabel(label: string): { recommended: boolean; text: string } {
   const m = recPrefixRe.exec(label);

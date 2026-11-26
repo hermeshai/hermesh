@@ -36,7 +36,7 @@ test("the sidebar keeps one rhythm, one heading per group and a quiet foot", asy
   const centre = async (l: ReturnType<typeof page.locator>) => ((b) => b.y + b.height / 2)(await box(l));
   const hide = await centre(page.getByRole("button", { name: "隐藏边栏" }));
   const nav = page.locator(".side-nav");
-  await expect(nav.getByRole("button")).toHaveText([/^新会话/, /^Her/, /^概览/]);
+  await expect(nav.getByRole("button")).toHaveText([/^新建/, /^Her/, /^概览/]);
   // New Session's icon is a plain plus.
   expect(await nav.getByTestId("nav-new-thread").locator("svg.ic").innerHTML()).toBe('<path d="M8 3v10M3 8h10"></path>');
   const her = await box(nav.getByRole("button", { name: /^Her/ }));
@@ -324,7 +324,7 @@ test("the view menu groups, sorts and shows the list from submenus, opaque over 
   await button.click();
   await menu.getByRole("menuitem", { name: /排序/ }).hover();
   const sort = page.getByRole("menu", { name: "排序" });
-  await expect(sort.getByRole("menuitemradio")).toHaveText(["最后活跃时间", "最新在前", "最早在前"]);
+  await expect(sort.getByRole("menuitemradio")).toHaveText(["默认（进行中按创建）", "创建时间", "最后活跃时间", "最新在前", "最早在前"]);
   await sort.getByRole("menuitemradio", { name: "最早在前" }).click();
   await expect(today.last()).toHaveText(newest);
 
@@ -396,9 +396,9 @@ test("a row's ⋯ menu renames in place, archives, and deletes once confirmed, i
     return page.getByRole("menu", { name: "更多操作" });
   };
 
-  // ⋯ in place of the archive button: rename, archive, then delete after a line.
+  // ⋯ in place of the archive button: pin, rename, archive, then delete after a line.
   let menu = await more("改个名字");
-  await expect(menu.getByRole("menuitem")).toHaveText(["重命名", "归档", "删除…"]);
+  await expect(menu.getByRole("menuitem")).toHaveText(["置顶", "重命名", "归档", "删除…"]);
   await snap(page, "row-menu");
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);

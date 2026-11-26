@@ -9629,12 +9629,62 @@
         }
       }
     },
+    "Created": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建时间"
+          }
+        }
+      }
+    },
+    "Default (In Progress by Created)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认（进行中按创建）"
+          }
+        }
+      }
+    },
     "Last Active": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "最后活跃时间"
+          }
+        }
+      }
+    },
+    "Pin": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "置顶"
+          }
+        }
+      }
+    },
+    "Reset Custom Order": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "恢复默认顺序"
+          }
+        }
+      }
+    },
+    "Unpin": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消置顶"
           }
         }
       }
@@ -19372,6 +19422,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "分享…"
+          }
+        }
+      }
+    },
+    "%@ finished" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已完成"
           }
         }
       }

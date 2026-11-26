@@ -173,6 +173,126 @@ impl Server {
         Ok(ModelsRefreshResult { providers: listing.providers })
     }
 
+    /// `models/title`: runs a minimal stateless, tool-free prompt on the smallest available chat
+    /// model, falling back at most once to another configured provider if the first fails.
+    pub async fn generate_title(
+        &self,
+        params: her_protocol::api::ModelsTitleParams,
+    ) -> Result<her_protocol::api::ModelsTitleResult, RpcError> {
+        let prompt = params.prompt.trim().to_string();
+        if prompt.is_empty() {
+            return Err(RpcError::invalid_params("prompt must not be empty"));
+        }
+        let server = self.clone();
+        let with_images = !params.images.is_empty();
+        let candidates = tokio::task::spawn_blocking(move || {
+            let _ = server.0.connections.chatgpt.sync();
+            her_core::models::smallest_models(
+                &server.0.llm,
+                server.0.defaults.model.as_deref(),
+                with_images,
+            )
+        })
+        .await
+        .map_err(|e| RpcError::internal(e.to_string()))?;
+
+        if candidates.is_empty() {
+            return Err(RpcError::with_kind(
+                error_code::NO_MODEL,
+                "no_model",
+                "no model with credentials is available in Her",
+            ));
+        }
+
+        let mut last_err: Option<her_llm::LlmError> = None;
+        for model in candidates.into_iter().take(2) {
+            let mut content = vec![her_llm::UserContent::Text { text: prompt.clone() }];
+            if model.accepts_images() {
+                for img in params.images.iter().take(1) {
+                    if !img.data.is_empty() && !img.mime_type.is_empty() {
+                        content.push(her_llm::UserContent::Image {
+                            mime_type: img.mime_type.clone(),
+                            data: img.data.clone(),
+                        });
+                    }
+                }
+            }
+            let thinking = [
+                her_llm::ThinkingLevel::Off,
+                her_llm::ThinkingLevel::Minimal,
+                her_llm::ThinkingLevel::Low,
+            ]
+            .into_iter()
+            .find(|&lvl| model.offers(lvl))
+            .unwrap_or(her_llm::ThinkingLevel::Default);
+            let max_out = if thinking == her_llm::ThinkingLevel::Off || !model.reasoning {
+                Some(96)
+            } else {
+                Some(512)
+            };
+            let ctx = her_llm::Context {
+                system: String::new(),
+                messages: vec![her_llm::Message::from(her_llm::UserMessage {
+                    content,
+                    ts: her_llm::now_ms(),
+                })],
+                tools: Vec::new(),
+            };
+            let opts = her_llm::RequestOptions {
+                thinking,
+                max_output_tokens: max_out,
+                temperature: None,
+                tool_choice: her_llm::ToolChoice::None,
+                cache_key: None,
+                extra_body: Default::default(),
+            };
+
+            let mut stream = self.0.llm.stream(model.clone(), ctx, opts);
+            let mut acc = her_llm::MessageAccumulator::for_model(&model);
+            let mut failed: Option<her_llm::LlmError> = None;
+            while let Some(event) = stream.next().await {
+                match event {
+                    her_llm::StreamEvent::Done(msg) => {
+                        let text = msg.text();
+                        if !text.trim().is_empty() {
+                            return Ok(her_protocol::api::ModelsTitleResult {
+                                text,
+                                model: model.reference(),
+                            });
+                        }
+                        failed = Some(her_llm::LlmError::new(
+                            ErrorKind::Protocol,
+                            "empty title response",
+                        ));
+                        break;
+                    }
+                    her_llm::StreamEvent::Failed(msg) => {
+                        failed = Some(msg.error.map(|b| *b).unwrap_or_else(|| {
+                            her_llm::LlmError::new(ErrorKind::Unknown, "title request failed")
+                        }));
+                        break;
+                    }
+                    her_llm::StreamEvent::Retrying { error, .. } => {
+                        failed = Some(error);
+                        break;
+                    }
+                    other => acc.apply(&other),
+                }
+            }
+            drop(stream);
+            if let Some(err) = failed {
+                last_err = Some(err);
+            } else {
+                last_err = Some(her_llm::LlmError::new(
+                    ErrorKind::Protocol,
+                    "the model stream ended unexpectedly",
+                ));
+            }
+        }
+        let err = last_err.unwrap_or_else(|| her_llm::LlmError::new(ErrorKind::Unknown, "title request failed"));
+        Err(crate::errors::task_failed(&her_protocol::ErrorInfo::from(&err)))
+    }
+
     /// Refreshes the given providers' lists, a few at a time. Returns whether any changed.
     async fn refresh_lists(&self, ids: Vec<String>) -> bool {
         let upkeep = &self.0.model_upkeep;

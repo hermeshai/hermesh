@@ -1258,6 +1258,15 @@ impl NativeProtocol {
                 }
                 Err(err) => conn.send_error(Some(id), &err),
             },
+            method::MODELS_TITLE => match her_rpc::params::<her_protocol::api::ModelsTitleParams>(params) {
+                Ok(p) => {
+                    let reply_id = id.clone();
+                    self.spawn(id.clone(), conn, async move {
+                        Some(reply(&reply_id, server.generate_title(p).await))
+                    });
+                }
+                Err(err) => conn.send_error(Some(id), &err),
+            },
             other => conn.send_error(Some(id), &RpcError::method_not_found(other)),
         }
     }

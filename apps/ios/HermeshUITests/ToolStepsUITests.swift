@@ -73,6 +73,8 @@ final class ToolStepsUITests: ToolStepsCase {
         sleep(1)
         XCTAssertLessThanOrEqual(output.frame.height, 162, "an output a size down in the card")
         XCTAssertTrue(card.frame.intersects(output.frame), "in view in the card")
+        let shown = (output.value as? String) ?? ""
+        XCTAssertTrue(shown.contains("Input") && shown.contains("\"command\"") && shown.contains("Output"), "shows input and output: \(shown)")
     }
 
     func testARunningTurnsStepsFollowTheNewest() throws {

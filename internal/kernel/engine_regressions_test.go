@@ -183,6 +183,9 @@ func TestPinKeepsGrantCeiling(t *testing.T) {
 	if res.Session.MaxRuntimeMode != l.Session.MaxRuntimeMode || res.Session.EffectiveRuntimeMode != l.Session.EffectiveRuntimeMode {
 		t.Errorf("pinning changed runtime ceiling/mode of a grant-created session")
 	}
+	if !res.Session.UpdatedAt.AsTime().Equal(l.Session.UpdatedAt.AsTime()) {
+		t.Errorf("pinning changed UpdatedAt: got %v, want %v", res.Session.UpdatedAt.AsTime(), l.Session.UpdatedAt.AsTime())
+	}
 }
 
 // Regression: ForkSession never checks allowsAgent on req.ModelSelection, and DispatchMessage only
@@ -749,8 +752,11 @@ func TestToolUpdatePreservesMetadataAndRunTerminationSettlesItems(t *testing.T) 
 				onTurn: func(_ context.Context, _ runtime.TurnInput, ch chan<- runtime.Event) {
 					ch <- runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: "msg_1", Text: "preamble"}
 					ch <- runtime.Event{Kind: runtime.EventAssistantMessage, ItemID: "msg_1", Text: "preamble"}
-					ch <- runtime.Event{Kind: runtime.EventToolStarted, ItemID: "t1", ToolName: "Bash", Command: "echo ok"}
+					ch <- runtime.Event{Kind: runtime.EventToolStarted, ItemID: "t1", ToolName: "Bash", Command: "echo ok", Input: "{\n  \"command\": \"echo ok\"\n}"}
 					ch <- runtime.Event{Kind: runtime.EventToolCompleted, ItemID: "t1", ExitCode: 0, Output: "ok"}
+					bigIn := `{"content":"` + strings.Repeat("参数行ABCD", 3000) + `"}`
+					ch <- runtime.Event{Kind: runtime.EventToolStarted, ItemID: "t_big", ToolName: "Write", FilePath: "big.txt", Input: bigIn}
+					ch <- runtime.Event{Kind: runtime.EventToolCompleted, ItemID: "t_big", ExitCode: 0}
 					ch <- runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: "msg_2", Text: "final answer"}
 					ch <- runtime.Event{Kind: runtime.EventToolStarted, ItemID: "t2", ToolName: "Read", FilePath: "README.md"}
 					ch <- runtime.Event{Kind: runtime.EventTurnCompleted}
@@ -783,11 +789,14 @@ func TestToolUpdatePreservesMetadataAndRunTerminationSettlesItems(t *testing.T) 
 	proj := waitForSessionStatus(t, eng, owner, l.Session.SessionId, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
 
 	var kinds []sessionv1.TurnItemKind
-	var bashItem, readItem, finalMsg *sessionv1.TurnItem
+	var bashItem, bigItem, readItem, finalMsg *sessionv1.TurnItem
 	for _, it := range proj.Items {
 		kinds = append(kinds, it.Kind)
 		if strings.HasSuffix(it.ItemId, ":t1") {
 			bashItem = it
+		}
+		if strings.HasSuffix(it.ItemId, ":t_big") {
+			bigItem = it
 		}
 		if strings.HasSuffix(it.ItemId, ":t2") {
 			readItem = it
@@ -796,14 +805,27 @@ func TestToolUpdatePreservesMetadataAndRunTerminationSettlesItems(t *testing.T) 
 			finalMsg = it
 		}
 	}
-	if bashItem == nil || bashItem.Kind != sessionv1.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION || bashItem.ToolName != "Bash" || bashItem.Command != "echo ok" || bashItem.Output != "ok" {
-		t.Fatalf("bash tool lost metadata on completion: %+v", bashItem)
+	if bashItem == nil || bashItem.Kind != sessionv1.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION || bashItem.ToolName != "Bash" || bashItem.Command != "echo ok" || !strings.Contains(bashItem.Input, `"command": "echo ok"`) || bashItem.Output != "ok" {
+		t.Fatalf("bash tool lost metadata or input on completion: %+v", bashItem)
+	}
+	if bigItem == nil || !bigItem.InputTruncated || bigItem.InputBlobSha256 == "" || len(bigItem.Input) >= 20000 {
+		t.Fatalf("large tool input was not inline-truncated with blob sha: %+v", bigItem)
+	}
+	inBlobData, _, _, err := eng.Store().GetBlob(bigItem.InputBlobSha256)
+	if err != nil || uint64(len(inBlobData)) != bigItem.InputSize || !strings.HasSuffix(string(inBlobData), `"}`) {
+		t.Fatalf("full input blob round-trip failed: err=%v len=%d size=%d", err, len(inBlobData), bigItem.InputSize)
 	}
 	if readItem == nil || readItem.FilePath != "README.md" || readItem.Status == "running" {
 		t.Fatalf("dangling Read tool was not settled or lost FilePath: %+v", readItem)
 	}
 	if finalMsg == nil || finalMsg.Text != "final answer" || finalMsg.Streaming || finalMsg.Status != "completed" {
 		t.Fatalf("delta-only post-tool message not finalized: %+v (kinds=%v)", finalMsg, kinds)
+	}
+	if err := eng.DeleteSession(ctx, owner, l.Session.SessionId); err != nil {
+		t.Fatalf("DeleteSession: %v", err)
+	}
+	if _, _, _, err := eng.Store().GetBlob(bigItem.InputBlobSha256); err == nil {
+		t.Fatalf("expected input blob %s to be pruned on DeleteSession", bigItem.InputBlobSha256)
 	}
 }
 

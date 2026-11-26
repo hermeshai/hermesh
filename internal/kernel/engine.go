@@ -179,6 +179,12 @@ type Config struct {
 	// AgentModels: each coding agent's own list of models, as the machine
 	// last read it; nil offers the manifest's.
 	AgentModels catalog.AgentModels
+	// PrimaryTitleGenerator, when set and enabled (e.g. Her's smallest model),
+	// runs stateless title generation before falling back to the session's CLI.
+	PrimaryTitleGenerator runtime.TitleGenerator
+	// CachedAgentModels returns an agent's already-cached model list in memory
+	// without triggering any subprocess or network discovery.
+	CachedAgentModels func(agent string) []runtime.Model
 }
 
 type shellSub struct {
@@ -3451,21 +3457,22 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					status = "failed"
 				}
 			}
-			output := ev.Output
-			outputSize := uint64(len(output))
-			truncated := false
-			blobSha := ""
-			if len(output) > maxInlineToolOutput {
-				if ref, bErr := e.st.PutBlob("output.txt", "text/plain; charset=utf-8", []byte(output)); bErr == nil {
-					blobSha = ref.BlobSha256
+			inlineBlob := func(name, raw string) (text string, truncated bool, sha string, size uint64) {
+				size = uint64(len(raw))
+				if len(raw) <= maxInlineToolOutput {
+					return raw, false, "", size
+				}
+				if ref, bErr := e.st.PutBlob(name, "text/plain; charset=utf-8", []byte(raw)); bErr == nil {
+					sha = ref.BlobSha256
 				}
 				cut := maxInlineToolOutput
-				for cut > 0 && !utf8.RuneStart(output[cut]) {
+				for cut > 0 && !utf8.RuneStart(raw[cut]) {
 					cut--
 				}
-				output = output[:cut] + "\n...[output truncated]..."
-				truncated = true
+				return raw[:cut] + "\n...[output truncated]...", true, sha, size
 			}
+			input, inputTruncated, inputBlobSha, inputSize := inlineBlob("input.txt", ev.Input)
+			output, truncated, blobSha, outputSize := inlineBlob("output.txt", ev.Output)
 			existingScoped := pump.lookupScopedItem(ev.ItemID)
 			cur := pump.getActive()
 			// A background task completing on its own updates its original TurnItem
@@ -3478,6 +3485,12 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					}
 					prev.Status = status
 					prev.ExitCode = ev.ExitCode
+					if input != "" {
+						prev.Input = input
+						prev.InputTruncated = inputTruncated
+						prev.InputBlobSha256 = inputBlobSha
+						prev.InputSize = inputSize
+					}
 					if output != "" {
 						prev.Output = output
 						prev.OutputTruncated = truncated
@@ -3517,6 +3530,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				toolName := ev.ToolName
 				cmd := ev.Command
 				filePath := ev.FilePath
+				text := strings.TrimSpace(ev.Text)
 				if prev != nil {
 					if prev.RunId != "" {
 						ownerRunID = prev.RunId
@@ -3529,6 +3543,15 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					}
 					if filePath == "" {
 						filePath = prev.FilePath
+					}
+					if text == "" {
+						text = prev.Text
+					}
+					if input == "" && prev.Input != "" {
+						input = prev.Input
+						inputTruncated = prev.InputTruncated
+						inputBlobSha = prev.InputBlobSha256
+						inputSize = prev.InputSize
 					}
 					if output == "" && prev.Output != "" {
 						output = prev.Output
@@ -3547,8 +3570,13 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					RunId:            ownerRunID,
 					Kind:             kind,
 					Status:           status,
+					Text:             text,
 					ToolName:         toolName,
 					Command:          cmd,
+					Input:            input,
+					InputTruncated:   inputTruncated,
+					InputBlobSha256:  inputBlobSha,
+					InputSize:        inputSize,
 					FilePath:         filePath,
 					ExitCode:         ev.ExitCode,
 					Output:           output,
@@ -3564,7 +3592,10 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 						sNow.Progress = &sessionv1.SessionProgress{}
 					}
 					if ev.Kind == runtime.EventToolStarted {
-						curTool := toolName
+						curTool := text
+						if curTool == "" {
+							curTool = toolName
+						}
 						if curTool == "" {
 							curTool = cmd
 						}
@@ -3776,18 +3807,80 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			if cur == nil {
 				continue
 			}
-			itemID := scopeRunItemID(cur.runID, ev.ItemID, "todo")
+			rawID := ev.ItemID
+			if rawID == "" {
+				rawID = "todo"
+			}
+			itemID := scopeRunItemID(cur.runID, rawID, "todo")
 			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				prev, _ := tx.GetTurnItem(sessionID, itemID)
+				focus := strings.TrimSpace(ev.Text)
+				if !ev.HasFocus && prev != nil {
+					focus = prev.Text
+				}
 				it := &sessionv1.TurnItem{
 					ItemId:    itemID,
 					SessionId: sessionID,
 					RunId:     cur.runID,
 					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_TODO_LIST,
 					Status:    "completed",
+					Text:      focus,
 					TodoSteps: ev.TodoSteps,
 				}
 				if err := tx.PutTurnItem(it); err != nil {
 					return err
+				}
+				if focus != "" {
+					if sNow, sErr := tx.GetSession(sessionID); sErr == nil {
+						if sNow.Progress == nil {
+							sNow.Progress = &sessionv1.SessionProgress{}
+						}
+						sNow.Progress.CurrentTool = focus
+						_ = putSessionSynced(tx, sNow)
+					}
+				}
+				return tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: sessionID,
+					Type:      "item.updated",
+					Item:      it,
+				})
+			})
+			e.publish(evs, nil)
+
+		case runtime.EventFocusUpdated:
+			cur := e.ensureContinuationTurn(pump)
+			if cur == nil {
+				continue
+			}
+			focus := strings.TrimSpace(ev.Text)
+			itemID := scopeRunItemID(cur.runID, "todo", "todo")
+			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				prev, _ := tx.GetTurnItem(sessionID, itemID)
+				if focus == "" && prev == nil {
+					return nil
+				}
+				var steps []*sessionv1.TodoStep
+				if prev != nil {
+					steps = prev.TodoSteps
+				}
+				it := &sessionv1.TurnItem{
+					ItemId:    itemID,
+					SessionId: sessionID,
+					RunId:     cur.runID,
+					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_TODO_LIST,
+					Status:    "completed",
+					Text:      focus,
+					TodoSteps: steps,
+				}
+				if err := tx.PutTurnItem(it); err != nil {
+					return err
+				}
+				if sNow, sErr := tx.GetSession(sessionID); sErr == nil {
+					if sNow.Progress == nil {
+						sNow.Progress = &sessionv1.SessionProgress{}
+					}
+					sNow.Progress.CurrentTool = focus
+					_ = putSessionSynced(tx, sNow)
 				}
 				return tx.AppendEvent(&sessionv1.SessionEvent{
 					SessionId: sessionID,
@@ -5678,7 +5771,19 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 				sNow.ArchivedAt = nil
 			}
 		}
-		if err := putSessionSynced(tx, sNow); err != nil {
+		pinOnly := req.HasPinned &&
+			cleanTitle == "" &&
+			!req.RegenerateTitle &&
+			!req.HasArchived &&
+			req.ModelSelection == nil &&
+			req.RuntimeMode == identityv1.RuntimeMode_RUNTIME_MODE_UNSPECIFIED &&
+			req.InteractionMode == sessionv1.InteractionMode_INTERACTION_MODE_UNSPECIFIED
+		if pinOnly {
+			syncSessionSummary(sNow)
+			if err := tx.PutSessionPreserveUpdatedAt(sNow); err != nil {
+				return err
+			}
+		} else if err := putSessionSynced(tx, sNow); err != nil {
 			return err
 		}
 		for _, it := range stoppedItems {
@@ -6224,6 +6329,9 @@ func (e *Engine) DeleteSession(ctx context.Context, p *Principal, sessionID stri
 	var candidateBlobs []string
 	if items, iErr := e.st.TurnItems(sessionID); iErr == nil {
 		for _, it := range items {
+			if it.InputBlobSha256 != "" {
+				candidateBlobs = append(candidateBlobs, it.InputBlobSha256)
+			}
 			if it.OutputBlobSha256 != "" {
 				candidateBlobs = append(candidateBlobs, it.OutputBlobSha256)
 			}

@@ -696,6 +696,7 @@ type acpToolState struct {
 	status          string
 	command         string
 	filePath        string
+	summary         string
 	terminalID      string
 	output          string
 	diffNewText     string
@@ -773,19 +774,23 @@ func (at *acpAgentTerm) flushCarry() {
 }
 
 type acpBgTask struct {
-	taskID       string
-	itemID       string
-	agentID      string
-	logPath      string
-	kind         sessionv1.BackgroundTaskKind
-	title        string
-	command      string
-	output       string
-	awaited      bool
-	asyncLaunch  bool
-	launchedTurn uint64
-	stopScope    sessionv1.BackgroundTaskStopScope
-	running      bool
+	taskID         string
+	itemID         string
+	agentID        string
+	logPath        string
+	kind           sessionv1.BackgroundTaskKind
+	title          string
+	command        string
+	output         string
+	awaited        bool
+	asyncLaunch    bool
+	launchedTurn   uint64
+	maxTriggers    int
+	triggersSeen   int
+	timerCondition string
+	ignoreCondMsgs map[string]bool
+	stopScope      sessionv1.BackgroundTaskStopScope
+	running        bool
 }
 
 type session struct {
@@ -949,7 +954,8 @@ func (s *session) settleOutOfTurn() {
 	if sawReply {
 		for _, bg := range s.bgTasks {
 			trackedByMsgs := bg.messagesDir() != "" || (s.agyMessagesDir != "" && bg.agentID != "")
-			if bg.running && bg.awaited && bg.asyncLaunch && bg.launchedTurn < wokeTurn && !trackedByMsgs {
+			recurringCron := bg.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE && bg.maxTriggers == 0
+			if bg.running && bg.awaited && bg.asyncLaunch && bg.launchedTurn < wokeTurn && !trackedByMsgs && !recurringCron {
 				bg.running = false
 				if st := s.tools[bg.itemID]; st != nil {
 					st.status = "completed"
@@ -1482,8 +1488,55 @@ func (bg *acpBgTask) messagesDir() string {
 }
 
 type agyTaskCompletion struct {
+	status   sessionv1.BackgroundTaskStatus
 	exitCode int32
+	hasExit  bool
 	content  string
+	summary  string
+}
+
+func parseACPScheduleMeta(rawInput json.RawMessage) (maxTriggers int, timerCondition string) {
+	if len(rawInput) == 0 {
+		return 0, ""
+	}
+	var in struct {
+		DurationSeconds int64  `json:"DurationSeconds"`
+		CronExpression  string `json:"CronExpression"`
+		MaxIterations   int    `json:"MaxIterations"`
+		TimerCondition  string `json:"TimerCondition"`
+	}
+	if json.Unmarshal(rawInput, &in) != nil {
+		return 0, ""
+	}
+	if strings.TrimSpace(in.CronExpression) == "" && in.DurationSeconds > 0 {
+		tc := strings.TrimSpace(in.TimerCondition)
+		if tc != "" && !strings.EqualFold(tc, "never") {
+			timerCondition = tc
+		}
+		return 1, timerCondition
+	}
+	if strings.TrimSpace(in.CronExpression) != "" && in.MaxIterations > 0 {
+		return in.MaxIterations, ""
+	}
+	return 0, ""
+}
+
+func snapshotExistingMsgs(dir string) map[string]bool {
+	if dir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(entries))
+	for _, ent := range entries {
+		name := ent.Name()
+		if !ent.IsDir() && name != "read.json" && strings.HasSuffix(name, ".json") {
+			out[filepath.Join(dir, name)] = true
+		}
+	}
+	return out
 }
 
 // syncAntigravityCompletionsLocked inspects unread .system_generated/messages/*.json files
@@ -1520,6 +1573,7 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 		s.seenTaskMsgs = map[string]bool{}
 	}
 	done := map[*acpBgTask]agyTaskCompletion{}
+	var progress []runtime.Event
 	for dir := range dirs {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -1539,8 +1593,12 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 				continue
 			}
 			var msg struct {
-				Sender         string `json:"sender"`
-				Content        string `json:"content"`
+				Sender        string `json:"sender"`
+				Content       string `json:"content"`
+				HideFromUser  bool   `json:"hideFromUser"`
+				RenderDetails struct {
+					MessageTitle string `json:"messageTitle"`
+				} `json:"renderDetails"`
 				SourceMetadata struct {
 					Tool struct {
 						ToolCall struct {
@@ -1553,6 +1611,25 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 				continue
 			}
 			s.seenTaskMsgs[full] = true
+
+			// A one-shot timer with TimerCondition ('any' or a sender ID) is canceled early by Antigravity
+			// as soon as a matching wakeup message arrives.
+			if !msg.HideFromUser && msg.Sender != "" {
+				for _, cand := range s.bgTasks {
+					if !cand.running || cand.timerCondition == "" || msg.Sender == cand.agentID || cand.ignoreCondMsgs[full] {
+						continue
+					}
+					if cand.timerCondition == "any" || cand.timerCondition == msg.Sender {
+						if _, exists := done[cand]; !exists {
+							done[cand] = agyTaskCompletion{
+								status:  sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+								summary: "canceled by timer condition",
+							}
+						}
+					}
+				}
+			}
+
 			bg := byKey[msg.Sender]
 			if bg == nil && msg.SourceMetadata.Tool.ToolCall.ID != "" {
 				bg = byKey[msg.SourceMetadata.Tool.ToolCall.ID]
@@ -1560,20 +1637,66 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 			if bg == nil {
 				continue
 			}
-			isSubagentReply := bg.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT && msg.Sender != "" && msg.Sender == bg.agentID
-			if !strings.Contains(msg.Content, "finished with result:") && !isSubagentReply {
-				continue
-			}
-			code := int32(0)
-			if m := agyExitCodeRE.FindStringSubmatch(msg.Content); len(m) == 2 {
-				if n, pErr := strconv.Atoi(m[1]); pErr == nil {
-					code = int32(n)
+			msgTitle := strings.TrimSpace(msg.RenderDetails.MessageTitle)
+			switch {
+			case strings.Contains(msg.Content, "finished with result:"):
+				code := int32(0)
+				if m := agyExitCodeRE.FindStringSubmatch(msg.Content); len(m) == 2 {
+					if n, pErr := strconv.Atoi(m[1]); pErr == nil {
+						code = int32(n)
+					}
+				}
+				st := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+				if code != 0 {
+					st = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+				}
+				done[bg] = agyTaskCompletion{status: st, exitCode: code, hasExit: true, content: msg.Content}
+
+			case strings.Contains(msg.Content, "was canceled with result:") || strings.HasSuffix(msgTitle, "was canceled"):
+				done[bg] = agyTaskCompletion{
+					status:  sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+					content: msg.Content,
+					summary: "canceled",
+				}
+
+			case bg.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT && msg.Sender != "" && msg.Sender == bg.agentID:
+				done[bg] = agyTaskCompletion{
+					status:  sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
+					hasExit: true,
+					content: msg.Content,
+				}
+
+			case bg.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE &&
+				(strings.HasSuffix(msgTitle, "Timer has expired") || (msg.Sender != "" && msg.Sender == bg.agentID)):
+				bg.triggersSeen++
+				if strings.HasSuffix(msgTitle, "Timer has expired") || (bg.maxTriggers > 0 && bg.triggersSeen >= bg.maxTriggers) {
+					done[bg] = agyTaskCompletion{
+						status:  sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
+						hasExit: true,
+						content: msg.Content,
+					}
+				} else if msg.Content != "" {
+					bg.output = tailUTF8(msg.Content, 16384)
+					if st := s.tools[bg.itemID]; st != nil {
+						st.output = bg.output
+					}
+					progress = append(progress, runtime.Event{
+						Kind:                runtime.EventBackgroundTask,
+						TaskID:              bg.taskID,
+						ItemID:              bg.itemID,
+						ToolName:            bg.title,
+						Command:             bg.command,
+						Output:              bg.output,
+						BackgroundKind:      bg.kind,
+						BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+						BackgroundStopScope: bg.stopScope,
+						BackgroundAwaited:   bg.awaited,
+					})
 				}
 			}
-			done[bg] = agyTaskCompletion{exitCode: code, content: msg.Content}
 		}
 	}
-	var out []runtime.Event
+	out := progress
 	for bg, comp := range done {
 		if bg == nil || !bg.running {
 			continue
@@ -1583,11 +1706,12 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 			if tail, _, _, err := readFileTailUTF8(bg.logPath, 16384); err == nil && tail != "" {
 				bg.output = tail
 			}
-		} else if comp.content != "" {
+		}
+		if bg.output == "" && comp.content != "" {
 			bg.output = tailUTF8(comp.content, 16384)
 		}
 		if st := s.tools[bg.itemID]; st != nil {
-			if comp.exitCode != 0 {
+			if comp.status == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED {
 				st.status = "failed"
 			} else {
 				st.status = "completed"
@@ -1595,10 +1719,6 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 			if bg.output != "" {
 				st.output = bg.output
 			}
-		}
-		bgStatus := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
-		if comp.exitCode != 0 {
-			bgStatus = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
 		}
 		kept, _ := runtime.KeepOutput(bg.output)
 		out = append(out,
@@ -1609,10 +1729,11 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 				ToolName:            bg.title,
 				Command:             bg.command,
 				Output:              bg.output,
+				Text:                comp.summary,
 				ExitCode:            comp.exitCode,
-				HasExitCode:         true,
+				HasExitCode:         comp.hasExit,
 				BackgroundKind:      bg.kind,
-				BackgroundStatus:    bgStatus,
+				BackgroundStatus:    comp.status,
 				BackgroundStopScope: bg.stopScope,
 				BackgroundAwaited:   bg.awaited,
 			},
@@ -1631,7 +1752,10 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 }
 
 func (s *session) startTaskLogPoller(taskID, logPath string) {
-	if logPath == "" {
+	s.mu.Lock()
+	hasMsgsDir := s.agyMessagesDir != ""
+	s.mu.Unlock()
+	if logPath == "" && !hasMsgsDir {
 		return
 	}
 	interval := s.drv.taskLogPollInterval()
@@ -1649,7 +1773,15 @@ func (s *session) startTaskLogPoller(taskID, logPath string) {
 			if !s.Alive() {
 				return
 			}
-			tail, size, mod, err := readFileTailUTF8(logPath, 16384)
+			var tail string
+			var size int64
+			var mod time.Time
+			var err error
+			if logPath != "" {
+				tail, size, mod, err = readFileTailUTF8(logPath, 16384)
+			} else {
+				err = errors.New("no log file")
+			}
 			s.mu.Lock()
 			bg := s.bgTasks[taskID]
 			if bg == nil || !bg.running {
@@ -1745,7 +1877,7 @@ func classifyACPBackgroundTool(st *acpToolState) (kind sessionv1.BackgroundTaskK
 	if promptText == "" {
 		promptText = strings.TrimSpace(in.PromptLower)
 	}
-	if !isGenericACPBackgroundTitle(rawTitle) {
+	if !isGenericACPBackgroundTitle(rawTitle) && rawTitle != cmd {
 		title = rawTitle
 	}
 	for _, cand := range []string{in.ToolSummary, in.Description, in.Role, in.SubagentType, promptText, cmd, rawTitle} {
@@ -1791,23 +1923,36 @@ func (s *session) promoteOpenBackgroundWork() (newEvents []runtime.Event, hasAwa
 		}
 		bg := s.bgTasks[id]
 		if bg == nil {
+			maxTrig, timerCond := parseACPScheduleMeta(st.rawInput)
 			bg = &acpBgTask{
-				taskID:       id,
-				itemID:       id,
-				agentID:      st.asyncAgentID,
-				logPath:      st.asyncLogPath,
-				kind:         kind,
-				title:        title,
-				command:      cmd,
-				output:       tailUTF8(st.output, 16384),
-				awaited:      awaited,
-				asyncLaunch:  st.asyncLaunch,
-				launchedTurn: s.turnSeq,
-				stopScope:    sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
-				running:      true,
+				taskID:         id,
+				itemID:         id,
+				agentID:        st.asyncAgentID,
+				logPath:        st.asyncLogPath,
+				kind:           kind,
+				title:          title,
+				command:        cmd,
+				output:         tailUTF8(st.output, 16384),
+				awaited:        awaited,
+				asyncLaunch:    st.asyncLaunch,
+				launchedTurn:   s.turnSeq,
+				maxTriggers:    maxTrig,
+				timerCondition: timerCond,
+				stopScope:      sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+				running:        true,
+			}
+			if d := bg.messagesDir(); d != "" && s.agyMessagesDir == "" {
+				s.agyMessagesDir = d
+			}
+			if bg.timerCondition != "" {
+				msgDir := bg.messagesDir()
+				if msgDir == "" {
+					msgDir = s.agyMessagesDir
+				}
+				bg.ignoreCondMsgs = snapshotExistingMsgs(msgDir)
 			}
 			s.bgTasks[id] = bg
-			if bg.logPath != "" {
+			if bg.logPath != "" || s.agyMessagesDir != "" {
 				pollers = append(pollers, [2]string{bg.taskID, bg.logPath})
 			}
 			newEvents = append(newEvents, runtime.Event{
@@ -2497,16 +2642,25 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			if name == "" {
 				name = "Terminal"
 			}
+			var inText string
+			if at.command != "" {
+				inText = runtime.MarshalToolInput(map[string]any{"command": at.command})
+			}
 			toolEv = &runtime.Event{
 				Kind:     runtime.EventToolStarted,
 				ItemID:   termID,
 				ToolName: name,
 				Command:  at.command,
+				Input:    inText,
 			}
 		} else if standalone && termDone && (at.command != "" || at.title != "") {
 			name := at.title
 			if name == "" {
 				name = "Terminal"
+			}
+			var inText string
+			if at.command != "" {
+				inText = runtime.MarshalToolInput(map[string]any{"command": at.command})
 			}
 			kept, _ := runtime.KeepOutput(outSnap)
 			toolEv = &runtime.Event{
@@ -2514,6 +2668,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 				ItemID:      termID,
 				ToolName:    name,
 				Command:     at.command,
+				Input:       inText,
 				ExitCode:    at.exitCode,
 				HasExitCode: true,
 				Output:      kept,
@@ -2535,7 +2690,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		}
 		contentOut, diffPath, diffNewText, refTermID := s.extractACPToolContent(u.Content)
 		rawOut := extractACPRawOutput(u.RawOutput)
-		inCmd, inPath := extractACPRawInput(u.RawInput)
+		inCmd, inPath, inSummary := extractACPRawInput(u.RawInput)
 		candOut := contentOut
 		if candOut == "" {
 			candOut = rawOut
@@ -2566,6 +2721,9 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		}
 		if inCmd != "" {
 			st.command = inCmd
+		}
+		if inSummary != "" {
+			st.summary = inSummary
 		}
 		if refTermID != "" {
 			st.terminalID = refTermID
@@ -2619,6 +2777,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			}
 		}
 		toolName, cmd, filePath := mapACPToolFields(st, s.spec.Workdir)
+		inText := formatACPToolInput(st, cmd, filePath)
 		wasStarted := st.started
 		st.started = true
 		status := st.status
@@ -2644,26 +2803,36 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 						st.output = tail
 					}
 				}
+				maxTrig, timerCond := parseACPScheduleMeta(st.rawInput)
 				bg = &acpBgTask{
-					taskID:       id,
-					itemID:       id,
-					agentID:      st.asyncAgentID,
-					logPath:      st.asyncLogPath,
-					kind:         kind,
-					title:        bgTitle,
-					command:      bgCmd,
-					output:       tailUTF8(outText, 16384),
-					awaited:      awaited,
-					asyncLaunch:  true,
-					launchedTurn: s.turnSeq,
-					stopScope:    sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
-					running:      true,
+					taskID:         id,
+					itemID:         id,
+					agentID:        st.asyncAgentID,
+					logPath:        st.asyncLogPath,
+					kind:           kind,
+					title:          bgTitle,
+					command:        bgCmd,
+					output:         tailUTF8(outText, 16384),
+					awaited:        awaited,
+					asyncLaunch:    true,
+					launchedTurn:   s.turnSeq,
+					maxTriggers:    maxTrig,
+					timerCondition: timerCond,
+					stopScope:      sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+					running:        true,
 				}
-				s.bgTasks[id] = bg
 				if d := bg.messagesDir(); d != "" && s.agyMessagesDir == "" {
 					s.agyMessagesDir = d
 				}
-				if bg.logPath != "" {
+				if bg.timerCondition != "" {
+					msgDir := bg.messagesDir()
+					if msgDir == "" {
+						msgDir = s.agyMessagesDir
+					}
+					bg.ignoreCondMsgs = snapshotExistingMsgs(msgDir)
+				}
+				s.bgTasks[id] = bg
+				if bg.logPath != "" || s.agyMessagesDir != "" {
 					startPoller = [2]string{bg.taskID, bg.logPath}
 				}
 				bgEv = &runtime.Event{
@@ -2679,8 +2848,9 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					BackgroundAwaited:   bg.awaited,
 				}
 			}
-		} else if status == "completed" && len(st.rawInput) > 0 {
+		} else if (status == "completed" || (status == "failed" && (strings.Contains(outText, "task is not running") || strings.Contains(outText, "not found")))) && len(st.rawInput) > 0 {
 			if killAll, targetIDs := detectACPTaskKill(st.rawInput); killAll || len(targetIDs) > 0 {
+				alreadyDone := status == "failed" && strings.Contains(outText, "(status: DONE)")
 				for _, cand := range s.bgTasks {
 					if !cand.running {
 						continue
@@ -2695,6 +2865,12 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					if tst := s.tools[cand.itemID]; tst != nil {
 						tst.status = "completed"
 					}
+					settledStatus := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+					summaryText := "stopped by agent"
+					if alreadyDone {
+						settledStatus = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+						summaryText = ""
+					}
 					kept, _ := runtime.KeepOutput(cand.output)
 					killedEvs = append(killedEvs,
 						runtime.Event{
@@ -2704,9 +2880,10 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 							ToolName:            cand.title,
 							Command:             cand.command,
 							Output:              cand.output,
-							Text:                "stopped by agent",
+							Text:                summaryText,
+							HasExitCode:         alreadyDone,
 							BackgroundKind:      cand.kind,
-							BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+							BackgroundStatus:    settledStatus,
 							BackgroundStopScope: cand.stopScope,
 							BackgroundAwaited:   cand.awaited,
 						},
@@ -2775,12 +2952,25 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		if startPoller[0] != "" {
 			s.startTaskLogPoller(startPoller[0], startPoller[1])
 		}
-		if status != "completed" && status != "failed" && (!wasStarted || u.SessionUpdate == "tool_call" || isLaunchAck || toolName != "" || cmd != "" || filePath != "") {
+		if metaEv, sig, isMeta := parseACPProgressTool(stSnap.title, stSnap.rawInput); isMeta {
+			if metaEv != nil && sig != stSnap.lastArtifactSig {
+				s.mu.Lock()
+				if cur := s.tools[id]; cur != nil {
+					cur.lastArtifactSig = sig
+				}
+				s.mu.Unlock()
+				s.emit(*metaEv)
+			}
+			return
+		}
+		if status != "completed" && status != "failed" && (!wasStarted || u.SessionUpdate == "tool_call" || isLaunchAck || toolName != "" || cmd != "" || filePath != "" || inText != "") {
 			s.emit(runtime.Event{
 				Kind:     runtime.EventToolStarted,
 				ItemID:   id,
+				Text:     stSnap.summary,
 				ToolName: toolName,
 				Command:  cmd,
+				Input:    inText,
 				FilePath: filePath,
 			})
 		}
@@ -2795,15 +2985,14 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			if status == "failed" {
 				exit = 1
 			}
-			if outText == "" {
-				outText = status
-			}
 			kept, _ := runtime.KeepOutput(outText)
 			s.emit(runtime.Event{
 				Kind:        runtime.EventToolCompleted,
 				ItemID:      id,
+				Text:        stSnap.summary,
 				ToolName:    toolName,
 				Command:     cmd,
+				Input:       inText,
 				FilePath:    filePath,
 				ExitCode:    exit,
 				HasExitCode: true,
@@ -2825,9 +3014,14 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		s.mu.Unlock()
 		var steps []*sessionv1.TodoStep
 		for _, e := range u.Entries {
-			steps = append(steps, &sessionv1.TodoStep{Text: e.Content, Status: e.Status})
+			if txt := strings.TrimSpace(e.Content); txt != "" {
+				steps = append(steps, &sessionv1.TodoStep{
+					Text:   txt,
+					Status: runtime.NormalizeTodoStatus(e.Status),
+				})
+			}
 		}
-		s.emit(runtime.Event{Kind: runtime.EventTodoUpdated, TodoSteps: steps})
+		s.emit(runtime.Event{Kind: runtime.EventTodoUpdated, ItemID: "todo", TodoSteps: steps})
 	case "usage_update":
 		if u.Size > 0 || u.Used > 0 {
 			s.emit(runtime.Event{
@@ -3033,10 +3227,11 @@ func (s *session) extractACPToolContent(raw json.RawMessage) (output string, dif
 		return "", "", "", ""
 	}
 	var items []struct {
-		Type       string `json:"type"`
-		Path       string `json:"path"`
-		NewText    string `json:"newText"`
-		TerminalID string `json:"terminalId"`
+		Type       string  `json:"type"`
+		Path       string  `json:"path"`
+		OldText    *string `json:"oldText"`
+		NewText    string  `json:"newText"`
+		TerminalID string  `json:"terminalId"`
 		Content    struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
@@ -3066,8 +3261,8 @@ func (s *session) extractACPToolContent(raw json.RawMessage) (output string, dif
 			if it.NewText != "" {
 				diffNewText = it.NewText
 			}
-			if it.Path != "" {
-				parts = append(parts, it.Path)
+			if diffOut := formatACPDiff(it.Path, s.spec.Workdir, it.OldText, it.NewText); diffOut != "" {
+				parts = append(parts, diffOut)
 			}
 		case "terminal":
 			if it.TerminalID != "" {
@@ -3118,12 +3313,98 @@ func extractACPRawOutput(raw json.RawMessage) string {
 			}
 		}
 	}
+	return runtime.FormatToolJSON(raw)
+}
+
+func formatACPToolInput(st *acpToolState, cmd, filePath string) string {
+	if s := runtime.FormatToolJSON(st.rawInput); s != "" {
+		return s
+	}
+	if cmd != "" {
+		return runtime.MarshalToolInput(map[string]any{"command": cmd})
+	}
+	if filePath != "" && filePath != st.title {
+		return runtime.MarshalToolInput(map[string]any{"path": filePath})
+	}
+	if st.filePath != "" {
+		return runtime.MarshalToolInput(map[string]any{"path": st.filePath})
+	}
 	return ""
 }
 
-func extractACPRawInput(raw json.RawMessage) (cmd, path string) {
+func formatACPDiff(path, workdir string, oldPtr *string, newText string) string {
+	if oldPtr == nil && newText == "" {
+		return ""
+	}
+	oldText := ""
+	if oldPtr != nil {
+		oldText = *oldPtr
+	}
+	if oldPtr != nil && oldText == newText {
+		return ""
+	}
+	splitLines := func(t string) []string {
+		if t == "" {
+			return nil
+		}
+		return strings.Split(strings.TrimSuffix(t, "\n"), "\n")
+	}
+	oldLines := splitLines(oldText)
+	newLines := splitLines(newText)
+	pre := 0
+	for pre < len(oldLines) && pre < len(newLines) && oldLines[pre] == newLines[pre] {
+		pre++
+	}
+	suf := 0
+	for pre+suf < len(oldLines) && pre+suf < len(newLines) && oldLines[len(oldLines)-1-suf] == newLines[len(newLines)-1-suf] {
+		suf++
+	}
+	const ctxLines = 3
+	oldStart := max(0, pre-ctxLines)
+	oldEnd := min(len(oldLines), len(oldLines)-suf+ctxLines)
+	newStart := max(0, pre-ctxLines)
+	newEnd := min(len(newLines), len(newLines)-suf+ctxLines)
+	var b strings.Builder
+	rel := path
+	if workdir != "" && filepath.IsAbs(rel) {
+		if r, err := filepath.Rel(workdir, rel); err == nil && r != "." && !strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+			rel = filepath.ToSlash(r)
+		}
+	}
+	if rel != "" {
+		if oldPtr == nil || len(oldLines) == 0 {
+			fmt.Fprintf(&b, "--- /dev/null\n+++ b/%s\n", rel)
+		} else {
+			fmt.Fprintf(&b, "--- a/%s\n+++ b/%s\n", rel, rel)
+		}
+	}
+	oldPos := oldStart + 1
+	if len(oldLines) == 0 {
+		oldPos = 0
+	}
+	newPos := newStart + 1
+	if len(newLines) == 0 {
+		newPos = 0
+	}
+	fmt.Fprintf(&b, "@@ -%d,%d +%d,%d @@\n", oldPos, oldEnd-oldStart, newPos, newEnd-newStart)
+	for i := oldStart; i < pre; i++ {
+		fmt.Fprintf(&b, " %s\n", oldLines[i])
+	}
+	for i := pre; i < len(oldLines)-suf; i++ {
+		fmt.Fprintf(&b, "-%s\n", oldLines[i])
+	}
+	for i := pre; i < len(newLines)-suf; i++ {
+		fmt.Fprintf(&b, "+%s\n", newLines[i])
+	}
+	for i := len(newLines) - suf; i < newEnd; i++ {
+		fmt.Fprintf(&b, " %s\n", newLines[i])
+	}
+	return strings.TrimSuffix(b.String(), "\n")
+}
+
+func extractACPRawInput(raw json.RawMessage) (cmd, path, summary string) {
 	if len(raw) == 0 {
-		return "", ""
+		return "", "", ""
 	}
 	var obj struct {
 		Command          string `json:"command"`
@@ -3135,6 +3416,8 @@ func extractACPRawInput(raw json.RawMessage) (cmd, path string) {
 		Pattern          string `json:"pattern"`
 		Query            string `json:"query"`
 		URL              string `json:"url"`
+		ToolSummary      string `json:"toolSummary"`
+		Description      string `json:"description"`
 	}
 	if json.Unmarshal(raw, &obj) == nil {
 		for _, p := range []string{obj.Path, obj.FilePath, obj.FilePathCamel, obj.Pattern, obj.Query, obj.URL} {
@@ -3149,8 +3432,106 @@ func extractACPRawInput(raw json.RawMessage) (cmd, path string) {
 				break
 			}
 		}
+		for _, s := range []string{obj.ToolSummary, obj.Description} {
+			if trimmed := strings.TrimSpace(s); trimmed != "" {
+				summary = trimmed
+				break
+			}
+		}
 	}
-	return cmd, path
+	return cmd, path, summary
+}
+
+func parseACPProgressTool(title string, rawInput json.RawMessage) (ev *runtime.Event, sig string, isMeta bool) {
+	norm := strings.ToLower(strings.TrimSpace(title))
+	switch norm {
+	case "update_focus":
+		if len(rawInput) == 0 {
+			return nil, "", true
+		}
+		var in struct {
+			Focus string `json:"focus"`
+		}
+		if json.Unmarshal(rawInput, &in) != nil {
+			return nil, "", true
+		}
+		focus := strings.TrimSpace(in.Focus)
+		if focus == "" {
+			return nil, "", true
+		}
+		return &runtime.Event{
+			Kind: runtime.EventFocusUpdated,
+			Text: focus,
+		}, "focus\x00" + focus, true
+
+	case "update_steps", "todowrite", "todo_write":
+		if len(rawInput) == 0 {
+			return nil, "", true
+		}
+		type rawStep struct {
+			Title      string `json:"title"`
+			Content    string `json:"content"`
+			Step       string `json:"step"`
+			Text       string `json:"text"`
+			Status     string `json:"status"`
+			ActiveForm string `json:"activeForm"`
+		}
+		var in struct {
+			Steps []rawStep `json:"steps"`
+			Todos []rawStep `json:"todos"`
+		}
+		if json.Unmarshal(rawInput, &in) != nil || (in.Steps == nil && in.Todos == nil) {
+			return nil, "", true
+		}
+		list := in.Steps
+		hasActiveForm := false
+		if list == nil {
+			list = in.Todos
+			hasActiveForm = true
+		}
+		var steps []*sessionv1.TodoStep
+		var focus string
+		var sigBuf strings.Builder
+		sigBuf.WriteString("steps")
+		for _, item := range list {
+			label := ""
+			for _, cand := range []string{item.Title, item.Content, item.Step, item.Text} {
+				if trimmed := strings.TrimSpace(cand); trimmed != "" {
+					label = trimmed
+					break
+				}
+			}
+			if label == "" {
+				continue
+			}
+			st := runtime.NormalizeTodoStatus(item.Status)
+			steps = append(steps, &sessionv1.TodoStep{Text: label, Status: st})
+			if af := strings.TrimSpace(item.ActiveForm); af != "" {
+				hasActiveForm = true
+				if st == "in_progress" && focus == "" {
+					focus = af
+				}
+			}
+			sigBuf.WriteByte(0)
+			sigBuf.WriteString(st)
+			sigBuf.WriteByte(':')
+			sigBuf.WriteString(label)
+		}
+		if hasActiveForm {
+			sigBuf.WriteByte(0)
+			sigBuf.WriteString(focus)
+		}
+		return &runtime.Event{
+			Kind:      runtime.EventTodoUpdated,
+			ItemID:    "todo",
+			Text:      focus,
+			HasFocus:  hasActiveForm,
+			TodoSteps: steps,
+		}, sigBuf.String(), true
+
+	default:
+		return nil, "", false
+	}
 }
 
 type acpArtifactMeta struct {
@@ -3720,7 +4101,12 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 		s.mu.Lock()
 		s.terminals[termID] = mt
 		s.mu.Unlock()
-		s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: termID, ToolName: "Terminal", Command: fullCmd})
+		termInMap := map[string]any{"command": fullCmd}
+		if p.Cwd != "" {
+			termInMap["cwd"] = p.Cwd
+		}
+		termInput := runtime.MarshalToolInput(termInMap)
+		s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: termID, ToolName: "Terminal", Command: fullCmd, Input: termInput})
 		go func() {
 			err := cmd.Wait()
 			if err != nil {
@@ -3765,7 +4151,7 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 			if bgEv != nil {
 				s.emit(*bgEv)
 			}
-			s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: termID, ToolName: "Terminal", Command: fullCmd, ExitCode: int32(mt.exit), HasExitCode: true, Output: kept})
+			s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: termID, ToolName: "Terminal", Command: fullCmd, Input: termInput, ExitCode: int32(mt.exit), HasExitCode: true, Output: kept})
 		}()
 		reply(map[string]any{"terminalId": termID})
 

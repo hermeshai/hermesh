@@ -115,4 +115,39 @@ func TestParseTitleGenOutput(t *testing.T) {
 	if _, err := ParseTitleGenOutput(`{"title": "title", "provisional": false}`); err == nil {
 		t.Fatalf("expected placeholder 'title' to be rejected")
 	}
+	plain, err := ParseTitleGenOutput("  \"移植液态玻璃标题栏。\" ")
+	if err != nil || plain.Title != "移植液态玻璃标题栏" || plain.Provisional {
+		t.Fatalf("expected single-line plain title fallback, got (%+v, %v)", plain, err)
+	}
+}
+
+func TestPickSmallModelIDAndNeedsAttachment(t *testing.T) {
+	agyModels := []Model{
+		{ID: "gemini-4-neon-high", Name: "Gemini 4 Neon (High)"},
+		{ID: "gemini-4-carbon-high", Name: "Gemini 4 Carbon (High)"},
+		{ID: "gemini-pro-orchestrator-neon", Name: "Orchestrator (Neon)"},
+		{ID: "gemini-3.8-flash-high", Name: "Gemini 3.8 Flash (High)"},
+		{ID: "gemini-3.8-flash-low", Name: "Gemini 3.8 Flash (Low)", Efforts: []string{"medium", "low", "high"}},
+		{ID: "claude-opus-5-5-high", Name: "Claude Opus 5.5 (High)"},
+	}
+	id, eff := PickSmallModelID(agyModels)
+	if id != "gemini-3.8-flash-low" || eff != "low" {
+		t.Fatalf("agy PickSmallModelID = (%q, %q), want (\"gemini-3.8-flash-low\", \"low\")", id, eff)
+	}
+
+	codexModels := []Model{
+		{ID: "gpt-5.4", Name: "GPT-5.4"},
+		{ID: "o3-pro", Name: "o3 Pro"},
+		{ID: "gpt-5.1-codex-mini", Name: "GPT-5.1 Codex Mini", Efforts: []string{"low", "medium", "high"}},
+	}
+	if id, eff = PickSmallModelID(codexModels); id != "gpt-5.1-codex-mini" || eff != "low" {
+		t.Fatalf("codex PickSmallModelID = (%q, %q), want (\"gpt-5.1-codex-mini\", \"low\")", id, eff)
+	}
+
+	if !NeedsAttachmentForTitle("") || !NeedsAttachmentForTitle("修一下这个报错") || !NeedsAttachmentForTitle("看看这个截图") || !NeedsAttachmentForTitle("Fix this error") {
+		t.Fatalf("expected vague/empty prompts to require image attachment")
+	}
+	if NeedsAttachmentForTitle("如果现在进行中有很多个会话，你是怎么控制排序的，我现在看到的现象是他们之间经常快速跳动，是因为都在活跃并更新吗？") {
+		t.Fatalf("expected clear descriptive prompt to skip image attachment")
+	}
 }
