@@ -392,3 +392,31 @@ func ask(_ s: inout Session) {
     withNotes.items[0].optional = false
     #expect(quickChoice(withNotes) == nil, "another required answer needs the full form")
 }
+
+@Test func questionStepsAndRecommendedLabels() {
+    #expect(parseOptionLabel("(Recommended) 一次性完整落地") == ParsedOptionLabel(recommended: true, text: "一次性完整落地"))
+    #expect(parseOptionLabel("（推荐）零配置自动选择") == ParsedOptionLabel(recommended: true, text: "零配置自动选择"))
+    #expect(parseOptionLabel("分两阶段落地") == ParsedOptionLabel(recommended: false, text: "分两阶段落地"))
+
+    let items: [Hermesh_Session_V1_QuestionItem] = [
+        .with { $0.id = "q1"; $0.text = "第一项" },
+        .with { $0.id = "q2"; $0.text = "第二项" },
+        .with { $0.id = "q3"; $0.text = "第三项"; $0.optional = true },
+    ]
+    var picked: [String: Set<String>] = [:]
+    var text: [String: String] = [:]
+
+    #expect(initialQuestionStep(items, picked: picked, text: text) == 0)
+    applyQuestionChoice(items[0], label: "(Recommended) A", picked: &picked, text: &text)
+    #expect(nextAutoQuestionStep(items, picked: picked, text: text, from: 0) == 1)
+    #expect(!isQuestionReady(items, picked: picked, text: text))
+
+    applyQuestionChoice(items[1], label: "B", picked: &picked, text: &text)
+    #expect(nextAutoQuestionStep(items, picked: picked, text: text, from: 1) == nil, "trailing optional item does not hijack auto-advance")
+    #expect(nextManualQuestionStep(items, picked: picked, text: text, from: 1) == 2)
+    #expect(isQuestionReady(items, picked: picked, text: text))
+
+    applyQuestionCustomText(items[0], value: "自定义方案", picked: &picked, text: &text)
+    #expect(picked["q1"]?.isEmpty == true)
+    #expect(text["q1"] == "自定义方案")
+}

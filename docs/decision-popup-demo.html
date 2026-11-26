@@ -1,0 +1,1202 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>多选决策弹窗重设计 · Mac & iPhone 交互原型 v2</title>
+<style>
+@font-face{font-family:"Google Sans Flex";src:url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-flex.ttf") format("truetype");font-style:oblique 0deg 10deg;font-weight:100 1000}
+@font-face{font-family:"Google Sans Code";src:url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-code.ttf") format("truetype");font-weight:300 800}
+:root{
+  --font:"Google Sans Flex","Google Sans",-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --font-ios:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --mono:"Google Sans Code",ui-monospace,"SF Mono",Menlo,Monaco,monospace;
+  --ease:cubic-bezier(.2,0,0,1);
+}
+[data-theme=light]{
+  --page:#e8eaf0;--page-fg:#1b1c22;--page-fg2:#62646f;--page-bd:rgba(0,0,0,.085);--page-btn:rgba(20,24,40,.065);--page-bar:rgba(244,245,248,.88);
+  --card:#fff;--card-bd:rgba(0,0,0,.08);
+  --win:#fff;--win2:#f4f4f7;--win3:#ebebf0;
+  --ios-bg:#fbfbfc;
+  --l1:rgba(0,0,0,.88);--l2:rgba(0,0,0,.56);--l3:rgba(0,0,0,.34);--l4:rgba(0,0,0,.14);
+  --sep:rgba(0,0,0,.08);--fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.075);--fill3:rgba(0,0,0,.12);
+  --accent:#3d5bff;--accent-t:#2d4ae6;--accent-bg:rgba(61,91,255,.10);--accent-bd:rgba(61,91,255,.32);
+  --ok:#169c65;--ok-bg:rgba(22,156,101,.12);
+  --orange:#d47508;
+  --pill:#fff;--pill-bd:rgba(0,0,0,.10);
+  --glass:rgba(250,250,252,.82);--glass-sh:0 0 0 .5px rgba(0,0,0,.10),0 12px 32px rgba(20,24,40,.12),0 2px 6px rgba(20,24,40,.06);
+  --kb:#d3d5db;--key:#fff;--key2:#adb2bb;--key-sh:0 1px 0 rgba(0,0,0,.28);
+  --slice-sh:0 0 0 .5px rgba(0,0,0,.14),0 16px 42px rgba(10,20,50,.12);
+  --hi:transparent;--lift:0 .5px 1px rgba(0,0,0,.05),0 6px 20px rgba(10,20,50,.08);
+}
+[data-theme=dark]{
+  --page:#0b0c10;--page-fg:#ececf1;--page-fg2:#9699a6;--page-bd:rgba(255,255,255,.085);--page-btn:rgba(255,255,255,.075);--page-bar:rgba(20,21,26,.88);
+  --card:#16171d;--card-bd:rgba(255,255,255,.08);
+  --win:#17171b;--win2:#202026;--win3:#2a2a31;
+  --ios-bg:#000;
+  --l1:rgba(255,255,255,.90);--l2:rgba(255,255,255,.56);--l3:rgba(255,255,255,.34);--l4:rgba(255,255,255,.15);
+  --sep:rgba(255,255,255,.09);--fill:rgba(255,255,255,.05);--fill2:rgba(255,255,255,.085);--fill3:rgba(255,255,255,.14);
+  --accent:#4a66ff;--accent-t:#94a7ff;--accent-bg:rgba(74,102,255,.17);--accent-bd:rgba(96,124,255,.45);
+  --ok:#27c281;--ok-bg:rgba(39,194,129,.15);
+  --orange:#f0a43a;
+  --pill:#212127;--pill-bd:rgba(255,255,255,.11);
+  --glass:rgba(34,34,40,.80);--glass-sh:0 0 0 .5px rgba(255,255,255,.13),inset 0 .5px 0 rgba(255,255,255,.12),0 14px 36px rgba(0,0,0,.55);
+  --kb:#28282c;--key:#545458;--key2:#3b3b40;--key-sh:0 1px 0 rgba(0,0,0,.5);
+  --slice-sh:0 0 0 .5px rgba(255,255,255,.12),0 20px 50px rgba(0,0,0,.55);
+  --hi:rgba(255,255,255,.07);--lift:0 .5px 1px rgba(0,0,0,.35),0 10px 28px rgba(0,0,0,.32);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:14px/1.5 var(--font);-webkit-font-smoothing:antialiased;padding-bottom:96px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit;color:inherit}
+svg{display:block;flex:none}
+
+/* ---------- Page Header & Layout ---------- */
+.top{max-width:1320px;margin:0 auto;padding:20px 24px 8px;display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.top-l{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.top h1{font-size:19px;font-weight:650;margin:0;letter-spacing:-.01em}
+.top .sub{color:var(--page-fg2);font-size:13px}
+.kbd-hint{font-size:12px;color:var(--page-fg2);display:flex;align-items:center;gap:6px}
+.kbd-hint kbd{font:500 11px/18px var(--mono);padding:0 6px;border-radius:5px;background:var(--page-btn);border:.5px solid var(--page-bd);color:var(--page-fg)}
+
+.stage{max-width:1320px;margin:0 auto;padding:10px 24px 22px;display:flex;gap:28px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
+.stage[data-view="mac"] .ios-col{display:none}
+.stage[data-view="ios"] .mac-col{display:none}
+.mac-col{flex:1 1 680px;max-width:820px;min-width:min(100%,500px);display:flex;flex-direction:column;gap:10px}
+.ios-col{flex:0 0 auto;display:flex;flex-direction:column;gap:10px;align-items:center}
+.col-lbl{display:flex;align-items:center;justify-content:space-between;width:100%;font-size:12px;color:var(--page-fg2);padding:0 4px}
+.col-lbl b{color:var(--page-fg);font-weight:600}
+
+/* ---------- Mac Window Slice ---------- */
+.mac-win{position:relative;height:690px;background:var(--win);border-radius:14px;overflow:hidden;box-shadow:var(--slice-sh);display:flex;flex-direction:column;color:var(--l1);font:13.5px/1.45 var(--font)}
+.mac-bar{height:42px;padding:0 16px;border-bottom:.5px solid var(--sep);display:flex;align-items:center;gap:10px;flex:none;background:color-mix(in srgb,var(--win) 92%,transparent)}
+.mac-bar .ttl{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mac-bar .where{font-size:12px;color:var(--l2);display:inline-flex;align-items:center;gap:5px}
+.mac-chat{flex:1;min-height:0;overflow-y:auto;padding:20px 24px 16px;display:flex;flex-direction:column;gap:14px}
+.mac-col-inner{max-width:680px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:14px;margin-top:auto}
+.um{align-self:flex-end;max-width:78%;background:var(--accent);color:#fff;border-radius:14px;padding:9px 14px;font-size:14px;line-height:1.55}
+.am{font-size:14px;line-height:1.68;color:var(--l1)}
+.am code{font:12.5px var(--mono);background:var(--fill2);padding:1px 5px;border-radius:4px}
+.mac-zone{padding:8px 20px 16px;background:linear-gradient(to bottom,transparent,var(--win) 18px);flex:none}
+.mac-zcol{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+
+.mac-cmp{background:var(--pill);border-radius:18px;box-shadow:inset 0 .5px 0 var(--hi),0 0 0 .5px var(--pill-bd),var(--lift);padding:10px 10px 8px 12px;display:flex;flex-direction:column;gap:6px}
+.mac-cmp-in{font-size:14px;color:var(--l3);min-height:24px;padding:2px 4px}
+.mac-cmp-bar{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--l2)}
+.mac-ib{width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--l3)}
+.mac-pick{display:inline-flex;align-items:center;gap:6px;padding:0 7px;height:26px;border-radius:7px}
+.mac-stop{width:28px;height:28px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--l4);display:inline-flex;align-items:center;justify-content:center}
+.mac-send{width:28px;height:28px;border-radius:50%;color:var(--l3);display:inline-flex;align-items:center;justify-content:center}
+
+/* ---------- Redesigned Mac Question Card ---------- */
+.qx-card{background:var(--pill);border-radius:16px;box-shadow:inset 0 .5px 0 var(--hi),0 0 0 .5px var(--pill-bd),var(--lift);padding:14px 16px 13px;display:flex;flex-direction:column;gap:10px;animation:card-in .24s var(--ease)}
+@keyframes card-in{from{opacity:0;transform:translateY(8px) scale(.99)}}
+.qx-top{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--l2);min-width:0}
+.ag-badge{width:17px;height:17px;border-radius:5px;background:linear-gradient(135deg,#5a78ff,#2a44c9);color:#fff;font:700 10px/17px var(--font);text-align:center;flex:none}
+.qx-who{font-weight:500;color:var(--l2);white-space:nowrap}
+.qx-tag{height:19px;padding:0 8px;border-radius:999px;background:var(--fill);box-shadow:inset 0 0 0 .5px var(--sep);font-size:11px;color:var(--l2);display:inline-flex;align-items:center;white-space:nowrap}
+.qx-tag.kind{color:var(--accent-t);background:var(--accent-bg);box-shadow:none}
+.qx-right{margin-left:auto;display:inline-flex;align-items:center;gap:10px;flex:none}
+.qx-time{display:inline-flex;align-items:center;gap:5px;color:var(--orange);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ring{width:13px;height:13px;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:2.2}
+.ring .trk{stroke:var(--fill3)}
+.ring .arc{stroke:var(--orange);stroke-linecap:round}
+
+/* Wordless Pager ‹ 1 / 3 › */
+.pager{display:inline-flex;align-items:center;gap:2px;background:var(--fill);box-shadow:inset 0 0 0 .5px var(--sep);border-radius:999px;padding:1px 3px;height:22px}
+.pg-btn{width:20px;height:18px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:var(--l2);transition:background .12s,color .12s}
+.pg-btn:hover:not(:disabled){background:var(--fill2);color:var(--l1)}
+.pg-btn:disabled{opacity:.28;cursor:default}
+.pg-num{font-size:11.5px;font-weight:600;color:var(--l1);font-variant-numeric:tabular-nums;padding:0 4px;user-select:none}
+
+/* Navigation Mode A: Thin Clickable Segmented Progress Bars (No text / no fake headers needed!) */
+.seg-track{display:grid;grid-template-columns:repeat(var(--n,3),minmax(0,1fr));gap:5px;padding:1px 0}
+.seg-bar{height:10px;padding:3px 0;display:flex;align-items:center;cursor:pointer}
+.seg-bar i{display:block;width:100%;height:3.5px;border-radius:999px;background:var(--fill3);transition:background .18s,height .15s}
+.seg-bar:hover i{background:var(--l3);height:4.5px}
+.seg-bar.done i{background:color-mix(in srgb,var(--accent) 52%,transparent)}
+.seg-bar.cur i{background:var(--accent);height:4.5px}
+
+/* Navigation Mode B: Collapsed Answered Rows (Uses 100% real chosen answer, zero fake header!) */
+.ans-stack{display:flex;flex-direction:column;gap:5px}
+.ans-row{display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;border-radius:9px;background:var(--fill);box-shadow:inset 0 0 0 .5px var(--sep);font-size:12.5px;text-align:left;transition:background .12s}
+.ans-row:hover{background:var(--fill2)}
+.ans-row .ck-dot{width:16px;height:16px;border-radius:50%;background:var(--ok-bg);color:var(--ok);display:inline-flex;align-items:center;justify-content:center;flex:none}
+.ans-row .aq{color:var(--l2);max-width:42%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ans-row .aa{color:var(--l1);font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ans-row .chg{font-size:11.5px;color:var(--l3);flex:none}
+.ans-row:hover .chg{color:var(--accent-t)}
+
+/* Question Body */
+.qx-body{display:flex;flex-direction:column;gap:9px;animation:step-in .18s var(--ease)}
+@keyframes step-in{from{opacity:.35;transform:translateX(var(--dir,10px))}to{opacity:1;transform:none}}
+.qx-q{font-size:15px;font-weight:600;line-height:1.45;color:var(--l1);margin:1px 1px 2px;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.qx-opt-note{font-size:12px;font-weight:400;color:var(--l3)}
+.qx-opts{display:flex;flex-direction:column;gap:6px}
+.qopt{display:flex;align-items:flex-start;gap:11px;padding:9.5px 12px;border-radius:11px;width:100%;text-align:left;background:var(--fill);box-shadow:inset 0 0 0 .5px var(--sep);transition:background .12s,box-shadow .12s,transform .08s}
+.qopt:hover{background:var(--fill2)}
+.qopt:active{transform:scale(.995)}
+.qopt.on{background:var(--accent-bg);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.qn{width:20px;height:20px;margin-top:1px;border-radius:6px;background:var(--win);box-shadow:0 0 0 .5px var(--sep);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--l2);flex:none;font-variant-numeric:tabular-nums}
+.qopt.on .qn{background:var(--accent);color:#fff;box-shadow:none}
+.qb{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.qb-t{font-size:13.5px;font-weight:500;line-height:1.42;color:var(--l1)}
+.rec{display:inline-flex;align-items:center;height:17px;padding:0 6px;margin-right:6px;border-radius:5px;font-size:11px;font-weight:600;background:var(--accent-bg);color:var(--accent-t);vertical-align:1px}
+.qopt.on .rec{background:var(--accent);color:#fff}
+.qb-d{font-size:12px;line-height:1.42;color:var(--l2)}
+.qc{width:16px;height:16px;margin-top:2px;color:var(--accent-t);opacity:0;flex:none;transition:opacity .12s}
+.qopt.on .qc{opacity:1}
+
+.qx-own{display:flex;align-items:center;gap:8px;padding:0 10px 0 11px;height:36px;border-radius:10px;background:var(--fill);box-shadow:inset 0 0 0 .5px var(--sep);transition:box-shadow .15s,background .15s}
+.qx-own:focus-within{background:var(--win);box-shadow:inset 0 0 0 1.4px var(--accent)}
+.qx-own.filled:not(:focus-within){background:var(--accent-bg);box-shadow:inset 0 0 0 1.2px var(--accent-bd)}
+.qx-own svg{width:14px;height:14px;color:var(--l3)}
+.qx-own.filled svg{color:var(--accent-t)}
+.qx-own input{flex:1;min-width:0;border:0;outline:0;background:none;font-size:13px;color:var(--l1)}
+.qx-own input::placeholder{color:var(--l3)}
+.qx-own .clr{font-size:11.5px;color:var(--l2);padding:2px 6px;border-radius:5px}
+.qx-own .clr:hover{background:var(--fill2);color:var(--l1)}
+
+/* Clean Footer: Only Decline + Continue/Answer */
+.qx-foot{display:flex;align-items:center;gap:8px;padding-top:2px}
+.qx-hint{font-size:12px;color:var(--l3)}
+.btn{height:30px;padding:0 13px;border-radius:8px;background:var(--fill2);font-size:12.5px;font-weight:500;color:var(--l1);display:inline-flex;align-items:center;justify-content:center;gap:5px;transition:background .12s,opacity .12s}
+.btn:hover:not(:disabled){background:var(--fill3)}
+.btn:disabled{opacity:.36;cursor:default}
+.btn.ghost{background:transparent;color:var(--l2);padding:0 10px}
+.btn.ghost:hover:not(:disabled){background:var(--fill);color:var(--l1)}
+.btn.pri{background:var(--accent);color:#fff}
+.btn.pri:hover:not(:disabled){filter:brightness(1.07)}
+.kret{opacity:.75;font-size:11.5px;margin-left:1px}
+.grow{flex:1}
+
+/* Legacy Buggy Mac View */
+.qx-legacy{max-height:470px;overflow-y:auto;text-align:center;align-items:center}
+.qx-legacy .qx-top{width:100%}
+.qx-legacy .leg-item{width:100%;margin-top:10px}
+.qx-legacy .leg-q{font-size:14px;font-weight:600;margin:8px 0 9px;text-align:center}
+.qx-legacy .leg-item+.leg-item .leg-q{font-size:13px;margin-top:13px}
+.qx-legacy .leg-in{width:100%;height:32px;border-radius:9px;border:0;outline:0;padding:0 10px;background:var(--fill);box-shadow:inset 0 0 0 .5px var(--sep);font-size:12.5px;color:var(--l1);margin-top:6px}
+.qx-legacy .qx-foot{width:100%;margin-top:8px}
+
+.res-card{border-radius:12px;background:var(--fill);box-shadow:inset 0 0 0 .5px var(--sep);padding:11px 14px;font-size:13px;display:flex;flex-direction:column;gap:6px}
+.res-h{display:flex;align-items:center;gap:7px;color:var(--l2);font-size:12px}
+.res-h b{color:var(--l1);font-weight:600}
+.res-list{display:flex;flex-direction:column;gap:4px}
+.res-row{display:flex;gap:8px;font-size:12.5px;line-height:1.45}
+.res-row span{color:var(--l2);max-width:44%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
+.res-row b{color:var(--l1);font-weight:500;flex:1;min-width:0}
+.work-line{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--l2);padding:2px 0}
+.dot-pulse{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1.3s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.35;transform:scale(.88)}50%{opacity:1;transform:scale(1.08)}}
+
+/* ---------- iPhone 17 Pro (402 × 874 pt) ---------- */
+.phone{width:402px;height:874px;border-radius:56px;background:var(--ios-bg);position:relative;overflow:hidden;overflow:clip;flex:none;
+  box-shadow:0 0 0 10px #1b1b1e,0 0 0 11.5px #3a3a40,0 26px 70px rgba(0,0,0,.42);color:var(--l1);font:16px/1.35 var(--font-ios)}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:122px;height:35px;border-radius:20px;background:#000;z-index:12}
+.ios-status{position:absolute;top:0;left:0;right:0;height:52px;display:flex;align-items:center;justify-content:space-between;padding:6px 32px 0 42px;font-weight:600;font-size:16px;z-index:11}
+.ios-nav{position:absolute;top:54px;left:0;right:0;height:48px;display:flex;align-items:center;justify-content:center;z-index:10;padding:0 16px}
+.glass{background:var(--glass);box-shadow:var(--glass-sh);backdrop-filter:blur(26px) saturate(1.5);-webkit-backdrop-filter:blur(26px) saturate(1.5)}
+.ios-orb{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.ios-nav .l{position:absolute;left:16px}
+.ios-nav .r{position:absolute;right:16px}
+.ios-tcap{height:42px;max-width:242px;border-radius:21px;padding:0 16px;display:flex;flex-direction:column;justify-content:center;text-align:center}
+.ios-tcap b{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ios-tcap small{font-size:10.5px;color:var(--l2);margin-top:1px}
+.ios-chat{position:absolute;inset:0;padding:112px 18px 340px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.ios-chat-in{margin-top:auto;display:flex;flex-direction:column;gap:12px}
+.ios-um{align-self:flex-end;max-width:82%;background:var(--accent);color:#fff;border-radius:20px;padding:9px 14px;font-size:15.5px;line-height:1.42}
+.ios-am{font-size:15.5px;line-height:1.5;color:var(--l1)}
+
+.ios-dock{position:absolute;left:0;right:0;bottom:28px;padding:0 10px;display:flex;flex-direction:column;gap:8px;z-index:14;transition:bottom .28s var(--ease)}
+.phone.kb .ios-dock{bottom:270px}
+.ios-qpanel{border-radius:32px;padding:15px 15px 14px;display:flex;flex-direction:column;gap:9px}
+.ios-qh{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--l2)}
+.ios-qh .tm{color:var(--orange);font-size:12px;font-variant-numeric:tabular-nums}
+.ios-pager{display:inline-flex;align-items:center;gap:2px;background:var(--fill2);border-radius:999px;padding:2px 4px;height:26px}
+.ios-pgbtn{width:24px;height:22px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:var(--l1)}
+.ios-pgbtn:disabled{opacity:.28}
+.ios-pgnum{font-size:12px;font-weight:600;color:var(--l1);font-variant-numeric:tabular-nums;padding:0 3px}
+
+.ios-ans-row{display:flex;align-items:center;gap:7px;width:100%;padding:6px 10px;border-radius:12px;background:var(--fill);font-size:12.5px;text-align:left}
+.ios-ans-row .ck-dot{width:16px;height:16px;border-radius:50%;background:var(--ok-bg);color:var(--ok);display:inline-flex;align-items:center;justify-content:center;flex:none}
+.ios-ans-row .aa{color:var(--l1);font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ios-ans-row .chg{font-size:11.5px;color:var(--accent-t);flex:none}
+
+.ios-qbody{display:flex;flex-direction:column;gap:8px;animation:step-in .18s var(--ease)}
+.ios-qttl{font-size:15.5px;font-weight:650;line-height:1.36;color:var(--l1);padding:0 2px}
+.ios-opts{display:flex;flex-direction:column;gap:6px;max-height:230px;overflow-y:auto}
+.ios-opt{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:16px;background:var(--fill);text-align:left;width:100%;transition:background .12s}
+.ios-opt.on{background:var(--accent-bg);box-shadow:inset 0 0 0 1.3px var(--accent)}
+.ios-opt .ck{width:19px;height:19px;margin-top:1px;border-radius:50%;border:1.6px solid var(--l3);display:flex;align-items:center;justify-content:center;flex:none;color:#fff}
+.ios-opt.multi .ck{border-radius:6px}
+.ios-opt.on .ck{background:var(--accent);border-color:var(--accent)}
+.ios-opt .ob{flex:1;min-width:0}
+.ios-opt .ot{font-size:14px;font-weight:500;line-height:1.36;color:var(--l1)}
+.ios-opt .od{font-size:12px;line-height:1.35;color:var(--l2);margin-top:2px}
+
+.ios-own-btn{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:14px;background:var(--fill);font-size:13.5px;color:var(--l2);width:100%;text-align:left}
+.ios-own-btn.filled{background:var(--accent-bg);color:var(--l1);box-shadow:inset 0 0 0 1.2px var(--accent-bd)}
+.ios-own-box{display:flex;align-items:center;gap:6px;padding:7px 10px 7px 12px;border-radius:14px;background:var(--win2);box-shadow:inset 0 0 0 1.4px var(--accent)}
+[data-theme=light] .ios-own-box{background:#fff}
+.ios-own-box input{flex:1;min-width:0;border:0;outline:0;background:none;font-size:14px;color:var(--l1)}
+.ios-own-box button{font-size:12.5px;font-weight:600;color:var(--accent-t);padding:3px 7px}
+
+.ios-acts{display:flex;align-items:center;gap:8px;padding-top:2px}
+.ios-btn{flex:1;height:40px;border-radius:20px;background:var(--fill2);font-size:14.5px;font-weight:550;display:inline-flex;align-items:center;justify-content:center;gap:4px}
+.ios-btn.pri{background:var(--accent);color:#fff;flex:1.25}
+.ios-btn:disabled{opacity:.38}
+
+.ios-leg-scroll{max-height:290px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding-right:2px}
+.ios-leg-in{width:100%;padding:9px 12px;border-radius:14px;background:var(--fill);border:0;outline:0;font-size:13.5px;color:var(--l1)}
+
+.ios-cmp{height:48px;border-radius:24px;padding:6px 6px 6px 8px;display:flex;align-items:center;gap:8px;margin:0 2px}
+.phone.kb .ios-cmp{display:none}
+.ios-cbtn{width:34px;height:34px;border-radius:50%;background:var(--fill2);display:flex;align-items:center;justify-content:center;flex:none}
+.ios-cph{flex:1;font-size:15px;color:var(--l3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.ios-kbd{position:absolute;left:0;right:0;bottom:0;height:262px;background:var(--kb);transform:translateY(102%);transition:transform .28s var(--ease);z-index:13;padding:9px 4px 0}
+.phone.kb .ios-kbd{transform:none}
+.kr{display:flex;justify-content:center;gap:5px;margin-bottom:9px}
+.kk{height:40px;flex:0 0 33px;border-radius:6px;background:var(--key);box-shadow:var(--key-sh);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--l1)}
+.kk.w{flex-basis:44px;background:var(--key2);font-size:14px}
+.kk.sp{flex:1;max-width:182px;font-size:14px}
+.kk.rt{flex-basis:82px;background:var(--accent);color:#fff;font-size:14px;font-weight:600}
+.home-bar{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--l1);z-index:20}
+
+/* ---------- Notes ---------- */
+.notes{max-width:1320px;margin:0 auto;padding:6px 24px 20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.ncard{background:var(--card);border:1px solid var(--card-bd);border-radius:14px;padding:14px 16px;font-size:13px;line-height:1.62}
+.ncard h3{margin:0 0 6px;font-size:13.5px;font-weight:650}
+.ncard ul{margin:4px 0 0;padding-left:18px;color:var(--page-fg2)}
+.ncard li{margin:4px 0}
+.ncard b{color:var(--page-fg);font-weight:550}
+.ncard code{font:11.5px var(--mono);background:var(--fill2);padding:1px 5px;border-radius:4px;color:var(--page-fg)}
+
+/* ---------- Bottom Control Bar ---------- */
+.ctl{position:fixed;left:0;right:0;bottom:0;z-index:90;background:var(--page-bar);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid var(--page-bd);padding:9px 16px;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;justify-content:center;font-size:12.5px}
+.ctl .g{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.ctl .g>b{color:var(--page-fg2);font-weight:500;margin-right:3px}
+.ctl button{height:27px;padding:0 10px;border-radius:7px;background:var(--page-btn)}
+.ctl button.on{background:var(--accent);color:#fff}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="top-l">
+    <h1>多选决策弹窗重设计 · v2（去考试感文案 · 100% 真实字段）</h1>
+    <span class="sub">无虚构分类 · 右上角无文字步进 <code>‹ 1 / 3 ›</code> · 底部仅保留「不回答 / 继续 / 回答」</span>
+  </div>
+  <div class="kbd-hint">
+    <span>Mac 快捷键：</span>
+    <kbd>1</kbd>–<kbd>3</kbd> 选择
+    <kbd>←</kbd><kbd>→</kbd> 前后切换
+    <kbd>↩</kbd> 继续 / 回答
+  </div>
+</div>
+
+<div class="stage" id="stage" data-view="both">
+  <div class="mac-col">
+    <div class="col-lbl">
+      <span><b>Mac 桌面端</b> · <code>Question.tsx</code></span>
+      <span id="mac-status-lbl"></span>
+    </div>
+    <div class="mac-win">
+      <div class="mac-bar">
+        <span class="ttl">Claude 桌面端终端命令逆向分析</span>
+        <span class="where">· yee-homebook · hermesh</span>
+      </div>
+      <div class="mac-chat">
+        <div class="mac-col-inner">
+          <div class="um">把终端命令执行、Worktree 状态修复和跨机终端唤起这几块一起梳理下方案，推进前先跟我对齐关键决策。</div>
+          <div class="am">我已经梳理完桌面端与跨机守护进程的执行链路，准备开始改动前有 <code>3</code> 个实现分叉需要你拍板：推进节奏、代码块运行结果如何进上下文，以及本地「在终端中打开」的终端选择策略。</div>
+          <div id="mac-resolved"></div>
+        </div>
+      </div>
+      <div class="mac-zone">
+        <div class="mac-zcol">
+          <div id="mac-qhost"></div>
+          <div class="mac-cmp">
+            <div class="mac-cmp-in">继续说，会排到下一轮…</div>
+            <div class="mac-cmp-bar">
+              <span class="mac-ib"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg></span>
+              <span class="mac-pick"><span class="ag-badge">A</span> <span style="color:var(--l1)">Gemini 4 Carbon</span> <span style="color:var(--l3)">· 高 ▾</span></span>
+              <span class="grow"></span>
+              <span class="mac-stop"><i style="width:9px;height:9px;border-radius:2px;background:currentColor;display:block"></i></span>
+              <span class="mac-send"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M6 11l6-6 6 6"/></svg></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ios-col">
+    <div class="col-lbl">
+      <span><b>iPhone 端</b> · <code>QuestionPanel.swift</code></span>
+      <span id="ios-status-lbl"></span>
+    </div>
+    <div class="phone" id="phone">
+      <div class="island"></div>
+      <div class="ios-status"><span>15:37</span><span style="font-size:13px">5G · 92%</span></div>
+      <div class="ios-nav">
+        <button class="ios-orb glass l" aria-label="返回"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <div class="ios-tcap glass"><b>Claude 桌面端终端命令逆向分析</b><small>yee-homebook/hermesh</small></div>
+        <button class="ios-orb glass r" aria-label="更多"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/></svg></button>
+      </div>
+      <div class="ios-chat">
+        <div class="ios-chat-in">
+          <div class="ios-um">把终端命令执行、Worktree 状态修复和跨机终端唤起梳理下，推进前先跟我确认。</div>
+          <div class="ios-am">已梳理完链路，动手前有几个关键实现细节想先和你确认：</div>
+          <div id="ios-resolved"></div>
+        </div>
+      </div>
+      <div class="ios-dock">
+        <div id="ios-qhost"></div>
+        <div class="ios-cmp glass">
+          <span class="ios-cbtn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></span>
+          <span class="ios-cph">继续说，会排到下一轮…</span>
+          <span class="ios-cbtn"><i style="width:10px;height:10px;border-radius:2px;background:currentColor;display:block"></i></span>
+        </div>
+      </div>
+      <div class="ios-kbd" id="ios-kbd">
+        <div class="kr"><span class="kk">Q</span><span class="kk">W</span><span class="kk">E</span><span class="kk">R</span><span class="kk">T</span><span class="kk">Y</span><span class="kk">U</span><span class="kk">I</span><span class="kk">O</span><span class="kk">P</span></div>
+        <div class="kr"><span class="kk">A</span><span class="kk">S</span><span class="kk">D</span><span class="kk">F</span><span class="kk">G</span><span class="kk">H</span><span class="kk">J</span><span class="kk">K</span><span class="kk">L</span></div>
+        <div class="kr"><span class="kk w">⇧</span><span class="kk">Z</span><span class="kk">X</span><span class="kk">C</span><span class="kk">V</span><span class="kk">B</span><span class="kk">N</span><span class="kk">M</span><span class="kk w">⌫</span></div>
+        <div class="kr"><span class="kk w">123</span><span class="kk sp">空格</span><button class="kk rt" id="ios-kb-done">完成</button></div>
+      </div>
+      <div class="home-bar"></div>
+    </div>
+  </div>
+</div>
+
+<div class="notes">
+  <div class="ncard">
+    <h3>1 · 真实数据结构核对（<code>header</code> 是否存在？）</h3>
+    <ul>
+      <li><b>Antigravity 没有短分类</b>：<code>ask_question</code> 只有完整问题 <code>question</code> 和 <code>options</code>，<code>header</code> 为空（v2 原型已去掉虚构分类）。</li>
+      <li><b>Claude / Codex 有 <code>header</code></b>：<code>AskUserQuestion</code> 与 <code>requestUserInput</code> 都带短标签 <code>header</code>（切到「混合场景（Claude）」可见顶栏胶囊按需显示，有则展示、无则留白）。</li>
+    </ul>
+  </div>
+  <div class="ncard">
+    <h3>2 · 去掉「上一题 / 下一题」的做题感</h3>
+    <ul>
+      <li><b>前后切换用纯符号步进器 <code>‹ 1 / 3 ›</code></b>：与 iPhone 首页 <code>NeedsDeck</code> 的 <code>1 / 3</code> 语言统一，不出现任何“题”字（无障碍提示用「上一个 / 下一个」）。</li>
+      <li><b>主动作只用「继续 ↩」与「回答 ↩」</b>：单选题点击直接自动推进；多选或自定义输入未答完时显示<b>「继续 ↩」</b>（选填未填为<b>「跳过 →」</b>），全部就绪后变为<b>「回答 ↩」</b>。</li>
+    </ul>
+  </div>
+  <div class="ncard">
+    <h3>3 · 两种重改回看形式（底部「回看」可切换对比）</h3>
+    <ul>
+      <li><b>分段进度条（默认推荐）</b>：顶栏下方 3 段细进度条，点击任意段或点 <code>‹ / ›</code> 随时跳回重改，卡片高度始终恒定。</li>
+      <li><b>已选折叠行</b>：答完的项在卡片上方收成一行真实的<code>✓ 已选答案</code>，点该行即可原地展开重选，无需任何虚构分类。</li>
+    </ul>
+  </div>
+</div>
+
+<div class="ctl" id="ctl"></div>
+
+<script>
+const SCENES = {
+  screenshot: {
+    name: "截图实测（Antigravity 无 header）",
+    agent: "Antigravity",
+    // 100% faithful to Antigravity's real ask_question schema: header is empty ""!
+    items: [
+      {
+        id: "q1",
+        header: "",
+        text: "本次迭代的推进节奏你倾向哪种？",
+        allowOther: true,
+        options: [
+          { label: "(Recommended) 一次性完整落地 P0 + P1 + P2（渲染打磨 + Worktree/终端修复 + 跨机命令执行）", description: "" },
+          { label: "分两阶段落地：先完成并验证 P0 + P1，再实施 P2 跨机命令执行", description: "" }
+        ]
+      },
+      {
+        id: "q2",
+        header: "",
+        text: "点代码块 ▶ 或输入 ! 命令执行时，结果展示与 Agent 上下文如何处理？",
+        allowOther: true,
+        options: [
+          { label: "(Recommended) 写入当前会话历史流（跨设备同步可见、刷新不丢），默认不唤醒 Agent 消耗 Token；代码块点运行同时在下方内联展开实时输出", description: "" },
+          { label: "代码块点 ▶ 仅在代码块下方展开临时输出抽屉（不入库）；仅底部输入框 ! 命令写入会话记录", description: "" },
+          { label: "执行完成后自动把输出喂给 Agent 继续下一轮思考", description: "" }
+        ]
+      },
+      {
+        id: "q3",
+        header: "",
+        text: "macOS 本地“在终端中打开”如何选择终端程序？",
+        allowOther: true,
+        options: [
+          { label: "(Recommended) 零配置自动选择：优先唤起当前正在运行的终端（Ghostty / iTerm2 / Warp / WezTerm / Kitty / Terminal），均未运行时按已安装列表回退到 Terminal.app", description: "" },
+          { label: "在设置页新增一个“默认终端”下拉选择项", description: "" }
+        ]
+      }
+    ],
+    legacyItems: [
+      { id: "l1", header: "本次迭代的推进节奏你倾向哪种？", text: "The agent has 3 questions.", optional: true, options: [
+        { label: "(Recommended) 一次性完整落地 P0 + P1 + P2（渲染打磨 + Worktree/终端修复 + 跨机命令执行）" },
+        { label: "分两阶段落地：先完成并验证 P0 + P1，再实施 P2 跨机命令执行" }
+      ]},
+      { id: "l2", text: "Optional free-form answer to: 本次迭代的推进节奏你倾向哪种？", optional: true, allowOther: true, options: [] },
+      { id: "l3", text: "The agent has 3 questions.", optional: true, options: [
+        { label: "(Recommended) 写入当前会话历史流（跨设备同步可见、刷新不丢），默认不唤醒 Agent 消耗 Token；代码块点运行同时在下方内联展开实时输出" },
+        { label: "代码块点 ▶ 仅在代码块下方展开临时输出抽屉（不入库）；仅底部输入框 ! 命令写入会话记录" },
+        { label: "执行完成后自动把输出喂给 Agent 继续下一轮思考" }
+      ]},
+      { id: "l4", text: "Optional free-form answer to: 点代码块 ▶ 或输入 ! 命令执行时，结果展示与 Agent 上下文如何处理？", optional: true, allowOther: true, options: [] },
+      { id: "l5", text: "The agent has 3 questions.", optional: true, options: [
+        { label: "(Recommended) 零配置自动选择：优先唤起当前正在运行的终端（Ghostty / iTerm2 / Warp / WezTerm / Kitty / Terminal），均未运行时按已安装列表回退到 Terminal.app" },
+        { label: "在设置页新增一个“默认终端”下拉选择项" }
+      ]},
+      { id: "l6", text: "Optional free-form answer to: macOS 本地“在终端中打开”如何选择终端程序？", optional: true, allowOther: true, options: [] }
+    ]
+  },
+  mixed: {
+    name: "混合场景（Claude 带 header + 多选）",
+    agent: "Claude",
+    items: [
+      {
+        id: "m1",
+        header: "存储方案",
+        text: "会话离线草稿与决策记录保存在哪里？",
+        allowOther: true,
+        options: [
+          { label: "(Recommended) SQLite 本地库 + 跨设备增量同步", description: "断网可写，重连后自动合并到主设备" },
+          { label: "仅保存在当前设备内存与 LocalStorage", description: "实现最轻，换手机查看时不保留未提交草稿" }
+        ]
+      },
+      {
+        id: "m2",
+        header: "通知时机",
+        text: "哪些场景需要在 iPhone 上推送提醒？",
+        multiSelect: true,
+        allowOther: false,
+        options: [
+          { label: "(Recommended) Agent 停下来等待你拿主意或审批权限时", description: "默认开启，30 分钟无人响应自动按默认策略继续" },
+          { label: "长耗时后台任务执行出错中断时", description: "包含非零退出码与连接断开" },
+          { label: "每轮普通回复完成时", description: "高频会话可能会比较吵" }
+        ]
+      },
+      {
+        id: "m3",
+        header: "补充约束",
+        text: "还有需要额外交代的兼容性或命名约定吗？",
+        optional: true,
+        allowOther: true,
+        options: [
+          { label: "没有额外要求，按现有仓库规范推进", description: "" }
+        ]
+      }
+    ]
+  },
+  single: {
+    name: "单题决策（自动隐藏步进器）",
+    agent: "Codex",
+    items: [
+      {
+        id: "s1",
+        header: "分支策略",
+        text: "检测到当前目录有未提交改动，要在独立 worktree 新建分支继续吗？",
+        allowOther: true,
+        options: [
+          { label: "(Recommended) 新建独立 worktree，不影响当前工作区", description: "基于 main 创建 hermesh/s_… 分支" },
+          { label: "直接在当前目录原地继续", description: "与现有未提交修改混在一起" }
+        ]
+      }
+    ]
+  }
+};
+
+function makeDeviceState() {
+  return { step: 0, dir: 1, chosen: {}, texts: {}, done: null, typing: false };
+}
+
+const S = {
+  view: "both",
+  mode: "new",     // "new" | "legacy"
+  nav: "bar",      // "bar" (‹ 1/3 › + thin segments) | "stack" (‹ 1/3 › + collapsed answered rows)
+  scene: "screenshot",
+  theme: "dark",
+  mac: makeDeviceState(),
+  ios: makeDeviceState()
+};
+
+const timers = { mac: null, ios: null };
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function parseRec(label) {
+  const m = /^(?:\(Recommended\)|（推荐）)\s*/i.exec(label);
+  return m ? { rec: true, clean: label.slice(m[0].length) } : { rec: false, clean: label };
+}
+
+function currentItems() {
+  const sc = SCENES[S.scene];
+  return S.mode === "legacy" && sc.legacyItems ? sc.legacyItems : sc.items;
+}
+
+function isAnswered(dev, it) {
+  return (dev.chosen[it.id] || []).length > 0 || (dev.texts[it.id] || "").trim() !== "";
+}
+
+function isComplete(dev, items) {
+  return items.every((it) => it.optional || isAnswered(dev, it));
+}
+
+function answerSummary(dev, it) {
+  const txt = (dev.texts[it.id] || "").trim();
+  const ch = dev.chosen[it.id] || [];
+  if (txt && !it.multiSelect && ch.length === 0) return txt;
+  if (ch.length > 0) {
+    const first = parseRec(ch[0]).clean;
+    return ch.length > 1 ? `${first} 等 ${ch.length} 项` : (txt ? `${first} · ${txt}` : first);
+  }
+  return txt;
+}
+
+function nextUnansweredIndex(dev, items, fromIdx) {
+  for (let offset = 1; offset < items.length; offset++) {
+    const idx = (fromIdx + offset) % items.length;
+    if (!isAnswered(dev, items[idx])) return idx;
+  }
+  return -1;
+}
+
+function goStep(which, idx) {
+  const dev = S[which];
+  const items = currentItems();
+  if (idx < 0 || idx >= items.length || idx === dev.step) return;
+  clearTimeout(timers[which]);
+  dev.dir = idx > dev.step ? 1 : -1;
+  dev.step = idx;
+  if (which === "ios") dev.typing = false;
+  render();
+}
+
+function pickOption(which, it, label) {
+  const dev = S[which];
+  const items = currentItems();
+  clearTimeout(timers[which]);
+  const cur = dev.chosen[it.id] || [];
+  if (it.multiSelect) {
+    dev.chosen[it.id] = cur.includes(label) ? cur.filter((x) => x !== label) : [...cur, label];
+    render();
+    return;
+  }
+  dev.chosen[it.id] = [label];
+  if (dev.texts[it.id]) dev.texts[it.id] = "";
+  render();
+
+  if (S.mode === "new" && items.length > 1) {
+    const nextIdx = nextUnansweredIndex(dev, items, dev.step);
+    if (nextIdx !== -1) {
+      timers[which] = setTimeout(() => {
+        dev.dir = nextIdx > dev.step ? 1 : -1;
+        dev.step = nextIdx;
+        if (which === "ios") dev.typing = false;
+        render();
+      }, 190);
+    }
+  }
+}
+
+function submitOrAdvance(which, decline) {
+  const dev = S[which];
+  const items = currentItems();
+  clearTimeout(timers[which]);
+  if (decline) {
+    dev.done = { declined: true };
+    dev.typing = false;
+    render();
+    return;
+  }
+  if (S.mode === "new" && !isComplete(dev, items)) {
+    const nextIdx = nextUnansweredIndex(dev, items, dev.step);
+    if (nextIdx !== -1) {
+      dev.dir = nextIdx > dev.step ? 1 : -1;
+      dev.step = nextIdx;
+      dev.typing = false;
+      render();
+    }
+    return;
+  }
+  if (!isComplete(dev, items)) return;
+  dev.done = {
+    declined: false,
+    rows: SCENES[S.scene].items.map((it) => ({
+      q: it.header || it.text,
+      a: isAnswered(dev, it) ? answerSummary(dev, it) : "（已跳过）"
+    }))
+  };
+  dev.typing = false;
+  render();
+}
+
+function resetAll() {
+  clearTimeout(timers.mac);
+  clearTimeout(timers.ios);
+  S.mac = makeDeviceState();
+  S.ios = makeDeviceState();
+  if (S.mode === "legacy" && S.scene === "screenshot") {
+    S.mac.chosen = {
+      l1: ["(Recommended) 一次性完整落地 P0 + P1 + P2（渲染打磨 + Worktree/终端修复 + 跨机命令执行）"],
+      l3: ["执行完成后自动把输出喂给 Agent 继续下一轮思考"],
+      l5: ["(Recommended) 零配置自动选择：优先唤起当前正在运行的终端（Ghostty / iTerm2 / Warp / WezTerm / Kitty / Terminal），均未运行时按已安装列表回退到 Terminal.app"]
+    };
+  }
+  render();
+}
+
+function checkSvg(sz = 15) {
+  return `<svg viewBox="0 0 16 16" width="${sz}" height="${sz}" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-6.5"/></svg>`;
+}
+
+function chevSvg(left) {
+  return `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${left ? "M10 3.5L5.5 8 10 12.5" : "M6 3.5L10.5 8 6 12.5"}"/></svg>`;
+}
+
+function countdownSvg() {
+  const r = 2 * Math.PI * 5.2;
+  return `<svg class="ring" viewBox="0 0 14 14"><circle class="trk" cx="7" cy="7" r="5.2"/><circle class="arc" cx="7" cy="7" r="5.2" style="stroke-dasharray:${r.toFixed(1)};stroke-dashoffset:${(r * 0.08).toFixed(1)}"/></svg>`;
+}
+
+function primaryMacActionHtml(dev, items, idx) {
+  const it = items[idx];
+  const multi = items.length > 1;
+  const complete = isComplete(dev, items);
+  const curAnswered = isAnswered(dev, it);
+  const nextUnans = nextUnansweredIndex(dev, items, idx);
+  if (complete) {
+    return `<button class="btn pri" data-dev="mac" data-submit="ok">回答 <span class="kret">↩</span></button>`;
+  }
+  if (multi && curAnswered && nextUnans !== -1) {
+    return `<button class="btn pri" data-dev="mac" data-step="${nextUnans}">继续 <span class="kret">↩</span></button>`;
+  }
+  if (multi && it.optional && nextUnans !== -1) {
+    return `<button class="btn" data-dev="mac" data-step="${nextUnans}">跳过 <span class="kret">→</span></button>`;
+  }
+  return `<button class="btn pri" disabled>回答 <span class="kret">↩</span></button>`;
+}
+
+function primaryIosActionHtml(dev, items, idx) {
+  const it = items[idx];
+  const multi = items.length > 1;
+  const complete = isComplete(dev, items);
+  const curAnswered = isAnswered(dev, it);
+  const nextUnans = nextUnansweredIndex(dev, items, idx);
+  if (complete) {
+    return `<button class="ios-btn pri" data-dev="ios" data-submit="ok">回答</button>`;
+  }
+  if (multi && curAnswered && nextUnans !== -1) {
+    return `<button class="ios-btn pri" data-dev="ios" data-step="${nextUnans}">继续</button>`;
+  }
+  if (multi && it.optional && nextUnans !== -1) {
+    return `<button class="ios-btn" data-dev="ios" data-step="${nextUnans}">跳过</button>`;
+  }
+  return `<button class="ios-btn pri" disabled>回答</button>`;
+}
+
+function renderResolved(dev) {
+  if (!dev.done) return "";
+  if (dev.done.declined) {
+    return `<div class="res-card">
+      <div class="res-h"><b>你选择不回答</b> · 已交由 ${esc(SCENES[S.scene].agent)} 自行判断 <span class="grow"></span><button class="btn" data-act="replay">重新体验</button></div>
+    </div>
+    <div class="work-line"><span class="dot-pulse"></span><span>${esc(SCENES[S.scene].agent)} 正在按默认方案继续工作…</span></div>`;
+  }
+  return `<div class="res-card">
+    <div class="res-h"><b>已回答</b> <span class="grow"></span><button class="btn" data-act="replay">重新体验</button></div>
+    <div class="res-list">
+      ${dev.done.rows.map((r) => `<div class="res-row"><span>${esc(r.q)}</span><b>${esc(r.a)}</b></div>`).join("")}
+    </div>
+  </div>
+  <div class="work-line"><span class="dot-pulse"></span><span>${esc(SCENES[S.scene].agent)} 已收到你的回复，正在继续工作…</span></div>`;
+}
+
+function renderMac() {
+  const sc = SCENES[S.scene];
+  const dev = S.mac;
+  const host = document.getElementById("mac-qhost");
+  const resHost = document.getElementById("mac-resolved");
+  document.getElementById("mac-status-lbl").textContent =
+    S.mode === "legacy" ? "现状复现：6 题平铺 + 居中错位 + 多输入框堆叠" : "新设计：单选自动推进 · 右上角 ‹ 1 / 3 › 无做题感";
+
+  resHost.innerHTML = renderResolved(dev);
+  if (dev.done) {
+    host.innerHTML = "";
+    return;
+  }
+
+  const items = currentItems();
+  if (S.mode === "legacy") {
+    const free = items.find((it) => it.allowOther);
+    host.innerHTML = `<div class="qx-card qx-legacy">
+      <div class="qx-top">
+        <span class="ag-badge">${esc(sc.agent[0])}</span>
+        <span class="qx-who">${esc(sc.agent)} 问你</span>
+        ${items[0]?.header ? `<span class="qx-tag">${esc(items[0].header)}</span>` : ""}
+        <span class="qx-right"><span class="qx-time">${countdownSvg()} 还剩 28 分钟</span></span>
+      </div>
+      ${items.map((it) => `
+        <div class="leg-item">
+          <div class="leg-q">${esc(it.text)} ${it.optional ? `<span style="font-weight:400;color:var(--l3)">（可选）</span>` : ""}</div>
+          ${it.options.length > 0 ? `<div class="qx-opts">
+            ${it.options.map((o, idx) => {
+              const on = (dev.chosen[it.id] || []).includes(o.label);
+              return `<button class="qopt ${on ? "on" : ""}" data-dev="mac" data-item="${esc(it.id)}" data-opt="${esc(o.label)}">
+                <span class="qn">${idx + 1}</span>
+                <span class="qb"><span class="qb-t">${esc(o.label)}</span></span>
+                <span class="qc">${checkSvg()}</span>
+              </button>`;
+            }).join("")}
+          </div>` : ""}
+          ${it.allowOther && it !== free ? `<input class="leg-in" placeholder="写下你的回答…" value="${esc(dev.texts[it.id] || "")}" data-dev="mac" data-text-item="${esc(it.id)}">` : ""}
+        </div>
+      `).join("")}
+      <div class="qx-foot">
+        ${free ? `<input class="leg-in" style="margin:0;flex:1" placeholder="写下你的回答…" value="${esc(dev.texts[free.id] || "")}" data-dev="mac" data-text-item="${esc(free.id)}">` : `<span class="grow"></span>`}
+        <button class="btn" data-dev="mac" data-submit="decline">不回答</button>
+        <button class="btn pri" ${isComplete(dev, items) ? "" : "disabled"} data-dev="mac" data-submit="ok">回答 <span class="kret">↩</span></button>
+      </div>
+    </div>`;
+    return;
+  }
+
+  const idx = Math.min(dev.step, items.length - 1);
+  const it = items[idx];
+  const multi = items.length > 1;
+  const txtVal = dev.texts[it.id] || "";
+  const showHeaderTag = it.header && it.header !== it.text;
+
+  const navTop = multi && S.nav === "bar"
+    ? `<div class="seg-track" style="--n:${items.length}">
+        ${items.map((stepIt, sIdx) => {
+          const done = isAnswered(dev, stepIt);
+          const cur = sIdx === idx;
+          const tip = done ? `${sIdx + 1}/${items.length} 已选：${answerSummary(dev, stepIt)}` : `${sIdx + 1}/${items.length}：${stepIt.text}`;
+          return `<button class="seg-bar ${cur ? "cur" : ""} ${done ? "done" : ""}" data-dev="mac" data-step="${sIdx}" title="${esc(tip)}" aria-label="${esc(tip)}"><i></i></button>`;
+        }).join("")}
+      </div>`
+    : "";
+
+  const answeredRows = multi && S.nav === "stack"
+    ? items.map((stepIt, sIdx) => ({ stepIt, sIdx })).filter(({ stepIt, sIdx }) => sIdx !== idx && isAnswered(dev, stepIt))
+    : [];
+
+  const stackHtml = answeredRows.length > 0
+    ? `<div class="ans-stack">
+        ${answeredRows.map(({ stepIt, sIdx }) => `
+          <button class="ans-row" data-dev="mac" data-step="${sIdx}" title="点击修改这一项">
+            <span class="ck-dot">${checkSvg(11)}</span>
+            <span class="aq">${esc(stepIt.header || stepIt.text)}</span>
+            <span class="aa">${esc(answerSummary(dev, stepIt))}</span>
+            <span class="chg">修改</span>
+          </button>
+        `).join("")}
+      </div>`
+    : "";
+
+  host.innerHTML = `<div class="qx-card">
+    <div class="qx-top">
+      <span class="ag-badge">${esc(sc.agent[0])}</span>
+      <span class="qx-who">${esc(sc.agent)} 问你</span>
+      ${showHeaderTag ? `<span class="qx-tag">${esc(it.header)}</span>` : ""}
+      ${it.multiSelect ? `<span class="qx-tag kind">可多选</span>` : ""}
+      <span class="qx-right">
+        <span class="qx-time">${countdownSvg()} 还剩 28 分钟</span>
+        ${multi ? `<span class="pager" role="group" aria-label="切换问题">
+          <button class="pg-btn" ${idx === 0 ? "disabled" : ""} data-dev="mac" data-step="${idx - 1}" title="上一个 (←)" aria-label="上一个">${chevSvg(true)}</button>
+          <span class="pg-num">${idx + 1} / ${items.length}</span>
+          <button class="pg-btn" ${idx === items.length - 1 ? "disabled" : ""} data-dev="mac" data-step="${idx + 1}" title="下一个 (→)" aria-label="下一个">${chevSvg(false)}</button>
+        </span>` : ""}
+      </span>
+    </div>
+
+    ${navTop}
+    ${stackHtml}
+
+    <div class="qx-body" style="--dir:${dev.dir * 12}px">
+      <div class="qx-q">
+        <span>${esc(it.text)}</span>
+        ${it.optional ? `<span class="qx-opt-note">（可选）</span>` : ""}
+      </div>
+      ${it.options.length > 0 ? `<div class="qx-opts" role="${it.multiSelect ? "group" : "radiogroup"}">
+        ${it.options.map((o, oIdx) => {
+          const on = (dev.chosen[it.id] || []).includes(o.label);
+          const { rec, clean } = parseRec(o.label);
+          return `<button class="qopt ${on ? "on" : ""}" data-dev="mac" data-item="${esc(it.id)}" data-opt="${esc(o.label)}">
+            <span class="qn">${oIdx + 1}</span>
+            <span class="qb">
+              <span class="qb-t">${rec ? `<span class="rec">推荐</span>` : ""}${esc(clean)}</span>
+              ${o.description ? `<span class="qb-d">${esc(o.description)}</span>` : ""}
+            </span>
+            <span class="qc">${checkSvg()}</span>
+          </button>`;
+        }).join("")}
+      </div>` : ""}
+
+      ${it.allowOther ? `<div class="qx-own ${txtVal.trim() ? "filled" : ""}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        <input type="text" placeholder="${it.options.length === 0 ? "写下你的回答…" : "或者直接写下你的回答…"}" value="${esc(txtVal)}" data-dev="mac" data-text-item="${esc(it.id)}">
+        ${txtVal ? `<button class="clr" data-dev="mac" data-clear-text="${esc(it.id)}">清空</button>` : ""}
+      </div>` : ""}
+    </div>
+
+    <div class="qx-foot">
+      <span class="qx-hint">${multi && isComplete(dev, items) ? "点右上角 ‹ › 可回看修改" : ""}</span>
+      <span class="grow"></span>
+      <button class="btn ghost" title="让它自行判断" data-dev="mac" data-submit="decline">不回答</button>
+      ${primaryMacActionHtml(dev, items, idx)}
+    </div>
+  </div>`;
+}
+
+function renderIos() {
+  const sc = SCENES[S.scene];
+  const dev = S.ios;
+  const phone = document.getElementById("phone");
+  const host = document.getElementById("ios-qhost");
+  const resHost = document.getElementById("ios-resolved");
+  phone.classList.toggle("kb", Boolean(dev.typing && !dev.done));
+  document.getElementById("ios-status-lbl").textContent =
+    S.mode === "legacy" ? "现状复现：340pt 内部嵌套滚动 + 多输入框常驻" : "新设计：右上角 ‹ 1 / 3 › + 左右轻扫切换";
+
+  resHost.innerHTML = renderResolved(dev);
+  if (dev.done) {
+    host.innerHTML = "";
+    return;
+  }
+
+  const items = currentItems();
+  if (S.mode === "legacy") {
+    host.innerHTML = `<div class="ios-qpanel glass">
+      <div class="ios-qh">
+        <span class="ag-badge">${esc(sc.agent[0])}</span>
+        <span>${esc(sc.agent)} 问你</span>
+        <span class="grow"></span>
+        <span class="tm">还剩 28 分钟</span>
+      </div>
+      <div class="ios-leg-scroll">
+        ${sc.items.map((it) => `
+          <div style="display:flex;flex-direction:column;gap:7px">
+            ${it.header ? `<span style="font-size:11.5px;color:var(--l2)">${esc(it.header)}</span>` : ""}
+            <div style="font-size:15px;font-weight:600;line-height:1.35">${esc(it.text)}</div>
+            ${it.options.map((o) => {
+              const on = (dev.chosen[it.id] || []).includes(o.label);
+              return `<button class="ios-opt ${on ? "on" : ""}" data-dev="ios" data-item="${esc(it.id)}" data-opt="${esc(o.label)}">
+                <span class="ck">${on ? checkSvg(13) : ""}</span>
+                <span class="ob"><div class="ot">${esc(o.label)}</div></span>
+              </button>`;
+            }).join("")}
+            ${it.allowOther ? `<input class="ios-leg-in" placeholder="或者直接写下你的回答…" value="${esc(dev.texts[it.id] || "")}" data-dev="ios" data-text-item="${esc(it.id)}" data-ios-focus="1">` : ""}
+          </div>
+        `).join("")}
+      </div>
+      <div class="ios-acts">
+        <button class="ios-btn" data-dev="ios" data-submit="decline">不回答</button>
+        <button class="ios-btn pri" ${isComplete(dev, sc.items) ? "" : "disabled"} data-dev="ios" data-submit="ok">回答</button>
+      </div>
+    </div>`;
+    return;
+  }
+
+  const idx = Math.min(dev.step, items.length - 1);
+  const it = items[idx];
+  const multi = items.length > 1;
+  const txtVal = dev.texts[it.id] || "";
+  const showHeaderTag = it.header && it.header !== it.text;
+
+  const navTop = multi && S.nav === "bar"
+    ? `<div class="seg-track" style="--n:${items.length}">
+        ${items.map((stepIt, sIdx) => {
+          const done = isAnswered(dev, stepIt);
+          const cur = sIdx === idx;
+          return `<button class="seg-bar ${cur ? "cur" : ""} ${done ? "done" : ""}" data-dev="ios" data-step="${sIdx}" aria-label="第 ${sIdx + 1} 项"><i></i></button>`;
+        }).join("")}
+      </div>`
+    : "";
+
+  const answeredRows = multi && S.nav === "stack" && !dev.typing
+    ? items.map((stepIt, sIdx) => ({ stepIt, sIdx })).filter(({ stepIt, sIdx }) => sIdx !== idx && isAnswered(dev, stepIt))
+    : [];
+
+  const stackHtml = answeredRows.length > 0
+    ? `<div class="ans-stack">
+        ${answeredRows.map(({ stepIt, sIdx }) => `
+          <button class="ios-ans-row" data-dev="ios" data-step="${sIdx}">
+            <span class="ck-dot">${checkSvg(11)}</span>
+            <span class="aa">${esc(answerSummary(dev, stepIt))}</span>
+            <span class="chg">修改</span>
+          </button>
+        `).join("")}
+      </div>`
+    : "";
+
+  host.innerHTML = `<div class="ios-qpanel glass">
+    <div class="ios-qh">
+      <span class="ag-badge">${esc(sc.agent[0])}</span>
+      <span>${esc(sc.agent)} 问你</span>
+      ${showHeaderTag ? `<span class="qx-tag">${esc(it.header)}</span>` : ""}
+      ${it.multiSelect ? `<span class="qx-tag kind">可多选</span>` : ""}
+      <span class="grow"></span>
+      <span class="tm">28m</span>
+      ${multi ? `<span class="ios-pager">
+        <button class="ios-pgbtn" ${idx === 0 ? "disabled" : ""} data-dev="ios" data-step="${idx - 1}" aria-label="上一个">${chevSvg(true)}</button>
+        <span class="ios-pgnum">${idx + 1}/${items.length}</span>
+        <button class="ios-pgbtn" ${idx === items.length - 1 ? "disabled" : ""} data-dev="ios" data-step="${idx + 1}" aria-label="下一个">${chevSvg(false)}</button>
+      </span>` : ""}
+    </div>
+
+    ${navTop}
+    ${stackHtml}
+
+    <div class="ios-qbody" style="--dir:${dev.dir * 12}px">
+      <div class="ios-qttl">${esc(it.text)}${it.optional ? ` <span style="font-weight:400;font-size:13px;color:var(--l3)">（可选）</span>` : ""}</div>
+      ${!dev.typing && it.options.length > 0 ? `<div class="ios-opts">
+        ${it.options.map((o) => {
+          const on = (dev.chosen[it.id] || []).includes(o.label);
+          const { rec, clean } = parseRec(o.label);
+          return `<button class="ios-opt ${it.multiSelect ? "multi" : ""} ${on ? "on" : ""}" data-dev="ios" data-item="${esc(it.id)}" data-opt="${esc(o.label)}">
+            <span class="ck">${on ? checkSvg(13) : ""}</span>
+            <span class="ob">
+              <div class="ot">${rec ? `<span class="rec">推荐</span>` : ""}${esc(clean)}</div>
+              ${o.description ? `<div class="od">${esc(o.description)}</div>` : ""}
+            </span>
+          </button>`;
+        }).join("")}
+      </div>` : ""}
+
+      ${it.allowOther ? (
+        dev.typing || it.options.length === 0
+          ? `<div class="ios-own-box">
+              <input id="ios-active-input" type="text" placeholder="写下你的回答…" value="${esc(txtVal)}" data-dev="ios" data-text-item="${esc(it.id)}" data-ios-focus="1">
+              <button data-ios-close-kb="1">收起</button>
+            </div>`
+          : `<button class="ios-own-btn ${txtVal.trim() ? "filled" : ""}" data-ios-open-kb="1">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${txtVal.trim() ? esc(txtVal) : "或者直接写下你的回答…"}</span>
+            </button>`
+      ) : ""}
+    </div>
+
+    <div class="ios-acts">
+      <button class="ios-btn" data-dev="ios" data-submit="decline">不回答</button>
+      ${primaryIosActionHtml(dev, items, idx)}
+    </div>
+  </div>`;
+
+  if (dev.typing) {
+    requestAnimationFrame(() => {
+      const inp = document.getElementById("ios-active-input");
+      if (inp && document.activeElement !== inp) inp.focus();
+    });
+  }
+}
+
+function renderControls() {
+  const grp = (lbl, key, opts) =>
+    `<div class="g"><b>${lbl}</b>${opts.map(([v, t]) => `<button class="${S[key] === v ? "on" : ""}" data-ctl="${key}" data-val="${v}">${t}</button>`).join("")}</div>`;
+  document.getElementById("ctl").innerHTML = [
+    grp("对比", "mode", [["new", "新设计"], ["legacy", "现状复现"]]),
+    grp("回看", "nav", [["bar", "分段进度条 + ‹ 1/3 ›"], ["stack", "已选折叠行 + ‹ 1/3 ›"]]),
+    grp("场景", "scene", Object.entries(SCENES).map(([k, v]) => [k, v.name])),
+    grp("设备", "view", [["both", "Mac + iPhone"], ["mac", "仅 Mac"], ["ios", "仅 iPhone"]]),
+    grp("外观", "theme", [["dark", "深色"], ["light", "浅色"]]),
+    `<div class="g"><button data-act="replay">重置</button></div>`
+  ].join("");
+}
+
+function render() {
+  document.documentElement.dataset.theme = S.theme;
+  document.getElementById("stage").dataset.view = S.view;
+  renderMac();
+  renderIos();
+  renderControls();
+}
+
+function syncInputChrome(devName, id) {
+  if (S.mode !== "new") return;
+  const dev = S[devName];
+  const items = currentItems();
+  const idx = Math.min(dev.step, items.length - 1);
+  const it = items[idx];
+
+  if (devName === "mac") {
+    const card = document.querySelector("#mac-qhost .qx-card");
+    if (!card) return;
+    if (!it.multiSelect && (dev.texts[id] || "").trim() !== "") {
+      card.querySelectorAll(".qopt.on").forEach((b) => b.classList.remove("on"));
+    }
+    const own = card.querySelector(".qx-own");
+    if (own) own.classList.toggle("filled", (dev.texts[id] || "").trim() !== "");
+    card.querySelectorAll(".seg-bar").forEach((bar, sIdx) => {
+      bar.classList.toggle("done", isAnswered(dev, items[sIdx]));
+    });
+    const foot = card.querySelector(".qx-foot");
+    if (foot && foot.lastElementChild) {
+      foot.lastElementChild.outerHTML = primaryMacActionHtml(dev, items, idx);
+    }
+  } else {
+    const panel = document.querySelector("#ios-qhost .ios-qpanel");
+    if (!panel) return;
+    panel.querySelectorAll(".seg-bar").forEach((bar, sIdx) => {
+      bar.classList.toggle("done", isAnswered(dev, items[sIdx]));
+    });
+    const acts = panel.querySelector(".ios-acts");
+    if (acts && acts.lastElementChild) {
+      acts.lastElementChild.outerHTML = primaryIosActionHtml(dev, items, idx);
+    }
+  }
+}
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  if (btn.dataset.ctl) {
+    const k = btn.dataset.ctl, v = btn.dataset.val;
+    S[k] = v;
+    if (k === "mode" || k === "scene") resetAll();
+    else render();
+    return;
+  }
+  if (btn.dataset.act === "replay") {
+    resetAll();
+    return;
+  }
+  if (btn.dataset.iosOpenKb) {
+    S.ios.typing = true;
+    render();
+    return;
+  }
+  if (btn.dataset.iosCloseKb || btn.id === "ios-kb-done") {
+    const items = currentItems();
+    const idx = Math.min(S.ios.step, items.length - 1);
+    const it = items[idx];
+    S.ios.typing = false;
+    if (btn.id === "ios-kb-done" && isAnswered(S.ios, it) && items.length > 1) {
+      const nextIdx = nextUnansweredIndex(S.ios, items, idx);
+      if (nextIdx !== -1) {
+        S.ios.dir = nextIdx > idx ? 1 : -1;
+        S.ios.step = nextIdx;
+      }
+    }
+    render();
+    return;
+  }
+  if (btn.dataset.clearText) {
+    const dev = S[btn.dataset.dev];
+    dev.texts[btn.dataset.clearText] = "";
+    render();
+    return;
+  }
+  if (btn.dataset.step !== undefined) {
+    goStep(btn.dataset.dev, Number(btn.dataset.step));
+    return;
+  }
+  if (btn.dataset.opt !== undefined) {
+    const devName = btn.dataset.dev;
+    const pool = devName === "ios" && S.mode === "legacy" ? SCENES[S.scene].items : currentItems();
+    const it = pool.find((x) => x.id === btn.dataset.item);
+    if (it) pickOption(devName, it, btn.dataset.opt);
+    return;
+  }
+  if (btn.dataset.submit) {
+    submitOrAdvance(btn.dataset.dev, btn.dataset.submit === "decline");
+  }
+});
+
+document.addEventListener("input", (e) => {
+  const inp = e.target;
+  if (!inp.dataset.textItem) return;
+  const devName = inp.dataset.dev;
+  const dev = S[devName];
+  const id = inp.dataset.textItem;
+  dev.texts[id] = inp.value;
+  const items = currentItems();
+  const it = items.find((x) => x.id === id);
+  if (it && !it.multiSelect && inp.value.trim() !== "") {
+    dev.chosen[id] = [];
+  }
+  syncInputChrome(devName, id);
+});
+
+document.addEventListener("focusin", (e) => {
+  if (e.target.dataset?.iosFocus && S.mode === "legacy") {
+    document.getElementById("phone").classList.add("kb");
+  }
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const inp = e.target.tagName === "INPUT" ? e.target : null;
+  if (inp && inp.dataset.textItem) {
+    if (e.key === "Enter" && !e.isComposing) {
+      e.preventDefault();
+      const devName = inp.dataset.dev;
+      const dev = S[devName];
+      const items = currentItems();
+      const nextIdx = nextUnansweredIndex(dev, items, dev.step);
+      if (S.mode === "new" && nextIdx !== -1 && isAnswered(dev, items[dev.step])) {
+        goStep(devName, nextIdx);
+      } else if (isComplete(dev, items)) {
+        submitOrAdvance(devName, false);
+      } else {
+        render();
+      }
+    } else if (e.key === "Escape") {
+      inp.blur();
+      if (inp.dataset.dev === "ios") {
+        S.ios.typing = false;
+        render();
+      }
+    }
+    return;
+  }
+
+  if (S.mac.done || S.view === "ios" || S.mode === "legacy") return;
+  const items = currentItems();
+  const idx = Math.min(S.mac.step, items.length - 1);
+  const it = items[idx];
+  if (/^[1-9]$/.test(e.key)) {
+    const n = Number(e.key) - 1;
+    if (it && n < it.options.length) {
+      e.preventDefault();
+      pickOption("mac", it, it.options[n].label);
+    }
+  } else if (e.key === "ArrowLeft" && idx > 0) {
+    e.preventDefault();
+    goStep("mac", idx - 1);
+  } else if (e.key === "ArrowRight" && idx < items.length - 1) {
+    e.preventDefault();
+    goStep("mac", idx + 1);
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    submitOrAdvance("mac", false);
+  }
+});
+
+let touchX = null;
+document.getElementById("phone").addEventListener("pointerdown", (e) => {
+  if (e.target.closest(".ios-qbody")) touchX = e.clientX;
+});
+document.getElementById("phone").addEventListener("pointerup", (e) => {
+  if (touchX === null) return;
+  const dx = e.clientX - touchX;
+  touchX = null;
+  if (Math.abs(dx) > 48 && S.mode === "new" && !S.ios.done) {
+    goStep("ios", S.ios.step + (dx < 0 ? 1 : -1));
+  }
+});
+
+render();
+</script>
+</body>
+</html>

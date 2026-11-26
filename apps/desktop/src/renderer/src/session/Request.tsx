@@ -33,7 +33,7 @@ export function SessionRequest({ s, req, onResponded }: { s: Session; req: Runti
       return <SecretInput s={s} req={req} respond={respond} />;
     case RuntimeRequestKind.USER_INPUT:
       return (
-        <div className="appr th-ask" data-testid="pending-question-banner">
+        <div className="appr qx-card" data-testid="pending-question-banner">
           <QuestionPanel
             s={s}
             q={sessionQuestion(req)}
