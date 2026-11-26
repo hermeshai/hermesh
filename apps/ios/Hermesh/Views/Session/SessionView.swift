@@ -43,6 +43,7 @@ struct StepView: View {
     let step: Step
     let session: Session
     let previousTurn: Date?
+    var live = false
 
     var body: some View {
         switch step {
@@ -85,7 +86,7 @@ struct StepView: View {
         case .workspace(let row):
             WorkspaceLine(row: row)
         case .agent(_, let text, let runID):
-            MarkdownText(text: text)
+            StreamingMarkdownText(text: text, streaming: live)
                 .environment(\.filesRun, runID)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())

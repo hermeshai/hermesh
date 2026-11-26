@@ -114,4 +114,15 @@
 .dwrap.dock .tobottom{left:calc(50% - 135px)}
 /* Rows away from what is in sight are not drawn at all (useVirtualRows): no content-visibility on replies,
    which would skip drawn rows just outside the view and have them measured at a placeholder's height. */
+/* A streamed reply's newly revealed row: swept in from left to right by a soft alpha mask, then unwrapped once whole. */
+.md-wipe{
+  -webkit-box-decoration-break:clone;box-decoration-break:clone;
+  -webkit-mask-image:linear-gradient(90deg,#000 0%,#000 33.5%,rgba(0,0,0,.72) 43%,rgba(0,0,0,.22) 56%,transparent 66.5%,transparent 100%);
+  mask-image:linear-gradient(90deg,#000 0%,#000 33.5%,rgba(0,0,0,.72) 43%,rgba(0,0,0,.22) 56%,transparent 66.5%,transparent 100%);
+  -webkit-mask-size:300% 100%;mask-size:300% 100%;
+  -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+  animation:md-silk-wipe 680ms cubic-bezier(.24,.86,.28,1) both;
+}
+@keyframes md-silk-wipe{from{-webkit-mask-position:100% 0;mask-position:100% 0}to{-webkit-mask-position:0 0;mask-position:0 0}}
+@media (prefers-reduced-motion:reduce){.md-wipe{animation:none;-webkit-mask-image:none;mask-image:none}}
 @media print{.md-tools{display:none}.md-table-scroll{overflow:visible;max-height:none}.md-wide{width:100%!important;margin:0!important}}

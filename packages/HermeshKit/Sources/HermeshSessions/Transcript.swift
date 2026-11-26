@@ -300,6 +300,12 @@ public func sessionWork(_ proj: Hermesh_Session_V1_SessionProjection?) -> Sessio
     return .working
 }
 
+/// The `seq` values of replies the agent is still streaming, so their rows sweep in as they grow.
+public func sessionLiveReplies(_ proj: Hermesh_Session_V1_SessionProjection?) -> Set<UInt64> {
+    guard let proj else { return [] }
+    return Set(proj.items.filter { $0.kind == .assistantMessage && $0.streaming }.map(itemSeq))
+}
+
 /// Why the session stopped, or why the machine rejected what was sent, until the next run starts.
 public func sessionFailure(_ s: Session?) -> Failure? {
     guard let s else { return nil }

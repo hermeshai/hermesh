@@ -37,17 +37,130 @@ struct MarkdownText: View {
 /// row yet, so nothing shows as raw Markdown on its way.
 struct DraftMarkdownText: View {
     let text: String
+    var animatedFromBlock: Int = .max
 
     var body: some View {
         var blocks = splitBlocks(text)
         let last = closingOpenMarks(withoutOpenTable(blocks.removeLast()))
+        let settledCount = blocks.count
         return VStack(alignment: .leading, spacing: MarkdownStyle.reply.gap) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, b in
+            ForEach(Array(blocks.enumerated()), id: \.offset) { i, b in
                 MarkdownBlocks(blocks: parsed(b), style: .reply)
+                    .modifier(SilkWipeEffect(active: i >= animatedFromBlock))
             }
             if !last.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                MarkdownBlocks(blocks: parsed(last), style: .reply, draft: true)
+                MarkdownBlocks(blocks: parsed(last), style: .reply, draft: true, wipeTail: settledCount >= animatedFromBlock || animatedFromBlock < .max)
             }
+        }
+    }
+}
+
+/// Releases a live reply one visual row at a time with a left-to-right silk wipe mask,
+/// and settles to static `MarkdownText` with zero overhead on completed replies.
+struct StreamingMarkdownText: View {
+    let text: String
+    let streaming: Bool
+    @Environment(\.accessibilityReduceMotion) private var still
+    @State private var shownCount: Int = 0
+    @State private var animating = false
+    @State private var startBlock: Int = .max
+    @State private var initialized = false
+
+    var body: some View {
+        if !streaming && !animating {
+            MarkdownText(text: text)
+                .onChange(of: streaming) { _, now in
+                    if now && !still {
+                        shownCount = firstRowCount(of: text)
+                        startBlock = 0
+                        animating = true
+                    }
+                }
+        } else {
+            let visible = streaming && !still ? String(text.prefix(min(shownCount, text.count))) : text
+            DraftMarkdownText(text: visible, animatedFromBlock: still ? .max : startBlock)
+                .onAppear {
+                    guard !initialized else { return }
+                    initialized = true
+                    if streaming && !still {
+                        shownCount = firstRowCount(of: text)
+                        startBlock = 0
+                        animating = true
+                    } else {
+                        shownCount = text.count
+                    }
+                }
+                .onChange(of: streaming) { _, now in
+                    if !now {
+                        shownCount = text.count
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(720))
+                            if !streaming { animating = false }
+                        }
+                    }
+                }
+                .task(id: "\(streaming)\0\(text)\0\(shownCount)") {
+                    guard streaming, !still, shownCount < text.count else { return }
+                    let idx = text.index(text.startIndex, offsetBy: min(shownCount, text.count))
+                    let ready = nextStreamRowEnd(text, from: idx, flushTail: false)
+                    let cadenceMs = text.count - shownCount > 220 ? 60 : 135
+                    try? await Task.sleep(for: .milliseconds(ready != nil ? cadenceMs : 175))
+                    guard !Task.isCancelled, streaming else { return }
+                    let curIdx = text.index(text.startIndex, offsetBy: min(shownCount, text.count))
+                    if let cut = nextStreamRowEnd(text, from: curIdx, flushTail: ready == nil) {
+                        let nextCount = text.distance(from: text.startIndex, to: cut)
+                        if nextCount > shownCount { shownCount = nextCount }
+                    }
+                }
+        }
+    }
+
+    private func firstRowCount(of s: String) -> Int {
+        guard let cut = nextStreamRowEnd(s, from: s.startIndex, flushTail: false) else { return 0 }
+        return s.distance(from: s.startIndex, to: cut)
+    }
+}
+
+/// One-shot 300% horizontal alpha mask wipe matching `.md-wipe` on the Mac; removes its mask once settled.
+private struct SilkWipeEffect: ViewModifier {
+    let active: Bool
+    @Environment(\.accessibilityReduceMotion) private var still
+    @State private var progress: CGFloat = 0
+    @State private var settled = false
+
+    func body(content: Content) -> some View {
+        if !active || still || settled {
+            content
+        } else {
+            content
+                .mask {
+                    GeometryReader { geo in
+                        let w = max(1, geo.size.width)
+                        LinearGradient(
+                            stops: [
+                                .init(color: .black, location: 0),
+                                .init(color: .black, location: 0.335),
+                                .init(color: .black.opacity(0.72), location: 0.43),
+                                .init(color: .black.opacity(0.22), location: 0.56),
+                                .init(color: .clear, location: 0.665),
+                                .init(color: .clear, location: 1),
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(width: w * 3, height: geo.size.height)
+                        .offset(x: -2 * w * (1 - progress))
+                    }
+                }
+                .onAppear {
+                    withAnimation(.timingCurve(0.24, 0.86, 0.28, 1, duration: 0.68)) {
+                        progress = 1
+                    }
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(710))
+                        settled = true
+                    }
+                }
         }
     }
 }
@@ -417,6 +530,7 @@ private struct MarkdownBlocks: View {
     var lazy = false
     /// Still being written: a diagram waits as its source until it is whole.
     var draft = false
+    var wipeTail = false
 
     var body: some View {
         if lazy {
@@ -429,7 +543,9 @@ private struct MarkdownBlocks: View {
     private var rows: some View {
         ForEach(Array(blocks.enumerated()), id: \.offset) { i, b in
             // A heading after other blocks starts a part: more room above it, as on the Mac.
-            BlockView(block: b, style: style, draft: draft).padding(.top, i > 0 && b.isHeading ? 8 : 0)
+            BlockView(block: b, style: style, draft: draft)
+                .padding(.top, i > 0 && b.isHeading ? 8 : 0)
+                .modifier(SilkWipeEffect(active: wipeTail && i == blocks.count - 1))
         }
     }
 }
