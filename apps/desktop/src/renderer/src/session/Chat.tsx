@@ -30,7 +30,7 @@ import { useVirtualRows, type VirtualRow } from "./useVirtualRows";
  * it grows (or `follow` changes) unless the person scrolled up; scrolled well up, a button takes them back down.
  * `control`, while a turn is live, sits over its bottom edge.
  */
-export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, head, foot, unread, control, follow }: {
+export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, head, foot, unread, control, follow, spoken = 0 }: {
   rows: R[];
   initial: Record<string, number>;
   label: string;
@@ -40,6 +40,7 @@ export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, hea
   unread?: ReactNode;
   control?: (onHeight: (h: number) => void) => ReactNode;
   follow?: unknown;
+  spoken?: number;
 }) {
   const { t } = useTranslation("session");
   const live = control !== undefined;
@@ -57,13 +58,16 @@ export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, hea
   // Follow the conversation: open at its end, and stay there as it grows unless the person scrolled up;
   // scrolled well up, a button takes them back down.
   const atEnd = useRef(true);
+  const goingToEnd = useRef(false);
   const lastTop = useRef(0);
   // When the person last acted on the conversation itself. A held pointer (the scrollbar) counts until it lets go.
   const touched = useRef(-Infinity);
   const touch = () => {
+    goingToEnd.current = false;
     touched.current = performance.now();
   };
   const hold = () => {
+    goingToEnd.current = false;
     touched.current = Infinity;
     window.addEventListener("pointerup", touch, { once: true });
     window.addEventListener("pointercancel", touch, { once: true });
@@ -71,12 +75,25 @@ export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, hea
   const [away, setAway] = useState(false);
   useLayoutEffect(() => {
     const el = scroll.current;
-    if (el && atEnd.current) el.scrollTop = el.scrollHeight;
+    if (el && atEnd.current && !goingToEnd.current) el.scrollTop = el.scrollHeight;
     if (el) lastTop.current = el.scrollTop;
   }, [rows, ctlHeight, follow]);
   // Fonts, formulas, diagrams and tables can resize without a new event. Reading above the end, the row at the top
   // of the view stays where it is; at the end, the end stays in view.
   const anchor = useRef<{ key: string; top: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!spoken) return;
+    const el = scroll.current;
+    atEnd.current = true;
+    goingToEnd.current = false;
+    touched.current = -Infinity;
+    anchor.current = null;
+    setAway(false);
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+      lastTop.current = el.scrollTop;
+    }
+  }, [spoken]);
   const rememberAnchor = () => {
     const el = scroll.current;
     if (!el) return;
@@ -98,8 +115,10 @@ export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, hea
     const observer = new ResizeObserver(() => {
       // Following the end needs no frame of its own: this runs before the frame it resized is painted.
       if (atEnd.current) {
-        el.scrollTop = el.scrollHeight;
-        lastTop.current = el.scrollTop;
+        if (!goingToEnd.current) {
+          el.scrollTop = el.scrollHeight;
+          lastTop.current = el.scrollTop;
+        }
         return;
       }
       cancelAnimationFrame(frame);
@@ -124,9 +143,15 @@ export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, hea
     const below = el.scrollHeight - el.scrollTop - el.clientHeight;
     // Only the person going up leaves the end. Rows settle their heights after the scroll that followed them,
     // which moves the position with no one touching anything: that goes back to the end.
-    if (below < 80) atEnd.current = true;
-    else if (el.scrollTop < lastTop.current && performance.now() - touched.current < 1000) atEnd.current = false;
-    else if (atEnd.current) el.scrollTop = el.scrollHeight;
+    if (below < 80) {
+      atEnd.current = true;
+      goingToEnd.current = false;
+    } else if (el.scrollTop < lastTop.current && performance.now() - touched.current < 1000) {
+      atEnd.current = false;
+      goingToEnd.current = false;
+    } else if (atEnd.current && !goingToEnd.current) {
+      el.scrollTop = el.scrollHeight;
+    }
     lastTop.current = el.scrollTop;
     setAway(!atEnd.current && below > 240);
     rememberAnchor();
@@ -135,7 +160,22 @@ export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, hea
     const el = scroll.current;
     if (!el) return;
     atEnd.current = true;
-    el.scrollTo({ top: el.scrollHeight, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    touched.current = -Infinity;
+    anchor.current = null;
+    setAway(false);
+    const far = el.scrollHeight - el.scrollTop - el.clientHeight > 3 * el.clientHeight;
+    const smooth = !far && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+    goingToEnd.current = smooth;
+    if (smooth) {
+      el.addEventListener("scrollend", () => {
+        goingToEnd.current = false;
+        if (atEnd.current) {
+          el.scrollTop = el.scrollHeight;
+          lastTop.current = el.scrollTop;
+        }
+      }, { once: true });
+    }
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
   };
 
   // Leaving a conversation read far back: what it held goes back once the next page settles (memory.ts).

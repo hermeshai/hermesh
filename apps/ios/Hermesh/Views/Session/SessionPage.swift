@@ -100,6 +100,7 @@ struct SessionPage: View {
     @State private var following = false
     @State private var pickingModel = false
     @State private var atEnd = true
+    @State private var spoken = 0
     @State private var position = ScrollPosition(edge: .bottom)
     @State private var scrollBox = ConversationScrollBox()
     @State private var renaming = false
@@ -354,6 +355,7 @@ struct SessionPage: View {
             .padding(.horizontal, 20)
             .padding(.top, 13).padding(.bottom, 21)
         }
+        .defaultScrollAnchor(.bottom, for: .initialOffset)
         .keyboardAwayOnTap()
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
@@ -413,7 +415,7 @@ struct SessionPage: View {
             .background(ConversationScrollFinder(box: scrollBox))
         }
         .keyboardAwayOnTap()
-        .followsEnd(id: sessionID, ready: historyReady(s), atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
+        .followsEnd(id: sessionID, ready: historyReady(s), spoken: spoken, atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
             if s.status != .archived {
                 VStack(spacing: 0) {
                     ConnectionCapsule(machine: machine, linkUp: following && reachable)
@@ -421,7 +423,10 @@ struct SessionPage: View {
                         if let req = pendingRequest(of: activeProj) {
                             requestPanel(req, s)
                         } else if let q = s.pendingQuestion {
-                            QuestionPanel(session: s, question: q).id(q.questionID)
+                            QuestionPanel(session: s, question: q) { answers, decline in
+                                if await model.answer(s, answers: answers, decline: decline) { spoken += 1 }
+                            }
+                            .id(q.questionID)
                         }
                         backgroundBar
                         queue(activeProj)
@@ -1010,6 +1015,7 @@ struct SessionPage: View {
         }
         draft = ""
         attached = []
+        spoken += 1
         var r = Hermesh_Session_V1_DispatchMessageRequest()
         r.commandID = UUID().uuidString
         r.sessionID = sessionID
@@ -1023,7 +1029,17 @@ struct SessionPage: View {
         let before = lastSend
         lastSend = Task {
             await before?.value
-            do { _ = try await api.dispatchMessage(r) } catch {
+            do {
+                let res = try await api.dispatchMessage(r)
+                if res.queuedOffline {
+                    var next = projection ?? .init()
+                    if res.hasSession { next.session = res.session }
+                    if res.hasRun, !next.runs.contains(where: { $0.runID == res.run.runID }) {
+                        next.runs.append(res.run)
+                    }
+                    projection = next
+                }
+            } catch {
                 model.report(error)
                 if draft.isEmpty { draft = text }
                 if attached.isEmpty { attached = files }
@@ -1119,7 +1135,10 @@ struct SessionPage: View {
         r.sessionID = sessionID
         r.requestID = req.requestID
         build(&r)
-        do { _ = try await model.api?.respondRuntimeRequest(r) } catch { model.report(error) }
+        do {
+            _ = try await model.api?.respondRuntimeRequest(r)
+            spoken += 1
+        } catch { model.report(error) }
     }
 
     private func manage(_ run: Hermesh_Session_V1_Run, _ op: Hermesh_Session_V1_QueueOperation) {
@@ -1128,6 +1147,7 @@ struct SessionPage: View {
         r.sessionID = sessionID
         r.runID = run.runID
         r.operation = op
+        if op == .promoteToSteer { spoken += 1 }
         Task { do { _ = try await model.api?.manageQueue(r) } catch { model.report(error) } }
     }
 }

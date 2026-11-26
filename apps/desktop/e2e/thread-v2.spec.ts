@@ -270,3 +270,43 @@ test("tracks post-turn background tasks without premature completion, streams au
     await app.close();
   }
 });
+
+test("sending a message while scrolled up in a session automatically scrolls back to the bottom", async () => {
+  const { app, page } = await launch();
+  try {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.getByTestId("nav-new-thread").click();
+    await pickDemoAndScripted(page);
+    await pickMode(page, "runtime-mode-4");
+
+    const lines = Array.from({ length: 45 }, (_, i) => `say line_${i + 1}_padding_for_long_scroll_history`).join("\n");
+    const input = page.getByTestId("thread-composer-input");
+    await input.fill(`${lines}\nsay initial_long_turn_done`);
+    await page.getByTestId("composer-submit-btn").click();
+    await expect(replies(page).last()).toContainText("initial_long_turn_done", { timeout: 20_000 });
+
+    const scroller = page.locator(".cscroll.markdown-chat");
+    const below = () => scroller.evaluate((el) => Math.round(el.scrollHeight - el.scrollTop - el.clientHeight));
+    await expect.poll(below).toBeLessThan(80);
+
+    // Scroll well up so the "to bottom" button appears and the view is detached from the bottom.
+    const box = (await scroller.boundingBox())!;
+    await page.mouse.move(box.x + 24, box.y + box.height / 2);
+    for (let i = 0; i < 8; i++) await page.mouse.wheel(0, -300);
+    await expect(page.locator(".tobottom.on")).toBeVisible();
+    expect(await below()).toBeGreaterThan(240);
+
+    // Typing in the composer keeps the scrolled-up position until Send.
+    await input.fill("say followup_from_scrolled_up");
+    await expect(page.locator(".tobottom.on")).toBeVisible();
+
+    // Sending immediately re-attaches to the bottom and keeps the new message + reply in view.
+    await input.press("Enter");
+    await expect(page.locator(".tobottom.on")).toHaveCount(0);
+    await expect.poll(below).toBeLessThan(80);
+    await expect(replies(page).last()).toContainText("followup_from_scrolled_up", { timeout: 15_000 });
+    await expect.poll(below).toBeLessThan(80);
+  } finally {
+    await app.close();
+  }
+});

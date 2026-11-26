@@ -127,6 +127,48 @@ final class SessionDetailUITests: XCTestCase {
                       "tapping to-end should bring Live update #\(targetUpdateNumber)+ into view")
     }
 
+    /// Sending a message keeps the conversation at the very bottom over the keyboard and composer,
+    /// and sending while scrolled up brings the new message and reply back to the bottom.
+    func testSendingMessageScrollsToVeryBottom() {
+        openSessionFromOverview("Long history session")
+        let longLatest = text(beginningWith: "Long latest #24")
+        let composer = app.descendants(matching: .any)["thread-composer"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 10), "session composer")
+        XCTAssertTrue(waitUntil(timeout: 10) { longLatest.exists && self.isAboveComposer(longLatest) },
+                      "long history should open at latest message #24 above composer")
+
+        // 1. Focus composer so keyboard rises and box expands: latest message stays above the composer.
+        composer.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "keyboard shown")
+        XCTAssertTrue(waitUntil(timeout: 5) { self.isAboveComposer(longLatest) },
+                      "latest message should stay above composer when keyboard opens (msg=\(longLatest.frame), composer=\(composer.frame))")
+        XCTAssertFalse(app.buttons["to-end"].exists, "still at the bottom with keyboard up")
+
+        // 2. Send a multi-line message from the bottom: both sent prompt and reply land above the composer.
+        composer.typeText("Bottom follow-up line 1\nLine 2\nLine 3")
+        tap("thread-send")
+        let sentAtBottom = text(beginningWith: "Bottom follow-up line 1")
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            guard let reply = self.latestDemoFollowUpReply() else { return false }
+            return sentAtBottom.exists && self.isAboveComposer(reply)
+        }, "sent message and reply should auto-scroll to the very bottom above composer")
+        XCTAssertFalse(app.buttons["to-end"].exists, "to-end hidden after sending at bottom")
+
+        // 3. Scroll well up in the conversation, type in composer, and send: auto-scrolls all the way to the bottom.
+        scrollUpConversation(times: 4)
+        let toEnd = app.buttons["to-end"]
+        XCTAssertTrue(toEnd.waitForExistence(timeout: 5), "to-end appears after scrolling up")
+        composer.tap()
+        composer.typeText("Sent after scrolling up")
+        XCTAssertTrue(toEnd.exists, "typing in composer while scrolled up does not steal scroll position")
+        tap("thread-send")
+        let sentFromUp = text(beginningWith: "Sent after scrolling up")
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            guard let reply = self.latestDemoFollowUpReply() else { return false }
+            return !toEnd.exists && sentFromUp.exists && self.isAboveComposer(sentFromUp) && self.isAboveComposer(reply)
+        }, "sending from scrolled-up position should scroll to the very bottom")
+    }
+
     // MARK: Helpers
 
     private func openOverview() {
@@ -211,8 +253,29 @@ final class SessionDetailUITests: XCTestCase {
 
     private var visibleVerticalBounds: (top: CGFloat, bottom: CGFloat) {
         let win = app.windows.firstMatch.frame
-        let bottomLimit = app.buttons["interrupt"].exists ? app.buttons["interrupt"].frame.minY : win.maxY - 20
+        let composer = app.descendants(matching: .any)["thread-composer"].firstMatch
+        let bottomLimit: CGFloat = if app.buttons["interrupt"].exists {
+            app.buttons["interrupt"].frame.minY
+        } else if composer.exists {
+            composer.frame.minY
+        } else {
+            win.maxY - 20
+        }
         return (win.minY + 60, bottomLimit + 10)
+    }
+
+    private func isAboveComposer(_ element: XCUIElement) -> Bool {
+        guard element.exists else { return false }
+        let win = app.windows.firstMatch.frame
+        let composer = app.descendants(matching: .any)["thread-composer"].firstMatch
+        let bottomLimit = composer.exists ? composer.frame.minY : win.maxY - 20
+        let frame = element.frame
+        return frame.height > 0 && frame.minY >= win.minY + 60 && frame.maxY <= bottomLimit + 14
+    }
+
+    private func latestDemoFollowUpReply() -> XCUIElement? {
+        let replies = app.staticTexts.matching(NSPredicate(format: "label == %@", "Simulated follow-up reply in Demo Mode."))
+        return replies.allElementsBoundByIndex.last
     }
 
     private func isVisibleInViewport(_ element: XCUIElement) -> Bool {

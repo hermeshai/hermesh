@@ -145,7 +145,12 @@ struct HerConversation: View {
         }
         // So is a message sent, or an answer tapped: it shows at the end, wherever the owner had scrolled to.
         .onChange(of: chat.spoken) {
+            if let sv = scrollView.view, sv.isDecelerating {
+                sv.setContentOffset(sv.contentOffset, animated: false)
+            }
+            scrolling = false
             atEnd = true
+            far.away = false
             position.scrollTo(edge: .bottom)
         }
         .onChange(of: openedModel) {

@@ -164,6 +164,7 @@ export function SessionPage() {
   const [busySend, setBusySend] = useState<boolean>(false);
   const [starting, setStarting] = useState<Starting | null>(null);
   const [stopRequestedRun, setStopRequestedRun] = useState<string>("");
+  const [spoken, setSpoken] = useState<number>(0);
 
   // Queue edit state
   const [editingRunId, setEditingRunId] = useState<string>("");
@@ -409,6 +410,7 @@ export function SessionPage() {
       const sent = attachments;
       setPrompt("");
       setAttachments([]);
+      setSpoken((n) => n + 1);
       const req = {
         sessionId: activeSessionId,
         text,
@@ -422,7 +424,16 @@ export function SessionPage() {
       const job = sends.current.then(() => sessionApi.dispatchMessage(req));
       sends.current = job.catch(() => {});
       try {
-        await job;
+        const res = await job;
+        if (res.queuedOffline) {
+          setProjection((prev) => {
+            const base = prev ?? create(SessionProjectionSchema, {});
+            const runs = res.run && !base.runs.some((r) => r.runId === res.run!.runId) ? [...base.runs, res.run] : base.runs;
+            const next = create(SessionProjectionSchema, { ...base, session: res.session ?? base.session, runs });
+            rememberProjection(activeSessionId, next);
+            return next;
+          });
+        }
       } catch (e) {
         st.show(errorText(e));
         setPrompt((p) => p || text);
@@ -607,7 +618,9 @@ export function SessionPage() {
   // The background card keeps the conversation clear of it as the info card does, when there is room for one.
   const dock = (info && card === "docked") || (background && layoutOf({ ...st, inspector: true, peek: null }).card === "docked");
 
-  const requestCard = activeSessionId && session && pendingReq && <SessionRequest key={pendingReq.requestId} s={session} req={pendingReq} />;
+  const requestCard = activeSessionId && session && pendingReq && (
+    <SessionRequest key={pendingReq.requestId} s={session} req={pendingReq} onResponded={() => setSpoken((n) => n + 1)} />
+  );
   const queueCard = activeSessionId && (queuedRuns.length > 0 || currentSession?.queueHeld) && (
     <div className="knote" data-testid="queued-runs-strip">
       <div className="knote-h">
@@ -644,7 +657,14 @@ export function SessionPage() {
               <span className="th-qtext sel-text" title={qr.prompt || qr.attachments.map((a) => a.name).join(", ")}>
                 {qr.prompt || qr.attachments.map((a) => a.name).join(", ")}
               </span>
-              <button className="btn th-qbtn" data-testid={`queue-promote-${idx}`} onClick={() => sessionApi.manageQueue({ sessionId: activeSessionId, operation: QueueOperation.PROMOTE_TO_STEER, runId: qr.runId })}>
+              <button
+                className="btn th-qbtn"
+                data-testid={`queue-promote-${idx}`}
+                onClick={() => {
+                  setSpoken((n) => n + 1);
+                  void sessionApi.manageQueue({ sessionId: activeSessionId, operation: QueueOperation.PROMOTE_TO_STEER, runId: qr.runId });
+                }}
+              >
                 {t("queue.steerNow")}
               </button>
               {idx > 0 && (
@@ -833,6 +853,7 @@ export function SessionPage() {
                 initial={rowHeights}
                 label={ts("chat.log")}
                 follow={currentSession?.status}
+                spoken={spoken}
                 unread={unread && session ? <Unread s={session} /> : undefined}
                 row={(r) =>
                   currentSession?.offlineQueued && r.it.kind === "user" ? (
