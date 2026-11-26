@@ -1,42 +1,8 @@
 import { fromJson, toJson, type JsonValue } from "@bufbuild/protobuf";
-import type { RuntimeMode } from "@hermesh/proto/identity";
 import { ProjectSchema, type Project } from "@hermesh/proto/local";
-import { ListProvidersResponseSchema, type ListProvidersResponse, type ModelSelection } from "@hermesh/proto/session";
+import { ListProvidersResponseSchema, type ListProvidersResponse } from "@hermesh/proto/session";
 
-export interface MachineChoice {
-  projectId?: string;
-  sel?: Pick<ModelSelection, "instanceId" | "model" | "options">;
-  mode?: RuntimeMode;
-}
-
-export interface Remembered {
-  machineId?: string;
-  byMachine: Record<string, MachineChoice>;
-}
-
-const key = "session-composer";
-
-export function remembered(): Remembered {
-  try {
-    const raw = localStorage.getItem(key) ?? localStorage.getItem("thread-composer") ?? "{}";
-    const v = JSON.parse(raw) as Partial<Remembered>;
-    return { machineId: v.machineId, byMachine: v.byMachine ?? {} };
-  } catch {
-    return { byMachine: {} };
-  }
-}
-
-export function remember(machineId: string, choice: MachineChoice) {
-  const r = remembered();
-  const sel = choice.sel && { instanceId: choice.sel.instanceId, model: choice.sel.model, options: choice.sel.options };
-  r.machineId = machineId;
-  r.byMachine[machineId] = { ...choice, sel };
-  try {
-    localStorage.setItem(key, JSON.stringify(r, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
-  } catch {
-    // A convenience: without storage it just doesn't stick.
-  }
-}
+export * from "./choiceMemory";
 
 const lastKey = "session-last-known";
 

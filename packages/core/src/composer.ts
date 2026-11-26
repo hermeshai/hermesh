@@ -1,4 +1,5 @@
 import { create } from "@bufbuild/protobuf";
+import { Workspace } from "@hermesh/proto/identity";
 import type { Client, Project } from "@hermesh/proto/local";
 import {
   ModelSelectionSchema,
@@ -104,6 +105,16 @@ export function projectOnMachine(projects: readonly Pick<Project, "machineId" | 
   if (has(current)) return current;
   if (has(lastUsed)) return lastUsed!;
   return SCRATCH_PROJECT;
+}
+
+/**
+ * Whether a new session in a project uses its own worktree: never when the
+ * project cannot use worktrees (or is the temporary workspace); otherwise what
+ * the owner last chose for this project, falling back to the project's setting.
+ */
+export function projectWorktree(project: Pick<Project, "repo" | "workspace"> | undefined, remembered?: boolean): boolean {
+  if (!project || (!project.repo && project.workspace !== Workspace.WORKTREE)) return false;
+  return remembered ?? project.workspace === Workspace.WORKTREE;
 }
 
 /**

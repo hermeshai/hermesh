@@ -5,6 +5,7 @@ import type { Machine, Project } from "@hermesh/proto/local";
 import { projectIdFromFolder } from "@hermesh/core";
 import { local } from "../api";
 import { Icon } from "../icons";
+import { forgetWorktree } from "../session/choices";
 import { useStore } from "../store";
 
 // An environment's projects (docs/settings-environments.md §5.6): the folders agents work in,
@@ -12,8 +13,10 @@ import { useStore } from "../store";
 // + adds one; each row's way of working is a pop-up.
 
 /** Adds the project again, as it is, working another way (adding again changes it). */
-const rework = (p: Project, workspace: Workspace) =>
-  local.addProject({ machineId: p.machineId, projectId: p.projectId, path: p.path, workspace, defaultBaseRef: workspace === Workspace.IN_PLACE ? "" : p.defaultBaseRef, description: p.description });
+const rework = async (p: Project, workspace: Workspace) => {
+  await local.addProject({ machineId: p.machineId, projectId: p.projectId, path: p.path, workspace, defaultBaseRef: workspace === Workspace.IN_PLACE ? "" : p.defaultBaseRef, description: p.description });
+  forgetWorktree(p.machineId, p.projectId);
+};
 
 export function Projects({ m }: { m: Machine }) {
   const { t } = useTranslation("settings");
@@ -42,6 +45,7 @@ export function Projects({ m }: { m: Machine }) {
         button: t("projects.removeButton"),
         run: async () => {
           await local.removeProject({ machineId: p.machineId, projectId: p.projectId });
+          forgetWorktree(p.machineId, p.projectId);
           setSelected("");
         },
         done: t("projects.removed", { name: p.projectId }),

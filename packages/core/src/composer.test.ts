@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { create } from "@bufbuild/protobuf";
+import { Workspace } from "@hermesh/proto/identity";
 import { ClientSchema, GrantSpecSchema, ProjectSchema } from "@hermesh/proto/local";
 import {
   ModelCatalogEntrySchema,
@@ -14,6 +15,7 @@ import {
   findModels,
   grantsReaching,
   projectOnMachine,
+  projectWorktree,
   providerUnusable,
   reasoningOf,
   selectModel,
@@ -107,5 +109,18 @@ describe("the unified session composer", () => {
 
   it("never names a project after the temporary workspace", () => {
     expect(projectIdFromFolder("scratch", new Set())).toBe("scratch-2");
+  });
+
+  it("picks a project's working copy from what was remembered for it, falling back to its setting", () => {
+    const repoWorktree = create(ProjectSchema, { repo: true, workspace: Workspace.WORKTREE });
+    const repoInPlace = create(ProjectSchema, { repo: true, workspace: Workspace.IN_PLACE });
+    const plainFolder = create(ProjectSchema, { repo: false, workspace: Workspace.IN_PLACE });
+
+    expect(projectWorktree(repoWorktree)).toBe(true);
+    expect(projectWorktree(repoWorktree, false)).toBe(false);
+    expect(projectWorktree(repoInPlace)).toBe(false);
+    expect(projectWorktree(repoInPlace, true)).toBe(true);
+    expect(projectWorktree(plainFolder, true)).toBe(false);
+    expect(projectWorktree(undefined, true)).toBe(false);
   });
 });
