@@ -87,6 +87,44 @@ func ask(_ s: inout Session) {
     #expect(sessionSections(all, view: SessionListLayout(group: .machine), archived: false, now: now, machines: ["m2", "m1"]).map(\.key) == ["m2", "m1", "m3"])
 }
 
+@Test func entitySectionsFoldPastFiveWhileStatusDateAndPinnedStayVisible() {
+    let ten = (1 ... 10).map { i in session("s\(i)", .idle, updated: Double(-i * 10)) }
+    // Status, date and archived never fold.
+    for g: SessionGrouping? in [.status, .date, nil] {
+        let s = sliceSectionSessions(ten, grouping: g)
+        #expect(s.visible.count == 10 && s.hiddenCount == 0)
+    }
+    // Six rows do not fold for a single orphan row; seven fold to five + two.
+    let six = Array(ten.prefix(6))
+    #expect(sliceSectionSessions(six, grouping: .project).visible.count == 6)
+    #expect(sliceSectionSessions(six, grouping: .project).hiddenCount == 0)
+    let seven = Array(ten.prefix(7))
+    let folded7 = sliceSectionSessions(seven, grouping: .project)
+    #expect(folded7.visible.map(\.sessionID) == ["s1", "s2", "s3", "s4", "s5"] && folded7.hiddenCount == 2)
+
+    // Entity groupings (project, agent, machine) all fold to 5, and +10 reveals all 10.
+    for g: SessionGrouping in [.project, .agent, .machine] {
+        let f = sliceSectionSessions(ten, grouping: g)
+        #expect(f.visible.count == sectionInitialLimit && f.hiddenCount == 5)
+        let expanded = sliceSectionSessions(ten, grouping: g, limit: sectionInitialLimit + sectionExpandStep)
+        #expect(expanded.visible.count == 10 && expanded.hiddenCount == 0)
+    }
+
+    // Selected, running, waiting and failed sessions in the tail stay visible in place.
+    var mixed = ten
+    mixed[6].status = .running
+    ask(&mixed[8])
+    mixed[8].status = .waitingInput
+    let pinned = sliceSectionSessions(mixed, grouping: .project, selectedID: "s10")
+    #expect(pinned.visible.map(\.sessionID) == ["s1", "s2", "s3", "s4", "s5", "s7", "s9", "s10"])
+    #expect(pinned.hiddenCount == 2)
+
+    // If pinning leaves only 1 hidden idle row, the orphan guard reveals all rows.
+    let sevenWithRunningTail = Array(mixed.prefix(7))
+    let noOrphan = sliceSectionSessions(sevenWithRunningTail, grouping: .project)
+    #expect(noOrphan.visible.count == 7 && noOrphan.hiddenCount == 0)
+}
+
 @Test func aFailedTurnNeedsTheOwnerAnInterruptedOneDoesNot() {
     var f = session("f", .idle)
     f.progress.lastFailure.kind = .contextOverflow

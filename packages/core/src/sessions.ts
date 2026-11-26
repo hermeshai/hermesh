@@ -220,6 +220,44 @@ export function sessionSections(sessions: Session[], view: SessionView, o: { arc
   return out;
 }
 
+export const SECTION_INITIAL_LIMIT = 5;
+export const SECTION_EXPAND_STEP = 10;
+
+export function isCappedGrouping(grouping: SessionSection["grouping"]): boolean {
+  return grouping === "project" || grouping === "agent" || grouping === "machine" || grouping === "sender";
+}
+
+export interface SectionSlice {
+  visible: Session[];
+  hiddenCount: number;
+}
+
+/**
+ * The rows a sidebar section shows at once, and how many stay folded behind
+ * "Show more". Status, date and archived sections never fold; entity sections
+ * (project, agent, machine, sender) fold past `limit` unless folding would hide
+ * at most one row, while keeping anything active, waiting, failed or selected
+ * in view in its place.
+ */
+export function sliceSectionSessions(
+  sessions: readonly Session[],
+  grouping: SessionSection["grouping"],
+  limit = SECTION_INITIAL_LIMIT,
+  selectedId?: string | null,
+): SectionSlice {
+  const cap = Math.max(0, limit);
+  if (!isCappedGrouping(grouping) || sessions.length <= cap + 1) {
+    return { visible: [...sessions], hiddenCount: 0 };
+  }
+  const head = sessions.slice(0, cap);
+  const pinned = sessions.slice(cap).filter((s) => s.sessionId === selectedId || needsAttention(s) || isActive(s));
+  const hiddenCount = sessions.length - head.length - pinned.length;
+  if (hiddenCount <= 1) {
+    return { visible: [...sessions], hiddenCount: 0 };
+  }
+  return { visible: [...head, ...pinned], hiddenCount };
+}
+
 /**
  * The search palette's filter: by grant (its client id), project, coding
  * agent or machine (empty matches all), and whether archived sessions show.

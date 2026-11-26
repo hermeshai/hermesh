@@ -185,29 +185,62 @@ struct DrawerView: View {
 /// archived ones on request.
 private struct MenuSessions: View {
     @Environment(AppModel.self) private var model
+    @State private var expandedGroup: SessionGrouping?
+    @State private var expandedLimits: [String: Int] = [:]
+
+    private struct RenderedSection: Identifiable {
+        let section: SessionSection
+        let open: Bool
+        let limit: Int
+        let slice: SectionSlice
+        var id: String { section.id }
+    }
 
     var body: some View {
         let machines = model.machines.sorted { $0.machineName.localizedStandardCompare($1.machineName) == .orderedAscending }.map(\.machineID)
         let sections = sessionSections(model.sessions, view: model.listView, archived: model.showArchived, now: model.now, machines: machines, alwaysActive: true)
-        ForEach(sections) { section in
+        let limits = expandedGroup == model.listView.group ? expandedLimits : [:]
+        let rendered = sections.map { section in
             let open = !model.collapsed.contains(section.id)
-            heading(section, open: open).plainRow()
-            if open {
+            let limit = limits[section.id] ?? sectionInitialLimit
+            let slice = sliceSectionSessions(section.sessions, grouping: section.grouping, limit: limit, selectedID: model.chosenSession)
+            return RenderedSection(section: section, open: open, limit: limit, slice: slice)
+        }
+        let anyTruncated = rendered.contains { $0.slice.hiddenCount > 0 }
+        ForEach(rendered) { item in
+            let section = item.section
+            heading(section, open: item.open).plainRow()
+            if item.open {
                 if section.sessions.isEmpty {
                     Text("None right now").font(.subheadline).foregroundStyle(.tertiary)
                         .padding(.leading, 26).padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
                         .plainRow()
                         .accessibilityIdentifier("none-now")
                 }
-                ForEach(section.sessions, id: \.sessionID) { s in SessionListRow(session: s) }
+                ForEach(item.slice.visible, id: \.sessionID) { s in SessionListRow(session: s) }
+                if item.slice.hiddenCount > 0 {
+                    showMoreButton(section, limit: item.limit, hiddenCount: item.slice.hiddenCount)
+                }
             }
         }
         Group {
             if !model.hasWorld {
                 InlineLoader(text: "Reading your sessions…")
             } else if !model.noOlder {
-                InlineLoader(text: "Loading earlier sessions…")
-                    .task(id: model.olderKey) { await model.loadOlder() }
+                if anyTruncated {
+                    if model.loadingOlder {
+                        InlineLoader(text: "Loading earlier sessions…")
+                    } else {
+                        Button("Load earlier tasks") { Task { await model.loadOlder() } }
+                            .font(.footnote)
+                            .foregroundStyle(.tint)
+                            .padding(.top, 14)
+                            .accessibilityIdentifier("load-older")
+                    }
+                } else {
+                    InlineLoader(text: "Loading earlier sessions…")
+                        .task(id: model.olderKey) { await model.loadOlder() }
+                }
             } else if sections.isEmpty {
                 VStack(spacing: 4) {
                     Text("No sessions yet").font(.callout.weight(.semibold)).foregroundStyle(.secondary)
@@ -256,7 +289,14 @@ private struct MenuSessions: View {
     private func headingToggle(_ section: SessionSection, open: Bool) -> some View {
         Button {
             withAnimation(.snappy) {
-                if open { model.collapsed.insert(section.id) } else { model.collapsed.remove(section.id) }
+                if open {
+                    if expandedGroup == model.listView.group {
+                        expandedLimits.removeValue(forKey: section.id)
+                    }
+                    model.collapsed.insert(section.id)
+                } else {
+                    model.collapsed.remove(section.id)
+                }
             }
         } label: {
             HStack(spacing: 6) {
@@ -273,6 +313,33 @@ private struct MenuSessions: View {
         .accessibilityAddTraits(.isHeader)
         .accessibilityValue(open ? Text("Expanded") : Text("Collapsed"))
         .accessibilityIdentifier("group-\(title(section))")
+    }
+
+    private func showMoreButton(_ section: SessionSection, limit: Int, hiddenCount: Int) -> some View {
+        Button {
+            withAnimation(.snappy) {
+                var next = expandedGroup == model.listView.group ? expandedLimits : [:]
+                next[section.id] = limit + sectionExpandStep
+                expandedGroup = model.listView.group
+                expandedLimits = next
+            }
+            if hiddenCount <= sectionExpandStep && !model.noOlder {
+                Task { await model.loadOlder() }
+            }
+        } label: {
+            Text("Show more (\(hiddenCount))")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 56).padding(.trailing, 16).padding(.vertical, 8)
+                .frame(minHeight: 36)
+                .contentShape(.rect)
+        }
+        .buttonStyle(RowStyle(selected: false))
+        .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .accessibilityIdentifier("show-more-\(section.key)")
     }
 
     private func title(_ s: SessionSection) -> String {

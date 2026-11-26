@@ -280,6 +280,45 @@ public func sessionSections(_ sessions: [Session], view: SessionListLayout, arch
     return out
 }
 
+public let sectionInitialLimit = 5
+public let sectionExpandStep = 10
+
+public func isCappedGrouping(_ grouping: SessionGrouping?) -> Bool {
+    switch grouping {
+    case .project, .agent, .machine: true
+    case .status, .date, nil: false
+    }
+}
+
+public struct SectionSlice {
+    public let visible: [Session]
+    public let hiddenCount: Int
+}
+
+/// The rows a sidebar section shows at once, and how many stay folded behind
+/// "Show more". Status, date and archived sections never fold; entity sections
+/// (project, agent, machine) fold past `limit` unless folding would hide at
+/// most one row, while keeping anything active, waiting, failed or selected in
+/// view in its place.
+public func sliceSectionSessions(
+    _ sessions: [Session],
+    grouping: SessionGrouping?,
+    limit: Int = sectionInitialLimit,
+    selectedID: String? = nil
+) -> SectionSlice {
+    let cap = max(0, limit)
+    guard isCappedGrouping(grouping), sessions.count > cap + 1 else {
+        return SectionSlice(visible: sessions, hiddenCount: 0)
+    }
+    let head = Array(sessions.prefix(cap))
+    let pinned = sessions.dropFirst(cap).filter { $0.sessionID == selectedID || $0.needsAttention || $0.isActive }
+    let hiddenCount = sessions.count - head.count - pinned.count
+    if hiddenCount <= 1 {
+        return SectionSlice(visible: sessions, hiddenCount: 0)
+    }
+    return SectionSlice(visible: head + pinned, hiddenCount: hiddenCount)
+}
+
 /// Sessions matching a search, those needing the owner first, then running
 /// ones, then by when they last changed. text gives each session's
 /// searchable words (title, project, grant, agent, machine).

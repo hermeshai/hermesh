@@ -13,9 +13,12 @@ import {
   pendingQuestion,
   relistedCursor,
   searchSessions,
+  SECTION_EXPAND_STEP,
+  SECTION_INITIAL_LIMIT,
   sessionFilter,
   sessionSections,
   sessionView,
+  sliceSectionSessions,
   statusOf,
   todayStats,
   updatedDate,
@@ -92,6 +95,39 @@ describe("session list", () => {
     expect(ids(projects[1].sessions)).toEqual(["a", "c"]);
     expect(sessionSections(all, sessionView({ group: "agent" }), { archived: false, now }).map((s) => s.key)).toEqual(["claude", "codex", "gemini"]);
     expect(sessionSections(all, sessionView({ group: "machine" }), { archived: false, now, machines: ["m2", "m1"] }).map((s) => s.key)).toEqual(["m2", "m1", "m3"]);
+  });
+
+  test("entity sections fold past five while status, date and pinned sessions stay visible", () => {
+    const ten = Array.from({ length: 10 }, (_, i) => session(`s${i + 1}`, SessionStatus.IDLE, { updated: -(i + 1) * 10 }));
+    for (const g of ["status", "date", "archived"] as const) {
+      expect(sliceSectionSessions(ten, g)).toEqual({ visible: ten, hiddenCount: 0 });
+    }
+    // 6 rows never fold for a single orphan row; 7 rows fold to 5 + 2.
+    const six = ten.slice(0, 6);
+    expect(sliceSectionSessions(six, "project")).toEqual({ visible: six, hiddenCount: 0 });
+    const seven = ten.slice(0, 7);
+    const folded7 = sliceSectionSessions(seven, "project");
+    expect([ids(folded7.visible), folded7.hiddenCount]).toEqual([["s1", "s2", "s3", "s4", "s5"], 2]);
+
+    for (const g of ["project", "agent", "machine", "sender"] as const) {
+      const f = sliceSectionSessions(ten, g);
+      expect([f.visible.length, f.hiddenCount]).toEqual([SECTION_INITIAL_LIMIT, 5]);
+      const expanded = sliceSectionSessions(ten, g, SECTION_INITIAL_LIMIT + SECTION_EXPAND_STEP);
+      expect([expanded.visible.length, expanded.hiddenCount]).toEqual([10, 0]);
+    }
+
+    // Running, waiting, failed and selected sessions in the tail stay visible in order.
+    const run = session("s7", SessionStatus.RUNNING, { updated: -70 });
+    const wait = session("s9", SessionStatus.WAITING_INPUT, { updated: -90 });
+    ask(wait);
+    const mixed = [...ten.slice(0, 6), run, ten[7], wait, ten[9]];
+    const pinned = sliceSectionSessions(mixed, "project", SECTION_INITIAL_LIMIT, "s10");
+    expect(ids(pinned.visible)).toEqual(["s1", "s2", "s3", "s4", "s5", "s7", "s9", "s10"]);
+    expect(pinned.hiddenCount).toBe(2);
+
+    // If pinning leaves at most 1 hidden idle row, all rows show.
+    const sevenWithRunningTail = [...ten.slice(0, 6), run];
+    expect(sliceSectionSessions(sevenWithRunningTail, "project")).toEqual({ visible: sevenWithRunningTail, hiddenCount: 0 });
   });
 
   test("a failed turn needs the owner until a new turn runs", () => {

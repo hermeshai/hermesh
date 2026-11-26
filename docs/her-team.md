@@ -1198,6 +1198,10 @@ the menu a swipe left is the menu's own, to close it.
 work, status, date, project, agent, machine; iPhone: the same but who sent
 it), sort, show. Until the owner picks a view the list is **by status,
 titles alone**. Group headings collapse, as before, and carry no count.
+Entity groups (project, agent, machine, sender) show at most five idle
+sessions at once when folding hides two or more, with "Show more (N)" (+10
+at a time) at the group's foot while keeping anything active, waiting,
+failed or selected in view; collapsing a group resets its fold.
 
 **Empty.** With no session at all the list says "No sessions yet" and
 "Give Her something to do. The sessions she sends to agents show up here."

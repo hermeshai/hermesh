@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { cli, fixture, launch, snap, sessionList } from "./app";
 
 // The session list as a chat app's: the newest page at once, older ones as
@@ -96,5 +99,78 @@ test("a failed or crashed session resumed leaves the error state as soon as it r
     await expect(done).toContainText(title, { timeout: 30_000 });
     await expect(row.locator(".smeta [role=img]")).toHaveCount(0);
   }
+  await app.close();
+});
+
+test("grouped by project, long project groups fold to five while keeping active, selected and later projects in view", async () => {
+  test.setTimeout(180_000);
+  const zetaDir = fs.mkdtempSync(path.join(os.tmpdir(), "hmzeta-"));
+  const { app, page } = await launch();
+  const existingBatch = await page.evaluate(async () => {
+    const r = await fetch("app://hermesh/api/hermesh.local.v1.LocalService/ListSessions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ limit: 50 }) });
+    return ((await r.json()).sessions as { title: string }[]).some((s) => s.title === "批量 10");
+  });
+  if (!existingBatch) await startSessions(18);
+  await page.evaluate(async (dir) => {
+    const st = await fetch("app://hermesh/api/hermesh.local.v1.LocalService/GetStatus", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).then((r) => r.json());
+    await fetch("app://hermesh/api/hermesh.local.v1.LocalService/AddProject", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ machineId: st.localMachineId, projectId: "zeta", path: dir, workspace: "WORKSPACE_IN_PLACE" }),
+    });
+  }, zetaDir);
+  await cli("session", "start", "--project", "zeta", "--agent", "gemini", "--title", "第二个项目的任务", "--prompt", "say 好", "--wait");
+
+  const list = await sessionList(page);
+  await page.getByRole("button", { name: "视图选项" }).click();
+  await page.getByRole("menu", { name: "视图选项" }).getByRole("menuitem", { name: /分组/ }).hover();
+  await page.getByRole("menu", { name: "分组" }).getByRole("menuitemradio", { name: "按项目" }).click();
+
+  const demo = list.getByRole("group", { name: "demo" });
+  const zeta = list.getByRole("group", { name: "zeta" });
+  await expect(zeta).toContainText("第二个项目的任务");
+  // Folding demo keeps later projects visible in the first viewport without scrolling past 50+ rows.
+  await expect(zeta).toBeInViewport();
+
+  // Waiting ("选颜色") and running ("跑很久") in demo stay visible even when older than the 5 newest idle tasks.
+  await expect(demo).toContainText("选颜色");
+  await expect(demo).toContainText("跑很久");
+  const initialVisible = await demo.getByRole("listitem").count();
+  expect(initialVisible).toBeGreaterThanOrEqual(7);
+  expect(initialVisible).toBeLessThanOrEqual(9);
+
+  const more = demo.getByRole("button", { name: /^显示更多（\d+）$/ });
+  await expect(more).toBeVisible();
+  const hiddenBefore = Number((await more.innerText()).match(/\d+/)![0]);
+  expect(hiddenBefore).toBeGreaterThan(12);
+
+  // Clicking "显示更多" reveals 10 more rows in demo.
+  await more.click();
+  await expect(demo.getByRole("listitem")).toHaveCount(initialVisible + 10);
+  await expect(demo.getByRole("button", { name: `显示更多（${hiddenBefore - 10}）` })).toBeVisible();
+
+  // Collapsing and reopening demo resets its fold back to 5 (+ pinned active/attention rows) without draining extra pages.
+  const demoHeading = demo.getByRole("button", { name: /^demo$/ });
+  await demoHeading.click();
+  await expect(demo.getByRole("listitem")).toHaveCount(0);
+  await demoHeading.click();
+  await expect(demo.getByRole("listitem")).toHaveCount(initialVisible);
+  await expect(demo.getByRole("button", { name: `显示更多（${hiddenBefore}）` })).toBeVisible();
+
+  // Selecting an older folded task via Search pins it into view inside demo without unfolding the whole list.
+  await page.locator(".side-top").getByRole("button", { name: "搜索" }).click();
+  const palette = page.getByRole("dialog", { name: "搜索任务" });
+  await palette.getByRole("textbox", { name: "搜索任务" }).fill("批量 10");
+  await palette.getByRole("listbox", { name: "搜索结果" }).getByRole("option", { name: /批量 10/ }).click();
+  await expect(demo).toContainText("批量 10");
+  await expect(demo.getByRole("listitem")).toHaveCount(initialVisible + 1);
+
+  // If older pages remain on the server, the foot offers on-demand loading rather than looping automatically.
+  const loadOlderBtn = list.getByRole("button", { name: "读取更早的任务" });
+  if (await loadOlderBtn.count()) {
+    await loadOlderBtn.click();
+    await expect(list.getByText("没有更早的任务了")).toBeVisible();
+  }
+
   await app.close();
 });

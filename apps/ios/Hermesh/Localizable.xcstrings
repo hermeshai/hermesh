@@ -9398,6 +9398,16 @@
         }
       }
     },
+    "Load earlier tasks": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取更早的任务"
+          }
+        }
+      }
+    },
     "Loading earlier sessions…": {
       "localizations": {
         "en": {
@@ -11355,6 +11365,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "显示已归档"
+          }
+        }
+      }
+    },
+    "Show more (%lld)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示更多（%lld）"
           }
         }
       }
