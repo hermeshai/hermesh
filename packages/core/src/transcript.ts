@@ -2,6 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { Workspace } from "@hermesh/proto/identity";
 import {
   ActorKind,
+  ApprovalDecision,
   AnswerSchema,
   ErrorEventSchema,
   FailureKind,
@@ -25,6 +26,7 @@ import {
   type ErrorEvent,
   type Failure,
   type Question,
+  type QuestionItem,
   type QuestionResolved,
   type Run,
   type RuntimeRequest,
@@ -208,6 +210,46 @@ function actorIdString(run: Run | undefined): string {
   return run.author.kind === ActorKind.OWNER ? "owner" : run.author.id;
 }
 
+function isRedundantQuestionToolCall(it: TurnItem): boolean {
+  if (it.kind !== TurnItemKind.TOOL_CALL || it.status === "failed" || it.exitCode !== 0) return false;
+  let norm = it.toolName.trim().toLowerCase();
+  if (norm.startsWith("run ")) norm = norm.slice(4).trim();
+  return norm === "ask_question" || norm === "askuserquestion" || norm === "request_user_input";
+}
+
+function settledResolutionOf(req: RuntimeRequest): QuestionResolved {
+  const by = req.resolvedBy && req.resolvedBy.kind !== ActorKind.UNSPECIFIED ? actorClientId(req.resolvedBy) : "";
+  let resolution = req.questionResolution;
+  if (resolution === QuestionResolution.UNSPECIFIED) {
+    if (req.status === RuntimeRequestStatus.EXPIRED) resolution = QuestionResolution.TIMED_OUT;
+    else if (req.status === RuntimeRequestStatus.DISMISSED) resolution = QuestionResolution.CANCELLED;
+    else resolution = req.resolvedDecision === ApprovalDecision.DECLINE ? QuestionResolution.DECLINED : QuestionResolution.ANSWERED;
+  }
+  const orderedIds = (req.userInput?.questions ?? []).map((q) => q.id);
+  const seen = new Set<string>();
+  const answers = [];
+  if (resolution === QuestionResolution.ANSWERED) {
+    for (const qid of orderedIds) {
+      const a = req.resolvedAnswers[qid];
+      if (a) {
+        seen.add(qid);
+        answers.push(create(AnswerSchema, { itemId: qid, selected: a.selectedOptions, text: a.customText }));
+      }
+    }
+    for (const [itemId, a] of Object.entries(req.resolvedAnswers)) {
+      if (!seen.has(itemId)) {
+        answers.push(create(AnswerSchema, { itemId, selected: a.selectedOptions, text: a.customText }));
+      }
+    }
+  }
+  return create(QuestionResolvedSchema, {
+    questionId: req.requestId,
+    resolution,
+    by,
+    answers,
+  });
+}
+
 /**
  * sessionTranscript converts a unified SessionProjection into conversation rows.
  */
@@ -215,6 +257,15 @@ export function sessionTranscript(proj: SessionProjection | null | undefined): T
   if (!proj) return [];
   const runs = new Map(proj.runs.map((r) => [r.runId, r]));
   const reqs = new Map(proj.requests.map((r) => [r.requestId, r]));
+  const questionRuns = new Set<string>();
+  for (const r of proj.requests) {
+    if (r.kind === RuntimeRequestKind.USER_INPUT && r.runId) questionRuns.add(r.runId);
+  }
+  for (const it of proj.items) {
+    if (it.kind === TurnItemKind.RUNTIME_REQUEST && reqs.get(it.requestId)?.kind === RuntimeRequestKind.USER_INPUT && it.runId) {
+      questionRuns.add(it.runId);
+    }
+  }
   const activeBgItems = activeBackgroundItemIdsOf(proj);
   const setupFailed = workspaceFailedRun(proj);
   const out: TranscriptItem[] = [];
@@ -252,7 +303,7 @@ export function sessionTranscript(proj: SessionProjection | null | undefined): T
         out.push({ kind: "agent", seq, text: formatProposedPlan(it.planTitle, it.text), at, runId: it.runId });
         break;
       case TurnItemKind.TOOL_CALL:
-        if (isMetaProgressToolItem(it)) break;
+        if (isMetaProgressToolItem(it) || (questionRuns.has(it.runId) && isRedundantQuestionToolCall(it))) break;
         out.push(toolItem(it, run, activeBgItems));
         break;
       case TurnItemKind.COMMAND_EXECUTION:
@@ -262,20 +313,11 @@ export function sessionTranscript(proj: SessionProjection | null | undefined): T
       case TurnItemKind.RUNTIME_REQUEST: {
         const req = reqs.get(it.requestId);
         if (req && req.kind === RuntimeRequestKind.USER_INPUT && req.status !== RuntimeRequestStatus.PENDING) {
-          const by = req.resolvedBy?.kind === ActorKind.OWNER ? "owner" : (req.resolvedBy?.id ?? "");
-          const answers = Object.entries(req.resolvedAnswers).map(([itemId, a]) =>
-            create(AnswerSchema, { itemId, selected: a.selectedOptions, text: a.customText }),
-          );
           out.push({
             kind: "question",
             seq,
             question: sessionQuestion(req),
-            resolution: create(QuestionResolvedSchema, {
-              questionId: req.requestId,
-              resolution: req.questionResolution,
-              by,
-              answers,
-            }),
+            resolution: settledResolutionOf(req),
           });
         }
         break;
@@ -596,6 +638,81 @@ export function interrupter(f: Failure | undefined): string | undefined {
   return isInterruption(f) && f!.message.startsWith(prefix) ? f!.message.slice(prefix.length) : undefined;
 }
 
+const recPrefixRe = /^\s*(?:\(Recommended\)|（推荐）)\s*/i;
+const genericQuestionTextRe = /^the agent has (?:a|\d+) questions?\.?$/i;
+
+export type ParsedOptionLabel = { recommended: boolean; text: string };
+
+export function parseOptionLabel(label: string): ParsedOptionLabel {
+  const m = recPrefixRe.exec(label);
+  return m ? { recommended: true, text: label.slice(m[0].length) } : { recommended: false, text: label };
+}
+
+export type SettledQuestionStatus = "answered" | "skipped" | "declined" | "timedOut" | "withdrawn";
+
+export type SettledQuestionRow = {
+  prompt: string;
+  choices: ParsedOptionLabel[];
+  status: SettledQuestionStatus;
+  statusText: string;
+};
+
+function settledItemPrompt(it: Pick<QuestionItem, "header" | "text">): string {
+  const header = it.header.trim();
+  const text = it.text.trim();
+  if (header && (!text || genericQuestionTextRe.test(text))) return header;
+  if (header && header !== text) return `${header} · ${text}`;
+  return text || header;
+}
+
+export function settledQuestionRows(
+  question: Question,
+  r: QuestionResolved,
+  name: (by: string) => string = (by) => by,
+): SettledQuestionRow[] {
+  const you = r.by === "" || r.by === "owner";
+  const items = question.items;
+  if (r.resolution !== QuestionResolution.ANSWERED) {
+    let status: SettledQuestionStatus = "withdrawn";
+    let note = t("resolution.withdrawn");
+    if (r.resolution === QuestionResolution.DECLINED) {
+      status = "declined";
+      note = you ? t("resolution.declinedByYou") : t("resolution.declinedBy", { name: name(r.by) });
+    } else if (r.resolution === QuestionResolution.TIMED_OUT) {
+      status = "timedOut";
+      note = t("resolution.timedOut");
+    }
+    const prompts = items.map(settledItemPrompt).filter(Boolean);
+    if (prompts.length === 0) return [{ prompt: "", choices: [], status, statusText: note }];
+    return prompts.map((prompt, idx) => ({
+      prompt,
+      choices: [],
+      status,
+      statusText: idx === prompts.length - 1 ? note : "",
+    }));
+  }
+
+  if (items.length === 0) {
+    const choices = r.answers.flatMap((a) => [
+      ...a.selected.map(parseOptionLabel),
+      ...(a.text.trim() === "" ? [] : [{ recommended: false, text: a.text.trim() }]),
+    ]);
+    return [{ prompt: "", choices, status: choices.length === 0 ? "skipped" : "answered", statusText: choices.length === 0 ? t("resolution.skipped") : "" }];
+  }
+
+  return items.map((it) => {
+    const prompt = settledItemPrompt(it);
+    const matched = r.answers.find((a) => a.itemId === it.id) ?? (items.length === 1 && r.answers.length === 1 && r.answers[0]!.itemId === "" ? r.answers[0] : undefined);
+    const choices: ParsedOptionLabel[] = (matched?.selected ?? []).map(parseOptionLabel);
+    const custom = (matched?.text ?? "").trim();
+    if (custom !== "") choices.push({ recommended: false, text: custom });
+    if (choices.length === 0) {
+      return { prompt, choices: [], status: "skipped", statusText: t("resolution.skipped") };
+    }
+    return { prompt, choices, status: "answered", statusText: "" };
+  });
+}
+
 /**
  * How a question was settled. name: who answered, by the id the machine
  * recorded (the owner is "You").
@@ -604,7 +721,10 @@ export function resolutionTitle(r: QuestionResolved, name: (by: string) => strin
   const you = r.by === "owner";
   switch (r.resolution) {
     case QuestionResolution.ANSWERED: {
-      const answers = r.answers.map((x) => [...x.selected, ...(x.text === "" ? [] : [x.text])].join(", ")).join(t("resolution.separator"));
+      const answers = r.answers
+        .map((x) => [...x.selected.map((s) => parseOptionLabel(s).text), ...(x.text.trim() === "" ? [] : [x.text.trim()])].join(", "))
+        .filter(Boolean)
+        .join(t("resolution.separator"));
       return you ? t("resolution.answeredByYou", { answers }) : t("resolution.answeredBy", { name: name(r.by), answers });
     }
     case QuestionResolution.DECLINED:

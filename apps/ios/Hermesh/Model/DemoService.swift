@@ -168,6 +168,9 @@ final class DemoService {
         if UserDefaults.standard.bool(forKey: "DemoGitStatus") || ProcessInfo.processInfo.arguments.contains("-DemoGitStatus") {
             seedGitStatusDemo()
         }
+        if Self.questionFlow {
+            seedQuestionFlow()
+        }
         #endif
         _ = pairing(.client)
     }
@@ -451,6 +454,15 @@ final class DemoService {
         #endif
     }()
 
+    // Simulator-only fixture for QuestionFlowUITests.
+    private static let questionFlow: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-DemoQuestionFlow")
+        #else
+        false
+        #endif
+    }()
+
     private var sampleQuestion = Question()
     private var greetings: [String: String] = [:]
     private var wakes: [Wake] = []
@@ -664,6 +676,11 @@ final class DemoService {
                   world.sessions[i].status == .waitingInput else { throw CancellationError() }
             let declined = req.decline || req.decision == .decline
             var greeting = "Hello, world!"
+            world.sessions[i].progress.clearPendingQuestion()
+            world.sessions[i].pendingRequestID = ""
+            world.sessions[i].status = .running
+            world.sessions[i].updatedAt = .init(date: .now)
+            syncSession(req.sessionID)
             if let rIdx = projections[req.sessionID]?.requests.firstIndex(where: { $0.requestID == req.requestID || $0.status == .pending }) {
                 projections[req.sessionID]?.requests[rIdx].status = .resolved
                 projections[req.sessionID]?.requests[rIdx].resolvedDecision = declined ? .decline : .acceptOnce
@@ -684,11 +701,6 @@ final class DemoService {
                 let updatedReq = projections[req.sessionID]!.requests[rIdx]
                 emitEvent(req.sessionID) { $0.type = "request.resolved"; $0.request = updatedReq }
             }
-            world.sessions[i].progress.clearPendingQuestion()
-            world.sessions[i].pendingRequestID = ""
-            world.sessions[i].status = .running
-            world.sessions[i].updatedAt = .init(date: .now)
-            syncSession(req.sessionID)
             publish()
             if !Self.holdWorkTaskForUITest {
                 let sid = req.sessionID
@@ -1458,6 +1470,63 @@ final class DemoService {
             }
             self.publish()
         }
+    }
+
+    private func seedQuestionFlow() {
+        let id = "demo-question-flow"
+        let q = Question.with {
+            $0.questionID = "req-flow-q1"
+            $0.turn = 12
+            $0.askedAt = .init(date: .now)
+            $0.expiresAt = .init(date: .now.addingTimeInterval(1800))
+            $0.items = [.with {
+                $0.id = "noise"
+                $0.text = "How should sidebar status colors reduce visual noise?"
+                $0.allowOther = true
+                $0.options = [
+                    .with { $0.label = "(Recommended) Keep sage green & muted purple with lower sidebar brightness so titles stay primary" },
+                    .with { $0.label = "Strict monochrome icons in sidebar rows and keep semantic colors only inside the hover card" },
+                    .with { $0.label = "Merge pushed and merged states into one muted green hue distinguished only by icon shape" },
+                ]
+            }]
+        }
+
+        var s = session(id, title: "Question flow session", machine: "demo-mac", status: .waitingInput)
+        s.agent = "antigravity"
+        s.createdBy = "owner"
+        s.activeRunID = "r12"
+        s.pendingRequestID = q.questionID
+        s.progress.pendingQuestion = q
+        s.progress.turnCount = 11
+        s.updatedAt = .init(date: .now)
+        world.sessions.insert(s, at: 0)
+
+        for t in 1 ... 11 {
+            let rid = "r\(t)"
+            beginRun(id, runID: rid, ordinal: UInt32(t), asker: "owner", status: .completed, startedAt: .now.addingTimeInterval(Double(-120 + t * 5)))
+            appendItem(id, runID: rid, kind: .userMessage) {
+                $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+                $0.text = "Flow prompt #\(t): review sidebar palette contrast."
+            }
+            appendItem(id, runID: rid, kind: .assistantMessage) {
+                $0.text = "Flow context #\(t): measured luminance across sidebar rows and hover popovers for entry \(t)."
+            }
+        }
+
+        beginRun(id, runID: "r12", ordinal: 12, asker: "owner", status: .waitingRequest, startedAt: .now)
+        appendItem(id, runID: "r12", kind: .userMessage) {
+            $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+            $0.text = "Please propose three color noise-reduction options."
+        }
+        appendItem(id, runID: "r12", kind: .assistantMessage) {
+            $0.text = "Flow latest analysis: I compared saturation levels in Sidebar.tsx and prepared three options below."
+        }
+        appendItem(id, runID: "r12", kind: .toolCall) {
+            $0.toolName = "Run ask_question"
+            $0.status = "completed"
+        }
+        openQuestionRequest(id, runID: "r12", question: q)
+        syncSession(id)
     }
     #endif
 }

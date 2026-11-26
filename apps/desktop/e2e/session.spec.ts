@@ -596,7 +596,9 @@ test("a question waits in the control area; the owner picks an option by key and
   await expect(ctl.getByText("选哪个颜色")).toHaveCount(0);
   await expect.poll(() => status("选颜色")).not.toBe("waiting_input");
   const log = page.getByRole("log", { name: "对话" });
-  await expect(log).toContainText("你回答：红");
+  const settled = log.getByTestId("settled-question");
+  await expect(settled).toContainText("选哪个颜色");
+  await expect(settled).toContainText("红");
   await expect(log).toContainText("answer: v-红");
   await app.close();
 });
@@ -641,6 +643,11 @@ test("a multi-question decision presents one item at a time, auto-advances, and 
 
     await expect.poll(async () => JSON.parse(await cli("session", "get", id, "-o", "json")).session.status).toBe("idle");
     const log = page.getByRole("log", { name: "对话" });
+    const settled = log.getByTestId("settled-question");
+    await expect(settled.locator(".tq-rec")).toHaveText(["推荐", "推荐"]);
+    await expect(settled).toContainText("一步到位");
+    await expect(settled).not.toContainText("(Recommended)");
+    await expect(settled).not.toContainText("（推荐）");
     await expect(log).toContainText("answers3: q0=(Recommended) 一步到位|q0_other=<nil>|q1=自动喂给模型|q2=auto");
   } finally {
     await app.close();

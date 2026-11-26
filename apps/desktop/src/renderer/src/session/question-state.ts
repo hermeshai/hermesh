@@ -1,3 +1,12 @@
+const recommendedPrefixRe = /^\s*(?:\(\s*recommended\s*\)|（\s*推荐\s*）|\[\s*recommended\s*\]|【\s*推荐\s*】)\s*[-:：]?\s*/i;
+
+export function parseOptionLabel(raw: string): { recommended: boolean; text: string } {
+  const m = recommendedPrefixRe.exec(raw);
+  if (!m) return { recommended: false, text: raw };
+  const stripped = raw.slice(m[0].length).trim();
+  return stripped ? { recommended: true, text: stripped } : { recommended: false, text: raw };
+}
+
 export type QuestionStepItem = {
   id: string;
   optional: boolean;
@@ -10,7 +19,6 @@ export type QuestionSummaryItem = {
   optional: boolean;
 };
 
-const recPrefixRe = /^(?:\(Recommended\)|（推荐）)\s*/i;
 const genericQuestionTextRe = /^the agent has (?:a|\d+) questions?\.$/i;
 const freeFormPrefix = "Optional free-form answer to:";
 
@@ -29,11 +37,6 @@ export function summarizeQuestion(items: readonly QuestionSummaryItem[]): { coun
   const primary = pool.some((i) => !i.optional) ? pool.filter((i) => !i.optional) : pool;
   const prompts = primary.map(itemPrompt).filter(Boolean);
   return { count: primary.length, text: prompts[0] ?? "" };
-}
-
-export function parseOptionLabel(label: string): { recommended: boolean; text: string } {
-  const m = recPrefixRe.exec(label);
-  return m ? { recommended: true, text: label.slice(m[0].length) } : { recommended: false, text: label };
 }
 
 export function isItemAnswered(
