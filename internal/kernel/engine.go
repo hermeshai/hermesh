@@ -372,38 +372,20 @@ func (e *Engine) BusyCount() int {
 	return n
 }
 
-func (e *Engine) RunningCount() uint32 {
-	sessions, err := e.st.ListSessions("", false, 0)
+func (e *Engine) SessionSummary() store.SessionSummary {
+	sum, err := e.st.SessionSummary()
 	if err != nil {
-		return 0
+		return store.SessionSummary{Counts: map[string]uint32{}, ActiveByProject: map[string]uint32{}}
 	}
-	var n uint32
-	for _, s := range sessions {
-		if s.Status == sessionv1.SessionStatus_SESSION_STATUS_RUNNING ||
-			s.Status == sessionv1.SessionStatus_SESSION_STATUS_PREPARING ||
-			s.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT {
-			n++
-		}
-	}
-	return n
+	return sum
+}
+
+func (e *Engine) RunningCount() uint32 {
+	return uint32(e.SessionSummary().Running)
 }
 
 func (e *Engine) ActiveByProject() map[string]uint32 {
-	out := map[string]uint32{}
-	sessions, err := e.st.ListSessions("", false, 0)
-	if err != nil {
-		return out
-	}
-	for _, s := range sessions {
-		switch s.Status {
-		case sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
-			sessionv1.SessionStatus_SESSION_STATUS_QUEUED,
-			sessionv1.SessionStatus_SESSION_STATUS_RUNNING,
-			sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
-			out[s.ProjectId]++
-		}
-	}
-	return out
+	return e.SessionSummary().ActiveByProject
 }
 
 // ListAllSessions returns every stored session on this machine without actor filtering.

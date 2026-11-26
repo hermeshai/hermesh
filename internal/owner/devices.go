@@ -401,6 +401,10 @@ func (o *Owner) ListDevices(ctx context.Context) ([]*localv1.Device, error) {
 	if err != nil {
 		return nil, err
 	}
+	return o.devicesForMachines(machines), nil
+}
+
+func (o *Owner) devicesForMachines(machines []*localv1.Machine) []*localv1.Device {
 	own := o.Status().DeviceKeyId
 	var out []*localv1.Device
 	for _, rk := range o.trust.Root().GetRootKeys() {
@@ -417,7 +421,7 @@ func (o *Owner) ListDevices(ctx context.Context) ([]*localv1.Device, error) {
 		}
 		out = append(out, d)
 	}
-	return out, nil
+	return out
 }
 
 // ApproveDevicePairing adds a device that asked to join: the next root cert

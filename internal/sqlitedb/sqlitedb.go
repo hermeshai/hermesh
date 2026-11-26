@@ -460,8 +460,20 @@ func StartCheckpointer(path string, writer *sql.DB, interval time.Duration, obse
 	c := &Checkpointer{db: db, stop: make(chan struct{}), done: make(chan struct{})}
 	go func() {
 		defer close(c.done)
-		t := time.NewTicker(interval)
+		idleInterval := max(interval, 2*time.Second)
+		curInterval := interval
+		t := time.NewTicker(curInterval)
 		defer t.Stop()
+		var settled bool
+		var settledSize int64
+		var settledMod time.Time
+		idleTicks := 0
+		setInterval := func(d time.Duration) {
+			if curInterval != d {
+				curInterval = d
+				t.Reset(d)
+			}
+		}
 		for {
 			select {
 			case <-c.stop:
@@ -469,14 +481,34 @@ func StartCheckpointer(path string, writer *sql.DB, interval time.Duration, obse
 				return
 			case <-t.C:
 			}
+			st, err := os.Stat(path + "-wal")
+			if err != nil || st.Size() == 0 || (settled && st.Size() == settledSize && st.ModTime().Equal(settledMod)) {
+				idleTicks++
+				if idleTicks >= 5 {
+					setInterval(idleInterval)
+				}
+				continue
+			}
+			idleTicks = 0
+			setInterval(interval)
 			mode := "PASSIVE"
-			if st, err := os.Stat(path + "-wal"); err == nil && st.Size() > walLimit {
+			if st.Size() > walLimit {
 				mode = "RESTART"
 			}
 			start := time.Now()
-			db.Exec("PRAGMA wal_checkpoint(" + mode + ")")
+			var busy, logFrames, ckptFrames int
+			qerr := db.QueryRow("PRAGMA wal_checkpoint("+mode+")").Scan(&busy, &logFrames, &ckptFrames)
 			if observe != nil {
 				observe(time.Since(start))
+			}
+			if qerr == nil && busy == 0 && logFrames == ckptFrames {
+				if st2, err2 := os.Stat(path + "-wal"); err2 == nil {
+					settled, settledSize, settledMod = true, st2.Size(), st2.ModTime()
+				} else {
+					settled, settledSize, settledMod = true, 0, time.Time{}
+				}
+			} else {
+				settled = false
 			}
 		}
 	}()

@@ -13,6 +13,13 @@ import (
 
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/pkg/metrics"
+)
+
+var (
+	mMachineWatchKick = metrics.Default.Counter(`hermesh_machine_watch_wakes_total{trigger="kick"}`)
+	mMachineWatchTick = metrics.Default.Counter(`hermesh_machine_watch_wakes_total{trigger="tick"}`)
+	mMachineWatchSent = metrics.Default.Counter("hermesh_machine_watch_sent_total")
 )
 
 // MachineService.Watch (docs/state-sync.md §3.3): what a watcher may see of
@@ -152,7 +159,9 @@ func (n *Machine) Watch(ctx context.Context, p *Principal, req *machinev1.WatchR
 		case <-ctx.Done():
 			return nil
 		case <-kick:
+			mMachineWatchKick.Inc()
 		case <-tick.C:
+			mMachineWatchTick.Inc()
 		}
 		m, now, err := n.changesSince(ctx, p, req.View, at)
 		if err != nil {
@@ -165,6 +174,7 @@ func (n *Machine) Watch(ctx context.Context, p *Principal, req *machinev1.WatchR
 		m.WorkSeq = uint64(ws)
 		if now != at || m.Status != nil || ws != work {
 			at, work = now, ws
+			mMachineWatchSent.Inc()
 			if err := n.sendWatch(c, at, m, send); err != nil {
 				return err
 			}

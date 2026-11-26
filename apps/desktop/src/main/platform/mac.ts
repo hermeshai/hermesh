@@ -97,17 +97,25 @@ export const mac: Platform = {
     console.warn(`restarting hermeshd: ${why}`);
     const job = daemonJob();
     const deadline = Date.now() + 15_000; // launchd kills it 5 s after the SIGTERM
+    // SMAppService-submitted jobs reject `launchctl bootout`; unregistering
+    // through SMAppService first cleanly unloads the old job and plist so
+    // re-registering picks up the new bundle's binary and HERMESH_APP_VERSION.
+    try {
+      app.setLoginItemSettings({ ...agent, openAtLogin: false });
+    } catch (e) {
+      console.warn("unregistering hermeshd:", e);
+    }
     const whenGone = () => execFile("launchctl", ["print", job], (notLoaded) => {
       if (notLoaded) {
         app.setLoginItemSettings({ ...agent, openAtLogin: true });
         void kickstartDaemon();
       } else if (Date.now() < deadline) setTimeout(whenGone, 200);
-      else execFile("launchctl", ["kickstart", "-k", job], (err) => err && console.warn("restarting hermeshd:", err));
+      else {
+        app.setLoginItemSettings({ ...agent, openAtLogin: true });
+        execFile("launchctl", ["kickstart", "-k", job], (err) => err && console.warn("restarting hermeshd:", err));
+      }
     });
-    execFile("launchctl", ["bootout", job], (err) => {
-      if (err) console.warn("restarting hermeshd:", err);
-      whenGone();
-    });
+    execFile("launchctl", ["bootout", job], () => whenGone());
   },
 
   /** The owner turned hermeshd off in System Settings › Login Items (or never allowed it): it does not run until they do. */

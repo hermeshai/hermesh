@@ -29,6 +29,10 @@ func localAppData() string {
 // LocalAPI is where the owner role serves LocalService.
 func LocalAPI(dataDir string) string { return filepath.Join(dataDir, "run", "hermeshd.pipe") }
 
+// DesktopPerf is where the running Hermesh desktop app writes the named pipe
+// serving on-demand performance snapshots.
+func DesktopPerf(dataDir string) string { return filepath.Join(dataDir, "run", "desktop-perf.pipe") }
+
 // Control is where a machine with this data directory takes its own
 // user's commands.
 func Control(dataDir string) string { return filepath.Join(dataDir, "run", "control.pipe") }

@@ -99,9 +99,9 @@ func startSpawn(bin string, args []string, dir string, env []string) (*Proc, err
 	start := time.Now()
 	argv := append([]string{bin}, args...)
 	pid, exited, err := 0, (<-chan syscall.WaitStatus)(nil), spawn.ErrHelperGone
-	if hs := spawnHelpers.Load(); hs != nil && len(*hs) > 0 {
-		h := (*hs)[spawnNext.Add(1)%uint64(len(*hs))]
+	if h, release := acquireSpawnHelper(); h != nil {
 		pid, exited, err = h.Start(bin, argv, env, dir, inR, outW, errW)
+		release(errors.Is(err, spawn.ErrHelperGone))
 	}
 	if errors.Is(err, spawn.ErrHelperGone) {
 		pid, err = spawn.Start(bin, argv, env, dir, inR, outW, errW)
@@ -141,7 +141,7 @@ func startSpawn(bin string, args []string, dir string, env []string) (*Proc, err
 }
 
 // runSpawned is RunCommand through the spawn helpers.
-func runSpawned(ctx context.Context, hs []*spawn.Helper, bin string, args []string, dir string, env []string) (stdout, stderr []byte, err error) {
+func runSpawned(ctx context.Context, bin string, args []string, dir string, env []string) (stdout, stderr []byte, err error) {
 	if !strings.Contains(bin, "/") {
 		if bin, err = exec.LookPath(bin); err != nil {
 			return nil, nil, err
@@ -162,8 +162,11 @@ func runSpawned(ctx context.Context, hs []*spawn.Helper, bin string, args []stri
 		outW.Close()
 		return nil, nil, err
 	}
-	h := hs[spawnNext.Add(1)%uint64(len(hs))]
-	pid, exited, err := h.Start(bin, append([]string{bin}, args...), env, dir, null, outW, errW)
+	pid, exited, err := 0, (<-chan syscall.WaitStatus)(nil), spawn.ErrHelperGone
+	if h, release := acquireSpawnHelper(); h != nil {
+		pid, exited, err = h.Start(bin, append([]string{bin}, args...), env, dir, null, outW, errW)
+		release(errors.Is(err, spawn.ErrHelperGone))
+	}
 	if errors.Is(err, spawn.ErrHelperGone) {
 		pid, err = spawn.Start(bin, append([]string{bin}, args...), env, dir, null, outW, errW)
 		exited = waitPid(pid)

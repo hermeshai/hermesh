@@ -29,7 +29,14 @@ export type World = {
 export const world: World = { status: null, sessions: [], clients: [], machines: [], pairings: [] };
 
 export const worldListeners = new Set<() => void>();
-const changed = () => worldListeners.forEach((f) => f());
+let watchMessages = 0;
+let watchReconnects = 0;
+let worldBroadcasts = 0;
+export const notifyPerfStats = () => ({ watchMessages, watchReconnects, worldBroadcasts, worldListeners: worldListeners.size });
+const changed = () => {
+  worldBroadcasts++;
+  worldListeners.forEach((f) => f());
+};
 
 // --- Preferences (the settings window sets them) ---
 
@@ -207,8 +214,10 @@ export function watch() {
       const local = createClient(LocalService, transport);
       const abort = new AbortController();
       watchAbort = abort;
+      watchReconnects++;
       try {
         for await (const m of local.watch({}, { signal: abort.signal })) {
+          watchMessages++;
           if (pauseWatch) break;
           const before = w;
           w = applyWatch(w, m);

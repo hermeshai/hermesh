@@ -207,6 +207,7 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 			defer stop()
 			openLogFile(dataDir)
 			log := logger(verbose)
+			startDaemonPerfLog(ctx, dataDir, log)
 			if n := rlimit.RaiseNoFile(); n > 0 { // Windows has no such limit
 				log.Info("open file limit", "soft", n)
 			}
@@ -223,19 +224,17 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 				}
 			}
 			if exe, err := os.Executable(); err == nil && spawn.Supported {
-				// Spawning from small helpers keeps agent start cost flat
-				// as this process accumulates descriptors (see spawn.Helper).
-				var hs []*spawn.Helper
-				for i := 0; i < spawnHelpers; i++ {
+				// Spawning from small helpers keeps agent start cost flat as this
+				// process accumulates descriptors (see spawn.Helper); start them on
+				// demand so an idle daemon pays for zero helper processes.
+				closeHelpers := rt.ConfigureSpawnHelperPool(spawnHelpers, func() (*spawn.Helper, error) {
 					h, err := spawn.StartHelper(exe, "spawn-helper")
 					if err != nil {
 						log.Warn("spawn helper unavailable", "err", err)
-						break
 					}
-					hs = append(hs, h)
-					defer h.Close()
-				}
-				rt.UseSpawnHelpers(hs...)
+					return h, err
+				})
+				defer closeHelpers()
 			}
 			if debugAddr != "" {
 				go func() { log.Warn("debug server stopped", "err", metrics.Serve(debugAddr)) }()
@@ -657,7 +656,7 @@ Hermesh also updates itself when no session is running, unless
 			return shellenv.OnUserPath(args[1], args[0] == "add")
 		}}
 	root.AddCommand(deviceCommands(&dataDir)...)
-	root.AddCommand(eraseCommand(&dataDir), uninstallCommand(&dataDir), screenCommand(&dataDir, openMachine), herCommand(&dataDir))
+	root.AddCommand(eraseCommand(&dataDir), uninstallCommand(&dataDir), screenCommand(&dataDir, openMachine), herCommand(&dataDir), perfSnapshotCommand(&dataDir))
 	root.AddCommand(run, pair, doctor, status, audit, svc, upd, helper, messageMCP, userPath, projects,
 		&cobra.Command{Use: "version", Short: "Print the version", Args: cobra.NoArgs, Run: func(*cobra.Command, []string) { fmt.Println(machine.Version) }})
 	return root

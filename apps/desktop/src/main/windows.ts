@@ -61,10 +61,18 @@ function secure(win: BrowserWindow) {
     return { action: "deny" };
   });
   // Its titles go grey while another window has the focus, as macOS titles do.
-  const focus = () => wc.send("window-focus", win.isFocused());
+  const focus = () => !win.isDestroyed() && wc.send("window-focus", win.isFocused());
+  const visible = () => !win.isDestroyed() && wc.send("window-visible", win.isVisible() && !win.isMinimized());
   win.on("focus", focus);
   win.on("blur", focus);
-  wc.on("did-finish-load", focus);
+  win.on("show", visible);
+  win.on("hide", visible);
+  win.on("minimize", visible);
+  win.on("restore", visible);
+  wc.on("did-finish-load", () => {
+    focus();
+    visible();
+  });
 }
 
 function webPreferences() {

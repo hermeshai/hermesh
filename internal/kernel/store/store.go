@@ -9,11 +9,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -209,6 +211,12 @@ type SessionFilter struct {
 	Limit           uint32
 }
 
+type SessionSummary struct {
+	Running         int
+	Counts          map[string]uint32
+	ActiveByProject map[string]uint32
+}
+
 type Store struct {
 	path     string
 	blobsDir string
@@ -218,6 +226,11 @@ type Store struct {
 	writeMu  sync.Mutex
 	// steps: what the moves into this store did when it opened (legacy.go).
 	steps []sqlitedb.StepResult
+
+	summaryGen   atomic.Uint64
+	summaryMu    sync.Mutex
+	summaryAtGen uint64
+	summaryCache SessionSummary
 }
 
 // Steps is what the moves into this store did when it opened: those done
@@ -266,6 +279,7 @@ func Open(dbPath string) (*Store, error) {
 		st.Close()
 		return nil, err
 	}
+	st.summaryGen.Store(1)
 	return st, nil
 }
 
@@ -394,8 +408,9 @@ func (s *Store) Close() error {
 
 // Tx wraps an atomic SQLite write transaction plus staged SessionEvents.
 type Tx struct {
-	tx     *sql.Tx
-	events []*sessionv1.SessionEvent
+	tx           *sql.Tx
+	events       []*sessionv1.SessionEvent
+	summaryDirty bool
 }
 
 func (s *Store) Mutate(fn func(tx *Tx) error) ([]*sessionv1.SessionEvent, error) {
@@ -413,6 +428,9 @@ func (s *Store) Mutate(fn func(tx *Tx) error) ([]*sessionv1.SessionEvent, error)
 	}
 	if err := sqlTx.Commit(); err != nil {
 		return nil, err
+	}
+	if tx.summaryDirty {
+		s.summaryGen.Add(1)
 	}
 	return tx.events, nil
 }
@@ -617,6 +635,9 @@ func (tx *Tx) putSessionInternal(s *sessionv1.Session) error {
 		s.SessionId, s.ProjectId, int32(s.Status), archived, pinned, s.Progress.LastEventSeq,
 		s.CreatedAt.AsTime().UnixMilli(), s.UpdatedAt.AsTime().UnixMilli(), b,
 	)
+	if err == nil {
+		tx.summaryDirty = true
+	}
 	return err
 }
 
@@ -659,6 +680,9 @@ func (tx *Tx) DeleteSession(sessionID string) error {
 		`INSERT OR REPLACE INTO deleted_sessions(session_id, project_id, created_by, deleted_at) VALUES(?, ?, ?, ?)`,
 		sessionID, projectID, createdBy, time.Now().UnixMilli(),
 	)
+	if err == nil {
+		tx.summaryDirty = true
+	}
 	return err
 }
 
@@ -727,6 +751,76 @@ func (s *Store) ListSessions(projectID string, includeArchived bool, limit uint3
 		IncludeArchived: includeArchived,
 		Limit:           limit,
 	})
+}
+
+func (s *Store) SessionSummary() (SessionSummary, error) {
+	gen := s.summaryGen.Load()
+	s.summaryMu.Lock()
+	if s.summaryAtGen == gen && gen != 0 {
+		cached := cloneSessionSummary(s.summaryCache)
+		s.summaryMu.Unlock()
+		return cached, nil
+	}
+	s.summaryMu.Unlock()
+
+	rows, err := s.reader.Query(`SELECT project_id, status, COUNT(*) FROM sessions WHERE archived = 0 GROUP BY project_id, status`)
+	if err != nil {
+		return SessionSummary{Counts: map[string]uint32{}, ActiveByProject: map[string]uint32{}}, err
+	}
+	defer rows.Close()
+
+	sum := SessionSummary{
+		Counts:          map[string]uint32{},
+		ActiveByProject: map[string]uint32{},
+	}
+	for rows.Next() {
+		var projectID string
+		var rawStatus int32
+		var n uint32
+		if err := rows.Scan(&projectID, &rawStatus, &n); err != nil {
+			return SessionSummary{Counts: map[string]uint32{}, ActiveByProject: map[string]uint32{}}, err
+		}
+		switch sessionv1.SessionStatus(rawStatus) {
+		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED:
+			sum.Counts["queued"] += n
+			sum.ActiveByProject[projectID] += n
+		case sessionv1.SessionStatus_SESSION_STATUS_PREPARING:
+			sum.Running += int(n)
+			sum.Counts["preparing"] += n
+			sum.ActiveByProject[projectID] += n
+		case sessionv1.SessionStatus_SESSION_STATUS_RUNNING:
+			sum.Running += int(n)
+			sum.Counts["running"] += n
+			sum.ActiveByProject[projectID] += n
+		case sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
+			sum.Running += int(n)
+			sum.Counts["waiting_input"] += n
+			sum.ActiveByProject[projectID] += n
+		case sessionv1.SessionStatus_SESSION_STATUS_IDLE:
+			sum.Counts["idle"] += n
+		case sessionv1.SessionStatus_SESSION_STATUS_CRASHED:
+			sum.Counts["crashed"] += n
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return SessionSummary{Counts: map[string]uint32{}, ActiveByProject: map[string]uint32{}}, err
+	}
+
+	s.summaryMu.Lock()
+	if s.summaryGen.Load() == gen {
+		s.summaryAtGen = gen
+		s.summaryCache = sum
+	}
+	s.summaryMu.Unlock()
+	return cloneSessionSummary(sum), nil
+}
+
+func cloneSessionSummary(in SessionSummary) SessionSummary {
+	return SessionSummary{
+		Running:         in.Running,
+		Counts:          maps.Clone(in.Counts),
+		ActiveByProject: maps.Clone(in.ActiveByProject),
+	}
 }
 
 func (s *Store) QuerySessions(f SessionFilter) ([]*sessionv1.Session, error) {
