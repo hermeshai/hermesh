@@ -1,12 +1,13 @@
 import { create } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
-import { DiffStatSchema, FailureKind, FailureSchema, SessionCursorSchema, SessionStatus, UsageSchema, type Session } from "@hermesh/proto/session";
+import { DiffStatSchema, FailureKind, FailureSchema, GitState, GitStatusSchema, SessionCursorSchema, SessionStatus, UsageSchema, type Session } from "@hermesh/proto/session";
 import { describe, expect, test } from "vitest";
 import {
   createdDate,
   currentTurn,
   dateOf,
   dayOf,
+  diffBarBlocks,
   isFailed,
   mergeSessions,
   needsAttention,
@@ -16,7 +17,9 @@ import {
   SECTION_EXPAND_STEP,
   SECTION_INITIAL_LIMIT,
   sessionFilter,
+  sessionGitMark,
   sessionSections,
+  sessionsNeedingGitRefresh,
   sessionView,
   sliceSectionSessions,
   statusOf,
@@ -255,5 +258,55 @@ describe("pushed and paged sessions", () => {
     expect(relistedCursor(deep, undefined)).toBe(deep);
     expect(relistedCursor(undefined, undefined)).toBeUndefined();
     expect(relistedCursor(cursor(-60, "s1"), first)).toBe(first);
+  });
+});
+
+describe("git status marks and diff bar", () => {
+  test("only pushed or merged settled sessions show a sidebar mark", () => {
+    const mk = (status: SessionStatus, gitState: GitState) => {
+      const s = session("g", status);
+      s.gitStatus = create(GitStatusSchema, { state: gitState, branch: "hermesh/g" });
+      return s;
+    };
+    expect(sessionGitMark(mk(SessionStatus.IDLE, GitState.CLEAN))).toBeNull();
+    expect(sessionGitMark(mk(SessionStatus.IDLE, GitState.DIRTY))).toBeNull();
+    expect(sessionGitMark(mk(SessionStatus.IDLE, GitState.UNPUSHED))).toBeNull();
+    expect(sessionGitMark(mk(SessionStatus.IDLE, GitState.PUSHED))).toBe("pushed");
+    expect(sessionGitMark(mk(SessionStatus.ARCHIVED, GitState.MERGED))).toBe("merged");
+    // Active, waiting, failed, or unreachable sessions keep their primary status mark.
+    expect(sessionGitMark(mk(SessionStatus.RUNNING, GitState.PUSHED))).toBeNull();
+    expect(sessionGitMark(mk(SessionStatus.WAITING_INPUT, GitState.PUSHED))).toBeNull();
+    expect(sessionGitMark(mk(SessionStatus.CRASHED, GitState.MERGED))).toBeNull();
+    expect(sessionGitMark(mk(SessionStatus.UNSPECIFIED, GitState.PUSHED))).toBeNull();
+  });
+
+  test("diffBarBlocks renders 5 GitHub-style proportional squares", () => {
+    expect(diffBarBlocks(0, 0)).toEqual(["empty", "empty", "empty", "empty", "empty"]);
+    expect(diffBarBlocks(2, 1)).toEqual(["add", "add", "del", "empty", "empty"]);
+    expect(diffBarBlocks(142, 38)).toEqual(["add", "add", "add", "add", "del"]);
+    expect(diffBarBlocks(50, 1)).toEqual(["add", "add", "add", "add", "del"]);
+    expect(diffBarBlocks(1, 50)).toEqual(["add", "del", "del", "del", "del"]);
+  });
+
+  test("sessionsNeedingGitRefresh picks non-terminal git states and prioritizes selected session", () => {
+    const clean = session("clean", SessionStatus.IDLE);
+    clean.gitStatus = create(GitStatusSchema, { state: GitState.CLEAN });
+    const merged = session("merged", SessionStatus.IDLE);
+    merged.gitStatus = create(GitStatusSchema, { state: GitState.MERGED });
+    const dirty = session("dirty", SessionStatus.IDLE);
+    dirty.gitStatus = create(GitStatusSchema, { state: GitState.DIRTY });
+    const unpushed = session("unpushed", SessionStatus.IDLE);
+    unpushed.gitStatus = create(GitStatusSchema, { state: GitState.UNPUSHED });
+    const pushed = session("pushed", SessionStatus.IDLE);
+    pushed.gitStatus = create(GitStatusSchema, { state: GitState.PUSHED });
+    const unset = session("unset", SessionStatus.IDLE);
+    const running = session("run", SessionStatus.RUNNING);
+
+    expect(sessionsNeedingGitRefresh([clean, merged, dirty, unpushed, pushed, unset, running], "pushed")).toEqual([
+      "pushed",
+      "dirty",
+      "unpushed",
+      "unset",
+    ]);
   });
 });
