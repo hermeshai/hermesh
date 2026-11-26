@@ -173,6 +173,11 @@ final class DemoService {
         }
         #endif
         _ = pairing(.client)
+        #if targetEnvironment(simulator)
+        if Self.linkMap {
+            seedLinkMap()
+        }
+        #endif
     }
 
     private static func demoLimits(_ agent: String) -> Hermesh_Machine_V1_AgentLimits {
@@ -458,6 +463,15 @@ final class DemoService {
     private static let questionFlow: Bool = {
         #if targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("-DemoQuestionFlow")
+        #else
+        false
+        #endif
+    }()
+
+    // Simulator-only fixture for multi-node, multi-session LinkMap verification.
+    private static let linkMap: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-DemoLinkMap")
         #else
         false
         #endif
@@ -1527,6 +1541,76 @@ final class DemoService {
         }
         openQuestionRequest(id, runID: "r12", question: q)
         syncSession(id)
+    }
+
+    private func seedLinkMap() {
+        func envMachine(_ id: String, _ name: String, local: Bool, agents: [String]) -> Machine {
+            .with {
+                $0.machineID = id; $0.machineName = name; $0.local = local; $0.online = true; $0.version = "Demo"
+                $0.status = .with {
+                    $0.name = name; $0.platform = "darwin/arm64"; $0.maxSessions = 8
+                    $0.agents = agents.map { a in .with {
+                        $0.name = a; $0.available = true; $0.loggedIn = true; $0.version = "Demo"
+                        $0.models = [.with { $0.id = "demo-model"; $0.name = "Demo Model"; $0.efforts = ["high"] }]
+                    } }
+                }
+            }
+        }
+        var homebook = envMachine("m-homebook", "yee-homebook", local: true, agents: ["claude", "codex", "antigravity", "deepseek"])
+        homebook.her = .with { $0.enabled = true; $0.running = true; $0.modelReady = true }
+        let mini = envMachine("m-mini", "yi-mac-mini", local: false, agents: ["claude", "codex"])
+        world.machines = [homebook, mini]
+        world.devices = [
+            .with { $0.keyID = "demo-iphone"; $0.label = "iPhone"; $0.platform = "ios"; $0.thisDevice = true },
+            .with { $0.keyID = "demo-mac-device"; $0.label = "MacBook"; $0.platform = "macos" },
+        ]
+        world.projects = world.machines.map { m in .with {
+            $0.machineID = m.machineID; $0.projectID = "hermesh"; $0.path = "/Demo/hermesh"
+            $0.defaultBaseRef = "main"; $0.workspace = .worktree; $0.agents = ["claude", "codex", "antigravity", "deepseek"]
+        } }
+        func grant(_ id: String, _ label: String, herMachine: String = "") -> Client {
+            .with {
+                $0.clientID = id; $0.grantID = "g-" + id; $0.label = label; $0.online = true
+                $0.herMachineID = herMachine; $0.grantVersion = 1
+                $0.expiresAt = .init(date: .now.addingTimeInterval(30 * 86400))
+                $0.spec = .with { $0.label = label; $0.machineIds = ["*"]; $0.projectIds = ["*"]; $0.agents = ["*"]; $0.ttlDays = 30 }
+            }
+        }
+        world.clients = [
+            grant("c-claude", "Claude (claude.ai)"),
+            grant("c-her", "Her", herMachine: "m-homebook"),
+            grant("c-muse", "Muse (agent.meta.ai)"),
+        ]
+        world.pairings.removeAll()
+        projections.removeAll()
+        events.removeAll()
+
+        let specs: [(id: String, title: String, by: String, machine: String, agent: String, elapsed: TimeInterval)] = [
+            ("lm-1", "Polish streaming typewriter cadence", "owner", "m-homebook", "antigravity", 930),
+            ("lm-2", "Double-click inline session rename on Mac", "owner", "m-homebook", "antigravity", 1395),
+            ("lm-3", "Inspect Claude desktop terminal CLI flags", "owner", "m-homebook", "antigravity", 1009),
+            ("lm-4", "Fix mobile and Mac session archive error", "owner", "m-homebook", "antigravity", 1576),
+            ("lm-5", "Refine mobile connection status copy", "owner", "m-homebook", "antigravity", 4171),
+            ("lm-6", "Investigate relay reconnect jitter", "c-claude", "m-homebook", "claude", 412),
+            ("lm-7", "Add offline world cache unit tests", "c-claude", "m-homebook", "claude", 265),
+            ("lm-8", "Audit nightly build and bundle size", "c-her", "m-mini", "codex", 188),
+        ]
+        world.sessions = specs.map { sp in
+            var s = session(sp.id, title: sp.title, machine: sp.machine, status: .running)
+            s.projectID = "hermesh"
+            s.agent = sp.agent
+            s.createdBy = sp.by
+            s.activeRunID = "r1"
+            let started = Date.now.addingTimeInterval(-sp.elapsed)
+            s.createdAt = .init(date: started)
+            s.updatedAt = .init(date: .now)
+            s.progress.turnStartedAt = .init(date: started)
+            return s
+        }
+        for sp in specs {
+            beginRun(sp.id, runID: "r1", ordinal: 1, asker: sp.by, status: .running)
+            appendItem(sp.id, runID: "r1", kind: .userMessage) { $0.text = sp.title }
+        }
     }
     #endif
 }

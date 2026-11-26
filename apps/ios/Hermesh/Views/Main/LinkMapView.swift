@@ -3,11 +3,11 @@ import HermeshProto
 import HermeshSessions
 import SwiftUI
 
-/// The link map (docs/overview-usage.md §4.2), drawn on the page: who may
-/// use the owner's environments down the left, Hermesh in the middle, the
-/// environments down the right, and a line for each session that has not
-/// finished, with a dot moving along those at work. The lines are alike:
-/// what state a session is in is the deck's to say.
+/// The link map (docs/overview-usage.md §4.2), in a card of the overview's:
+/// who may use the owner's environments down the left, Hermesh in the middle,
+/// the environments down the right, and one weighted line for each (sender,
+/// environment) pair with sessions that have not finished, with dots moving
+/// along those at work. What state a session is in is the deck's to say.
 ///
 /// A node picked keeps what goes through it (lit) and dims the rest; the
 /// node picked again, or Hermesh, shows all. When the deck's card in front
@@ -31,17 +31,23 @@ struct LinkMapView: View {
         GeometryReader { geo in
             let layout = LinkMapLayout(map, width: geo.size.width)
             ZStack(alignment: .topLeading) {
+                if map.lines.contains(where: \.atWork) {
+                    Circle()
+                        .fill(RadialGradient(colors: [Color.live.opacity(0.22), .clear], center: .center, startRadius: 4, endRadius: 52))
+                        .frame(width: 104, height: 104)
+                        .position(layout.hub)
+                        .allowsHitTesting(false)
+                }
                 ForEach(map.senders + map.environments) { n in
                     if let link = layout.links[n.id] {
                         Curves(curves: [link])
                             .stroke(Color.primary.opacity(0.13), style: StrokeStyle(lineWidth: 1, dash: n.kind == .sender || n.kind == .environment ? [] : [2, 5]))
                             .opacity(shown(node: n.id, own: mineLine == nil))
-                    }
-                }
-                ForEach(map.lines) { line in
-                    if let way = layout.ways[line.id] {
-                        Curves(curves: way).stroke(Color.live.opacity(0.6), style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
-                            .opacity(shown(line))
+                        if let seg = segment(for: n.id) {
+                            Curves(curves: [link])
+                                .stroke(Color.live.opacity(seg.alpha), style: StrokeStyle(lineWidth: seg.width, lineCap: .round))
+                                .opacity(seg.opacity)
+                        }
                     }
                 }
                 if !still {
@@ -50,12 +56,15 @@ struct LinkMapView: View {
                         .allowsHitTesting(false)
                 }
                 hub.position(layout.hub)
-                VStack(spacing: 1) {
-                    Text(verbatim: "Hermesh").font(.caption2.weight(.semibold))
+                let centerSpan = max(72, layout.size.width - (map.senders.compactMap { layout.frames[$0.id]?.width }.max() ?? 0)
+                    - (map.environments.compactMap { layout.frames[$0.id]?.width }.max() ?? 0) - 12)
+                VStack(spacing: 1.5) {
+                    Text(verbatim: "Hermesh").font(.caption.weight(.semibold))
                     Text("End-to-end encrypted").font(.system(size: 10)).foregroundStyle(.secondary)
+                        .lineLimit(1).minimumScaleFactor(0.82)
                 }
-                .fixedSize()
-                .position(x: layout.hub.x, y: layout.hub.y + layout.hubRadius + 19)
+                .frame(width: centerSpan)
+                .position(x: layout.hub.x, y: layout.hub.y + layout.hubRadius + 20)
                 .allowsHitTesting(false)
                 ForEach(map.senders + map.environments) { n in
                     if let frame = layout.frames[n.id] {
@@ -67,7 +76,10 @@ struct LinkMapView: View {
             .animation(.easeInOut(duration: 0.3), value: picked)
             .animation(.easeInOut(duration: 0.35), value: dipped)
         }
-        .frame(height: LinkMapLayout(map, width: 329).size.height)
+        .frame(height: LinkMapLayout.height(for: map))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
         .onChange(of: spot) {
             guard !mine.isEmpty, !still else { return }
             dipped = true
@@ -93,13 +105,26 @@ struct LinkMapView: View {
         (picked == nil || line.sender == picked || line.environment == picked ? 1 : 0.14) * (dipped && line.id != mineLine ? 0.2 : 1)
     }
 
+    /// Stroke weight and opacity for a node's half-link to the hub, summed across
+    /// its active lines so shared hub segments draw once without alpha overdraw.
+    private func segment(for nodeID: String) -> (width: CGFloat, alpha: Double, opacity: Double)? {
+        let touching = map.lines.filter { $0.sender == nodeID || $0.environment == nodeID }
+        guard !touching.isEmpty else { return nil }
+        let focused = touching.filter { shown($0) == 1 }
+        let active = focused.isEmpty ? touching : focused
+        let total = active.reduce(0) { $0 + $1.count }
+        let alpha = min(0.8, 0.58 + 0.06 * Double(max(total - 1, 0)))
+        let opacity = focused.isEmpty ? (touching.map(shown).max() ?? 0.14) : 1
+        return (LinkMap.strokeWidth(for: total), alpha, opacity)
+    }
+
     private var hub: some View {
         Button { withAnimation(.smooth) { picked = nil } } label: {
-            Mark(size: 26)
-                .frame(width: 44, height: 44)
-                .background(Color(.secondarySystemGroupedBackground), in: Circle())
-                .overlay { Circle().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8) }
-                .shadow(color: .black.opacity(0.1), radius: 5, y: 2)
+            Mark(size: 29)
+                .frame(width: 50, height: 50)
+                .background(Color(UIColor.mapHubFill), in: Circle())
+                .overlay { Circle().strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.8) }
+                .shadow(color: .black.opacity(0.14), radius: 7, y: 2)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Hermesh")
@@ -110,17 +135,17 @@ struct LinkMapView: View {
         switch n.kind {
         case .sender:
             box(n) {
-                HStack(spacing: 6) {
+                HStack(spacing: 7) {
                     senderPicture(n)
-                    Text(n.title).font(.footnote.weight(.medium)).lineLimit(1).minimumScaleFactor(0.85)
+                    Text(n.title).font(.subheadline.weight(.medium)).lineLimit(1).minimumScaleFactor(0.82)
                     Spacer(minLength: 0)
                 }
             }
         case .environment:
             box(n) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(n.title).font(.footnote.weight(.medium)).lineLimit(1).minimumScaleFactor(0.85)
-                    HStack(spacing: 3) { ForEach(n.agents.prefix(5), id: \.self) { AgentLogo(id: $0, size: 13) } }.frame(height: 13)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(n.title).font(.subheadline.weight(.medium)).lineLimit(1).minimumScaleFactor(0.82)
+                    HStack(spacing: 3.5) { ForEach(n.agents.prefix(5), id: \.self) { AgentLogo(id: $0, size: 15) } }.frame(height: 15)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .opacity(n.offline ? 0.45 : 1)
@@ -136,11 +161,11 @@ struct LinkMapView: View {
             withAnimation(.smooth) { picked = picked == n.id ? nil : n.id }
         } label: {
             content()
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 9)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(picked == n.id ? Color.accentColor.opacity(0.12) : Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .background(picked == n.id ? Color.accentColor.opacity(0.14) : Color(UIColor.mapNodeFill), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(picked == n.id ? Color.accentColor : Color.primary.opacity(0.08), lineWidth: picked == n.id ? 1.5 : 0.8)
                 }
                 .contentShape(.rect)
@@ -152,11 +177,21 @@ struct LinkMapView: View {
 
     @ViewBuilder private func senderPicture(_ n: LinkMap.Node) -> some View {
         if let c = model.clients.first(where: { LinkMap.sender($0.clientID) == n.id }) {
-            GrantAvatar(client: c, size: 20)
+            GrantAvatar(client: c, size: 24)
         } else {
-            Image(systemName: "person.fill").font(.system(size: 11)).foregroundStyle(.secondary)
-                .frame(width: 20, height: 20).background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            Image(systemName: "person.fill").font(.system(size: 12)).foregroundStyle(.secondary)
+                .frame(width: 24, height: 24).background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 6.5, style: .continuous))
         }
+    }
+}
+
+private extension UIColor {
+    static let mapNodeFill = UIColor {
+        $0.userInterfaceStyle == .dark ? .tertiarySystemGroupedBackground : UIColor(red: 0.96, green: 0.965, blue: 0.98, alpha: 1)
+    }
+
+    static let mapHubFill = UIColor {
+        $0.userInterfaceStyle == .dark ? .tertiarySystemGroupedBackground : .white
     }
 }
 
@@ -225,7 +260,7 @@ final class CometsView: UIView {
             let lap = 4.2 + Double(i) * 0.6
             for comet in 0..<2 {
                 for tail in 0..<4 {
-                    let r = 2.4 - 0.3 * CGFloat(tail), base = tail == 0 ? 1 : 0.45 - 0.1 * Float(tail)
+                    let r = 2.6 - 0.32 * CGFloat(tail), base = tail == 0 ? 1 : 0.45 - 0.1 * Float(tail)
                     let dot = CALayer()
                     dot.bounds = CGRect(x: 0, y: 0, width: 2 * r, height: 2 * r)
                     dot.cornerRadius = r

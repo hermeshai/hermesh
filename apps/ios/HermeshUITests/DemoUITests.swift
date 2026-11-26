@@ -583,6 +583,48 @@ final class DemoUITests: XCTestCase {
         }
     }
 
+    /// Multiple concurrent sessions between the same nodes merge into one weighted line, hosted MCP labels show
+    /// their short app names, and picking a node filters the overview to its sessions.
+    func testLinkMapMergedLinesAndShortNames() {
+        app.terminate()
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-DemoLinkMap"]
+        app.launch()
+        enterWorkDemo()
+        let any = app.descendants(matching: .any)
+        let map = any["link-map"].firstMatch
+        XCTAssertTrue(map.waitForExistence(timeout: 15), "the link map")
+
+        // Hosted MCP domains are stripped to clean short names; owner and environments all appear.
+        for node in ["map-You", "map-Claude", "map-Her", "map-Muse", "map-yee-homebook", "map-yi-mac-mini"] {
+            XCTAssertTrue(any[node].firstMatch.waitForExistence(timeout: 5), node)
+        }
+        XCTAssertFalse(any["map-Claude (claude.ai)"].exists)
+        XCTAssertFalse(any["map-Muse (agent.meta.ai)"].exists)
+
+        // Scroll past the demo banner so the link map sits at the top above the 2-column In Progress tiles.
+        let bar = app.navigationBars.firstMatch
+        if bar.exists {
+            let targetY = bar.frame.maxY + 14
+            let dy = map.frame.minY - targetY
+            if dy > 10 {
+                let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
+                let end = start.withOffset(CGVector(dx: 0, dy: -dy))
+                start.press(forDuration: 0.08, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.3)
+                RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+            }
+        }
+        checkpoint("linkmap-multi-overview")
+
+        // Picking "You" dims unrelated nodes and lists the owner's five sessions underneath.
+        tap("map-You")
+        XCTAssertTrue(any["through"].firstMatch.waitForExistence(timeout: 5))
+        checkpoint("linkmap-picked-owner")
+
+        // Tapping the central Hermesh hub clears the selection.
+        tap("map-hub")
+        XCTAssertFalse(any["through"].firstMatch.waitForExistence(timeout: 1))
+    }
+
     private func wait(_ timeout: TimeInterval = 5, _ done: () -> Bool) -> Bool {
         let end = Date().addingTimeInterval(timeout)
         while !done() && Date() < end { RunLoop.current.run(until: Date().addingTimeInterval(0.2)) }

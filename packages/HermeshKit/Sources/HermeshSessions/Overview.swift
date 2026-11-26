@@ -68,10 +68,10 @@ public func arrived(_ needs: [Need], before: [String]) -> Need? {
     }
 }
 
-/// Who may use the owner's environments, the environments, and a line for
-/// each session that has not finished (at work, waiting or failed) from the
-/// one that started it to the one it runs on. The lines are alike; those at
-/// work carry a moving dot.
+/// Who may use the owner's environments, the environments, and one line per
+/// (sender, environment) pair that has sessions not finished (at work,
+/// waiting or failed), weighted by how many there are. Those with a session
+/// at work carry moving dots.
 public struct LinkMap: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         case sender
@@ -99,11 +99,26 @@ public struct LinkMap: Equatable, Sendable {
     }
 
     public struct Line: Equatable, Identifiable, Sendable {
-        /// The session's id.
-        public var id: String
+        public var id: String { LinkMap.line(sender: sender, environment: environment) }
         public var sender: String
         public var environment: String
+        /// Unsettled sessions between this sender and environment.
+        public var count: Int
         public var atWork: Bool
+
+        public init(sender: String, environment: String, count: Int = 1, atWork: Bool) {
+            self.sender = sender
+            self.environment = environment
+            self.count = count
+            self.atWork = atWork
+        }
+
+        /// Stroke width: 1.5 pt for a single session, gently stepped up to a 2.8 pt cap.
+        public var strokeWidth: CGFloat { LinkMap.strokeWidth(for: count) }
+    }
+
+    public static func strokeWidth(for count: Int) -> CGFloat {
+        min(2.8, 1.5 + 0.55 * log2(CGFloat(max(count, 1))))
     }
 
     public var senders: [Node]
@@ -117,6 +132,7 @@ public struct LinkMap: Equatable, Sendable {
 
     public static func sender(_ clientID: String) -> String { "s:" + clientID }
     public static func environment(_ machineID: String) -> String { "e:" + machineID }
+    public static func line(sender: String, environment: String) -> String { sender + "|" + environment }
 
     /// Every node a picked node's sessions touch, itself included.
     public func touched(by node: String, sessions: [Session]) -> Set<String> {
@@ -192,10 +208,19 @@ public func linkMap(senders: [MapSender], environments: [MapEnvironment], team: 
                      more: "e:…")
     let shown = Set((left + right).map(\.id))
     var seen: Set<String> = []
-    let lines = live.compactMap { s -> LinkMap.Line? in
+    var byPair: [String: Int] = [:]
+    var lines: [LinkMap.Line] = []
+    for s in live where seen.insert(s.sessionID).inserted {
         let (a, b) = (LinkMap.sender(s.createdBy), LinkMap.environment(s.machineID))
-        guard shown.contains(a), shown.contains(b), seen.insert(s.sessionID).inserted else { return nil }
-        return LinkMap.Line(id: s.sessionID, sender: a, environment: b, atWork: s.isActive)
+        guard shown.contains(a), shown.contains(b) else { continue }
+        let key = LinkMap.line(sender: a, environment: b)
+        if let i = byPair[key] {
+            lines[i].count += 1
+            if s.isActive { lines[i].atWork = true }
+        } else {
+            byPair[key] = lines.count
+            lines.append(LinkMap.Line(sender: a, environment: b, count: 1, atWork: s.isActive))
+        }
     }
     return LinkMap(senders: left, environments: right, lines: lines)
 }
@@ -218,13 +243,18 @@ public struct LinkMapLayout: Equatable, Sendable {
     /// A line's way, by its id: to the hub, and from it (joined by a straight run through the hub).
     public var ways: [String: [MapCurve]]
 
+    public static func height(for map: LinkMap) -> CGFloat {
+        let senderGap: CGFloat = map.senders.count > 2 ? 48 : 54, environmentGap: CGFloat = 60
+        return max(CGFloat(map.senders.count) * senderGap, CGFloat(map.environments.count) * environmentGap, 132)
+    }
+
     public init(_ map: LinkMap, width: CGFloat) {
-        let senderWidth = min(124, (width * 0.33).rounded()), environmentWidth = min(132, (width * 0.36).rounded())
-        let senderGap: CGFloat = map.senders.count > 2 ? 40 : 46, environmentGap: CGFloat = 52
-        let height = max(CGFloat(map.senders.count) * senderGap, CGFloat(map.environments.count) * environmentGap, 104)
-        let radius: CGFloat = 22
-        let center = CGPoint(x: senderWidth + (width - senderWidth - environmentWidth) / 2, y: height / 2 - 8)
-        let hubLeft = center.x - radius - 4, hubRight = center.x + radius + 4
+        let senderWidth = min(158, (width * 0.325).rounded()), environmentWidth = min(170, (width * 0.34).rounded())
+        let senderGap: CGFloat = map.senders.count > 2 ? 48 : 54, environmentGap: CGFloat = 60
+        let height = Self.height(for: map)
+        let radius: CGFloat = 25
+        let center = CGPoint(x: senderWidth + (width - senderWidth - environmentWidth) / 2, y: height / 2 - 10)
+        let hubLeft = center.x - radius - 3, hubRight = center.x + radius + 3
         func y(_ i: Int, of n: Int, gap: CGFloat) -> CGFloat { height / 2 + (CGFloat(i) - CGFloat(n - 1) / 2) * gap }
         func curve(_ a: CGPoint, _ b: CGPoint) -> MapCurve {
             let k = (b.x - a.x) * 0.55
@@ -234,26 +264,23 @@ public struct LinkMapLayout: Equatable, Sendable {
         var senderY: [String: CGFloat] = [:], environmentY: [String: CGFloat] = [:]
         for (i, n) in map.senders.enumerated() {
             let cy = y(i, of: map.senders.count, gap: senderGap)
-            frames[n.id] = CGRect(x: 0, y: cy - 16, width: senderWidth, height: 32)
+            let h: CGFloat = n.kind == .sender ? 40 : 34
+            frames[n.id] = CGRect(x: 0, y: cy - h / 2, width: senderWidth, height: h)
             links[n.id] = curve(CGPoint(x: senderWidth, y: cy), CGPoint(x: hubLeft, y: center.y))
             senderY[n.id] = cy
         }
         for (i, n) in map.environments.enumerated() {
             let cy = y(i, of: map.environments.count, gap: environmentGap)
-            let h: CGFloat = n.kind == .environment ? 42 : 32
+            let h: CGFloat = n.kind == .environment ? 50 : 34
             frames[n.id] = CGRect(x: width - environmentWidth, y: cy - h / 2, width: environmentWidth, height: h)
             links[n.id] = curve(CGPoint(x: hubRight, y: center.y), CGPoint(x: width - environmentWidth, y: cy))
             environmentY[n.id] = cy
         }
-        // Lines between the same two nodes run side by side, about the middle.
         var ways: [String: [MapCurve]] = [:]
-        let pairs = Dictionary(grouping: map.lines) { $0.sender + "|" + $0.environment }
         for line in map.lines {
-            guard let a = senderY[line.sender], let b = environmentY[line.environment], let together = pairs[line.sender + "|" + line.environment],
-                  let i = together.firstIndex(of: line) else { continue }
-            let off = (CGFloat(i) - CGFloat(together.count - 1) / 2) * 5
-            ways[line.id] = [curve(CGPoint(x: senderWidth, y: a + off), CGPoint(x: hubLeft, y: center.y + off)),
-                             curve(CGPoint(x: hubRight, y: center.y + off), CGPoint(x: width - environmentWidth, y: b + off))]
+            guard let a = senderY[line.sender], let b = environmentY[line.environment] else { continue }
+            ways[line.id] = [curve(CGPoint(x: senderWidth, y: a), CGPoint(x: hubLeft, y: center.y)),
+                             curve(CGPoint(x: hubRight, y: center.y), CGPoint(x: width - environmentWidth, y: b))]
         }
         self.size = CGSize(width: width, height: height)
         self.hub = center

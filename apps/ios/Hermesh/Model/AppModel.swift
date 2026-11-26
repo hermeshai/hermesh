@@ -953,7 +953,7 @@ final class AppModel {
     func senderName(_ clientID: String) -> String {
         if clientID == "owner" { return String(localized: "You") }
         if let c = clients.first(where: { $0.clientID == clientID }), !c.herMachineID.isEmpty { return "Her" }
-        return clientLabel(clientID)
+        return AgentLogo.name(clientLabel(clientID))
     }
 
     /// A session's second line in lists: who sent the work to which coding agent, and the project.
