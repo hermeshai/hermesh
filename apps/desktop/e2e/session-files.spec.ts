@@ -130,12 +130,50 @@ test("a reply's files are tags; a page runs over the window offline; code opens 
   for (const name of ["lines.txt", "demo.js", "demo.html"]) await panel.locator(".sfp-tab", { hasText: name }).getByRole("button").click();
   await expect(panel.locator(".sfp-tab")).toHaveCount(0);
 
-  // files-mac gone: what was read before still opens, in the panel and over the window.
+  // Inline session images & blurred Lightbox (docs/session-images.md): external simulator screenshot
+  // renders inline once while its file:// link stays a clickable tag (no duplicate image); linked
+  // before/after PNGs render side-by-side in an image strip; Lightbox shows centered header + ⋯/✕ only.
+  const shotReply = log.locator(".am").filter({ hasText: "截图验证：" });
+  await expect(shotReply.getByTestId("session-image")).toHaveCount(3);
+  const shotCard = shotReply.locator('[data-testid=session-image][data-path$="ios_simulator_screenshot.png"]');
+  const shotTag = shotReply.locator('[data-testid=file-tag][data-path$="ios_simulator_screenshot.png"]');
+  await expect(shotCard).toBeVisible();
+  await expect(shotCard.locator("img")).toBeVisible();
+  await expect(shotTag).toBeVisible();
+  await expect(shotTag).not.toHaveClass(/\bgone\b/);
+  await expect(shotReply.getByTestId("session-image-row").getByTestId("session-image")).toHaveCount(2);
+  await snap(page, "files-inline-images");
+
+  await shotCard.click();
+  const lb = page.getByTestId("image-lightbox");
+  await expect(lb).toBeVisible();
+  await expect(lb.getByTestId("lightbox-title")).toHaveText("ios_simulator_screenshot.png");
+  await expect(lb.getByTestId("lightbox-meta")).toContainText("1 / 3 · 120 × 260");
+  await expect(lb.locator(".slb-actions button")).toHaveCount(2);
+  await expect(lb.getByTestId("lightbox-image")).toBeVisible();
+  await snap(page, "files-image-lightbox");
+  await page.keyboard.press("ArrowRight");
+  await expect(lb.getByTestId("lightbox-title")).toHaveText("before.png");
+  await expect(lb.getByTestId("lightbox-meta")).toContainText("2 / 3 · 160 × 120");
+  await page.keyboard.press("Escape");
+  await expect(lb).toBeHidden();
+
+  // Clicking the deduplicated file:// tag opens the same Lightbox.
+  await shotTag.click();
+  await expect(lb).toBeVisible();
+  await expect(lb.getByTestId("lightbox-title")).toHaveText("ios_simulator_screenshot.png");
+  await page.keyboard.press("Escape");
+  await expect(lb).toBeHidden();
+
+  // files-mac gone: what was read before still opens, in the panel, over the window, and in the Lightbox.
   process.kill(-fixture.otherMac, "SIGTERM");
   await lines.click();
   await expect(panel.getByTestId("file-code").locator(".cm-target")).toHaveText("line 30", { timeout: 30_000 });
   await demo.click();
   await expect.poll(() => inPage<string>(app, "document.getElementById('t')?.textContent ?? ''"), { timeout: 30_000 }).toBe("第一版");
+  await page.keyboard.press("Escape");
+  await shotCard.click();
+  await expect(lb.getByTestId("lightbox-image")).toBeVisible();
   await page.keyboard.press("Escape");
   await app.close();
 });

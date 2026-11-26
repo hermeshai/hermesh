@@ -55,6 +55,32 @@ extension HermeshUITests {
         shot("files-code-line")
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
+        // Turn 3's external simulator screenshot renders inline once while its file:// link stays a clickable tag,
+        // before/after PNGs sit side-by-side in one row, and tapping opens the full-screen blurred Lightbox.
+        let shotCard = app.buttons["session-image-ios_simulator_screenshot.png"]
+        let beforeCard = app.buttons["session-image-before.png"]
+        let afterCard = app.buttons["session-image-after.png"]
+        let shotTag = app.links.containing(NSPredicate(format: "label CONTAINS %@", "ios_simulator_screenshot.png")).firstMatch
+        XCTAssertTrue(shotCard.waitForExistence(timeout: 20), "inline simulator screenshot card")
+        XCTAssertEqual(app.buttons.matching(identifier: "session-image-ios_simulator_screenshot.png").count, 1, "deduplicated inline screenshot")
+        XCTAssertTrue(shotTag.exists, "deduplicated file:// tag remains clickable")
+        XCTAssertTrue(beforeCard.waitForExistence(timeout: 20) && afterCard.waitForExistence(timeout: 20), "comparison strip images")
+        XCTAssertEqual(beforeCard.frame.minY, afterCard.frame.minY, accuracy: 8, "2-column side-by-side layout on iPhone")
+        shot("files-inline-images")
+
+        shotCard.tap()
+        let lb = app.descendants(matching: .any)["session-image-lightbox"].firstMatch
+        XCTAssertTrue(lb.waitForExistence(timeout: 10), "blurred Lightbox overlay")
+        XCTAssertEqual(app.staticTexts["lightbox-title"].label, "ios_simulator_screenshot.png")
+        XCTAssertTrue(app.staticTexts["lightbox-meta"].label.contains("1 / 3 · 120 × 260"), "Lightbox metadata")
+        XCTAssertTrue(app.buttons["lightbox-more"].exists && app.buttons["lightbox-close"].exists, "only More and Close in Lightbox top bar")
+        shot("files-image-lightbox")
+        app.descendants(matching: .any)["lightbox-image"].firstMatch.swipeLeft()
+        XCTAssertTrue(app.staticTexts["lightbox-title"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["lightbox-title"].label, "before.png")
+        app.buttons["lightbox-close"].tap()
+        XCTAssertTrue(lb.waitForNonExistence(timeout: 5), "Lightbox closes")
+
         // The session's folder from ⋯, a level at a time: folders first; a file in one opens its page, as it is now.
         tap("session-more")
         tap("session-files")

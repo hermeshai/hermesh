@@ -68,6 +68,8 @@ extension EnvironmentValues {
     @ObservationIgnored var sessionID: String
     @ObservationIgnored var api: AppAPI?
     private(set) var known: [String: Hermesh_Session_V1_ResolvedFile] = [:]
+    var lightbox: SessionLightboxPresentation?
+    @ObservationIgnored private var galleriesByRun: [String: [[ReplyImageItem]]] = [:]
     @ObservationIgnored private var askedAt: [String: ContinuousClock.Instant] = [:]
     @ObservationIgnored private var pending: [String: Set<String>] = [:]
     @ObservationIgnored private var order: [String] = []
@@ -84,6 +86,23 @@ extension EnvironmentValues {
     private func key(_ run: String, _ path: String) -> String { "\(run)\u{0}\(path)" }
 
     func info(run: String, path: String) -> Hermesh_Session_V1_ResolvedFile? { known[key(run, path)] }
+
+    func registerGallery(run: String, gallery: [ReplyImageItem]) {
+        guard !gallery.isEmpty else { return }
+        var list = galleriesByRun[run] ?? []
+        if !list.contains(gallery) { list.append(gallery) }
+        galleriesByRun[run] = list
+    }
+
+    func gallery(run: String, containing path: String) -> [ReplyImageItem]? {
+        galleriesByRun[run]?.first { g in g.contains { sameImagePath($0.path, path) } }
+    }
+
+    func openLightbox(run: String, path: String, machineID: String = "", gallery: [ReplyImageItem]? = nil) {
+        let list = gallery ?? self.gallery(run: run, containing: path) ?? [ReplyImageItem(path: path, caption: "")]
+        let idx = list.firstIndex { sameImagePath($0.path, path) } ?? 0
+        lightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: machineID, run: run, items: list, initialIndex: idx)
+    }
 
     func want(run: String, paths: [String]) {
         guard !paths.isEmpty else { return }
@@ -157,6 +176,8 @@ func fileRefPaths(_ blocks: [MarkdownBlock]) -> [String] {
     func walk(_ b: MarkdownBlock) {
         switch b {
         case .paragraph(let s), .heading(_, let s): text(s)
+        case .images(let items, _):
+            for it in items where !out.contains(it.path) { out.append(it.path) }
         case .list(_, _, let items): items.forEach { $0.blocks.forEach(walk) }
         case .quote(let bs): bs.forEach(walk)
         case .table(let head, let rows, _): head.forEach(text); rows.forEach { $0.forEach(text) }
@@ -459,6 +480,7 @@ struct SessionFolderPage: View {
     let sessionID: String
     let dir: String
     @State private var list: Result<Hermesh_Session_V1_ListFilesResponse, Error>?
+    @State private var lightbox: SessionLightboxPresentation?
 
     var body: some View {
         Group {
@@ -473,7 +495,12 @@ struct SessionFolderPage: View {
                     ForEach(res.entries, id: \.name) { e in
                         let path = res.dir.isEmpty ? e.name : "\(res.dir)/\(e.name)"
                         Button {
-                            model.path.append(e.dir ? .sessionFolder(sessionID, path) : .sessionFile(sessionID, "", path, 0, 0))
+                            if !e.dir, isSessionImage(path) {
+                                let mid = model.session(sessionID)?.machineID ?? ""
+                                lightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: mid, run: "", items: [ReplyImageItem(path: path, caption: "")], initialIndex: 0)
+                            } else {
+                                model.path.append(e.dir ? .sessionFolder(sessionID, path) : .sessionFile(sessionID, "", path, 0, 0))
+                            }
                         } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: e.dir ? "folder" : "doc").foregroundStyle(.secondary).frame(width: 22)
@@ -495,6 +522,7 @@ struct SessionFolderPage: View {
         .navigationTitle(dir.isEmpty ? String(localized: "Project Files") : fileBaseName(dir))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { if model.menuInView { ToolbarItem(placement: .topBarLeading) { WidenPageButton() } } }
+        .fullScreenCover(item: $lightbox) { SessionImageLightbox(presentation: $0) }
         .task { await load() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("session-folder-page")

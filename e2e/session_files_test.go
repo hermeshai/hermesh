@@ -1,7 +1,12 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
+	"image"
+	"image/color"
+	"image/png"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -13,6 +18,22 @@ import (
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 )
+
+func makeE2EPNG(t *testing.T, w, h int, r, g, b uint8) []byte {
+	t.Helper()
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	c := color.NRGBA{R: r, G: g, B: b, A: 255}
+	for y := range h {
+		for x := range w {
+			img.SetNRGBA(x, y, c)
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
 
 // TestSessionFiles reads a session's files as the apps do (docs/session-files.md §6),
 // for a session on this Mac and one on another machine: the files a reply links,
@@ -29,13 +50,18 @@ func TestSessionFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	sc := w.app.sessions
+	extShot := filepath.Join(t.TempDir(), "vps_simulator_shot.png")
+	extPNG := makeE2EPNG(t, 24, 48, 40, 130, 245)
+	if err := os.WriteFile(extShot, extPNG, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	var far struct{ id, run1, run2, folder string }
 	for _, project := range []string{"owner-mac/demo", "vps-1/demo"} {
 		s, r := w.startSession(time.Minute, "--project", project, "--prompt", "write docs/demo.html|<p>one</p>\nwrite docs/demo.js|go()\nsay done", "--wait")
 		if s.Status != "idle" {
 			t.Fatalf("%s: %+v", project, r)
 		}
-		if s2, r := w.send(time.Minute, s.SessionID, "write docs/demo.html|<p>two</p>\nsay done"); s2.Status != "idle" {
+		if s2, r := w.send(time.Minute, s.SessionID, "write docs/demo.html|<p>two</p>\nsay ![shot]("+extShot+")"); s2.Status != "idle" {
 			t.Fatalf("%s turn 2: %+v", project, r)
 		}
 		got, err := sc.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: s.SessionID})
@@ -99,6 +125,19 @@ func TestSessionFiles(t *testing.T) {
 		}
 	}
 
+	// Remove the external screenshot from /tmp: turn 2's pinned blob still resolves and reads on vps-1.
+	if err := os.Remove(extShot); err != nil {
+		t.Fatal(err)
+	}
+	extRes, err := sc.ResolveFiles(ctx, &sessionv1.ResolveFilesRequest{SessionId: far.id, RunId: far.run2, Paths: []string{extShot}})
+	if err != nil || extRes.Files[0].Kind != sessionv1.FileRefKind_FILE_REF_KIND_FILE || extRes.Files[0].Turn != 2 {
+		t.Fatalf("vps-1 pinned external image resolve: %+v %v", extRes, err)
+	}
+	extRead, err := sc.ReadFile(ctx, &sessionv1.ReadFileRequest{SessionId: far.id, RunId: far.run2, Path: extShot})
+	if err != nil || !bytes.Equal(extRead.Image, extPNG) || extRead.MimeType != "image/png" {
+		t.Fatalf("vps-1 pinned external image read: %+v %v", extRead, err)
+	}
+
 	// The other machine stopped: what this device read before still opens; nothing else does.
 	restart(true)
 	eventually(t, 30*time.Second, "vps-1 offline", func() bool {
@@ -117,6 +156,10 @@ func TestSessionFiles(t *testing.T) {
 	part, err := sc.ReadFileBytes(ctx, &sessionv1.ReadFileBytesRequest{SessionId: far.id, RunId: far.run1, Path: "docs/demo.html", Offset: 3, Length: 3})
 	if err != nil || string(part.Data) != "one" {
 		t.Fatalf("offline, kept bytes: %+v %v", part, err)
+	}
+	extOffline, err := sc.ReadFile(ctx, &sessionv1.ReadFileRequest{SessionId: far.id, RunId: far.run2, Path: extShot})
+	if err != nil || !bytes.Equal(extOffline.Image, extPNG) {
+		t.Fatalf("offline, kept external image: %+v %v", extOffline, err)
 	}
 	if _, err := sc.ReadFile(ctx, &sessionv1.ReadFileRequest{SessionId: far.id, RunId: far.run2, Path: "docs/demo.js"}); connect.CodeOf(err) != connect.CodeUnavailable {
 		t.Fatalf("offline, never read: %v", err)

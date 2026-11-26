@@ -104,5 +104,25 @@
     { "path": "talk.mp4", "to": "quicklook" },
     { "path": "plan.docx", "to": "quicklook" },
     { "path": "build.zip", "to": "quicklook" }
+  ],
+  "images": [
+    { "href": "/Users/me/.gemini/brain/abc/ios_simulator_screenshot.png", "path": "/Users/me/.gemini/brain/abc/ios_simulator_screenshot.png" },
+    { "href": "file:///Users/me/.gemini/brain/abc/ios_simulator_screenshot.png", "path": "/Users/me/.gemini/brain/abc/ios_simulator_screenshot.png" },
+    { "href": "docs/shots/a%20b.WEBP", "path": "docs/shots/a b.WEBP" },
+    { "href": "C:\\Temp\\shot.jpg", "path": "C:\\Temp\\shot.jpg" },
+    { "href": "file:///C:/Temp/shot.png", "path": "C:/Temp/shot.png" },
+    { "href": "https://example.com/pixel.png", "path": null },
+    { "href": "data:image/png;base64,AAAA", "path": null },
+    { "href": "docs/shot.png:12", "path": null },
+    { "href": "docs/logo.svg", "path": null },
+    { "href": "docs/demo.html", "path": null }
+  ],
+  "sameImage": [
+    { "a": "/Users/me/.gemini/brain/abc/shot.png", "b": "/Users/me/.gemini/brain/abc/shot.png", "same": true },
+    { "a": "./docs/shot.png", "b": "docs/shot.png", "same": true },
+    { "a": "docs/shot.png", "b": "/Users/me/proj/docs/shot.png", "same": true },
+    { "a": "C:\\Temp\\shot.png", "b": "C:/Temp/shot.png", "same": true },
+    { "a": "shot.png", "b": "sub/shot.png", "same": false },
+    { "a": "/tmp/a/shot.png", "b": "/tmp/b/shot.png", "same": false }
   ]
 }

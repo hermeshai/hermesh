@@ -36,4 +36,12 @@ private func ref(_ any: Any?) -> FileRef? {
         let path = c["path"] as! String
         #expect(fileOpens(path, line: c["line"] as? Int).rawValue == c["to"] as! String, "\(path)")
     }
+    for c in shared["images"] as! [[String: Any]] {
+        let href = c["href"] as! String
+        #expect(sessionImageRef(href) == c["path"] as? String, "\(href)")
+    }
+    for c in shared["sameImage"] as! [[String: Any]] {
+        let a = c["a"] as! String, b = c["b"] as! String
+        #expect(sameImagePath(a, b) == (c["same"] as! Bool), "\(a) vs \(b)")
+    }
 }

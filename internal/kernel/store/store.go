@@ -162,7 +162,25 @@ CREATE TABLE IF NOT EXISTS background_tasks (
   PRIMARY KEY (session_id, task_id)
 );
 CREATE INDEX IF NOT EXISTS idx_background_tasks_session ON background_tasks(session_id, started_at ASC);
+`, `
+CREATE TABLE IF NOT EXISTS turn_image_blobs (
+  session_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  asked_path TEXT NOT NULL,
+  blob_sha256 TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  turn INTEGER NOT NULL,
+  PRIMARY KEY (session_id, run_id, asked_path)
+);
+CREATE INDEX IF NOT EXISTS idx_turn_image_blobs_session ON turn_image_blobs(session_id);
 `}
+
+type TurnImageBlob struct {
+	AskedPath  string
+	BlobSHA256 string
+	Size       int64
+	Turn       uint32
+}
 
 type DeletedSessionRecord struct {
 	SessionID string
@@ -542,7 +560,7 @@ func (tx *Tx) DeleteSession(sessionID string) error {
 			}
 		}
 	}
-	for _, tbl := range []string{"session_events", "session_allow_rules", "checkpoints", "background_tasks", "runtime_requests", "turn_items", "runs", "provider_sessions", "sessions"} {
+	for _, tbl := range []string{"session_events", "session_allow_rules", "checkpoints", "turn_image_blobs", "background_tasks", "runtime_requests", "turn_items", "runs", "provider_sessions", "sessions"} {
 		if _, err := tx.tx.Exec(`DELETE FROM `+tbl+` WHERE session_id = ?`, sessionID); err != nil {
 			return err
 		}
@@ -1457,8 +1475,60 @@ func (s *Store) BlobPath(digest string) string {
 	return filepath.Join(s.blobsDir, digest)
 }
 
+func (s *Store) PutTurnImageBlob(sessionID, runID, askedPath, digest string, size int64, turn uint32) error {
+	if sessionID == "" || runID == "" || askedPath == "" || digest == "" {
+		return nil
+	}
+	_, err := s.Mutate(func(tx *Tx) error {
+		_, err := tx.tx.Exec(
+			`INSERT INTO turn_image_blobs(session_id, run_id, asked_path, blob_sha256, size, turn) VALUES(?, ?, ?, ?, ?, ?)
+			 ON CONFLICT(session_id, run_id, asked_path) DO UPDATE SET blob_sha256 = excluded.blob_sha256, size = excluded.size, turn = excluded.turn`,
+			sessionID, runID, askedPath, digest, size, turn,
+		)
+		return err
+	})
+	return err
+}
+
+func (s *Store) TurnImageBlob(sessionID, runID, askedPath string) (TurnImageBlob, bool) {
+	if sessionID == "" || askedPath == "" {
+		return TurnImageBlob{}, false
+	}
+	var out TurnImageBlob
+	out.AskedPath = askedPath
+	var err error
+	if runID != "" {
+		err = s.reader.QueryRow(
+			`SELECT blob_sha256, size, turn FROM turn_image_blobs WHERE session_id = ? AND run_id = ? AND asked_path = ?`,
+			sessionID, runID, askedPath,
+		).Scan(&out.BlobSHA256, &out.Size, &out.Turn)
+	} else {
+		err = s.reader.QueryRow(
+			`SELECT blob_sha256, size, turn FROM turn_image_blobs WHERE session_id = ? AND asked_path = ? ORDER BY turn DESC LIMIT 1`,
+			sessionID, askedPath,
+		).Scan(&out.BlobSHA256, &out.Size, &out.Turn)
+	}
+	return out, err == nil && out.BlobSHA256 != ""
+}
+
+func (s *Store) SessionTurnImageDigests(sessionID string) []string {
+	rows, err := s.reader.Query(`SELECT DISTINCT blob_sha256 FROM turn_image_blobs WHERE session_id = ?`, sessionID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var d string
+		if rows.Scan(&d) == nil && d != "" {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
 // PruneBlobs deletes candidate blob digests that are no longer referenced by
-// any remaining turn_items, runs, or runtime_requests.
+// any remaining turn_items, runs, runtime_requests, or turn_image_blobs.
 func (s *Store) PruneBlobs(candidates []string) {
 	if len(candidates) == 0 {
 		return
@@ -1486,7 +1556,9 @@ func (s *Store) PruneBlobs(candidates []string) {
 					SELECT 1 FROM runs WHERE instr(payload, ?) > 0
 					UNION ALL
 					SELECT 1 FROM runtime_requests WHERE instr(payload, ?) > 0
-				)`, raw, raw, raw).Scan(&inUse)
+					UNION ALL
+					SELECT 1 FROM turn_image_blobs WHERE blob_sha256 = ?
+				)`, raw, raw, raw, d).Scan(&inUse)
 			if err == nil && inUse == 0 {
 				if _, dErr := tx.tx.Exec(`DELETE FROM blobs WHERE sha256 = ?`, d); dErr == nil {
 					removed = append(removed, d)

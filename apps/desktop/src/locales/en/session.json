@@ -141,6 +141,7 @@
     "binary": "This file isn’t text, so it isn’t shown here",
     "tooLarge": "This file is {{size}}, too large to show here",
     "offline": "{{machine}} can’t be reached right now",
+    "imageOffline": "{{machine}} is offline · Shows automatically when back",
     "failed": "Couldn’t read it: {{message}}",
     "turnChanged": "This is the file as turn {{turn}} left it; it has changed since",
     "turnGone": "This is the file as turn {{turn}} left it; it has since been deleted",

@@ -187,6 +187,15 @@ func TestResolveFilesKeptForFinishedTurn(t *testing.T) {
 		t.Fatalf("initial ResolveFiles = %+v", first)
 	}
 
+	firstRead, err := svc.ReadFile(ctx, &sessionv1.ReadFileRequest{
+		SessionId: sid,
+		RunId:     "run_1",
+		Path:      "docs/demo.html",
+	})
+	if err != nil || firstRead.GetText() != "<p>v1</p>" || firstRead.GetTurn() != 1 {
+		t.Fatalf("initial ReadFile = %+v, err=%v", firstRead, err)
+	}
+
 	// A finished turn whose inline-code candidates are all missing (e.g. `fmt.Println`) is also settled.
 	missOnly, err := svc.ResolveFiles(ctx, &sessionv1.ResolveFilesRequest{
 		SessionId: sid,
@@ -263,5 +272,14 @@ func TestResolveFilesKeptForFinishedTurn(t *testing.T) {
 	})
 	if err != nil || len(cachedMissOnly.GetFiles()) != 2 || cachedMissOnly.Files[0].Kind != sessionv1.FileRefKind_FILE_REF_KIND_MISSING {
 		t.Fatalf("expected local kept answer for finished turn with missing-only paths while machine online, got %+v, err=%v", cachedMissOnly, err)
+	}
+
+	cachedRead, err := svc.ReadFile(ctx, &sessionv1.ReadFileRequest{
+		SessionId: sid,
+		RunId:     "run_1",
+		Path:      "docs/demo.html",
+	})
+	if err != nil || cachedRead.GetText() != "<p>v1</p>" || cachedRead.GetTurn() != 1 {
+		t.Fatalf("expected local kept ReadFile answer for settled turn while machine online, got %+v, err=%v", cachedRead, err)
 	}
 }

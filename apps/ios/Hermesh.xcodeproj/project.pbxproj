@@ -539,6 +539,7 @@
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hermesh uses Face ID to approve connections and changes with your owner key.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Hermesh connects straight to a computer on the same network when you use Remote Desktop, so the picture need not go through the relay.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Hermesh uses the camera to scan the code a machine shows when you add it.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Hermesh saves session screenshots and pictures to your photo library when you ask it to.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone = YES;
@@ -574,6 +575,7 @@
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Hermesh uses Face ID to approve connections and changes with your owner key.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Hermesh connects straight to a computer on the same network when you use Remote Desktop, so the picture need not go through the relay.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Hermesh uses the camera to scan the code a machine shows when you add it.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Hermesh saves session screenshots and pictures to your photo library when you ask it to.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone = YES;

@@ -67,6 +67,7 @@ import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, r
 import { ContentScope } from "./session/scope";
 import { FilesHomeContext, type FilesHome } from "./session/files/files";
 import { FileViewHost } from "./session/files/FileView";
+import { ImageLightboxHost } from "./session/files/ImageLightbox";
 import { FilePanel } from "./session/files/FilePanel";
 import { setOpen as setPanelOpen, usePanel } from "./session/files/panel";
 import "./session/composer.css";
@@ -930,6 +931,7 @@ export function SessionPage() {
           {filesHome && <FilePanel home={filesHome} running={running} />}
           {info && session && <Inspector s={session} providers={providers} />}
           <FileViewHost />
+          <ImageLightboxHost />
           {background && !filesOpen && <Background tasks={allBgTasks} onStop={handleStopBackgroundTask} />}
         </div>
       )}

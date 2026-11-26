@@ -74,12 +74,13 @@ export async function saveSessionFile(ref: SessionFileRef, name: string) {
   shell.showItemInFolder(to);
 }
 
-/** Finder, for a session on this Mac: the file as it is now, where the machine says the session's folder is. */
+/** Finder, for a session on this Mac: the file as it is now, where the machine says the session's folder is (or at its absolute path for external session images). */
 export async function revealSessionFile(ref: SessionFileRef): Promise<boolean> {
   const res = await sessionService().resolveFiles({ sessionId: ref.session, paths: [ref.path] });
   const f = res.files[0];
-  if (!f || res.folderGone || (f.kind !== FileRefKind.FILE && f.kind !== FileRefKind.FOLDER)) return false;
-  const full = path.join(res.folder, f.path);
+  const abs = Boolean(f && path.isAbsolute(f.path));
+  if (!f || (!abs && res.folderGone) || (f.kind !== FileRefKind.FILE && f.kind !== FileRefKind.FOLDER)) return false;
+  const full = abs ? f.path : path.join(res.folder, f.path);
   if (!(await fs.stat(full).then(() => true, () => false))) return false;
   shell.showItemInFolder(full);
   return true;

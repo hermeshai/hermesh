@@ -2659,6 +2659,11 @@ func (e *Engine) captureTurnCheckpoint(sessionID, runID string, ordinal uint32, 
 		return nil, nil
 	}
 	cp, cpErr := e.vcs.CaptureCheckpoint(e.bgCtx, workdir, newID("ckpt"), sessionID, runID, ordinal, prevTreeOID)
+	treeOID := ""
+	if cpErr == nil && cp != nil {
+		treeOID = cp.GitTreeOid
+	}
+	e.pinTurnImages(e.bgCtx, sessionID, runID, ordinal, workdir, treeOID)
 	if cpErr != nil || cp == nil {
 		return nil, nil
 	}
@@ -6028,6 +6033,7 @@ func (e *Engine) DeleteSession(ctx context.Context, p *Principal, sessionID stri
 			}
 		}
 	}
+	candidateBlobs = append(candidateBlobs, e.st.SessionTurnImageDigests(sessionID)...)
 	_, err = e.st.Mutate(func(tx *store.Tx) error {
 		return tx.DeleteSession(sessionID)
 	})

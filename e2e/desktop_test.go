@@ -688,6 +688,27 @@ func otherMacFiles(t *testing.T, f desktopFixture) int {
 	if s2, r := w.send(2*time.Minute, s.SessionID, turn2); s2.Status != "idle" {
 		t.Fatalf("second turn: %+v", r)
 	}
+	extShots := t.TempDir()
+	shotPath := filepath.Join(extShots, "ios_simulator_screenshot.png")
+	beforePath := filepath.Join(extShots, "before.png")
+	afterPath := filepath.Join(extShots, "after.png")
+	if err := os.WriteFile(shotPath, makeE2EPNG(t, 120, 260, 45, 125, 240), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(beforePath, makeE2EPNG(t, 160, 120, 220, 95, 75), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(afterPath, makeE2EPNG(t, 160, 120, 65, 175, 115), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	turn3 := "say 截图验证：\\n![Hermesh iOS 模拟器截图](" + shotPath + ")\\n\\n截图文件：[ios_simulator_screenshot.png](file://" + filepath.ToSlash(shotPath) + ")\\n\\n对比：[修复前](" + beforePath + ")、[修复后](" + afterPath + ")。"
+	if s3, r := w.send(2*time.Minute, s.SessionID, turn3); s3.Status != "idle" {
+		t.Fatalf("third turn: %+v", r)
+	}
+	// Delete the external simulator screenshot after Turn 3 so E2E also proves turn-end blob pinning.
+	if err := os.Remove(shotPath); err != nil {
+		t.Fatal(err)
+	}
 	f.Sessions["文件预览"] = s.SessionID
 	return daemon.cmd.Process.Pid
 }

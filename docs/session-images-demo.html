@@ -1,0 +1,950 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>会话内容区图片渲染与虚化灯箱 · 交互原型</title>
+<style>
+:root{
+  --font-ios:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --font-mac:"Google Sans Flex","Google Sans",system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+  --mono:"Google Sans Code",ui-monospace,"SF Mono",Menlo,Monaco,monospace;
+}
+[data-theme=light]{
+  --page:#e8eaf0;--page-fg:#1b1c22;--page-fg2:#62646f;--page-card:#ffffff;--page-bd:rgba(0,0,0,.08);
+  /* iPhone tokens */
+  --i-bg:#ffffff;--i-l1:#000000;--i-l2:rgba(60,60,67,.62);--i-l3:rgba(60,60,67,.34);--i-sep:rgba(0,0,0,.085);
+  --i-fill:rgba(118,118,128,.09);--i-fill2:rgba(118,118,128,.15);--i-me:#3d5bff;--i-tint:#3d5bff;
+  --i-glass:rgba(250,250,252,.78);--i-glass-bd:rgba(0,0,0,.08);--i-pop:rgba(250,250,252,.94);
+  /* Mac tokens (app.css) */
+  --win:#ffffff;--win2:#f4f4f7;--side:#f4f4f7;--code:#f6f7fa;
+  --l1:rgba(0,0,0,.86);--l2:rgba(0,0,0,.54);--l3:rgba(0,0,0,.32);--l4:rgba(0,0,0,.14);
+  --sep:rgba(0,0,0,.075);--fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.075);--fill3:rgba(0,0,0,.12);
+  --accent:#3d5bff;--accent-t:#2c4ae8;--accent-bg:rgba(61,91,255,.10);
+  --pill:#ffffff;--pill-bd:rgba(0,0,0,.11);
+  --glass:rgba(255,255,255,.78);--glass-sh:0 0 0 .5px rgba(0,0,0,.10),0 4px 16px rgba(0,0,0,.10);
+  --shadow-win:0 0 0 .5px rgba(0,0,0,.20),0 24px 70px rgba(10,20,50,.28),0 8px 22px rgba(10,20,50,.12);
+  --lb-scrim:rgba(12,14,20,.58);
+  --warn:#d97706;--warn-bg:rgba(217,119,6,.11);--ok:#16934e;
+}
+[data-theme=dark]{
+  --page:#0e1015;--page-fg:#ececf1;--page-fg2:#9a9ca8;--page-card:#181920;--page-bd:rgba(255,255,255,.08);
+  --i-bg:#000000;--i-l1:#f5f5f7;--i-l2:rgba(235,235,245,.6);--i-l3:rgba(235,235,245,.32);--i-sep:rgba(255,255,255,.11);
+  --i-fill:rgba(118,118,128,.20);--i-fill2:rgba(118,118,128,.30);--i-me:#4a66ff;--i-tint:#758dff;
+  --i-glass:rgba(38,38,42,.76);--i-glass-bd:rgba(255,255,255,.12);--i-pop:rgba(42,42,46,.95);
+  --win:#1e1e21;--win2:#29292d;--side:#25252a;--code:#18181b;
+  --l1:rgba(255,255,255,.90);--l2:rgba(255,255,255,.56);--l3:rgba(255,255,255,.32);--l4:rgba(255,255,255,.14);
+  --sep:rgba(255,255,255,.09);--fill:rgba(255,255,255,.05);--fill2:rgba(255,255,255,.085);--fill3:rgba(255,255,255,.14);
+  --accent:#4a66ff;--accent-t:#94a8ff;--accent-bg:rgba(91,121,255,.18);
+  --pill:#29292e;--pill-bd:rgba(255,255,255,.12);
+  --glass:rgba(52,52,58,.78);--glass-sh:0 0 0 .5px rgba(255,255,255,.12),0 4px 16px rgba(0,0,0,.42);
+  --shadow-win:0 0 0 .5px rgba(255,255,255,.14),0 24px 70px rgba(0,0,0,.62),0 8px 22px rgba(0,0,0,.35);
+  --lb-scrim:rgba(6,7,10,.66);
+  --warn:#f5a623;--warn-bg:rgba(245,166,35,.14);--ok:#3fcf86;
+}
+[data-theme=black]{
+  --page:#050507;--page-fg:#f5f5f7;--page-fg2:#87888f;--page-card:#111115;--page-bd:rgba(255,255,255,.07);
+  --i-bg:#000000;--i-l1:#f5f5f7;--i-l2:#a1a2ab;--i-l3:#686972;--i-sep:rgba(255,255,255,.08);
+  --i-fill:rgba(255,255,255,.07);--i-fill2:rgba(255,255,255,.12);--i-me:#2f71e3;--i-tint:#8ab4f8;
+  --i-glass:rgba(22,22,26,.84);--i-glass-bd:rgba(255,255,255,.10);--i-pop:rgba(26,26,30,.96);
+  --win:#070709;--win2:#131317;--side:#111114;--code:#0d0d11;
+  --l1:#f5f5f7;--l2:#bcbdc6;--l3:#87888f;--l4:rgba(255,255,255,.16);
+  --sep:rgba(255,255,255,.07);--fill:rgba(255,255,255,.045);--fill2:rgba(255,255,255,.08);--fill3:rgba(255,255,255,.13);
+  --accent:#2f71e3;--accent-t:#8ab4f8;--accent-bg:rgba(47,113,227,.16);
+  --pill:#15151a;--pill-bd:rgba(255,255,255,.09);
+  --glass:rgba(22,22,27,.88);--glass-sh:0 0 0 .5px rgba(255,255,255,.10),0 10px 30px rgba(0,0,0,.5);
+  --shadow-win:0 0 0 .5px rgba(255,255,255,.11),0 24px 70px rgba(0,0,0,.75);
+  --lb-scrim:rgba(0,0,0,.74);
+  --warn:#f3c949;--warn-bg:rgba(243,201,73,.13);--ok:#7aae66;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:13.5px/1.5 var(--font-mac);min-height:100vh;padding-bottom:108px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+svg{display:block;flex:none}
+code{font-family:var(--mono)}
+.hide{display:none!important}
+
+/* Header & Layout */
+.top{max-width:1620px;margin:0 auto;padding:18px 24px 4px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.top h1{font-size:18.5px;margin:0;font-weight:650;letter-spacing:-.01em}
+.top span{color:var(--page-fg2);font-size:13px}
+.wrap{max-width:1620px;margin:0 auto;padding:12px 24px;display:flex;gap:24px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
+#stage{display:flex;gap:24px;align-items:flex-start;justify-content:center;flex-wrap:wrap;min-width:0;max-width:100%}
+
+/* Side Spec Notes */
+.notes{width:356px;max-width:100%;flex:none;background:var(--page-card);border:1px solid var(--page-bd);border-radius:14px;padding:15px 17px;font-size:12.8px;line-height:1.62}
+.notes h3{margin:0 0 6px;font-size:14px;font-weight:650}
+.notes p{margin:0;color:var(--page-fg2)}
+.notes ul{margin:6px 0 0;padding-left:18px}
+.notes li{margin:4px 0}
+.notes li b{color:var(--page-fg);font-weight:600}
+.notes .blk{margin-top:13px;padding-top:11px;border-top:1px solid var(--page-bd)}
+.notes .pill-tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:1px 8px;border-radius:99px;background:var(--accent-bg);color:var(--accent-t);font-weight:600;margin-right:5px}
+.notes .pill-tag.warn{background:var(--warn-bg);color:var(--warn)}
+.notes code{font-size:11.5px;padding:1px 5px;border-radius:4px;background:var(--fill2)}
+
+/* Bottom Switcher Bar */
+.ctl{position:fixed;left:0;right:0;bottom:0;background:var(--page-card);border-top:1px solid var(--page-bd);padding:9px 18px;display:flex;flex-wrap:wrap;gap:7px 18px;align-items:center;justify-content:center;font-size:12px;z-index:200;backdrop-filter:blur(16px)}
+.ctl .g{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.ctl .g b{color:var(--page-fg2);font-weight:500;margin-right:3px}
+.ctl button{padding:4px 10px;border-radius:7px;background:var(--fill2);color:var(--page-fg);transition:background .12s}
+.ctl button:hover{background:var(--fill3)}
+.ctl button.on{background:var(--accent);color:#fff;font-weight:500}
+
+/* Shimmer Skeleton */
+@keyframes shimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.skel{position:relative;overflow:hidden;background:var(--fill2)}
+.skel::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.16),transparent);animation:shimmer 1.35s infinite}
+[data-theme=light] .skel::after{background:linear-gradient(90deg,transparent,rgba(255,255,255,.65),transparent)}
+
+/* ================= MAC WINDOW ================= */
+.mac{width:980px;max-width:100%;height:730px;border-radius:12px;overflow:hidden;box-shadow:var(--shadow-win);display:flex;background:var(--win);color:var(--l1);font:13px/1.45 var(--font-mac);position:relative;user-select:none}
+.mside{width:214px;background:var(--side);border-right:.5px solid var(--sep);padding:44px 8px 10px;flex:none;position:relative;display:flex;flex-direction:column;gap:2px}
+.lights{position:absolute;top:16px;left:16px;display:flex;gap:8px;z-index:90;pointer-events:none}
+.lights i{width:12px;height:12px;border-radius:6px;background:#ff5f57}
+.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.mside .nav-i{display:flex;align-items:center;gap:8px;height:30px;padding:0 9px;border-radius:7px;color:var(--l1);font-size:13.5px}
+.mside .gh{font-size:11.5px;color:var(--l3);padding:12px 10px 4px;display:flex;justify-content:space-between}
+.mside .srow{height:30px;padding:0 9px;border-radius:7px;display:flex;align-items:center;gap:8px;color:var(--l2);font-size:13px;white-space:nowrap;overflow:hidden;cursor:pointer}
+.mside .srow:hover{background:var(--fill)}
+.mside .srow.sel{background:var(--fill2);color:var(--l1);font-weight:500}
+.mside .srow .dot{width:7px;height:7px;border-radius:50%;background:var(--l4);flex:none}
+.mside .srow.sel .dot{background:var(--ok)}
+.mside .srow span{overflow:hidden;text-overflow:ellipsis}
+
+.mmain{flex:1;display:flex;flex-direction:column;min-width:0;position:relative;background:var(--win)}
+.ctool{height:44px;border-bottom:.5px solid var(--sep);display:flex;align-items:center;padding:0 12px 0 18px;gap:10px;flex:none}
+.ctitle{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
+.ctitle h2{margin:0;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.th-where{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--l2);white-space:nowrap}
+.th-where.off{color:var(--warn)}
+.tb-btn{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--l2)}
+.tb-btn:hover{background:var(--fill2);color:var(--l1)}
+
+.mOfflineBar{display:flex;align-items:center;justify-content:center;gap:7px;height:30px;font-size:12px;color:var(--warn);background:var(--warn-bg);border-bottom:.5px solid var(--sep);flex:none}
+
+.mscroll{flex:1;overflow-y:auto;padding:18px 28px 104px}
+.mcol{max-width:710px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.tdiv{align-self:center;font-size:11.5px;color:var(--l3);margin:2px 0}
+.um{align-self:flex-end;max-width:80%;background:var(--accent);color:#fff;padding:9px 14px;border-radius:12px;font-size:14.5px;line-height:1.55;user-select:text}
+.tstep{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--l2);padding:2px 0}
+.tstep code{font-size:12px;color:var(--l2);background:var(--fill);padding:1px 5px;border-radius:4px}
+
+/* Markdown reply on Mac */
+.am{font-size:14.5px;line-height:1.64;color:var(--l1);user-select:text}
+.am p{margin:0}
+.am p+p,.am p+ul,.am ul+p,.am .img-wrap+p,.am p+.img-wrap,.am ul+.img-wrap{margin-top:10px}
+.am ul{margin:0;padding-left:20px}
+.am li+li{margin-top:4px}
+.am code.inline{font-size:.89em;padding:1px 5px;border-radius:4px;background:var(--fill);font-family:var(--mono)}
+
+/* FileTag (.fref) */
+.fref{display:inline-flex;align-items:center;gap:4px;padding:1px 6px;border-radius:5px;background:var(--fill);box-shadow:inset 0 0 0 .5px var(--sep);color:var(--accent-t);font-size:.93em;cursor:pointer;vertical-align:baseline;user-select:none;transition:background .12s}
+.fref:hover{background:var(--fill2)}
+.fref svg{width:13px;height:13px;color:var(--l2)}
+.fref.mono{font-family:var(--mono);font-size:.88em}
+.fref.gone{color:var(--l3);cursor:not-allowed}
+.fref.gone svg{color:var(--l3)}
+.fref.gone:hover{background:var(--fill)}
+
+/* Inline Image Cards (Mac) — quiet, zero button clutter */
+.img-wrap{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;user-select:none}
+.md-shot{position:relative;border-radius:10px;overflow:hidden;background:var(--fill);box-shadow:0 0 0 .5px var(--sep),0 4px 16px rgba(0,0,0,.06);cursor:zoom-in;transition:transform .16s cubic-bezier(.2,0,0,1),box-shadow .16s;display:flex;flex-direction:column}
+.md-shot:hover{transform:translateY(-1px);box-shadow:0 0 0 .5px var(--l4),0 8px 24px rgba(0,0,0,.11)}
+.md-shot .pic{display:block;width:176px;height:382px;position:relative}
+.md-shot.pair .pic{width:152px;height:330px}
+.md-shot .pic svg{width:100%;height:100%;display:block}
+.md-shot .cap-bar{padding:5px 9px;font-size:11.5px;color:var(--l2);background:var(--win2);border-top:.5px solid var(--sep);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.md-shot .cap-bar span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.md-shot .cap-bar small{color:var(--l3);font-variant-numeric:tabular-nums;flex:none}
+
+/* Offline Uncached Card */
+.img-off{display:inline-flex;align-items:center;gap:12px;padding:12px 15px;border-radius:10px;background:var(--fill);box-shadow:inset 0 0 0 .5px var(--sep);color:var(--l2);font-size:13px;max-width:430px;user-select:none}
+.img-off .ic-box{width:36px;height:36px;border-radius:8px;background:var(--warn-bg);color:var(--warn);display:flex;align-items:center;justify-content:center;flex:none}
+.img-off b{display:block;color:var(--l1);font-weight:550;font-size:13px}
+.img-off span{display:block;font-size:12px;color:var(--l2);margin-top:1px}
+.img-off button{margin-left:auto;padding:4px 10px;border-radius:99px;background:var(--pill);box-shadow:0 0 0 .5px var(--pill-bd);color:var(--l1);font-size:12px;white-space:nowrap}
+
+/* Mac Composer */
+.mcmp-zone{position:absolute;left:0;right:0;bottom:0;padding:22px 28px 16px;background:linear-gradient(transparent,var(--win) 26px);pointer-events:none}
+.mcmp{pointer-events:auto;max-width:710px;margin:0 auto;background:var(--pill);border-radius:16px;box-shadow:0 0 0 .5px var(--pill-bd),0 4px 14px rgba(0,0,0,.07);padding:8px 10px;display:flex;align-items:center;gap:8px;color:var(--l3);font-size:14px}
+.mcmp .plus{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--l2)}
+.mcmp .send{margin-left:auto;width:28px;height:28px;border-radius:50%;background:var(--fill2);display:flex;align-items:center;justify-content:center;color:var(--l3)}
+
+/* ================= MAC BLURRED LIGHTBOX (Full Window, Centered Wide Header, ⋯ + ✕ only) ================= */
+.mlb{position:absolute;inset:0;z-index:85;background:var(--lb-scrim);backdrop-filter:blur(22px) saturate(1.28);-webkit-backdrop-filter:blur(22px) saturate(1.28);display:flex;flex-direction:column;animation:fadeIn .16s ease-out;user-select:none}
+@keyframes fadeIn{from{opacity:0}}
+@keyframes lbZoomIn{from{transform:scale(.95);opacity:.6}to{transform:scale(1);opacity:1}}
+.mlb-top{height:56px;padding:0 16px;display:grid;grid-template-columns:96px minmax(0,1fr) 96px;align-items:center;flex:none;z-index:3;background:linear-gradient(rgba(0,0,0,.28),transparent)}
+.mlb-head{max-width:620px;width:100%;margin:0 auto;text-align:center;min-width:0;display:flex;flex-direction:column;align-items:center;gap:1px}
+.mlb-head b{display:block;max-width:100%;font-size:13.5px;font-weight:550;color:rgba(255,255,255,.95);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.005em}
+.mlb-head span{display:block;max-width:100%;font-size:11.5px;color:rgba(255,255,255,.60);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mlb-acts{display:flex;justify-content:flex-end;gap:6px;position:relative}
+.mlb-ic{width:32px;height:32px;border-radius:50%;background:rgba(32,32,38,.58);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 .5px rgba(255,255,255,.15);transition:background .12s}
+.mlb-ic:hover,.mlb-ic.on{background:rgba(56,56,66,.82)}
+.mlb-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;padding:4px 60px 22px}
+.mlb-art{height:100%;aspect-ratio:1206/2622;max-height:644px;border-radius:16px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.55),0 0 0 .5px rgba(255,255,255,.18);animation:lbZoomIn .2s cubic-bezier(.2,0,0,1);transform-origin:center center;cursor:zoom-in;transition:transform .18s cubic-bezier(.2,0,0,1)}
+.mlb-art.dragging{transition:none;cursor:grabbing!important}
+.mlb-art.zoomed{cursor:grab}
+.mlb-art svg{width:100%;height:100%;display:block}
+.mlb-nav{position:absolute;top:50%;margin-top:-19px;width:38px;height:38px;border-radius:50%;background:rgba(32,32,38,.58);backdrop-filter:blur(20px);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 .5px rgba(255,255,255,.15)}
+.mlb-nav:hover{background:rgba(56,56,66,.84)}
+.mlb-nav.prev{left:16px}.mlb-nav.next{right:16px}
+
+/* Anchored ⋯ Popover inside Lightbox */
+.lb-pop{position:absolute;top:40px;right:0;min-width:168px;padding:4px;border-radius:10px;background:rgba(34,34,40,.92);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);box-shadow:0 14px 40px rgba(0,0,0,.45),0 0 0 .5px rgba(255,255,255,.15);animation:lbZoomIn .12s ease-out;z-index:10}
+.lb-pop button{width:100%;display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:6px;font-size:13px;color:rgba(255,255,255,.92);text-align:left}
+.lb-pop button:hover{background:var(--accent);color:#fff}
+.lb-pop .sep{height:.5px;background:rgba(255,255,255,.12);margin:4px 6px}
+
+/* ================= IPHONE 17 PRO ================= */
+.phone{width:402px;height:856px;border-radius:56px;padding:11px;background:#18181b;box-shadow:0 28px 75px rgba(10,20,50,.32),inset 0 0 0 1.5px #38383d;flex:none;user-select:none}
+.scr{position:relative;width:100%;height:100%;border-radius:46px;overflow:hidden;background:var(--i-bg);color:var(--i-l1);font:16px/1.38 var(--font-ios);letter-spacing:-.15px}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:120px;height:34px;border-radius:20px;background:#000;z-index:92}
+.sb{position:absolute;top:0;left:0;right:0;height:50px;display:flex;justify-content:space-between;align-items:center;padding:6px 30px 0 38px;font-size:15.5px;font-weight:600;z-index:91;pointer-events:none;transition:color .15s}
+.scr.lb-open .sb{color:#fff}
+.home{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:136px;height:5px;border-radius:3px;background:var(--i-l1);opacity:.82;z-index:95;pointer-events:none}
+.scr.lb-open .home{background:#fff}
+
+/* iPhone Top Floating Glass Nav */
+.inav{position:absolute;top:52px;left:0;right:0;height:48px;display:flex;align-items:center;justify-content:center;z-index:20;background:linear-gradient(var(--i-bg) 58%,transparent);pointer-events:none}
+.inav>*{pointer-events:auto}
+.iglass{background:var(--i-glass);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);box-shadow:0 0 0 .5px var(--i-glass-bd),0 4px 16px rgba(0,0,0,.08)}
+.igb{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--i-l1)}
+.inav .back{position:absolute;left:14px}
+.inav .more{position:absolute;right:14px}
+.itcap{height:42px;max-width:248px;border-radius:21px;padding:0 16px;display:flex;flex-direction:column;justify-content:center;text-align:center;line-height:1.18}
+.itcap b{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.itcap small{font-size:11px;color:var(--i-l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.itcap small.off{color:var(--warn)}
+
+.iscroll{position:absolute;inset:0;overflow-y:auto;scrollbar-width:none;padding:108px 18px 104px;display:flex;flex-direction:column;gap:12px}
+.iscroll::-webkit-scrollbar{display:none}
+.itl{align-self:center;font-size:12px;color:var(--i-l3)}
+.ium{align-self:flex-end;max-width:82%;background:var(--i-me);color:#fff;border-radius:18px;padding:9px 14px;font-size:16px;line-height:1.38}
+.itstep{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--i-l2)}
+.itstep code{font-size:12.5px;background:var(--i-fill);padding:1px 5px;border-radius:4px}
+
+.iam{font-size:16px;line-height:1.48;color:var(--i-l1)}
+.iam p{margin:0}
+.iam p+p,.iam p+ul,.iam ul+p,.iam .i-imgs+p,.iam p+.i-imgs,.iam ul+.i-imgs{margin-top:9px}
+.iam ul{margin:0;padding-left:20px}
+.iam li+li{margin-top:4px}
+.iam code.inline{font-size:13.5px;padding:1px 5px;border-radius:4px;background:var(--i-fill);font-family:var(--mono)}
+.ifref{display:inline-flex;align-items:center;padding:1px 6px;border-radius:5px;background:var(--i-fill);color:var(--i-tint);font-size:15px;cursor:pointer}
+.ifref.gone{color:var(--i-l3);cursor:default}
+
+/* Inline Image Cards on iPhone */
+.i-imgs{display:flex;gap:8px;align-items:flex-start}
+.i-shot{position:relative;border-radius:14px;overflow:hidden;background:var(--i-fill);box-shadow:0 0 0 .5px var(--i-sep),0 4px 14px rgba(0,0,0,.07);cursor:pointer;transition:transform .12s}
+.i-shot:active{transform:scale(.98)}
+.i-shot .pic{width:124px;height:268px}
+.i-shot.pair{flex:1;max-width:168px}
+.i-shot.pair .pic{width:100%;aspect-ratio:1206/2622;height:auto;max-height:244px}
+.i-shot .pic svg{width:100%;height:100%;display:block}
+.i-shot .ibadge{position:absolute;left:7px;bottom:7px;padding:2px 7px;border-radius:99px;background:rgba(18,18,22,.64);backdrop-filter:blur(12px);color:#fff;font-size:11px;font-weight:500}
+
+.i-off{display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:14px;background:var(--i-fill);box-shadow:inset 0 0 0 .5px var(--i-sep)}
+.i-off .ic-box{width:32px;height:32px;border-radius:8px;background:var(--warn-bg);color:var(--warn);display:flex;align-items:center;justify-content:center;flex:none}
+.i-off b{display:block;font-size:13.5px;font-weight:600}
+.i-off span{display:block;font-size:12px;color:var(--i-l2)}
+.i-off button{margin-left:auto;padding:4px 9px;border-radius:99px;background:var(--i-tint);color:#fff;font-size:12px;font-weight:500;flex:none}
+
+/* iPhone Bottom Composer */
+.idock{position:absolute;left:12px;right:12px;bottom:24px;z-index:20}
+.ibox{height:46px;border-radius:23px;padding:0 6px 0 10px;display:flex;align-items:center;gap:8px}
+.ibox .cplus{width:32px;height:32px;border-radius:50%;background:var(--i-fill);display:flex;align-items:center;justify-content:center;color:var(--i-l1)}
+.ibox .ph{flex:1;color:var(--i-l3);font-size:15.5px}
+.ibox .csend{width:32px;height:32px;border-radius:50%;background:var(--i-fill);display:flex;align-items:center;justify-content:center;color:var(--i-l3)}
+
+/* ================= IPHONE FULL-SCREEN BLURRED LIGHTBOX (✕ · Wide Centered Title · ⋯) ================= */
+.ilb{position:absolute;inset:0;z-index:85;display:flex;flex-direction:column;padding:54px 14px 26px;background:rgba(10,11,16,var(--ilb-a,.68));backdrop-filter:blur(var(--ilb-b,24px)) saturate(1.3);-webkit-backdrop-filter:blur(var(--ilb-b,24px)) saturate(1.3);animation:fadeIn .18s ease-out;touch-action:none}
+.ilb-top{display:grid;grid-template-columns:38px minmax(0,1fr) 38px;align-items:center;gap:8px;z-index:4;transition:opacity .15s;position:relative}
+.ilb-head{text-align:center;min-width:0;display:flex;flex-direction:column;align-items:center;gap:1px}
+.ilb-head b{display:block;max-width:100%;font-size:13.5px;font-weight:600;color:rgba(255,255,255,.96);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ilb-head span{display:block;max-width:100%;font-size:11.5px;color:rgba(255,255,255,.62);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ilb-ic{width:38px;height:38px;border-radius:50%;background:rgba(38,38,44,.64);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 .5px rgba(255,255,255,.15)}
+.ilb-ic:active,.ilb-ic.on{background:rgba(62,62,72,.88)}
+.ilb-mid{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative;padding:12px 0 4px}
+.ilb-art{height:100%;max-height:690px;aspect-ratio:1206/2622;border-radius:22px;overflow:hidden;box-shadow:0 20px 55px rgba(0,0,0,.55),0 0 0 .5px rgba(255,255,255,.2);animation:lbZoomIn .22s cubic-bezier(.2,0,0,1);transition:transform .2s cubic-bezier(.2,0,0,1);cursor:grab}
+.ilb-art.dragging{transition:none}
+.ilb-art svg{width:100%;height:100%;display:block}
+.ilb-step{position:absolute;top:50%;margin-top:-17px;width:34px;height:34px;border-radius:50%;background:rgba(38,38,44,.60);backdrop-filter:blur(16px);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 .5px rgba(255,255,255,.14)}
+.ilb-step.prev{left:2px}.ilb-step.next{right:2px}
+.ilb-pop{position:absolute;top:44px;right:0;width:196px;border-radius:14px;background:rgba(38,38,44,.94);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);box-shadow:0 14px 42px rgba(0,0,0,.48),0 0 0 .5px rgba(255,255,255,.14);overflow:hidden;animation:lbZoomIn .14s cubic-bezier(.2,0,0,1);z-index:10}
+.ilb-pop button{width:100%;display:flex;align-items:center;justify-content:space-between;padding:11px 15px;font-size:15.5px;color:#fff;text-align:left}
+.ilb-pop button+button{border-top:.5px solid rgba(255,255,255,.11)}
+.ilb-pop button:active{background:rgba(255,255,255,.14)}
+
+/* Context Menu & Toast */
+.ctx-mask{position:fixed;inset:0;z-index:160}
+.ctx-menu{position:fixed;z-index:161;min-width:168px;padding:4px;border-radius:10px;background:var(--page-card);border:.5px solid var(--page-bd);box-shadow:0 12px 38px rgba(0,0,0,.25);animation:lbZoomIn .12s ease-out;font-size:13px}
+.ctx-menu button{width:100%;display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:6px;text-align:left;color:var(--page-fg)}
+.ctx-menu button:hover{background:var(--accent);color:#fff}
+.ctx-menu .sep{height:.5px;background:var(--page-bd);margin:4px 6px}
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:250;padding:8px 16px;border-radius:99px;background:rgba(24,25,32,.92);color:#fff;font-size:13px;box-shadow:0 8px 26px rgba(0,0,0,.28);animation:fadeIn .15s;pointer-events:none}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <h1>会话内容区图片渲染与虚化灯箱 · 交互原型（精简顶栏版）</h1>
+  <span>展开后仅保留居中标题信息与「⋯ / ✕」按钮，去除多余提示与桌面拷贝按钮；双击/滚轮缩放、拖拽、下拉关闭均静默生效</span>
+</div>
+
+<div class="wrap">
+  <div id="stage"></div>
+  <aside class="notes" id="notes"></aside>
+</div>
+
+<div class="ctl" id="ctl"></div>
+<div id="overlay"></div>
+<div id="toastBox"></div>
+
+<script>
+const IC = {
+  doc: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M4 2h5.5L13 5.5V13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M9.5 2v3.5H13"/></svg>',
+  img: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35"><rect x="2" y="2.5" width="12" height="11" rx="2"/><circle cx="5.6" cy="6" r="1.1"/><path d="m3 12 3.5-3.5 2.4 2.4 2.1-2.1L13 11"/></svg>',
+  laptop: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="3" width="11" height="7.5" rx="1.2"/><path d="M1 12.5h14"/></svg>',
+  server: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="2.5" width="11" height="4.5" rx="1.2"/><rect x="2.5" y="9" width="11" height="4.5" rx="1.2"/><circle cx="5" cy="4.75" r=".7" fill="currentColor"/><circle cx="5" cy="11.25" r=".7" fill="currentColor"/></svg>',
+  folder: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M2 4.2A1.2 1.2 0 0 1 3.2 3h3l1.4 1.5h5.2A1.2 1.2 0 0 1 14 5.7v6.1a1.2 1.2 0 0 1-1.2 1.2H3.2A1.2 1.2 0 0 1 2 11.8z"/></svg>',
+  info: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M10 2.5v11"/></svg>',
+  chevR: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg>',
+  chevL: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg>',
+  back: '<svg width="11" height="18" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2 2 10l8 8"/></svg>',
+  more: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.25"/><circle cx="8" cy="8" r="1.25"/><circle cx="12.5" cy="8" r="1.25"/></svg>',
+  dl: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5v7.5m0 0-3-3m3 3 3-3M3 13h10"/></svg>',
+  copyPath: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.6"/><path d="M3 10.5V3.8A1.3 1.3 0 0 1 4.3 2.5H11"/></svg>',
+  share: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10V2.5m0 0L5.2 5.3M8 2.5l2.8 2.8M3.5 9.5v3a1.2 1.2 0 0 0 1.2 1.2h6.6a1.2 1.2 0 0 0 1.2-1.2v-3"/></svg>',
+  zoom: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3M7 5.2v3.6M5.2 7h3.6"/></svg>',
+  x: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+  wifiOff: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"><path d="M2 2l12 12M1.8 6a10 10 0 0 1 3.2-1.8m3.4-.5c2.2.1 4.2.9 5.8 2.3M4.2 8.8a6.5 6.5 0 0 1 2.3-1.1m3.2.2c.8.3 1.5.7 2.1 1.3M6.8 11.5a2 2 0 0 1 2.4 0"/><circle cx="8" cy="13.5" r=".7" fill="currentColor"/></svg>',
+  plus: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>',
+  up: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5v-9M4.2 7.2 8 3.5l3.8 3.7"/></svg>'
+};
+
+function simShotSVG(variant) {
+  const tofu = variant === "tofu";
+  const tOverview = tofu ? "□□" : "总览";
+  const tEnv = tofu ? "□□" : "环境";
+  const tSes = tofu ? "□□□□" : "最近会话";
+  const tS1 = tofu ? "□□ iPhone □□□□□□" : "核查 iPhone 远控画布拖拽";
+  const tS2 = tofu ? "□□ MacBook □□□□□□" : "接续 MacBook 连接与画面排查";
+  const tS3 = tofu ? "Fix #1158 iOS □□□□□□" : "Fix #1158 iOS 站点资源列表遮挡";
+  const tNew = tofu ? "□□□□…" : "新会话…";
+  const badgeColor = tofu ? "#f59e0b" : "#16a34a";
+  const badgeText = tofu ? "iOS 26.0 · □□ Fallback" : "iOS 26.0 · PingFang SC";
+  return `<svg viewBox="0 0 390 848" xmlns="http://www.w3.org/2000/svg">
+    <rect width="390" height="848" fill="#f5f6fa"/>
+    <rect x="133" y="12" width="124" height="35" rx="17.5" fill="#0b0b0e"/>
+    <text x="42" y="34" font-family="-apple-system,sans-serif" font-size="15" font-weight="700" fill="#111">11:42</text>
+    <rect x="326" y="23" width="24" height="12" rx="3.5" stroke="#111" stroke-width="1.4" fill="none"/>
+    <rect x="328.5" y="25.5" width="17" height="7" rx="1.8" fill="#111"/>
+    <circle cx="34" cy="76" r="19" fill="#ffffff" stroke="#e3e5ec"/>
+    <path d="M27 72h14M27 76h14M27 80h14" stroke="#222" stroke-width="1.6" stroke-linecap="round"/>
+    <rect x="112" y="57" width="166" height="38" rx="19" fill="#ffffff" stroke="#e3e5ec"/>
+    <circle cx="132" cy="76" r="5" fill="#16a34a"/>
+    <text x="145" y="81" font-family="-apple-system,monospace" font-size="14" font-weight="600" fill="#111">Hermesh · ${tOverview}</text>
+    <circle cx="356" cy="76" r="19" fill="#3d5bff"/>
+    <path d="M356 70v12M350 76h12" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+    <rect x="18" y="114" width="354" height="92" rx="18" fill="#ffffff" stroke="#e4e6ee"/>
+    <circle cx="52" cy="160" r="21" fill="#eef1ff"/>
+    <circle cx="52" cy="160" r="11" fill="#3d5bff"/>
+    <text x="84" y="149" font-family="-apple-system,sans-serif" font-size="16" font-weight="700" fill="#111">Her</text>
+    <rect x="120" y="136" width="106" height="18" rx="9" fill="#eef2ff"/>
+    <text x="128" y="149" font-family="ui-monospace,monospace" font-size="10.5" font-weight="600" fill="#3d5bff">bot → Gemini · demo</text>
+    <text x="84" y="172" font-family="-apple-system,monospace" font-size="13" fill="#5b5e6b">${tofu ? "3 □□□□ · □□□□□□" : "3 台机器在线 · 随时待命"}</text>
+    <rect x="84" y="182" width="142" height="15" rx="7.5" fill="${badgeColor}" fill-opacity=".14"/>
+    <text x="92" y="193" font-family="ui-monospace,monospace" font-size="9.5" font-weight="600" fill="${badgeColor}">${badgeText}</text>
+    <text x="24" y="234" font-family="-apple-system,monospace" font-size="12.5" font-weight="600" fill="#7a7e8c">${tEnv} (3)</text>
+    <rect x="18" y="244" width="354" height="138" rx="16" fill="#ffffff" stroke="#e4e6ee"/>
+    <circle cx="38" cy="270" r="4.5" fill="#16a34a"/>
+    <text x="52" y="274" font-family="ui-monospace,monospace" font-size="14" font-weight="600" fill="#111">owner-mac</text>
+    <text x="292" y="274" font-family="-apple-system,monospace" font-size="12" fill="#7a7e8c">${tofu ? "□□ Mac" : "这台 Mac"}</text>
+    <line x1="52" y1="290" x2="372" y2="290" stroke="#eceef4"/>
+    <circle cx="38" cy="313" r="4.5" fill="#16a34a"/>
+    <text x="52" y="317" font-family="ui-monospace,monospace" font-size="14" font-weight="600" fill="#111">work-mac</text>
+    <text x="304" y="317" font-family="ui-monospace,monospace" font-size="12" fill="#16a34a">QUIC · 4ms</text>
+    <line x1="52" y1="335" x2="372" y2="335" stroke="#eceef4"/>
+    <circle cx="38" cy="358" r="4.5" fill="#9ca3af"/>
+    <text x="52" y="362" font-family="ui-monospace,monospace" font-size="14" font-weight="500" fill="#555">old-mac</text>
+    <text x="318" y="362" font-family="-apple-system,monospace" font-size="12" fill="#9ca3af">${tofu ? "□□" : "离线"}</text>
+    <text x="24" y="412" font-family="-apple-system,monospace" font-size="12.5" font-weight="600" fill="#7a7e8c">${tSes}</text>
+    <rect x="18" y="422" width="354" height="236" rx="16" fill="#ffffff" stroke="#e4e6ee"/>
+    <rect x="32" y="440" width="22" height="22" rx="6" fill="#3d5bff"/>
+    <text x="38.5" y="455" font-family="sans-serif" font-size="11" font-weight="700" fill="#fff">A</text>
+    <text x="64" y="452" font-family="-apple-system,monospace" font-size="13.5" font-weight="600" fill="#111">${tS1}</text>
+    <text x="64" y="470" font-family="ui-monospace,monospace" font-size="11.5" fill="#7a7e8c">hermesh · gemini-4-neon · PR #41</text>
+    <line x1="64" y1="488" x2="372" y2="488" stroke="#eceef4"/>
+    <rect x="32" y="504" width="22" height="22" rx="6" fill="#10a37f"/>
+    <text x="38" y="519" font-family="sans-serif" font-size="11" font-weight="700" fill="#fff">C</text>
+    <text x="64" y="516" font-family="-apple-system,monospace" font-size="13.5" font-weight="600" fill="#111">${tS2}</text>
+    <text x="64" y="534" font-family="ui-monospace,monospace" font-size="11.5" fill="#7a7e8c">hermesh · gpt-6.2-sol · 9/9 CI</text>
+    <line x1="64" y1="552" x2="372" y2="552" stroke="#eceef4"/>
+    <rect x="32" y="568" width="22" height="22" rx="6" fill="#d97706"/>
+    <text x="38" y="583" font-family="sans-serif" font-size="11" font-weight="700" fill="#fff">λ</text>
+    <text x="64" y="580" font-family="-apple-system,monospace" font-size="13.5" font-weight="600" fill="#111">${tS3}</text>
+    <text x="64" y="598" font-family="ui-monospace,monospace" font-size="11.5" fill="#7a7e8c">movieclaw · iPhone 18 Pro</text>
+    <rect x="22" y="766" width="346" height="46" rx="23" fill="#ffffff" stroke="#dfe2ec"/>
+    <text x="44" y="794" font-family="-apple-system,monospace" font-size="14" fill="#9ca3af">${tNew}</text>
+    <circle cx="344" cy="789" r="15" fill="#eef0f6"/>
+    <rect x="128" y="832" width="134" height="5" rx="2.5" fill="#1a1a1e"/>
+  </svg>`;
+}
+
+const SHOTS = {
+  single: [
+    {
+      id: "s1",
+      name: "ios_simulator_screenshot.png",
+      label: "Hermesh iOS 模拟器截图",
+      path: "/Users/yipengfei/.gemini/antigravity-cli/brain/97c3c6b3-1bb2-4381-a89e-c6e9f8ebfa66/ios_simulator_screenshot.png",
+      dim: "1206 × 2622",
+      size: "238 KB",
+      turn: "第 1 轮快照",
+      variant: "tofu"
+    }
+  ],
+  pair: [
+    {
+      id: "p1",
+      name: "simulator_before_font_fallback_tofu.png",
+      label: "修复前 · 方块字 □",
+      path: "/tmp/hermesh-sim-shots/simulator_before_font_fallback_tofu.png",
+      dim: "1206 × 2622",
+      size: "238 KB",
+      turn: "第 2 轮快照",
+      variant: "tofu"
+    },
+    {
+      id: "p2",
+      name: "simulator_after_pingfang_sc_fixed.png",
+      label: "修复后 · 中文正常",
+      path: "/tmp/hermesh-sim-shots/simulator_after_pingfang_sc_fixed.png",
+      dim: "1206 × 2622",
+      size: "244 KB",
+      turn: "第 2 轮快照",
+      variant: "fixed"
+    }
+  ]
+};
+
+const S = {
+  plat: "both",       // 'mac' | 'iphone' | 'both'
+  scene: "single",    // 'single' | 'pair'
+  net: "local",       // 'local' | 'remote' | 'cached' | 'offline'
+  ver: "new",         // 'new' | 'old'
+  theme: "light",     // 'light' | 'dark' | 'black'
+  loading: false,
+  lb: null            // { target: 'mac'|'iphone', idx: number, zoom: number, x: number, y: number, pullY: number, more: boolean }
+};
+
+let loadTimer = null;
+function triggerLoadIfRemote() {
+  clearTimeout(loadTimer);
+  if (S.net === "remote" && S.ver === "new") {
+    S.loading = true;
+    render();
+    loadTimer = setTimeout(() => { S.loading = false; render(); }, 460);
+  } else {
+    S.loading = false;
+  }
+}
+
+function setOpt(k, v) {
+  S[k] = v;
+  if (k === "theme") document.documentElement.dataset.theme = v;
+  if (k === "scene") S.lb = null;
+  if (k === "ver" && v === "old") S.lb = null;
+  if (k === "net") {
+    if (v === "offline") S.lb = null;
+    triggerLoadIfRemote();
+  }
+  render();
+}
+
+function toast(msg) {
+  const box = document.getElementById("toastBox");
+  box.innerHTML = `<div class="toast">${msg}</div>`;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { box.innerHTML = ""; }, 1800);
+}
+
+function curShots() { return SHOTS[S.scene]; }
+function isLocal() { return S.net === "local"; }
+function isOffline() { return S.net === "cached" || S.net === "offline"; }
+function machineLabel() { return isLocal() ? "owner-mac" : "work-mac"; }
+
+function openLB(target, idx) {
+  if (S.ver === "old") {
+    toast("现状：文件在会话目录外（FILE_REF_KIND_OUTSIDE），灰色不可点击");
+    return;
+  }
+  if (S.net === "offline") {
+    toast("work-mac 当前离线，尚未缓存该截图");
+    return;
+  }
+  S.lb = { target, idx, zoom: 1, x: 0, y: 0, pullY: 0, more: false };
+  render();
+}
+
+function closeLB() {
+  S.lb = null;
+  render();
+}
+
+function toggleMoreLB(e) {
+  e.stopPropagation();
+  if (!S.lb) return;
+  S.lb.more = !S.lb.more;
+  render();
+}
+
+function stepLB(delta) {
+  if (!S.lb) return;
+  const list = curShots();
+  S.lb.idx = (S.lb.idx + delta + list.length) % list.length;
+  S.lb.zoom = 1; S.lb.x = 0; S.lb.y = 0; S.lb.more = false;
+  render();
+}
+
+function toggleZoomLB() {
+  if (!S.lb) return;
+  S.lb.more = false;
+  if (S.lb.zoom > 1) { S.lb.zoom = 1; S.lb.x = 0; S.lb.y = 0; }
+  else { S.lb.zoom = 2.4; S.lb.x = 0; S.lb.y = 40; }
+  render();
+}
+
+function openMenu(e, shotIdx, platform) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (S.ver === "old") return;
+  const shot = curShots()[shotIdx];
+  const x = Math.min(window.innerWidth - 190, e.clientX);
+  const y = Math.min(window.innerHeight - 190, e.clientY);
+  const localItem = isLocal() && platform === "mac"
+    ? `<button onclick="closeOverlay();toast('已在访达中定位 ${shot.name}')">${IC.folder}<span>在访达中显示</span></button>`
+    : "";
+  const saveLabel = platform === "iphone" ? "存储到相册" : "存储到“下载”";
+  document.getElementById("overlay").innerHTML = `
+    <div class="ctx-mask" onclick="closeOverlay()"></div>
+    <div class="ctx-menu" style="left:${x}px;top:${y}px">
+      <button onclick="closeOverlay();openLB('${platform}',${shotIdx})">${IC.zoom}<span>打开</span></button>
+      <div class="sep"></div>
+      <button onclick="closeOverlay();toast('已${saveLabel}：${shot.name}')">${IC.dl}<span>${saveLabel}</span></button>
+      ${platform === "iphone" ? `<button onclick="closeOverlay();toast('已调起 iOS 系统分享面板')">${IC.share}<span>分享…</span></button>` : ""}
+      ${localItem}
+      <button onclick="closeOverlay();toast('已拷贝路径：${shot.path.slice(0, 34)}…')">${IC.copyPath}<span>拷贝路径</span></button>
+    </div>
+  `;
+}
+function closeOverlay() { document.getElementById("overlay").innerHTML = ""; }
+
+/* Render inline image block for Mac */
+function renderMacImages() {
+  const shots = curShots();
+  if (S.net === "offline") {
+    return `<div class="img-off">
+      <div class="ic-box">${IC.wifiOff}</div>
+      <div>
+        <b>work-mac 离线 · 截图待取回</b>
+        <span>${shots.map((s) => s.name).join("、")} 将在环境恢复在线后自动加载</span>
+      </div>
+      <button onclick="setOpt('net','remote')">模拟上线</button>
+    </div>`;
+  }
+  const pair = shots.length > 1;
+  return `<div class="img-wrap">${shots.map((s, i) => `
+    <div class="md-shot ${pair ? "pair" : ""}" onclick="openLB('mac',${i})" oncontextmenu="openMenu(event,${i},'mac')" title="${s.name} · ${s.dim}">
+      <div class="pic ${S.loading ? "skel" : ""}">${S.loading ? "" : simShotSVG(s.variant)}</div>
+      <div class="cap-bar">
+        <span>${s.label}</span>
+        <small>${S.net === "cached" ? "本地缓存 · " : ""}${s.size}</small>
+      </div>
+    </div>
+  `).join("")}</div>`;
+}
+
+/* Render inline image block for iPhone */
+function renderIPhoneImages() {
+  const shots = curShots();
+  if (S.net === "offline") {
+    return `<div class="i-off">
+      <div class="ic-box">${IC.wifiOff}</div>
+      <div>
+        <b>work-mac 离线</b>
+        <span>连上后自动显示 ${shots.length} 张截图</span>
+      </div>
+      <button onclick="setOpt('net','remote')">重连</button>
+    </div>`;
+  }
+  const pair = shots.length > 1;
+  return `<div class="i-imgs">${shots.map((s, i) => `
+    <div class="i-shot ${pair ? "pair" : ""}" onclick="openLB('iphone',${i})" oncontextmenu="openMenu(event,${i},'iphone')">
+      <div class="pic ${S.loading ? "skel" : ""}">${S.loading ? "" : simShotSVG(s.variant)}</div>
+      ${!S.loading && pair ? `<span class="ibadge">${s.label}</span>` : ""}
+    </div>
+  `).join("")}</div>`;
+}
+
+function renderMac() {
+  const shots = curShots();
+  const single = S.scene === "single";
+  const old = S.ver === "old";
+  const lb = S.lb && S.lb.target === "mac" ? S.lb : null;
+  const lbShot = lb ? shots[lb.idx] : null;
+
+  const replyHTML = single
+    ? (old
+      ? `<p>已在 iOS 模拟器（<code class="inline">Hermesh E2E</code> / iOS 26.0）中构建、安装并启动了最新版的 <code class="inline">Hermesh</code>（<code class="inline">io.hermesh.ios</code>），截图如下：</p>
+         <p>Hermesh iOS 模拟器截图</p>
+         <p>截图文件：<span class="fref gone" onclick="openLB('mac',0)" title="这个文件在会话的文件夹之外，不能在这里打开 · ${shots[0].path}">${IC.doc}<span>ios_simulator_screenshot.png</span></span></p>
+         <p><b>顺带发现一个现象</b>：当前模拟器里中文字符渲染成了方块 <code class="inline">□</code>（英文与图标如 <code class="inline">Her</code>、<code class="inline">owner-mac</code>、<code class="inline">work-mac</code> 正常），与模拟器字体回退有关。应用图标 <span class="fref mono" onclick="toast('行内反引号资源保持紧凑标签，不自动展开刷屏')">${IC.img}<span>mark.png</span></span> 保持标签不刷屏。</p>`
+      : `<p>已在 iOS 模拟器（<code class="inline">Hermesh E2E</code> / iOS 26.0）中构建、安装并启动了最新版的 <code class="inline">Hermesh</code>（<code class="inline">io.hermesh.ios</code>），截图如下：</p>
+         ${renderMacImages()}
+         <p>截图文件：<span class="fref" onclick="openLB('mac',0)" oncontextmenu="openMenu(event,0,'mac')" title="同一路径已在上方内联渲染，此处自动去重保留胶囊 · 点击同样打开灯箱">${IC.img}<span>ios_simulator_screenshot.png</span></span></p>
+         <p><b>顺带发现一个现象</b>：当前模拟器里中文字符渲染成了方块 <code class="inline">□</code>（英文如 <code class="inline">Her</code>、<code class="inline">work-mac</code> 正常）。工程内的反引号路径如 <span class="fref mono" onclick="toast('行内代码中的图片路径保持紧凑胶囊，点击可打开灯箱，避免刷屏')">${IC.img}<span>mark.png</span></span> 仍保持紧凑胶囊，不会自动展开刷屏。</p>`)
+    : (old
+      ? `<p>已定位并修复模拟器字体回退问题，前后对比如下：</p>
+         <ul>
+           <li>修复前：<span class="fref gone" onclick="openLB('mac',0)">${IC.doc}<span>修复前 · 方块字 □</span></span></li>
+           <li>修复后：<span class="fref gone" onclick="openLB('mac',1)">${IC.doc}<span>修复后 · 中文正常</span></span></li>
+         </ul>`
+      : `<p>已定位并修复模拟器字体回退问题（未写 <code class="inline">![]()</code>，仅用普通链接引用 <code class="inline">/tmp</code> 截图，自动在列表下方聚合为并排对比卡片）：</p>
+         <ul>
+           <li>修复前：<span class="fref" onclick="openLB('mac',0)" oncontextmenu="openMenu(event,0,'mac')">${IC.img}<span>修复前 · 方块字 □</span></span></li>
+           <li>修复后：<span class="fref" onclick="openLB('mac',1)" oncontextmenu="openMenu(event,1,'mac')">${IC.img}<span>修复后 · 中文正常</span></span></li>
+         </ul>
+         ${renderMacImages()}`);
+
+  const infoParts = [];
+  if (lb) {
+    if (shots.length > 1) infoParts.push(`${lb.idx + 1} / ${shots.length}`);
+    infoParts.push(lbShot.dim, lbShot.size, S.net === "cached" ? "本机缓存" : lbShot.turn);
+  }
+
+  const lbHTML = lb ? `
+    <div class="mlb" onclick="if(S.lb.more){S.lb.more=false;render();return;}if(event.target.classList.contains('mlb')||event.target.classList.contains('mlb-stage'))closeLB()">
+      <div class="mlb-top">
+        <div></div>
+        <div class="mlb-head" title="${lbShot.path}">
+          <b>${lbShot.name}</b>
+          <span>${infoParts.join(" · ")}</span>
+        </div>
+        <div class="mlb-acts">
+          <button class="mlb-ic ${lb.more ? "on" : ""}" title="更多" aria-label="更多" onclick="toggleMoreLB(event)">${IC.more}</button>
+          <button class="mlb-ic" title="关闭 (Esc)" aria-label="关闭" onclick="closeLB()">${IC.x}</button>
+          ${lb.more ? `<div class="lb-pop" onclick="event.stopPropagation()">
+            <button onclick="S.lb.more=false;render();toast('已存储到“下载”：${lbShot.name}')">${IC.dl}<span>存储到“下载”</span></button>
+            ${isLocal() ? `<button onclick="S.lb.more=false;render();toast('已在访达中定位 ${lbShot.name}')">${IC.folder}<span>在访达中显示</span></button>` : ""}
+            <div class="sep"></div>
+            <button onclick="S.lb.more=false;render();toast('已拷贝路径：${lbShot.path.slice(0, 34)}…')">${IC.copyPath}<span>拷贝路径</span></button>
+          </div>` : ""}
+        </div>
+      </div>
+      <div class="mlb-stage" id="macLbStage">
+        ${shots.length > 1 ? `<button class="mlb-nav prev" onclick="event.stopPropagation();stepLB(-1)" title="上一张 (←)">${IC.chevL}</button>` : ""}
+        <div class="mlb-art ${lb.zoom > 1 ? "zoomed" : ""}" id="macLbArt"
+             style="transform:translate(${lb.x}px,${lb.y}px) scale(${lb.zoom})"
+             ondblclick="toggleZoomLB()">
+          ${simShotSVG(lbShot.variant)}
+        </div>
+        ${shots.length > 1 ? `<button class="mlb-nav next" onclick="event.stopPropagation();stepLB(1)" title="下一张 (→)">${IC.chevR}</button>` : ""}
+      </div>
+    </div>
+  ` : "";
+
+  return `
+  <div class="mac">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <aside class="mside">
+      <div class="nav-i"><span>✦</span><span>Her</span></div>
+      <div class="nav-i"><span>⊞</span><span>总览</span></div>
+      <div class="gh"><span>hermesh</span><span>+</span></div>
+      <div class="srow sel"><i class="dot"></i><span>iOS 模拟器启动截图测试</span></div>
+      <div class="srow"><i class="dot"></i><span>核查 iPhone 远控画布拖拽</span></div>
+      <div class="srow"><i class="dot"></i><span>接续 MacBook 连接与画面排查</span></div>
+    </aside>
+    <section class="mmain">
+      <header class="ctool">
+        <div class="ctitle">
+          <h2>iOS 模拟器启动截图测试</h2>
+          <span class="th-where ${isOffline() ? "off" : ""}">
+            ${isLocal() ? IC.laptop : IC.server}
+            ${machineLabel()} · hermesh${isOffline() ? " · 离线" : (S.net === "remote" ? " · 经中继在线" : "")}
+          </span>
+        </div>
+        <button class="tb-btn" title="项目文件">${IC.folder}</button>
+        <button class="tb-btn" title="信息面板">${IC.info}</button>
+      </header>
+      ${S.net === "cached" ? `<div class="mOfflineBar">${IC.wifiOff}<span>work-mac 离线了 · 正从本机缓存（session_files_kept）秒开历史轮次截图</span></div>` : ""}
+      <div class="mscroll">
+        <div class="mcol">
+          <div class="tdiv">今天 11:40</div>
+          <div class="um">${single ? "截图测试，你模拟器启动 ios 应用截图发给我看看" : "把模拟器的方块字问题修一下，给我发修复前后的对比截图"}</div>
+          <div class="tstep"><span>原地，在分支 <code>main</code> 上工作</span></div>
+          <div class="tstep"><span>读取了 2 个文件，运行了 <code>xcrun simctl io screenshot</code></span>${IC.chevR}</div>
+          <div class="am">${replyHTML}</div>
+        </div>
+      </div>
+      <div class="mcmp-zone">
+        <div class="mcmp">
+          <span class="plus">${IC.plus}</span>
+          <span>继续对话，或输入 / 调用技能…</span>
+          <span class="send">${IC.up}</span>
+        </div>
+      </div>
+    </section>
+    ${lbHTML}
+  </div>`;
+}
+
+function renderIPhone() {
+  const shots = curShots();
+  const single = S.scene === "single";
+  const old = S.ver === "old";
+  const lb = S.lb && S.lb.target === "iphone" ? S.lb : null;
+  const lbShot = lb ? shots[lb.idx] : null;
+
+  const replyHTML = single
+    ? (old
+      ? `<p>已在模拟器启动最新版 <code class="inline">Hermesh</code>，截图如下：</p>
+         <p>Hermesh iOS 模拟器截图</p>
+         <p>截图文件：<span class="ifref gone" onclick="openLB('iphone',0)">ios_simulator_screenshot.png</span></p>
+         <p><b>顺带发现</b>：模拟器中文渲染成了方块 <code class="inline">□</code>，英文正常。</p>`
+      : `<p>已在模拟器启动最新版 <code class="inline">Hermesh</code>，截图如下：</p>
+         ${renderIPhoneImages()}
+         <p>截图文件：<span class="ifref" onclick="openLB('iphone',0)">ios_simulator_screenshot.png</span></p>
+         <p><b>顺带发现</b>：模拟器中文渲染成了方块 <code class="inline">□</code>，英文正常。</p>`)
+    : (old
+      ? `<p>已修复模拟器字体回退，前后对比：</p>
+         <ul>
+           <li>修复前：<span class="ifref gone" onclick="openLB('iphone',0)">修复前 · 方块字 □</span></li>
+           <li>修复后：<span class="ifref gone" onclick="openLB('iphone',1)">修复后 · 中文正常</span></li>
+         </ul>`
+      : `<p>已修复模拟器字体回退，两张对比图自动并排为一屏双列：</p>
+         <ul>
+           <li>修复前：<span class="ifref" onclick="openLB('iphone',0)">修复前 · 方块字 □</span></li>
+           <li>修复后：<span class="ifref" onclick="openLB('iphone',1)">修复后 · 中文正常</span></li>
+         </ul>
+         ${renderIPhoneImages()}`);
+
+  const pullRatio = lb ? Math.min(1, Math.abs(lb.pullY) / 220) : 0;
+  const pullScale = lb && lb.zoom === 1 ? (1 - pullRatio * 0.18) : (lb ? lb.zoom : 1);
+  const bgAlpha = (0.68 * (1 - pullRatio * 0.65)).toFixed(2);
+  const bgBlur = Math.round(24 * (1 - pullRatio * 0.7)) + "px";
+  const chromeOp = (1 - pullRatio * 0.85).toFixed(2);
+
+  const iInfoParts = [];
+  if (lb) {
+    if (shots.length > 1) iInfoParts.push(`${lb.idx + 1} / ${shots.length}`);
+    iInfoParts.push(lbShot.dim, lbShot.size);
+    if (S.net === "cached") iInfoParts.push("离线缓存");
+  }
+
+  const lbHTML = lb ? `
+    <div class="ilb" id="iphoneLb" style="--ilb-a:${bgAlpha};--ilb-b:${bgBlur}"
+         onclick="if(S.lb.more){S.lb.more=false;render();return;}if(event.target.id==='iphoneLb'||event.target.classList.contains('ilb-mid'))closeLB()">
+      <div class="ilb-top" style="opacity:${chromeOp}">
+        <button class="ilb-ic" onclick="closeLB()" aria-label="关闭">${IC.x}</button>
+        <div class="ilb-head">
+          <b>${lbShot.name}</b>
+          <span>${iInfoParts.join(" · ")}</span>
+        </div>
+        <button class="ilb-ic ${lb.more ? "on" : ""}" onclick="toggleMoreLB(event)" aria-label="更多">${IC.more}</button>
+        ${lb.more ? `<div class="ilb-pop" onclick="event.stopPropagation()">
+          <button onclick="S.lb.more=false;render();toast('已存储到 iPhone 相册')"><span>存储到相册</span>${IC.dl}</button>
+          <button onclick="S.lb.more=false;render();toast('已调起 iOS 系统分享面板')"><span>分享…</span>${IC.share}</button>
+          <button onclick="S.lb.more=false;render();toast('已拷贝路径')"><span>拷贝路径</span>${IC.copyPath}</button>
+        </div>` : ""}
+      </div>
+      <div class="ilb-mid">
+        ${shots.length > 1 ? `<button class="ilb-step prev" onclick="event.stopPropagation();stepLB(-1)">${IC.chevL}</button>` : ""}
+        <div class="ilb-art" id="iphoneLbArt"
+             style="transform:translate(${lb.x}px,${lb.y + lb.pullY}px) scale(${pullScale})"
+             ondblclick="toggleZoomLB()">
+          ${simShotSVG(lbShot.variant)}
+        </div>
+        ${shots.length > 1 ? `<button class="ilb-step next" onclick="event.stopPropagation();stepLB(1)">${IC.chevR}</button>` : ""}
+      </div>
+    </div>
+  ` : "";
+
+  return `
+  <div class="phone">
+    <div class="scr ${lb ? "lb-open" : ""}">
+      <div class="island"></div>
+      <div class="sb"><span>9:41</span><span>5G · 98%</span></div>
+      <div class="inav">
+        <button class="igb iglass back" aria-label="返回">${IC.back}</button>
+        <div class="itcap iglass">
+          <b>iOS 模拟器启动截图测试</b>
+          <small class="${isOffline() ? "off" : ""}">${machineLabel()}/hermesh${isOffline() ? " · 离线" : ""}</small>
+        </div>
+        <button class="igb iglass more" aria-label="更多">${IC.more}</button>
+      </div>
+      <div class="iscroll">
+        <div class="itl">今天 11:40</div>
+        <div class="ium">${single ? "截图测试，你模拟器启动 ios 应用截图发给我看看" : "把模拟器的方块字问题修一下，给我发修复前后的对比截图"}</div>
+        <div class="itstep"><span>执行了 <code>xcrun simctl io screenshot</code></span>${IC.chevR}</div>
+        <div class="iam">${replyHTML}</div>
+      </div>
+      <div class="idock">
+        <div class="ibox iglass">
+          <span class="cplus">${IC.plus}</span>
+          <span class="ph">继续聊…</span>
+          <span class="csend">${IC.up}</span>
+        </div>
+      </div>
+      ${lbHTML}
+      <div class="home"></div>
+    </div>
+  </div>`;
+}
+
+function renderNotes() {
+  return `
+    <h3>精简后的灯箱与多机设计</h3>
+    <p>已按反馈去掉所有提示文字、缩放按钮与桌面拷贝操作，统一收敛为<b>宽幅居中标题 + 右侧「⋯ / ✕」</b>。</p>
+    <div class="blk">
+      <span class="pill-tag">1 · 展开灯箱极简顶栏</span>
+      <ul>
+        <li><b>宽幅居中信息区</b>：三栏对称栅格（Mac <code>96px 1fr 96px</code> 避让红绿灯，iPhone <code>38px 1fr 38px</code>），长文件名（可切「双图」看长文件名效果）完整居中展示，副行安静呈现 <code>1/2 · 尺寸 · 大小</code>。</li>
+        <li><b>低频动作全部折叠进 <code>⋯</code></b>：Mac 点 <code>⋯</code> 仅保留「存储到“下载”」「在访达中显示（仅本机）」「拷贝路径」，去掉桌面拷贝图片；iPhone 点 <code>⋯</code> 收纳「存储到相册」「分享…」「拷贝路径」。</li>
+        <li><b>零文字提示干扰</b>：双击/滚轮缩放、拖拽平移、iPhone 下拉关闭均静默自然可用，画面下方不再有任何遮挡条。</li>
+      </ul>
+    </div>
+    <div class="blk">
+      <span class="pill-tag">2 · 识别与防刷屏</span>
+      <ul>
+        <li><b><code>![alt](path)</code></b> 原地出图；同回复重复的 <code>[xxx.png](file://...)</code> 自动去重保留胶囊；纯链接则在段落/列表下方聚合出图；反引号 <code>\`mark.png\`</code> 绝不展开。</li>
+      </ul>
+    </div>
+    <div class="blk">
+      <span class="pill-tag warn">3 · 多机与 iPhone 远程读</span>
+      <ul>
+        <li><b>目录外魔数放行</b>：仅对 <code>Owner / Her</code> 且通过前 16 字节图片魔数校验的文件放行，打通 <code>~/.gemini/</code> 与 <code>/tmp/</code>。</li>
+        <li><b>轮次固化 + 缓存短路</b>：轮次结束固化至 <code>blobs/</code>，并补齐 <code>owner/files.go</code> 中 <code>ReadFile</code> 的本地 <code>session_files_kept</code> 短路，iPhone 远程只拉一次、离线秒开。</li>
+      </ul>
+    </div>
+  `;
+}
+
+function renderControls() {
+  const grp = (label, key, opts) => `<div class="g"><b>${label}</b>${opts.map(([v, t]) =>
+    `<button class="${S[key] === v ? "on" : ""}" onclick="setOpt('${key}','${v}')">${t}</button>`
+  ).join("")}</div>`;
+  return [
+    grp("平台", "plat", [["both", "Mac + iPhone 同屏"], ["mac", "Mac 桌面端"], ["iphone", "iPhone 端"]]),
+    grp("内容场景", "scene", [["single", "真实会话：单图 + 去重"], ["pair", "长文件名 + 修复前/后双图"]]),
+    grp("多机状态", "net", [["local", "本机 (owner-mac)"], ["remote", "远端在线 (中继加载)"], ["cached", "远端离线 · 已缓存"], ["offline", "远端离线 · 未缓存"]]),
+    grp("方案对比", "ver", [["new", "新方案"], ["old", "现状"]]),
+    grp("外观", "theme", [["light", "浅色"], ["dark", "深色"], ["black", "纯黑"]])
+  ].join("");
+}
+
+function bindLightboxInteractions() {
+  const mStage = document.getElementById("macLbStage");
+  const mArt = document.getElementById("macLbArt");
+  if (mStage && mArt) {
+    mStage.onwheel = (e) => {
+      e.preventDefault();
+      if (S.lb.more) { S.lb.more = false; render(); return; }
+      const next = Math.max(1, Math.min(4, S.lb.zoom * (e.deltaY < 0 ? 1.18 : 0.85)));
+      S.lb.zoom = next < 1.08 ? 1 : Number(next.toFixed(2));
+      if (S.lb.zoom === 1) { S.lb.x = 0; S.lb.y = 0; }
+      mArt.style.transform = `translate(${S.lb.x}px,${S.lb.y}px) scale(${S.lb.zoom})`;
+      mArt.classList.toggle("zoomed", S.lb.zoom > 1);
+    };
+    let drag = null;
+    mArt.onpointerdown = (e) => {
+      if (!S.lb || S.lb.zoom <= 1) return;
+      e.preventDefault();
+      mArt.setPointerCapture(e.pointerId);
+      mArt.classList.add("dragging");
+      drag = { sx: e.clientX - S.lb.x, sy: e.clientY - S.lb.y };
+    };
+    mArt.onpointermove = (e) => {
+      if (!drag) return;
+      S.lb.x = e.clientX - drag.sx;
+      S.lb.y = e.clientY - drag.sy;
+      mArt.style.transform = `translate(${S.lb.x}px,${S.lb.y}px) scale(${S.lb.zoom})`;
+    };
+    mArt.onpointerup = () => { drag = null; mArt.classList.remove("dragging"); };
+  }
+
+  const iArt = document.getElementById("iphoneLbArt");
+  if (iArt) {
+    let gesture = null;
+    iArt.onpointerdown = (e) => {
+      if (!S.lb) return;
+      if (S.lb.more) { S.lb.more = false; render(); return; }
+      e.preventDefault();
+      iArt.setPointerCapture(e.pointerId);
+      iArt.classList.add("dragging");
+      gesture = { sx: e.clientX, sy: e.clientY, ox: S.lb.x, oy: S.lb.y };
+    };
+    iArt.onpointermove = (e) => {
+      if (!gesture || !S.lb) return;
+      const dx = e.clientX - gesture.sx;
+      const dy = e.clientY - gesture.sy;
+      if (S.lb.zoom > 1) {
+        S.lb.x = gesture.ox + dx;
+        S.lb.y = gesture.oy + dy;
+        iArt.style.transform = `translate(${S.lb.x}px,${S.lb.y}px) scale(${S.lb.zoom})`;
+      } else {
+        S.lb.pullY = dy;
+        const ratio = Math.min(1, Math.abs(dy) / 220);
+        const sc = 1 - ratio * 0.18;
+        iArt.style.transform = `translate(${dx * 0.35}px,${dy}px) scale(${sc})`;
+        const lbEl = document.getElementById("iphoneLb");
+        if (lbEl) {
+          lbEl.style.setProperty("--ilb-a", (0.68 * (1 - ratio * 0.65)).toFixed(2));
+          lbEl.style.setProperty("--ilb-b", Math.round(24 * (1 - ratio * 0.7)) + "px");
+        }
+      }
+    };
+    iArt.onpointerup = (e) => {
+      if (!gesture || !S.lb) return;
+      const dx = e.clientX - gesture.sx;
+      iArt.classList.remove("dragging");
+      if (S.lb.zoom === 1 && Math.abs(S.lb.pullY) > 95) {
+        gesture = null;
+        closeLB();
+        return;
+      }
+      if (S.lb.zoom === 1 && Math.abs(dx) > 70 && Math.abs(S.lb.pullY) < 50 && curShots().length > 1) {
+        gesture = null;
+        stepLB(dx < 0 ? 1 : -1);
+        return;
+      }
+      S.lb.pullY = 0;
+      gesture = null;
+      render();
+    };
+  }
+}
+
+function render() {
+  const stage = document.getElementById("stage");
+  stage.innerHTML =
+    (S.plat === "mac" || S.plat === "both" ? renderMac() : "") +
+    (S.plat === "iphone" || S.plat === "both" ? renderIPhone() : "");
+  document.getElementById("notes").innerHTML = renderNotes();
+  document.getElementById("ctl").innerHTML = renderControls();
+  bindLightboxInteractions();
+}
+
+window.addEventListener("keydown", (e) => {
+  if (!S.lb) return;
+  if (e.key === "Escape") { e.preventDefault(); if (S.lb.more) { S.lb.more = false; render(); } else closeLB(); }
+  else if (e.key === "ArrowLeft" && curShots().length > 1) { e.preventDefault(); stepLB(-1); }
+  else if (e.key === "ArrowRight" && curShots().length > 1) { e.preventDefault(); stepLB(1); }
+});
+
+render();
+</script>
+</body>
+</html>

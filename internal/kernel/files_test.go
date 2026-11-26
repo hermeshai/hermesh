@@ -1,8 +1,12 @@
 package kernel
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -234,5 +238,157 @@ func TestNaturalCompare(t *testing.T) {
 	slices.SortStableFunc(names, naturalCompare)
 	if want := []string{"A1.txt", "a02.txt", "a2.txt", "a10.txt", "b.txt"}; !slices.Equal(names, want) {
 		t.Fatalf("sorted = %v, want %v", names, want)
+	}
+}
+
+func makeTestPNG(t *testing.T, w, h int, c color.NRGBA) []byte {
+	t.Helper()
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for y := range h {
+		for x := range w {
+			img.SetNRGBA(x, y, c)
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// External screenshots (/tmp, ~/.gemini/.../brain) referenced by an assistant reply are
+// readable by the owner (never by scoped grants), verified by magic bytes, pinned into
+// blobs/ at turn end so later overwrites or /tmp cleanup do not break historical turns,
+// and pruned when the session is deleted.
+func TestExternalTurnImagesPinnedAndMagicVerified(t *testing.T) {
+	ctx := context.Background()
+	eng, _, _ := openTestEngine(t, t.TempDir(), time.Minute)
+	defer eng.Close()
+	repo := initGitProject(t)
+	if err := eng.SyncWorkspace("repo", repo, "main", identityv1.Workspace_WORKSPACE_IN_PLACE, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	extDir := t.TempDir()
+	shotPath := filepath.Join(extDir, "ios_simulator_screenshot.png")
+	fakePNG := filepath.Join(extDir, "secret_key.png")
+	secretTxt := filepath.Join(extDir, "id_rsa")
+	pngV1 := makeTestPNG(t, 12, 24, color.NRGBA{R: 30, G: 140, B: 255, A: 255})
+	pngV2 := makeTestPNG(t, 20, 20, color.NRGBA{R: 240, G: 80, B: 60, A: 255})
+	if err := os.WriteFile(shotPath, pngV1, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fakePNG, []byte("-----BEGIN OPENSSH PRIVATE KEY-----\nnot-an-image\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(secretTxt, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	owner := OwnerPrincipal("dev_owner", "Owner")
+	grant := &Principal{
+		Actor:           &sessionv1.Actor{Kind: sessionv1.ActorKind_ACTOR_KIND_EXTERNAL_AGENT, Id: "agent_x"},
+		AllowedProjects: []string{"repo"},
+		TaskVisibility:  identityv1.TaskVisibility_TASK_VISIBILITY_ALL,
+	}
+
+	started, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ProjectId:      "repo",
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "scripted", Model: "scripted-fast"},
+		InitialPrompt:  "say ![模拟器截图](" + shotPath + ")\n截图文件：[ios_simulator_screenshot.png](file://" + filepath.ToSlash(shotPath) + ")",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid := started.Session.SessionId
+	waitForSessionStatus(t, eng, owner, sid, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+
+	// Turn 2 overwrites the same external screenshot path with different PNG bytes.
+	if err := os.WriteFile(shotPath, pngV2, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.DispatchMessage(ctx, owner, &sessionv1.DispatchMessageRequest{
+		SessionId: sid,
+		Text:      "say 更新后：[新版截图](" + shotPath + ")",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	waitForSessionStatus(t, eng, owner, sid, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+
+	runs := map[uint32]string{}
+	cps, _ := eng.ListCheckpoints(ctx, owner, sid)
+	for _, c := range cps {
+		runs[c.RunOrdinal] = c.RunId
+	}
+	if runs[1] == "" || runs[2] == "" {
+		t.Fatalf("checkpoints = %v", cps)
+	}
+
+	// Owner resolves valid external PNG (raw path and file:// URL), while fake .png and non-image stay OUTSIDE.
+	res, err := eng.ResolveFiles(ctx, owner, &sessionv1.ResolveFilesRequest{
+		SessionId: sid,
+		RunId:     runs[1],
+		Paths:     []string{shotPath, "file://" + filepath.ToSlash(shotPath), fakePNG, secretTxt},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Files[0].Kind != sessionv1.FileRefKind_FILE_REF_KIND_FILE || res.Files[0].Turn != 1 || res.Files[0].Size != uint64(len(pngV1)) {
+		t.Fatalf("resolve shot = %+v", res.Files[0])
+	}
+	if res.Files[1].Kind != sessionv1.FileRefKind_FILE_REF_KIND_FILE || res.Files[1].Path != res.Files[0].Path {
+		t.Fatalf("resolve file:// shot = %+v", res.Files[1])
+	}
+	if res.Files[2].Kind != sessionv1.FileRefKind_FILE_REF_KIND_OUTSIDE || res.Files[3].Kind != sessionv1.FileRefKind_FILE_REF_KIND_OUTSIDE {
+		t.Fatalf("fake/secret must stay OUTSIDE: %+v %+v", res.Files[2], res.Files[3])
+	}
+	for _, bad := range []string{fakePNG, secretTxt} {
+		if _, err := eng.ReadFile(ctx, owner, &sessionv1.ReadFileRequest{SessionId: sid, Path: bad}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Fatalf("ReadFile(%s) = %v, want PermissionDenied", bad, err)
+		}
+	}
+
+	// Scoped external grant cannot resolve or read outside the workspace even for a valid PNG.
+	gRes, err := eng.ResolveFiles(ctx, grant, &sessionv1.ResolveFilesRequest{SessionId: sid, RunId: runs[1], Paths: []string{shotPath}})
+	if err != nil || gRes.Files[0].Kind != sessionv1.FileRefKind_FILE_REF_KIND_OUTSIDE {
+		t.Fatalf("grant resolve = %+v, err=%v", gRes, err)
+	}
+	if _, err := eng.ReadFile(ctx, grant, &sessionv1.ReadFileRequest{SessionId: sid, RunId: runs[1], Path: shotPath}); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("grant read = %v, want PermissionDenied", err)
+	}
+
+	// Turn 1 sees Now=CHANGED while v2 is on disk; deleting the /tmp file still preserves both Turn 1 and Turn 2!
+	r1Before, err := eng.ReadFile(ctx, owner, &sessionv1.ReadFileRequest{SessionId: sid, RunId: runs[1], Path: shotPath})
+	if err != nil || !bytes.Equal(r1Before.Image, pngV1) || r1Before.Now != sessionv1.FileNow_FILE_NOW_CHANGED {
+		t.Fatalf("turn 1 before remove = %+v, err=%v", r1Before, err)
+	}
+	digests := eng.st.SessionTurnImageDigests(sid)
+	if len(digests) != 2 {
+		t.Fatalf("expected 2 pinned digests, got %v", digests)
+	}
+	if err := os.Remove(shotPath); err != nil {
+		t.Fatal(err)
+	}
+
+	r1After, err := eng.ReadFile(ctx, owner, &sessionv1.ReadFileRequest{SessionId: sid, RunId: runs[1], Path: shotPath})
+	if err != nil || !bytes.Equal(r1After.Image, pngV1) || r1After.Turn != 1 || r1After.Now != sessionv1.FileNow_FILE_NOW_GONE {
+		t.Fatalf("turn 1 after /tmp delete = %+v, err=%v", r1After, err)
+	}
+	r2After, err := eng.ReadFile(ctx, owner, &sessionv1.ReadFileRequest{SessionId: sid, RunId: runs[2], Path: "file://" + filepath.ToSlash(shotPath)})
+	if err != nil || !bytes.Equal(r2After.Image, pngV2) || r2After.Turn != 2 || r2After.Now != sessionv1.FileNow_FILE_NOW_GONE {
+		t.Fatalf("turn 2 after /tmp delete = %+v, err=%v", r2After, err)
+	}
+	bytesAfter, err := eng.ReadFileBytes(ctx, owner, &sessionv1.ReadFileBytesRequest{SessionId: sid, RunId: runs[2], Path: shotPath, Offset: 0, Length: 64})
+	if err != nil || !bytes.Equal(bytesAfter.Data, pngV2[:min(64, len(pngV2))]) {
+		t.Fatalf("ReadFileBytes pinned = %+v, err=%v", bytesAfter, err)
+	}
+
+	// Deleting the session prunes its pinned turn image blobs from disk.
+	if err := eng.DeleteSession(ctx, owner, sid); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range digests {
+		if _, err := os.Stat(eng.st.BlobPath(d)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("blob %s not pruned after DeleteSession: %v", d, err)
+		}
 	}
 }
