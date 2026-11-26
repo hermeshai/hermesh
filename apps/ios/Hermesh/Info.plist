@@ -26,6 +26,8 @@
 	<false/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Hermesh uses the local network for low-latency connections and screen control with your machines.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Hermesh saves session screenshots and pictures to your photo library when you ask it to.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

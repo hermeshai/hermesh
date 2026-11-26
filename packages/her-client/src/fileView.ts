@@ -1,3 +1,5 @@
+import { fileOfLink } from "./refs.ts";
+
 // How a file a session's reply points at opens (docs/session-files.md §3.2, §4), by its
 // name: the same rule on the Mac and the iPhone (HermeshSessions/FileRefs.swift), with the
 // cases both run in testdata/file-refs.json. What the file turns out to be (binary, too
@@ -43,4 +45,42 @@ export function fileOpens(path: string, line?: number): FileOpen {
   const view = fileView(path);
   if (view === "media" || view === "office" || view === "other") return "quicklook";
   return view === "text" || view === "code" ? "panel" : "preview";
+}
+
+const rasterImage = /\.(png|jpe?g|gif|webp)$/i;
+
+/** Whether a session file path (without a line reference) is a raster image rendered inline and opened in the Lightbox. */
+export function isSessionImage(path: string, line?: number): boolean {
+  return line === undefined && rasterImage.test(baseName(path));
+}
+
+/**
+ * Extracts a local/session raster image path from a Markdown image or link target (`![alt](href)` / `[label](href)`),
+ * recognizing Windows drive paths regardless of the viewer's OS and rejecting `http(s):` / `data:` URLs.
+ */
+export function sessionImageRef(href: string): string | null {
+  const ref = fileOfLink(href, true);
+  return ref && isSessionImage(ref.path, ref.line) ? ref.path : null;
+}
+
+/** Normalizes a reply's image path so `![alt](/a/b.png)` and `[b.png](file:///a/b.png)` match. */
+export function normalizeImagePath(path: string): string {
+  let p = path.trim().replace(/\\/g, "/");
+  while (p.startsWith("./")) p = p.slice(2);
+  p = p.replace(/\/+/g, "/").replace(/(\/\.)+(?=\/|$)/g, "");
+  return p.length > 1 ? p.replace(/\/$/, "") : p;
+}
+
+const isAbsImagePath = (p: string) => p.startsWith("/") || p.startsWith("~/") || /^[A-Za-z]:\//.test(p);
+
+/** Whether two image references in the same reply point to the same file (for deduplicating `![alt](p)` + `[name](p)`). */
+export function sameImagePath(a: string, b: string): boolean {
+  const na = normalizeImagePath(a);
+  const nb = normalizeImagePath(b);
+  if (na === "" || nb === "") return false;
+  if (na === nb) return true;
+  const aa = isAbsImagePath(na);
+  const ab = isAbsImagePath(nb);
+  if (aa === ab) return false;
+  return aa ? na.endsWith(`/${nb}`) : nb.endsWith(`/${na}`);
 }

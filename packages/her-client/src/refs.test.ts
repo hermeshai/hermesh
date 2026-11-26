@@ -93,10 +93,12 @@ test("shell languages and hidden characters", () => {
 // The cases HermeshSessions runs too (testdata/file-refs.json): the Mac and the iPhone read replies alike.
 test("the cases both apps share", async () => {
   const { readFileSync } = await import("node:fs");
-  const { fileOpens, fileView } = await import("./fileView.ts");
+  const { fileOpens, fileView, sameImagePath, sessionImageRef } = await import("./fileView.ts");
   const shared = JSON.parse(readFileSync(new URL("../testdata/file-refs.json", import.meta.url), "utf8"));
   for (const c of shared.links) assert.deepEqual(fileOfLink(c.href, c.windows ?? false), c.ref, c.href);
   for (const c of shared.code) assert.deepEqual(fileOfCode(c.text), c.ref, c.text);
   for (const [name, view] of Object.entries(shared.views)) assert.equal(fileView(name), view, name);
   for (const c of shared.opens) assert.equal(fileOpens(c.path, c.line), c.to, `${c.path}:${c.line}`);
+  for (const c of shared.images) assert.equal(sessionImageRef(c.href), c.path, c.href);
+  for (const c of shared.sameImage) assert.equal(sameImagePath(c.a, c.b), c.same, `${c.a} vs ${c.b}`);
 });

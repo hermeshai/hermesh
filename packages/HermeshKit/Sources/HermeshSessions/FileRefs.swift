@@ -164,3 +164,44 @@ public func fileOpens(_ path: String, line: Int? = nil) -> FileOpen {
     default: return .preview
     }
 }
+
+private let rasterImage = regex(#"(?i)\.(png|jpe?g|gif|webp)$"#)
+
+/// Whether a session file path (without a line reference) is a raster image rendered inline and opened in the Lightbox.
+public func isSessionImage(_ path: String, line: Int? = nil) -> Bool {
+    line == nil && matches(rasterImage, fileBaseName(path))
+}
+
+/// Extracts a local/session raster image path from a Markdown image or link target (`![alt](href)` / `[label](href)`),
+/// recognizing Windows drive paths regardless of the viewer's OS and rejecting `http(s):` / `data:` URLs.
+public func sessionImageRef(_ href: String) -> String? {
+    guard let ref = fileOfLink(href, windows: true), isSessionImage(ref.path, line: ref.line) else { return nil }
+    return ref.path
+}
+
+/// Normalizes a reply's image path so `![alt](/a/b.png)` and `[b.png](file:///a/b.png)` match.
+public func normalizeImagePath(_ path: String) -> String {
+    var p = path.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\\", with: "/")
+    while p.hasPrefix("./") { p.removeFirst(2) }
+    while p.contains("//") { p = p.replacingOccurrences(of: "//", with: "/") }
+    let dotSeg = regex(#"(/\.)+(?=/|$)"#)
+    p = dotSeg.stringByReplacingMatches(in: p, range: NSRange(p.startIndex..., in: p), withTemplate: "")
+    if p.count > 1 && p.hasSuffix("/") { p.removeLast() }
+    return p
+}
+
+private func isAbsImagePath(_ p: String) -> Bool {
+    p.hasPrefix("/") || p.hasPrefix("~/") || matches(regex(#"^[A-Za-z]:/"#), p)
+}
+
+/// Whether two image references in the same reply point to the same file (for deduplicating `![alt](p)` + `[name](p)`).
+public func sameImagePath(_ a: String, _ b: String) -> Bool {
+    let na = normalizeImagePath(a)
+    let nb = normalizeImagePath(b)
+    if na.isEmpty || nb.isEmpty { return false }
+    if na == nb { return true }
+    let aa = isAbsImagePath(na)
+    let ab = isAbsImagePath(nb)
+    if aa == ab { return false }
+    return aa ? na.hasSuffix("/\(nb)") : nb.hasSuffix("/\(na)")
+}

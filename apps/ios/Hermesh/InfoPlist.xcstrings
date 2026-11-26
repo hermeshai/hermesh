@@ -79,6 +79,24 @@
           }
         }
       }
+    },
+    "NSPhotoLibraryAddUsageDescription" : {
+      "comment" : "Privacy - Photo Library Additions Usage Description",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Hermesh saves session screenshots and pictures to your photo library when you ask it to."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesh 在你选择存储时将对话中的截图和图片保存到相册。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

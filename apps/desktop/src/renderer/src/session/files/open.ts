@@ -1,9 +1,11 @@
 import { useSyncExternalStore } from "react";
-import { fileOpens } from "@hermesh/her-client";
+import { fileOpens, isSessionImage } from "@hermesh/her-client";
 import type { MenuItem } from "../../../../shared/bridge";
 import { i18n } from "../../../../shared/i18n";
 import type { Store } from "../../store";
 import { baseName, type FilesHome, type SessionFile } from "./files";
+import { openFileInLightbox } from "./ImageLightbox";
+import type { ReplyImageItem } from "./images";
 import { openInPanel, showFolder } from "./panel";
 
 // Where a session's file opens when clicked (docs/session-files.md §3.2): a result to look at
@@ -29,7 +31,16 @@ export function closeShownFile() {
 }
 
 /** Opens a session's file the way its kind and lines say. */
-export function openSessionFile(st: Store, home: FilesHome, file: SessionFile, at?: { line?: number; endLine?: number }) {
+export function openSessionFile(
+  st: Store,
+  home: FilesHome,
+  file: SessionFile,
+  at?: { line?: number; endLine?: number; gallery?: ReplyImageItem[] | null },
+) {
+  if (isSessionImage(file.path, at?.line)) {
+    openFileInLightbox(home, file, at?.gallery);
+    return;
+  }
   const name = baseName(file.path);
   const to = fileOpens(file.path, at?.line);
   if (to === "quicklook") {
@@ -54,11 +65,12 @@ function failure(e: unknown): string {
 /** A file's menu, on a tag and in the preview: open it, copy where it is, keep a copy, find it. */
 export async function fileMenu(st: Store, home: FilesHome, file: SessionFile, folder: string, opts: { open?: () => void; line?: number } = {}) {
   const name = baseName(file.path);
-  const full = folder ? `${folder.replace(/\/+$/, "")}/${file.path}` : file.path;
+  const isAbs = /^([/\\]|~\/|[A-Za-z]:[/\\])/.test(file.path);
+  const full = folder && !isAbs ? `${folder.replace(/\/+$/, "")}/${file.path}` : file.path;
   const items: MenuItem[] = [
     ...(opts.open ? [{ id: "open", label: t("files.open") }, { separator: true } as const] : []),
     { id: "copyPath", label: t("files.copyPath") },
-    { id: "copyRel", label: t("files.copyRelPath") },
+    ...(!isAbs ? [{ id: "copyRel", label: t("files.copyRelPath") }] : []),
     { separator: true },
     { id: "save", label: t("files.save") },
     ...(home.local ? [{ id: "reveal", label: t("files.revealFinder") }] : []),

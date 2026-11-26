@@ -5,6 +5,7 @@ import { FileRefKind } from "@hermesh/proto/session";
 import { Icon } from "../../icons";
 import { useStore } from "../../store";
 import { FilesHomeContext, FilesRunContext, useFileInfo } from "./files";
+import { ReplyImagesContext } from "./images";
 import { fileMenu, openSessionFile, openSessionFolder } from "./open";
 
 /**
@@ -18,6 +19,7 @@ export function FileTag({ target, code, children }: { target: FileRef; code?: st
   const st = useStore();
   const home = useContext(FilesHomeContext);
   const run = useContext(FilesRunContext);
+  const replyImages = useContext(ReplyImagesContext);
   const info = useFileInfo(target.path);
   const found = info?.kind === FileRefKind.FILE || info?.kind === FileRefKind.FOLDER;
   if (!home || (code !== undefined && !found)) return code !== undefined ? <code>{code}</code> : <span>{children}</span>;
@@ -31,7 +33,7 @@ export function FileTag({ target, code, children }: { target: FileRef; code?: st
   const open = () => {
     if (missing || outside) return;
     if (folder) return openSessionFolder(home, path);
-    openSessionFile(st, home, file, { line: target.line, endLine: target.endLine });
+    openSessionFile(st, home, file, { line: target.line, endLine: target.endLine, gallery: replyImages?.gallery });
   };
   return (
     <span

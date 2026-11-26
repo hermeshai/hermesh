@@ -90,8 +90,8 @@ body{margin:0;background:var(--win);color:var(--l1);font-family:var(--font);font
 html.vibrant,html.vibrant body{background:transparent}
 html.vibrant .side{background:var(--side-tint)}
 /* Under a dialog's blur the window is opaque: blurred over the see-through sidebar, its sharp text would show through the blur. */
-html.vibrant:has(dialog[open],.sheet-scrim,.scrim) body{background:var(--win)}
-html.vibrant:has(dialog[open],.sheet-scrim,.scrim) .side{background:var(--side)}
+html.vibrant:has(dialog[open],.sheet-scrim,.scrim,.slb) body{background:var(--win)}
+html.vibrant:has(dialog[open],.sheet-scrim,.scrim,.slb) .side{background:var(--side)}
 html.vibrant .grp-h{position:static;background:transparent}
 /* Windows (docs/windows.md §5.2): no traffic lights, and room for the caption buttons Windows draws over the top band's right end. */
 html[data-platform=win]{--caption:calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)))}

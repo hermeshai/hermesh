@@ -53,7 +53,9 @@ var (
 
 // filesScope is where one request reads a session's files from.
 type filesScope struct {
-	folder string
+	sessionID string
+	runID     string
+	folder    string
 	// The folder with its links resolved; "" when it is gone.
 	real string
 	gone bool
@@ -84,7 +86,12 @@ func (e *Engine) filesScope(ctx context.Context, p *Principal, sessionID, runID 
 	}
 	// Never resolveWorkdir: it makes a released worktree again, and a look at a file must not.
 	worktree := sess.GetWorkspaceStrategy().GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE
-	s := &filesScope{folder: filepath.Clean(ws.Path), owner: p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_OWNER || p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_HER}
+	s := &filesScope{
+		sessionID: sessionID,
+		runID:     runID,
+		folder:    filepath.Clean(ws.Path),
+		owner:     p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_OWNER || p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_HER,
+	}
 	if worktree {
 		s.folder = sess.GetWorkspaceStrategy().GetWorktreePath()
 		if s.folder == "" {
@@ -223,8 +230,23 @@ func (e *Engine) ResolveFiles(ctx context.Context, p *Principal, req *sessionv1.
 	}
 	for i, f := range out.Files {
 		if !inside[i] {
+			if !s.owner {
+				continue
+			}
+			if s.runID != "" || s.gone {
+				if tib, ok := e.st.TurnImageBlob(s.sessionID, s.runID, f.Path); ok {
+					if _, err := os.Stat(e.st.BlobPath(tib.BlobSHA256)); err == nil {
+						f.Kind, f.Size, f.Turn = sessionv1.FileRefKind_FILE_REF_KIND_FILE, uint64(tib.Size), tib.Turn
+						continue
+					}
+				}
+			}
+			if _, size, ok := outsideImage(f.Path); ok {
+				f.Kind, f.Size = sessionv1.FileRefKind_FILE_REF_KIND_FILE, uint64(size)
+			}
 			continue
 		}
+		abs := f.Path
 		f.Path = rels[i]
 		if rels[i] == "" {
 			f.Kind = sessionv1.FileRefKind_FILE_REF_KIND_FOLDER
@@ -239,6 +261,14 @@ func (e *Engine) ResolveFiles(ctx context.Context, p *Principal, req *sessionv1.
 				f.Size = uint64(x.Size)
 			}
 			continue
+		}
+		if s.owner && (s.runID != "" || s.gone) {
+			if tib, ok := e.st.TurnImageBlob(s.sessionID, s.runID, abs); ok {
+				if _, err := os.Stat(e.st.BlobPath(tib.BlobSHA256)); err == nil {
+					f.Kind, f.Size, f.Turn = sessionv1.FileRefKind_FILE_REF_KIND_FILE, uint64(tib.Size), tib.Turn
+					continue
+				}
+			}
 		}
 		// A folder's own path is not an entry ls-tree names by itself; the folder now, or nothing.
 		switch _, st, err := s.now(ctx, rels[i]); {
@@ -331,17 +361,69 @@ func (e *Engine) ListFiles(ctx context.Context, p *Principal, req *sessionv1.Lis
 	return out, nil
 }
 
-// fileSource is a file found for reading: a blob of the turn's tree, or a file in the folder now.
+// fileSource is a file found for reading: a blob of the turn's tree, a pinned turn image blob,
+// a file in the folder now, or (for the owner) a verified raster image outside the folder.
 type fileSource struct {
-	rel  string
-	size int64
-	blob string
-	real string
+	path      string
+	inside    bool
+	size      int64
+	blob      string
+	storeBlob string
+	turn      uint32
+	real      string
+}
+
+func isRasterImageExt(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
+		return true
+	}
+	return false
+}
+
+// outsideImage checks whether abs points to a real raster image <= maxFileImage by
+// resolving symlinks, checking extension & regular-file bounds, and verifying magic bytes.
+func outsideImage(abs string) (string, int64, bool) {
+	if !isRasterImageExt(abs) {
+		return "", 0, false
+	}
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", 0, false
+	}
+	st, err := os.Stat(real)
+	if err != nil || !st.Mode().IsRegular() || st.Size() <= 0 || st.Size() > maxFileImage {
+		return "", 0, false
+	}
+	fh, err := os.Open(real)
+	if err != nil {
+		return "", 0, false
+	}
+	var head [16]byte
+	n, _ := io.ReadFull(fh, head[:])
+	_ = fh.Close()
+	if n == 0 || imageMime(head[:n]) == "" {
+		return "", 0, false
+	}
+	return real, st.Size(), true
 }
 
 func (e *Engine) fileSource(ctx context.Context, s *filesScope, asked string) (*fileSource, error) {
-	rel, _, ok := s.rel(asked)
+	rel, abs, ok := s.rel(asked)
 	if !ok {
+		if !s.owner {
+			return nil, errFileOutside
+		}
+		if s.runID != "" || s.gone {
+			if tib, ok := e.st.TurnImageBlob(s.sessionID, s.runID, abs); ok {
+				if _, err := os.Stat(e.st.BlobPath(tib.BlobSHA256)); err == nil {
+					return &fileSource{path: abs, size: tib.Size, storeBlob: tib.BlobSHA256, turn: tib.Turn}, nil
+				}
+			}
+		}
+		if real, size, ok := outsideImage(abs); ok {
+			return &fileSource{path: abs, size: size, real: real}, nil
+		}
 		return nil, errFileOutside
 	}
 	if rel == "" {
@@ -351,7 +433,14 @@ func (e *Engine) fileSource(ctx context.Context, s *filesScope, asked string) (*
 		if x.Type != "blob" {
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("a folder"))
 		}
-		return &fileSource{rel: rel, size: x.Size, blob: x.OID}, nil
+		return &fileSource{path: rel, inside: true, size: x.Size, blob: x.OID, turn: s.turn}, nil
+	}
+	if s.owner && (s.runID != "" || s.gone) {
+		if tib, ok := e.st.TurnImageBlob(s.sessionID, s.runID, abs); ok {
+			if _, err := os.Stat(e.st.BlobPath(tib.BlobSHA256)); err == nil {
+				return &fileSource{path: rel, inside: true, size: tib.Size, storeBlob: tib.BlobSHA256, turn: tib.Turn}, nil
+			}
+		}
 	}
 	real, st, err := s.now(ctx, rel)
 	if err != nil {
@@ -360,14 +449,31 @@ func (e *Engine) fileSource(ctx context.Context, s *filesScope, asked string) (*
 	if !st.Mode().IsRegular() {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("not a file"))
 	}
-	return &fileSource{rel: rel, size: st.Size(), real: real}, nil
+	return &fileSource{path: rel, inside: true, size: st.Size(), real: real}, nil
 }
 
-func (f *fileSource) bytes(ctx context.Context, s *filesScope) ([]byte, error) {
+func (f *fileSource) bytes(ctx context.Context, e *Engine, s *filesScope) ([]byte, error) {
 	if f.blob != "" {
 		return blobBytes(ctx, s.gitDir, f.blob)
 	}
-	return os.ReadFile(f.real)
+	if f.storeBlob != "" {
+		data, _, _, err := e.st.GetBlob(f.storeBlob)
+		if err != nil {
+			return nil, errFileMissing
+		}
+		return data, nil
+	}
+	data, err := os.ReadFile(f.real)
+	if err != nil {
+		if !f.inside {
+			return nil, errFileOutside
+		}
+		return nil, err
+	}
+	if !f.inside && (len(data) == 0 || len(data) > maxFileImage || imageMime(data) == "") {
+		return nil, errFileOutside
+	}
+	return data, nil
 }
 
 func (e *Engine) ReadFile(ctx context.Context, p *Principal, req *sessionv1.ReadFileRequest) (*sessionv1.ReadFileResponse, error) {
@@ -379,21 +485,25 @@ func (e *Engine) ReadFile(ctx context.Context, p *Principal, req *sessionv1.Read
 	if err != nil {
 		return nil, err
 	}
-	out := &sessionv1.ReadFileResponse{Path: f.rel, Size: uint64(f.size), Kind: sessionv1.FileContentKind_FILE_CONTENT_KIND_TOO_LARGE, MimeType: mimeOf(f.rel, nil), Folder: s.folder}
-	if f.blob != "" {
-		out.Turn = s.turn
+	out := &sessionv1.ReadFileResponse{Path: f.path, Size: uint64(f.size), Kind: sessionv1.FileContentKind_FILE_CONTENT_KIND_TOO_LARGE, MimeType: mimeOf(f.path, nil), Folder: s.folder}
+	if f.turn > 0 {
+		out.Turn = f.turn
 	}
 	if f.size <= maxFileImage {
-		data, err := f.bytes(ctx, s)
+		data, err := f.bytes(ctx, e, s)
 		if err != nil {
 			return nil, err
 		}
 		describe(out, data)
-		if f.blob != "" {
-			out.Now = compareNow(ctx, s, f.rel, data)
+		if f.turn > 0 {
+			if f.inside {
+				out.Now = compareNow(ctx, s, f.path, data)
+			} else {
+				out.Now = compareOutsideNow(f.path, data)
+			}
 		}
-	} else if f.blob != "" {
-		out.Now = compareNow(ctx, s, f.rel, nil)
+	} else if f.turn > 0 && f.inside {
+		out.Now = compareNow(ctx, s, f.path, nil)
 	}
 	return out, nil
 }
@@ -442,6 +552,21 @@ func compareNow(ctx context.Context, s *filesScope, rel string, data []byte) ses
 	return sessionv1.FileNow_FILE_NOW_SAME
 }
 
+func compareOutsideNow(abs string, data []byte) sessionv1.FileNow {
+	real, size, ok := outsideImage(abs)
+	if !ok {
+		return sessionv1.FileNow_FILE_NOW_GONE
+	}
+	if data == nil || size != int64(len(data)) {
+		return sessionv1.FileNow_FILE_NOW_CHANGED
+	}
+	cur, err := os.ReadFile(real)
+	if err != nil || !bytes.Equal(cur, data) {
+		return sessionv1.FileNow_FILE_NOW_CHANGED
+	}
+	return sessionv1.FileNow_FILE_NOW_SAME
+}
+
 func (e *Engine) ReadFileBytes(ctx context.Context, p *Principal, req *sessionv1.ReadFileBytesRequest) (*sessionv1.ReadFileBytesResponse, error) {
 	s, err := e.filesScope(ctx, p, req.GetSessionId(), req.GetRunId())
 	if err != nil {
@@ -457,17 +582,19 @@ func (e *Engine) ReadFileBytes(ctx context.Context, p *Principal, req *sessionv1
 	}
 	off := int64(req.GetOffset())
 	out := &sessionv1.ReadFileBytesResponse{Size: uint64(f.size)}
-	if f.blob != "" {
-		out.Turn = s.turn
+	if f.turn > 0 {
+		out.Turn = f.turn
 	}
 	if off < f.size {
 		n = min(n, f.size-off)
-		if f.blob != "" {
-			data, err := f.bytes(ctx, s)
+		if f.blob != "" || f.storeBlob != "" || !f.inside {
+			data, err := f.bytes(ctx, e, s)
 			if err != nil {
 				return nil, err
 			}
-			out.Data = data[off : off+n]
+			if off < int64(len(data)) {
+				out.Data = data[off:min(off+n, int64(len(data)))]
+			}
 		} else {
 			fh, err := os.Open(f.real)
 			if err != nil {
@@ -486,8 +613,179 @@ func (e *Engine) ReadFileBytes(ctx context.Context, p *Principal, req *sessionv1
 	if off != 0 {
 		head = nil
 	}
-	out.MimeType = mimeOf(f.rel, head)
+	out.MimeType = mimeOf(f.path, head)
 	return out, nil
+}
+
+const maxPinnedTurnImages = 16
+
+// pinTurnImages snapshots local raster images referenced by a finished turn's replies
+// when they are not already captured in the turn's Git checkpoint tree (e.g. /tmp or
+// ~/.gemini/.../brain screenshots, or gitignored build screenshots).
+func (e *Engine) pinTurnImages(ctx context.Context, sessionID, runID string, ordinal uint32, workdir, treeOID string) {
+	if sessionID == "" || runID == "" || workdir == "" {
+		return
+	}
+	items, err := e.st.TurnItems(sessionID)
+	if err != nil {
+		return
+	}
+	var raw []string
+	for _, it := range items {
+		if it.GetRunId() == runID && it.GetKind() == sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE && it.GetText() != "" {
+			raw = append(raw, replyImageCandidates(it.GetText())...)
+		}
+	}
+	if len(raw) == 0 {
+		return
+	}
+	s := &filesScope{sessionID: sessionID, runID: runID, folder: filepath.Clean(workdir), tree: treeOID, turn: max(ordinal, 1), owner: true}
+	if st, err := os.Stat(s.folder); err == nil && st.IsDir() {
+		s.real, _ = filepath.EvalSymlinks(s.folder)
+	}
+	s.gone = s.real == ""
+	if treeOID != "" && !s.gone && vcs.IsGitRepo(ctx, s.folder) {
+		s.gitDir = s.folder
+		s.prefix = vcs.Prefix(ctx, s.folder)
+	}
+	seen := map[string]bool{}
+	pinned := 0
+	for _, c := range raw {
+		if pinned >= maxPinnedTurnImages {
+			break
+		}
+		rel, abs, inside := s.rel(c)
+		if abs == "" || seen[abs] {
+			continue
+		}
+		seen[abs] = true
+		var real string
+		if inside {
+			if rel == "" || !isRasterImageExt(rel) || s.inTree(ctx, rel) != nil {
+				continue
+			}
+			r, st, err := s.now(ctx, rel)
+			if err != nil || !st.Mode().IsRegular() || st.Size() <= 0 || st.Size() > maxFileImage {
+				continue
+			}
+			real = r
+		} else {
+			r, _, ok := outsideImage(abs)
+			if !ok {
+				continue
+			}
+			real = r
+		}
+		data, err := os.ReadFile(real)
+		if err != nil || len(data) == 0 || len(data) > maxFileImage {
+			continue
+		}
+		mimeType := imageMime(data)
+		if mimeType == "" {
+			continue
+		}
+		ref, err := e.st.PutBlob(filepath.Base(abs), mimeType, data)
+		if err == nil {
+			_ = e.st.PutTurnImageBlob(sessionID, runID, abs, ref.GetBlobSha256(), int64(len(data)), max(ordinal, 1))
+			pinned++
+		}
+	}
+}
+
+// replyImageCandidates extracts candidate raster-image paths from Markdown links,
+// images, and single-line inline code spans in an assistant reply.
+func replyImageCandidates(text string) []string {
+	var out []string
+	add := func(raw string) {
+		t := strings.TrimSpace(raw)
+		if t == "" || strings.HasPrefix(t, "#") {
+			return
+		}
+		lower := strings.ToLower(t)
+		if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "data:") || strings.HasPrefix(lower, "mailto:") {
+			return
+		}
+		if strings.HasPrefix(lower, "file:") {
+			if u, err := url.Parse(t); err == nil {
+				if u.Host != "" && !strings.EqualFold(u.Host, "localhost") {
+					return
+				}
+				t = u.Path
+			}
+		} else if u, err := url.PathUnescape(t); err == nil {
+			t = u
+		}
+		if i := strings.IndexByte(t, '#'); i >= 0 {
+			t = t[:i]
+		}
+		if i := strings.LastIndexByte(t, ':'); i > 1 && !strings.ContainsAny(t[i+1:], `/\`) {
+			// Strip trailing :line or :line-end if numeric.
+			rest := strings.TrimRight(t[i+1:], "0123456789:-")
+			if rest == "" && len(t[i+1:]) > 0 {
+				t = t[:i]
+			}
+		}
+		if isRasterImageExt(t) {
+			out = append(out, t)
+		}
+	}
+	for i := 0; i < len(text); i++ {
+		switch text[i] {
+		case ']':
+			if i+1 >= len(text) || text[i+1] != '(' {
+				continue
+			}
+			j := i + 2
+			for j < len(text) && (text[j] == ' ' || text[j] == '\t') {
+				j++
+			}
+			if j < len(text) && text[j] == '<' {
+				end := strings.IndexByte(text[j+1:], '>')
+				if end >= 0 {
+					add(text[j+1 : j+1+end])
+					if close := strings.IndexByte(text[j+1+end:], ')'); close >= 0 {
+						i = j + 1 + end + close
+					}
+				}
+				continue
+			}
+			depth := 1
+			k := j
+			for k < len(text) && text[k] != '\n' && depth > 0 {
+				switch text[k] {
+				case '(':
+					depth++
+				case ')':
+					depth--
+				}
+				if depth > 0 {
+					k++
+				}
+			}
+			if depth == 0 {
+				target := strings.TrimSpace(text[j:k])
+				// Strip optional Markdown link title: path "title"
+				if sp := strings.IndexAny(target, " \t"); sp > 0 && (strings.HasPrefix(target[sp+1:], `"`) || strings.HasPrefix(target[sp+1:], `'`)) {
+					target = strings.TrimSpace(target[:sp])
+				}
+				add(target)
+				i = k
+			}
+		case '`':
+			if i+1 < len(text) && text[i+1] == '`' {
+				for i < len(text) && text[i] == '`' {
+					i++
+				}
+				continue
+			}
+			end := strings.IndexByte(text[i+1:], '`')
+			if end > 0 && end <= 300 && !strings.ContainsRune(text[i+1:i+1+end], '\n') {
+				add(text[i+1 : i+1+end])
+				i += end + 1
+			}
+		}
+	}
+	return out
 }
 
 // mimeOf is a file's type by its name, else by its first bytes.

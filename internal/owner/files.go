@@ -129,7 +129,29 @@ func (o *Owner) runHasCheckpoint(sessionID, runID string) bool {
 			return true
 		}
 	}
+	for _, r := range proj.GetRuns() {
+		if r.GetRunId() == runID {
+			switch r.GetStatus() {
+			case sessionv1.RunStatus_RUN_STATUS_COMPLETED, sessionv1.RunStatus_RUN_STATUS_FAILED, sessionv1.RunStatus_RUN_STATUS_INTERRUPTED, sessionv1.RunStatus_RUN_STATUS_CANCELLED:
+				return true
+			}
+		}
+	}
 	return false
+}
+
+// sessionTurnStamp changes when a session advances to a new turn or checkpoint so
+// cached ReadFile responses refresh their `Now` comparison only after new work runs.
+func (o *Owner) sessionTurnStamp(sessionID string) string {
+	proj := o.cachedProjectionOnly(sessionID)
+	if proj == nil {
+		return ""
+	}
+	lastTree := ""
+	if cps := proj.GetCheckpoints(); len(cps) > 0 {
+		lastTree = cps[len(cps)-1].GetGitTreeOid()
+	}
+	return fmt.Sprintf("%s:%d", lastTree, len(proj.GetRuns()))
 }
 
 func (s *ownerSessionService) ResolveFiles(ctx context.Context, req *sessionv1.ResolveFilesRequest) (*sessionv1.ResolveFilesResponse, error) {
@@ -176,13 +198,31 @@ func (s *ownerSessionService) ListFiles(ctx context.Context, req *sessionv1.List
 
 func (s *ownerSessionService) ReadFile(ctx context.Context, req *sessionv1.ReadFileRequest) (*sessionv1.ReadFileResponse, error) {
 	o := s.o()
-	return filesCall(ctx, o, req.SessionId, req.MachineId,
-		func(m string) string { return filesKey("read", m, req.SessionId, req.RunId, req.Path) },
+	key := func(m string) string { return filesKey("read", m, req.SessionId, req.RunId, req.Path) }
+	stamp := o.sessionTurnStamp(req.SessionId)
+	doneKey := func(m string) string { return filesKey("read.turn", m, req.SessionId, req.RunId, req.Path, stamp) }
+	// A finished turn's file is fixed once kept: serve locally without asking its machine again.
+	if req.RunId != "" {
+		if eng, machineID, err := o.resolveMachineForSession(ctx, req.SessionId); err == nil && eng == nil {
+			kept := &sessionv1.ReadFileResponse{}
+			if o.keptFiles(doneKey(machineID), kept) || (stamp == "" && o.keptFiles(key(machineID), kept) && kept.GetTurn() > 0) {
+				return kept, nil
+			}
+		}
+	}
+	settled := req.RunId != "" && o.runHasCheckpoint(req.SessionId, req.RunId)
+	res, err := filesCall(ctx, o, req.SessionId, req.MachineId, key,
 		func(eng *kernel.Engine) (*sessionv1.ReadFileResponse, error) {
 			return eng.ReadFile(ctx, o.ownerPrincipal(), req)
 		},
 		func(pm *peer.Machine) (*sessionv1.ReadFileResponse, error) { return pm.Session.ReadFile(ctx, req) },
 		func() *sessionv1.ReadFileResponse { return &sessionv1.ReadFileResponse{} })
+	if err == nil && req.RunId != "" && (settled || res.GetTurn() > 0) {
+		if eng, machineID, mErr := o.resolveMachineForSession(ctx, req.SessionId); mErr == nil && eng == nil {
+			o.keepFiles(doneKey(machineID), req.SessionId, res)
+		}
+	}
+	return res, err
 }
 
 func (s *ownerSessionService) ReadFileBytes(ctx context.Context, req *sessionv1.ReadFileBytesRequest) (*sessionv1.ReadFileBytesResponse, error) {

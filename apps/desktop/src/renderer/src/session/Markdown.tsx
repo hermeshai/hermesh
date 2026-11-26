@@ -6,11 +6,16 @@ import remend from "remend";
 import remarkMath from "remark-math";
 import remarkDirective from "remark-directive";
 import type { PluggableList } from "unified";
+import type { Root as HtmlRoot, Element as HtmlElement, RootContent as HtmlContent } from "hast";
+import { sameImagePath, sessionImageRef } from "@hermesh/her-client";
 import { createMarkdownSlices, pendingText } from "./markdown/parse";
 import { anchors, contentExtensions } from "./markdown/plugins";
 import { texMath } from "./markdown/tex";
 import { MarkdownTable } from "./markdown/Table";
 import { CodeBlock, InlineCode, Link } from "./content";
+import { FilesHomeContext } from "./files/files";
+import { ReplyImagesContext, scanReplyImages, type ReplyImageItem } from "./files/images";
+import { SessionImageSlot } from "./files/InlineImages";
 import { DraftContext } from "./scope";
 
 const MermaidBlock = lazy(() => import("./markdown/Mermaid"));
@@ -25,14 +30,48 @@ const SourceContext = createContext("");
  */
 export function Markdown({ text, streaming = false, mode = "chat" }: { text: string; streaming?: boolean; mode?: "chat" | "document" | "compact" }) {
   const prefix = useId();
+  const home = useContext(FilesHomeContext);
+  const inSession = Boolean(home) && mode === "chat";
   const split = useRef(createMarkdownSlices());
   const blocks = useMemo(() => split.current(text, streaming), [text, streaming]);
+  const replyImages = useMemo(() => (inSession ? scanReplyImages(text) : null), [text, inSession]);
+  const explicitKey = replyImages ? replyImages.explicit.join("\0") : "";
+  // Pre-compute per-block claimed link paths so `[shot.png](p)` repeated across two blocks in one reply only expands once.
+  const blockAllowedLinks = useMemo(() => {
+    if (!inSession || !replyImages) return blocks.map(() => "");
+    const claimed = [...replyImages.explicit];
+    return blocks.map((b) => {
+      if (b.pending) return "";
+      const local = scanReplyImages(b.text);
+      const allowed: string[] = [];
+      for (const g of local.gallery) {
+        if (local.explicit.some((e) => sameImagePath(e, g.path))) continue;
+        if (claimed.some((c) => sameImagePath(c, g.path))) continue;
+        claimed.push(g.path);
+        allowed.push(g.path);
+      }
+      return allowed.join("\0");
+    });
+  }, [blocks, inSession, replyImages]);
+
   return (
-    <div className="md sel-text" data-mode={mode}>
-      {blocks.map((block) => (
-        <Block key={block.id} text={block.text} pending={block.pending} prefix={prefix} offset={block.id} mode={mode} />
-      ))}
-    </div>
+    <ReplyImagesContext.Provider value={replyImages}>
+      <div className="md sel-text" data-mode={mode}>
+        {blocks.map((block, idx) => (
+          <Block
+            key={block.id}
+            text={block.text}
+            pending={block.pending}
+            prefix={prefix}
+            offset={block.id}
+            mode={mode}
+            inSession={inSession}
+            explicitKey={explicitKey}
+            allowedLinksKey={blockAllowedLinks[idx] ?? ""}
+          />
+        ))}
+      </div>
+    </ReplyImagesContext.Provider>
   );
 }
 
@@ -40,7 +79,25 @@ export function DraftMarkdown({ text }: { text: string }) {
   return <Markdown text={text} streaming />;
 }
 
-const Block = memo(function Block({ text, pending, prefix, offset, mode }: { text: string; pending: boolean; prefix: string; offset: number; mode: string }) {
+const Block = memo(function Block({
+  text,
+  pending,
+  prefix,
+  offset,
+  mode,
+  inSession,
+  explicitKey,
+  allowedLinksKey,
+}: {
+  text: string;
+  pending: boolean;
+  prefix: string;
+  offset: number;
+  mode: string;
+  inSession: boolean;
+  explicitKey: string;
+  allowedLinksKey: string;
+}) {
   const { t } = useTranslation("session");
   const [mathPlugin, setMathPlugin] = useState<PluggableList>([]);
   const hasMath = /\$\$|```math|~~~math|\\[([]/.test(text);
@@ -56,7 +113,11 @@ const Block = memo(function Block({ text, pending, prefix, offset, mode }: { tex
       live = false;
     };
   }, [hasMath]);
-  const rehypePlugins = useMemo<PluggableList>(() => [...mathPlugin, [anchors, { prefix, block: offset }]], [mathPlugin, prefix, offset]);
+  const rehypePlugins = useMemo<PluggableList>(() => {
+    const list: PluggableList = [...mathPlugin, [anchors, { prefix, block: offset }]];
+    if (inSession) list.push([rehypeSessionImages, { pending, explicitKey, allowedLinksKey }]);
+    return list;
+  }, [mathPlugin, prefix, offset, inSession, pending, explicitKey, allowedLinksKey]);
   const shown = pending ? remend(pendingText(text), { linkMode: "text-only", katex: true }) : text;
   return (
     <DraftContext.Provider value={pending}>
@@ -114,6 +175,11 @@ const components: Components = {
     return <Link href={href}>{children}</Link>;
   },
   img: ({ alt }) => <span>{alt}</span>,
+  div: ({ node, children, ...props }) => {
+    const raw = (node?.properties as Record<string, unknown> | undefined)?.["data-simg"] ?? (props as Record<string, unknown>)["data-simg"];
+    if (typeof raw === "string") return <SessionImageSlot raw={raw} />;
+    return <div {...props}>{children}</div>;
+  },
   // Inline code only: a block's is drawn by its `pre`, coloured when it names its language.
   code: ({ children }) => <InlineCode>{children}</InlineCode>,
   pre: ({ node, children }) => {
@@ -167,6 +233,124 @@ function chatText() {
 // A Markdown file reads as written: its single line breaks are not a chat's.
 const documentPlugins: PluggableList = [[remarkGfm, { singleTilde: false }], [remarkMath, { singleDollarTextMath: false }], remarkDirective, texMath, contentExtensions];
 const plugins: PluggableList = [...documentPlugins, chatText];
+
+function makeImageSlot(items: ReplyImageItem[], fromLinks: boolean): HtmlElement {
+  return {
+    type: "element",
+    tagName: "div",
+    properties: { "data-simg": JSON.stringify({ items, fromLinks }) },
+    children: [],
+  };
+}
+
+function isIgnorableInline(n: HtmlContent): boolean {
+  if (n.type === "text") return n.value.trim() === "";
+  return n.type === "element" && n.tagName === "br";
+}
+
+function trimBr(nodes: HtmlContent[]): HtmlContent[] {
+  let start = 0;
+  let end = nodes.length;
+  while (start < end && isIgnorableInline(nodes[start]!)) start++;
+  while (end > start && isIgnorableInline(nodes[end - 1]!)) end--;
+  return nodes.slice(start, end);
+}
+
+/**
+ * Lifts session `![alt](path)` images out of `<p>` into block-level `<SessionImageSlot>` cards,
+ * and attaches deduplicated `[label](path.png)` image strips below their enclosing block.
+ */
+function rehypeSessionImages(opts: { pending: boolean; explicitKey: string; allowedLinksKey: string }) {
+  const explicit = opts.explicitKey ? opts.explicitKey.split("\0") : [];
+  const allowedLinks = opts.allowedLinksKey ? opts.allowedLinksKey.split("\0") : [];
+  return (tree: HtmlRoot) => {
+    const claimed = [...explicit];
+    const transformChildren = (parent: HtmlRoot | HtmlElement, topLevel: boolean) => {
+      const next: HtmlContent[] = [];
+      for (const child of parent.children as HtmlContent[]) {
+        if (child.type !== "element") {
+          next.push(child);
+          continue;
+        }
+        if (child.tagName === "p") {
+          const parts: HtmlContent[] = [];
+          let proseBuf: HtmlContent[] = [];
+          let imgBuf: ReplyImageItem[] = [];
+          const flushProse = () => {
+            const trimmed = trimBr(proseBuf);
+            proseBuf = [];
+            if (trimmed.length > 0) parts.push({ ...child, children: trimmed as HtmlElement["children"] });
+          };
+          const flushImgs = () => {
+            if (imgBuf.length > 0) {
+              parts.push(makeImageSlot(imgBuf, false));
+              imgBuf = [];
+            }
+          };
+          for (const inl of child.children as HtmlContent[]) {
+            if (inl.type === "element" && inl.tagName === "img") {
+              const src = String(inl.properties?.src ?? "");
+              const alt = String(inl.properties?.alt ?? "").trim();
+              const path = sessionImageRef(src);
+              if (path) {
+                flushProse();
+                if (!imgBuf.some((x) => sameImagePath(x.path, path))) imgBuf.push({ path, caption: alt });
+                continue;
+              }
+            }
+            if (imgBuf.length > 0 && isIgnorableInline(inl)) continue;
+            flushImgs();
+            proseBuf.push(inl);
+          }
+          flushImgs();
+          flushProse();
+          next.push(...parts);
+          if (topLevel && !opts.pending && allowedLinks.length > 0) {
+            const linked = collectLinkedImages(child, allowedLinks, claimed);
+            if (linked.length > 0) next.push(makeImageSlot(linked, true));
+          }
+          continue;
+        }
+        if (child.tagName === "ul" || child.tagName === "ol" || child.tagName === "blockquote") {
+          transformChildren(child, false);
+          next.push(child);
+          if (topLevel && !opts.pending && allowedLinks.length > 0) {
+            const linked = collectLinkedImages(child, allowedLinks, claimed);
+            if (linked.length > 0) next.push(makeImageSlot(linked, true));
+          }
+          continue;
+        }
+        next.push(child);
+      }
+      parent.children = next as typeof parent.children;
+    };
+    transformChildren(tree, true);
+  };
+}
+
+function collectLinkedImages(node: HtmlElement, allowedLinks: string[], claimed: string[]): ReplyImageItem[] {
+  const out: ReplyImageItem[] = [];
+  const walk = (el: HtmlContent) => {
+    if (el.type !== "element" || el.tagName === "code" || el.tagName === "pre") return;
+    if (el.tagName === "a") {
+      const href = String(el.properties?.href ?? "");
+      const path = sessionImageRef(href);
+      if (
+        path &&
+        allowedLinks.some((a) => sameImagePath(a, path)) &&
+        !claimed.some((c) => sameImagePath(c, path)) &&
+        !out.some((o) => sameImagePath(o.path, path))
+      ) {
+        claimed.push(path);
+        out.push({ path, caption: textOf(el as unknown as HNode).trim() });
+      }
+      return;
+    }
+    for (const c of el.children as HtmlContent[]) walk(c);
+  };
+  walk(node);
+  return out;
+}
 
 function Table({ children, sourceStart, sourceEnd }: { children: ReactNode; sourceStart?: number; sourceEnd?: number }) {
   const source = useContext(SourceContext);

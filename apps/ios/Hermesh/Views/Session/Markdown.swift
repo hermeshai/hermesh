@@ -18,10 +18,15 @@ struct MarkdownText: View {
 
     var body: some View {
         let blocks = parsed(text)
+        let imgs = replyImagesOf(blocks)
         MarkdownBlocks(blocks: blocks, style: style, lazy: lazy)
+            .environment(\.replyImages, imgs)
             // In a session's reply, which of the paths it writes are files is asked of its machine once.
             .task(id: files == nil ? "" : "\(run)\u{0}\(text)") {
-                if let files { files.want(run: run, paths: fileRefPaths(blocks)) }
+                if let files {
+                    files.registerGallery(run: run, gallery: imgs.gallery)
+                    files.want(run: run, paths: fileRefPaths(blocks))
+                }
             }
     }
 }
@@ -70,6 +75,7 @@ struct MarkdownStyle {
 
 indirect enum MarkdownBlock {
     case paragraph(AttributedString)
+    case images(items: [ReplyImageItem], fromLinks: Bool)
     case heading(level: Int, AttributedString)
     case list(ordered: Bool, start: Int, items: [MarkdownItem])
     case code(lang: String, text: String)
@@ -108,17 +114,140 @@ struct MarkdownItem {
 private func markdownBlocks(_ text: String) -> [MarkdownBlock] {
     // Math comes out of the source before Markdown reads it, and goes back in after (HermeshSessions' Math.swift).
     let lifted = liftMath(text)
-    return Array(Document(parsing: lifted.text).blockChildren.compactMap(block)).flatMap { withMath($0, lifted.spans) }
+    let doc = Document(parsing: lifted.text)
+    let explicit = collectExplicitImages(doc)
+    var claimed = explicit
+    return convertChildren(Array(doc.blockChildren), claimed: &claimed, topLevel: true).flatMap { withMath($0, lifted.spans) }
+}
+
+private func replyImagesOf(_ blocks: [MarkdownBlock]) -> ReplyImages {
+    var explicit: [String] = []
+    var gallery: [ReplyImageItem] = []
+    func walk(_ b: MarkdownBlock) {
+        switch b {
+        case .images(let items, let fromLinks):
+            for it in items {
+                if !fromLinks, !explicit.contains(where: { sameImagePath($0, it.path) }) { explicit.append(it.path) }
+                if !gallery.contains(where: { sameImagePath($0.path, it.path) }) { gallery.append(it) }
+            }
+        case .list(_, _, let items): items.forEach { $0.blocks.forEach(walk) }
+        case .quote(let bs): bs.forEach(walk)
+        case .footnotes(let notes): notes.forEach { $0.forEach(walk) }
+        default: break
+        }
+    }
+    blocks.forEach(walk)
+    return ReplyImages(explicit: explicit, gallery: gallery)
+}
+
+private func collectExplicitImages(_ root: Markup) -> [String] {
+    var out: [String] = []
+    func walk(_ m: Markup) {
+        if let img = m as? Markdown.Image, let p = sessionImageRef(img.source ?? ""),
+           !out.contains(where: { sameImagePath($0, p) }) {
+            out.append(p)
+            return
+        }
+        for c in m.children { walk(c) }
+    }
+    walk(root)
+    return out
+}
+
+private func collectLinkedImages(_ root: Markup, claimed: inout [String]) -> [ReplyImageItem] {
+    var out: [ReplyImageItem] = []
+    func walk(_ m: Markup) {
+        if m is InlineCode || m is Markdown.CodeBlock { return }
+        if let link = m as? Markdown.Link {
+            if let p = sessionImageRef(link.destination ?? ""),
+               !claimed.contains(where: { sameImagePath($0, p) }),
+               !out.contains(where: { sameImagePath($0.path, p) }) {
+                claimed.append(p)
+                out.append(ReplyImageItem(path: p, caption: link.plainText.trimmingCharacters(in: .whitespacesAndNewlines)))
+            }
+            return
+        }
+        for c in m.children { walk(c) }
+    }
+    walk(root)
+    return out
+}
+
+private func convertChildren(_ children: [BlockMarkup], claimed: inout [String], topLevel: Bool) -> [MarkdownBlock] {
+    var out: [MarkdownBlock] = []
+    for m in children {
+        switch m {
+        case let p as Paragraph:
+            out.append(contentsOf: paragraphBlocks(p))
+            if topLevel {
+                let linked = collectLinkedImages(p, claimed: &claimed)
+                if !linked.isEmpty { out.append(.images(items: linked, fromLinks: true)) }
+            }
+        case let l as OrderedList:
+            out.append(.list(ordered: true, start: Int(l.startIndex), items: l.listItems.map { item($0, claimed: &claimed) }))
+            if topLevel {
+                let linked = collectLinkedImages(l, claimed: &claimed)
+                if !linked.isEmpty { out.append(.images(items: linked, fromLinks: true)) }
+            }
+        case let l as UnorderedList:
+            out.append(.list(ordered: false, start: 1, items: l.listItems.map { item($0, claimed: &claimed) }))
+            if topLevel {
+                let linked = collectLinkedImages(l, claimed: &claimed)
+                if !linked.isEmpty { out.append(.images(items: linked, fromLinks: true)) }
+            }
+        case let q as BlockQuote:
+            out.append(.quote(convertChildren(Array(q.blockChildren), claimed: &claimed, topLevel: false)))
+            if topLevel {
+                let linked = collectLinkedImages(q, claimed: &claimed)
+                if !linked.isEmpty { out.append(.images(items: linked, fromLinks: true)) }
+            }
+        default:
+            if let b = block(m) { out.append(b) }
+        }
+    }
+    return out
+}
+
+private func paragraphBlocks(_ p: Paragraph) -> [MarkdownBlock] {
+    var out: [MarkdownBlock] = []
+    var prose = AttributedString()
+    var imgBuf: [ReplyImageItem] = []
+    func flushProse() {
+        let part = trimmed(prose[prose.startIndex ..< prose.endIndex])
+        prose = AttributedString()
+        if !part.characters.isEmpty { out.append(.paragraph(part)) }
+    }
+    func flushImgs() {
+        if !imgBuf.isEmpty {
+            out.append(.images(items: imgBuf, fromLinks: false))
+            imgBuf.removeAll()
+        }
+    }
+    for c in p.children {
+        if let img = c as? Markdown.Image, let path = sessionImageRef(img.source ?? "") {
+            flushProse()
+            if !imgBuf.contains(where: { sameImagePath($0.path, path) }) {
+                imgBuf.append(ReplyImageItem(path: path, caption: img.plainText.trimmingCharacters(in: .whitespacesAndNewlines)))
+            }
+            continue
+        }
+        if !imgBuf.isEmpty {
+            if c is SoftBreak || c is LineBreak { continue }
+            if let t = c as? Markdown.Text, t.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
+        }
+        flushImgs()
+        prose += inline(c)
+    }
+    flushImgs()
+    flushProse()
+    return out
 }
 
 private func block(_ m: Markup) -> MarkdownBlock? {
     switch m {
     case let p as Paragraph: return .paragraph(inlines(p))
     case let h as Heading: return .heading(level: h.level, inlines(h))
-    case let l as OrderedList: return .list(ordered: true, start: Int(l.startIndex), items: l.listItems.map(item))
-    case let l as UnorderedList: return .list(ordered: false, start: 1, items: l.listItems.map(item))
     case let c as Markdown.CodeBlock: return .code(lang: c.language ?? "", text: c.code.hasSuffix("\n") ? String(c.code.dropLast()) : c.code)
-    case let q as BlockQuote: return .quote(Array(q.blockChildren.compactMap(block)))
     case let t as Markdown.Table:
         let head = Array(t.head.cells.map(inlines))
         // A row short of cells is filled out; cells past the head's are not shown, as GitHub does.
@@ -164,7 +293,7 @@ private func withMath(_ block: MarkdownBlock, _ spans: [MathSpan]) -> [MarkdownB
         }
     case .quote(let blocks): return [.quote(blocks.flatMap { withMath($0, spans) })]
     case .table(let head, let rows, let align): return [.table(head: head.map { withMath($0, spans) }, rows: rows.map { $0.map { withMath($0, spans) } }, align: align)]
-    case .rule, .math, .diagram, .footnotes: return [block]
+    case .images, .rule, .math, .diagram, .footnotes: return [block]
     }
 }
 
@@ -202,8 +331,8 @@ private func trimmed(_ text: AttributedSubstring) -> AttributedString {
     return AttributedString(text[from..<to])
 }
 
-private func item(_ i: ListItem) -> MarkdownItem {
-    MarkdownItem(checked: i.checkbox.map { $0 == .checked }, blocks: Array(i.blockChildren.compactMap(block)))
+private func item(_ i: ListItem, claimed: inout [String]) -> MarkdownItem {
+    MarkdownItem(checked: i.checkbox.map { $0 == .checked }, blocks: convertChildren(Array(i.blockChildren), claimed: &claimed, topLevel: false))
 }
 
 private let web = #/^https?:\/\//#.ignoresCase()
@@ -322,6 +451,15 @@ private struct BlockView: View {
         switch block {
         case .paragraph(let s):
             text(s, style.size).font(style.font).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+        case .images(let items, let fromLinks):
+            if files != nil {
+                SessionImageStrip(items: items, fromLinks: fromLinks, draft: draft)
+            } else if !fromLinks {
+                let alt = items.map(\.caption).filter { !$0.isEmpty }.joined(separator: " ")
+                if !alt.isEmpty {
+                    SwiftUI.Text(verbatim: alt).font(style.font)
+                }
+            }
         case .heading(let level, let s):
             // A step down each level, as the Mac's 20, 18, 16 and 14 beside its 15: the last three under the text's size.
             let (size, font): (UIFont.TextStyle, Font) = switch level {

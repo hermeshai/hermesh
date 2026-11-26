@@ -398,6 +398,10 @@ struct SessionPage: View {
                 .environment(\.sessionFiles, files)
                 .environment(\.openURL, OpenURLAction { url in
                     guard let route = FileRefLink.route(url, session: s.sessionID) else { return .systemAction }
+                    if case .sessionFile(_, let r, let p, let line, _) = route, isSessionImage(p, line: line > 0 ? line : nil) {
+                        files.openLightbox(run: r, path: p, machineID: s.machineID)
+                        return .handled
+                    }
                     model.path.append(route)
                     return .handled
                 })
@@ -447,6 +451,9 @@ struct SessionPage: View {
         .sessionBar(s, renaming: $renaming, deleting: $deleting,
                     backgroundTasks: allBgTasks.isEmpty ? nil : .init(running: !activeBgTasks.isEmpty) { showingBackgroundTasks = true })
         .sessionDialogs(s, renaming: $renaming, deleting: $deleting)
+        .fullScreenCover(item: Binding(get: { files.lightbox }, set: { files.lightbox = $0 })) {
+            SessionImageLightbox(presentation: $0)
+        }
     }
 
     @ViewBuilder private func requestPanel(_ req: Hermesh_Session_V1_RuntimeRequest, _ s: Session) -> some View {
