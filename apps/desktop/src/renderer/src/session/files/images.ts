@@ -46,7 +46,7 @@ function touchLRU(key: string, value: ImageState) {
   }
 }
 
-function decodeDimensions(url: string): Promise<{ width: number; height: number }> {
+export function decodeDimensions(url: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => resolve({ width: img.naturalWidth || 0, height: img.naturalHeight || 0 });

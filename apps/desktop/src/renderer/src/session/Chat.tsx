@@ -16,6 +16,7 @@ import { HEAVY_ROWS, releaseAfterLeaving } from "../memory";
 import { archive, machineName, senderName } from "../Sidebar";
 import { useNow, useStore } from "../store";
 import { attachmentSnapshot, isImageAttachment, loadAttachmentBlob, subscribeAttachments } from "./attachments";
+import { openAttachmentLightbox } from "./files/ImageLightbox";
 import { Code } from "./Code";
 import { Markdown } from "./Markdown";
 import { TerminalOutput } from "./TerminalOutput";
@@ -459,6 +460,7 @@ function UserAttachments({ attachments, sessionId, machineId }: { attachments: A
       }
     }
   }, [attachments.map((a) => a.blobSha256).join("\0"), sessionId, machineId]);
+  const pictures = attachments.filter(isImageAttachment);
   return (
     <div className="um-att" data-testid="user-attachments">
       {attachments.map((a) => {
@@ -477,6 +479,7 @@ function UserAttachments({ attachments, sessionId, machineId }: { attachments: A
             name={a.name}
             src={url ?? undefined}
             meta={!url && a.sizeBytes > 0n ? sizeText(a.sizeBytes) : undefined}
+            onOpen={url ? () => openAttachmentLightbox(sessionId ?? "", machineId ?? "", pictures, pictures.indexOf(a)) : undefined}
           />
         );
       })}

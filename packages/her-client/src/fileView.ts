@@ -8,7 +8,7 @@ import { fileOfLink } from "./refs.ts";
 /** What shows a file. */
 export type FileView = "markdown" | "svg" | "image" | "pdf" | "page" | "media" | "office" | "other" | "text" | "code";
 
-/** Where a click takes a file on the Mac: over the window, the file panel, or Quick Look. */
+/** Where a click takes a file on the Mac: a tab of the side panel (a result to look at, or code at its lines), or Quick Look. */
 export type FileOpen = "preview" | "panel" | "quicklook";
 
 const views: [RegExp, FileView][] = [
@@ -36,9 +36,9 @@ export function fileView(path: string): FileView {
 }
 
 /**
- * A result to look at (a page, a picture, a PDF, Markdown) opens over the window; code and
- * text, and anything a reply points at a line of, in the file panel; what the app does not
- * show itself, in Quick Look (FinxWork's DD-161).
+ * A result to look at (a page, a picture, a PDF, Markdown), or code and text and anything a reply
+ * points at a line of; what the app does not show itself goes to Quick Look (FinxWork's DD-161).
+ * On the Mac both of the first open in a side panel tab (a picture in the Lightbox).
  */
 export function fileOpens(path: string, line?: number): FileOpen {
   if (line !== undefined) return "panel";

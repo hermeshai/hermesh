@@ -6,13 +6,13 @@ import { app, BrowserWindow, session, shell, WebContentsView, type WebContents }
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { PageRect, PageSlot, SessionFileRef, SessionPageEvent } from "../shared/bridge";
+import type { PageRect, SessionFileRef, SessionPageEvent } from "../shared/bridge";
 import { freeName } from "./her";
 import { world } from "./notify";
 import { dataDir, socketPath } from "./paths";
 import { platform } from "./platform";
 
-// A coding session's files for the page (docs/session-files.md §3): a page over the window, read
+// A coding session's files for the page (docs/session-files.md §3): a page in the side panel, read
 // from the session's machine through this computer's hermeshd; a file in Quick Look, saved to
 // Downloads, shown in Finder when the session works on this Mac. The page runs as FinxWork's page
 // preview does (main/browser/pagePreview.ts): a view of its own, a process apart from the app, a
@@ -242,45 +242,35 @@ function pageSession() {
 
 type Preview = { view: WebContentsView; win: BrowserWindow };
 /**
- * The pages shown, by window and place: "dialog" (over the window) and "panel" (the file panel). The dialog's
- * is over the panel's, which is hidden while it shows: a view of the system's is drawn over the page's
- * dimmed backdrop, not under it.
+ * The page shown, by window: the side panel's page tab in front. A view of the system's is drawn over the
+ * app's page, so the app hides it while something of its own (a dialog, the Lightbox) is over the panel.
  */
-const previews = new Map<WebContents, Map<PageSlot, Preview>>();
+const previews = new Map<WebContents, Preview>();
 const watched = new WeakSet<WebContents>();
 const rounded = (r: PageRect) => ({ x: Math.round(r.x), y: Math.round(r.y), width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)) });
 const webAddress = (url: string) => /^https?:\/\//i.test(url);
 
-function slotsOf(owner: WebContents) {
-  let m = previews.get(owner);
-  if (!m) previews.set(owner, (m = new Map()));
-  return m;
-}
-
-function drop(owner: WebContents, slot: PageSlot) {
-  const slots = previews.get(owner);
-  const shown = slots?.get(slot);
+function drop(owner: WebContents) {
+  const shown = previews.get(owner);
   if (!shown) return;
-  slots!.delete(slot);
+  previews.delete(owner);
   const wc = shown.view.webContents;
   if (!wc.isDestroyed() && wc.isFocused() && !owner.isDestroyed()) owner.focus();
   if (!shown.win.isDestroyed()) shown.win.contentView.removeChildView(shown.view);
   if (!wc.isDestroyed()) wc.close();
-  // The dialog gone, the panel's page shows again.
-  if (slot === "dialog") slots!.get("panel")?.view.setVisible(true);
 }
 
 function watch(owner: WebContents) {
   if (watched.has(owner)) return;
   watched.add(owner);
-  owner.once("destroyed", () => (drop(owner, "dialog"), drop(owner, "panel")));
-  owner.on("did-navigate", () => (closeSessionPage(owner, "dialog"), closeSessionPage(owner, "panel")));
+  owner.once("destroyed", () => drop(owner));
+  owner.on("did-navigate", () => closeSessionPage(owner));
 }
 
-/** Shows a session's page in the rectangle given, in place of any before it in that place. */
-export async function openSessionPage(owner: WebContents, ref: SessionFileRef, rect: PageRect, slot: PageSlot): Promise<boolean> {
+/** Shows a session's page in the rectangle given, in place of any before it. */
+export async function openSessionPage(owner: WebContents, ref: SessionFileRef, rect: PageRect): Promise<boolean> {
   if (!isPage(ref.path)) return false;
-  drop(owner, slot);
+  drop(owner);
   const win = BrowserWindow.fromWebContents(owner);
   if (!win) return false;
   watch(owner);
@@ -288,9 +278,8 @@ export async function openSessionPage(owner: WebContents, ref: SessionFileRef, r
   folders.add(folderKey(ref.session, ref.run, dirOf(ref.path)));
   const view = new WebContentsView({ webPreferences: { partition, sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false, disableDialogs: true } });
   view.setBackgroundColor("#ffffff");
-  view.setBorderRadius(slot === "dialog" ? 8 : 0);
   const wc = view.webContents;
-  const tell = (event: SessionPageEvent) => void (!owner.isDestroyed() && owner.send("session-page", { ...event, slot }));
+  const tell = (event: SessionPageEvent) => void (!owner.isDestroyed() && owner.send("session-page", event));
   wc.setWindowOpenHandler(({ url }) => {
     if (webAddress(url)) tell({ kind: "link", url });
     return { action: "deny" };
@@ -302,28 +291,23 @@ export async function openSessionPage(owner: WebContents, ref: SessionFileRef, r
     if (webAddress(to)) tell({ kind: "link", url: to });
   });
   wc.on("will-attach-webview", (e) => e.preventDefault());
-  // Once the page has the keys, Esc would never reach the dialog.
-  wc.on("before-input-event", (e, input) => {
-    if (input.type !== "keyDown" || input.key !== "Escape") return;
-    e.preventDefault();
-    tell({ kind: "close" });
-  });
-  const slots = slotsOf(owner);
-  slots.set(slot, { view, win });
+  previews.set(owner, { view, win });
   win.contentView.addChildView(view);
   view.setBounds(rounded(rect));
-  if (slot === "dialog") slots.get("panel")?.view.setVisible(false);
-  else if (slots.has("dialog")) view.setVisible(false);
   void wc.loadURL(pageURL(ref)).catch(() => {});
   return true;
 }
 
-export function placeSessionPage(owner: WebContents, rect: PageRect, slot: PageSlot) {
-  previews.get(owner)?.get(slot)?.view.setBounds(rounded(rect));
+/** Moves the page's view; null hides it. */
+export function placeSessionPage(owner: WebContents, rect: PageRect | null) {
+  const view = previews.get(owner)?.view;
+  if (!view) return;
+  view.setVisible(rect !== null);
+  if (rect) view.setBounds(rounded(rect));
 }
 
-export function closeSessionPage(owner: WebContents, slot: PageSlot) {
-  drop(owner, slot);
+export function closeSessionPage(owner: WebContents) {
+  drop(owner);
 }
 
 /** The page and the web files of its folder (to three levels, 300 files, 64 MB), in the default browser. */

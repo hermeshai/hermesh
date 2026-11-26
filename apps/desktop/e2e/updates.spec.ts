@@ -301,8 +301,10 @@ test("a restart restores the selected session, layout and unfinished answer", as
     await instance.page.setViewportSize({ width: 1440, height: 800 });
     const list = (await sessionList(instance.page));
     await list.getByRole("listitem").filter({ hasText: "选颜色" }).click();
+    // The unfinished answer: an option picked, not sent. (This question takes no typed answer: an ACP question with
+    // options and no "other" field offers none.)
     await instance.page.getByRole("radio", { name: /蓝/ }).click();
-    await instance.page.getByRole("textbox", { name: "你的回答" }).fill("Keep this unfinished answer");
+    await expect(instance.page.getByRole("radio", { name: /蓝/ })).toHaveAttribute("aria-checked", "true");
     const info = instance.page.getByRole("button", { name: "信息面板" });
     await expect(info).toHaveAttribute("aria-pressed", "true");
     await info.click();
@@ -312,7 +314,6 @@ test("a restart restores the selected session, layout and unfinished answer", as
     instance = await launch(undefined, { profile, start: true });
     await instance.page.setViewportSize({ width: 1440, height: 800 });
     await expect(instance.page.getByRole("heading", { name: "选颜色" })).toBeVisible();
-    await expect(instance.page.getByRole("textbox", { name: "你的回答" })).toHaveValue("Keep this unfinished answer");
     await expect(instance.page.getByRole("radio", { name: /蓝/ })).toHaveAttribute("aria-checked", "true");
     await expect(instance.page.getByRole("button", { name: "信息面板" })).toHaveAttribute("aria-pressed", "false");
   } finally {

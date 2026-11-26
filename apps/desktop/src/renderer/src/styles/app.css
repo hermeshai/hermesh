@@ -218,6 +218,8 @@ button{font:inherit;color:inherit}
 .tb{height:28px;min-width:28px;border:0;background:transparent;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--l2);gap:5px;padding:0 6px}
 .tb:hover{background:var(--fill2);color:var(--l1)}
 .tb.on{background:var(--fill2);color:var(--l1)}
+/* A toolbar button that cannot be used now (the info card while the side panel is open). */
+.ctool .tb:disabled,.ctool .tb:disabled:hover{opacity:.38;background:transparent;color:var(--l2);cursor:default}
 /* Toolbar glyphs a step heavier than those in text, so a 28px button reads at a glance. */
 .tb .ic{stroke-width:1.45}
 /* Her and the overview, rows 32 high, 34 apart; then the sessions, with no line between. */

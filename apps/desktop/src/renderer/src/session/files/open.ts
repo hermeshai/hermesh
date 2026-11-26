@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from "react";
 import { fileOpens, isSessionImage } from "@hermesh/her-client";
 import type { MenuItem } from "../../../../shared/bridge";
 import { i18n } from "../../../../shared/i18n";
@@ -8,27 +7,10 @@ import { openFileInLightbox } from "./ImageLightbox";
 import type { ReplyImageItem } from "./images";
 import { openInPanel, showFolder } from "./panel";
 
-// Where a session's file opens when clicked (docs/session-files.md §3.2): a result to look at
-// over the window, code at its lines, what the app does not show in Quick Look.
+// Where a session's file opens when clicked (docs/session-files.md §3.2): a picture in the Lightbox,
+// what the app does not show in Quick Look, the rest in a tab of the side panel.
 
 const t = i18n.getFixedT(null, "session");
-
-/** A file shown over the window. `seq` grows each time, so the same file again still opens. */
-export type Shown = { file: SessionFile; home: FilesHome; name: string; line?: number; endLine?: number; seq: number };
-
-let shown: Shown | null = null;
-let seq = 0;
-const listeners = new Set<() => void>();
-const changed = () => listeners.forEach((l) => l());
-
-export function useShownFile(): Shown | null {
-  return useSyncExternalStore((l) => (listeners.add(l), () => listeners.delete(l)), () => shown);
-}
-
-export function closeShownFile() {
-  shown = null;
-  changed();
-}
 
 /** Opens a session's file the way its kind and lines say. */
 export function openSessionFile(
@@ -41,19 +23,14 @@ export function openSessionFile(
     openFileInLightbox(home, file, at?.gallery);
     return;
   }
-  const name = baseName(file.path);
-  const to = fileOpens(file.path, at?.line);
-  if (to === "quicklook") {
-    void window.hermesh?.quickLookSessionFile(file, name).catch((e: unknown) => st.show(failure(e)));
+  if (fileOpens(file.path, at?.line) === "quicklook") {
+    void window.hermesh?.quickLookSessionFile(file, baseName(file.path)).catch((e: unknown) => st.show(failure(e)));
     return;
   }
-  // Code and anything a reply points at a line of: the file panel, beside the conversation.
-  if (to === "panel") return openInPanel(file, at);
-  shown = { file, home, name, line: at?.line, endLine: at?.endLine, seq: ++seq };
-  changed();
+  openInPanel(file, at);
 }
 
-/** A folder a reply points at: the file panel, its tree opened to it. */
+/** A folder a reply points at: 项目文件, its tree opened to it. */
 export function openSessionFolder(home: FilesHome, path: string) {
   showFolder(home.session, path);
 }
@@ -62,7 +39,7 @@ function failure(e: unknown): string {
   return t("files.failed", { message: e instanceof Error ? e.message : String(e) });
 }
 
-/** A file's menu, on a tag and in the preview: open it, copy where it is, keep a copy, find it. */
+/** A file's menu, on a tag and on a tab: open it, copy where it is, keep a copy, find it. */
 export async function fileMenu(st: Store, home: FilesHome, file: SessionFile, folder: string, opts: { open?: () => void; line?: number } = {}) {
   const name = baseName(file.path);
   const isAbs = /^([/\\]|~\/|[A-Za-z]:[/\\])/.test(file.path);

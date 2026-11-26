@@ -144,6 +144,17 @@ extension HermeshUITests {
         XCTAssertTrue(details.waitForNonExistence(timeout: 10), "closed")
         XCTAssertTrue(reply("attachments=[照片.jpg]").waitForExistence(timeout: 10), "the photo, with the first message")
         XCTAssertTrue(sentPhoto.exists && sentPhoto.frame.width >= 60, "the photo thumbnail stays on the user's bubble once the session is read")
+        // Tapped, it opens in the session's Lightbox, as a reply's pictures do, with Close and no menu: it is the owner's own.
+        sentPhoto.tap()
+        let lightbox = app.descendants(matching: .any)["session-image-lightbox"].firstMatch
+        XCTAssertTrue(lightbox.waitForExistence(timeout: 10), "the photo, in the Lightbox")
+        XCTAssertEqual(app.staticTexts["lightbox-title"].label, "照片.jpg")
+        XCTAssertTrue(app.descendants(matching: .any)["lightbox-image"].firstMatch.waitForExistence(timeout: 10), "the photo itself")
+        XCTAssertTrue(app.buttons["lightbox-close"].exists, "Close")
+        XCTAssertFalse(app.buttons["lightbox-more"].exists, "no menu for the owner's own photo")
+        shot("composer-own-photo-lightbox")
+        app.buttons["lightbox-close"].tap()
+        XCTAssertTrue(lightbox.waitForNonExistence(timeout: 10), "closed")
         XCTAssertFalse(app.descendants(matching: .any)["thread-attached"].exists, "sent: the box holds nothing")
         XCTAssertTrue(text("work-mac/fresh-app").waitForExistence(timeout: 10), "where it runs, under the title")
 

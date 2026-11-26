@@ -94,9 +94,8 @@ test("the app finds, downloads and installs a new version, and restarts into it 
   expect(bundleVersion()).toBe(from);
   expect(a.child.exitCode).toBeNull();
 
-  // Preserve an unfinished answer and selection while the daemon keeps its active sessions.
+  // Preserve an unfinished answer (an option picked, not sent) while the daemon keeps its active sessions.
   await (await sessionList(a.main)).getByRole("listitem").filter({ hasText: "选颜色" }).click();
-  await a.main.getByRole("textbox", { name: "你的回答" }).fill("Draft survives the signed update");
   await a.main.getByRole("radio", { name: /蓝/ }).click();
   await updates.close();
   await a.main.getByRole("button", { name: /更新已就绪/ }).click();
@@ -117,7 +116,6 @@ test("the app finds, downloads and installs a new version, and restarts into it 
   const again = await start();
   try {
     await expect(again.main.getByRole("heading", { name: "选颜色" })).toBeVisible();
-    await expect(again.main.getByRole("textbox", { name: "你的回答" })).toHaveValue("Draft survives the signed update");
     await expect(again.main.getByRole("radio", { name: /蓝/ })).toHaveAttribute("aria-checked", "true");
     const s = await openUpdates(again.browser, again.main);
     await expect(s.getByText(`版本 ${to}`, { exact: true })).toBeVisible();

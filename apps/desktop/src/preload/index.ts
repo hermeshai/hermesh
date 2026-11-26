@@ -53,9 +53,9 @@ const bridge: Bridge = {
       return "";
     }
   },
-  openSessionPage: (file, rect, slot) => ask("session-page-open", file, rect, slot),
-  placeSessionPage: (rect, slot) => ipcRenderer.send("session-page-place", rect, slot),
-  closeSessionPage: (slot) => ipcRenderer.send("session-page-close", slot),
+  openSessionPage: (file, rect) => ask("session-page-open", file, rect),
+  placeSessionPage: (rect) => ipcRenderer.send("session-page-place", rect),
+  closeSessionPage: () => ipcRenderer.send("session-page-close"),
   onSessionPage: (cb) => listen("session-page", cb),
   openSessionPageInBrowser: (file) => ask("session-page-browser", file),
   quickLookSessionFile: (file, name) => ask("session-file-quicklook", file, name),

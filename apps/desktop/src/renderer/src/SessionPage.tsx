@@ -64,9 +64,8 @@ import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, r
 import { ContentScope, SessionRunContext, type SessionCodeActions } from "./session/scope";
 import { stripTerminalEscapes } from "./session/terminalText";
 import { FilesHomeContext, type FilesHome } from "./session/files/files";
-import { FileViewHost } from "./session/files/FileView";
 import { ImageLightboxHost } from "./session/files/ImageLightbox";
-import { FilePanel } from "./session/files/FilePanel";
+import { SidePanel } from "./session/files/SidePanel";
 import { setOpen as setPanelOpen, usePanel } from "./session/files/panel";
 import "./session/composer.css";
 
@@ -621,7 +620,8 @@ export function SessionPage() {
   }, [currentSession]);
   const background = st.background && allBgTasks.length > 0;
   const { card } = layoutOf(st);
-  // The file panel takes the session's right (docs/session-files.md §3.4): the cards step aside while it is open.
+  // The side panel takes the session's right (docs/session-files.md §3.4): the cards step aside while it is
+  // open, and the info card cannot be shown until it is put away.
   const filePanel = usePanel(activeSessionId ?? "");
   const filesOpen = !!activeSessionId && filePanel.open;
   const info = card !== "hidden" && !background && !filesOpen;
@@ -839,20 +839,29 @@ export function SessionPage() {
             {activeBgTasks.length > 0 && <span className="tb-badge" data-testid="toolbar-background-badge">{activeBgTasks.length}</span>}
           </button>
         )}
-        {activeSessionId && !filesOpen && (
-          <button className="tb" title={ts("files.openFiles")} aria-label={ts("files.openFiles")} data-testid="toolbar-files-btn" onClick={() => setPanelOpen(filePanel, true)}>
-            <Icon name="folder" />
-          </button>
-        )}
         {activeSessionId && (
           <button
             className={`tb ${info ? "on" : ""}`}
             title={ts(info ? "page.hideInfo" : "page.showInfo", { keys: keys(ownKeys.toggleInspector) })}
             aria-label={ts("page.info")}
             aria-pressed={info}
+            disabled={filesOpen}
+            data-testid="toolbar-info-btn"
             onClick={() => setCard(st, !info)}
           >
-            <Icon name="infoCard" />
+            <Icon name="info" />
+          </button>
+        )}
+        {activeSessionId && (
+          <button
+            className={`tb ${filesOpen ? "on" : ""}`}
+            title={ts(filesOpen ? "page.hidePanel" : "page.showPanel")}
+            aria-label={ts("panel.title")}
+            aria-pressed={filesOpen}
+            data-testid="toolbar-panel-btn"
+            onClick={() => setPanelOpen(filePanel, !filesOpen)}
+          >
+            <Icon name="panelRight" />
           </button>
         )}
       </div>
@@ -1006,13 +1015,13 @@ export function SessionPage() {
               </SessionRunContext.Provider>
             </ContentScope>
           </div>
-          {filesHome && <FilePanel home={filesHome} running={running} />}
+          {filesHome && <SidePanel home={filesHome} running={running} />}
           {info && session && <Inspector s={session} providers={providers} />}
-          <FileViewHost />
-          <ImageLightboxHost />
           {background && !filesOpen && <Background tasks={allBgTasks} onStop={handleStopBackgroundTask} />}
         </div>
       )}
+      {/* Outside the branches: the composer's and a starting prompt's pictures open here too. */}
+      <ImageLightboxHost />
     </>
   );
 }

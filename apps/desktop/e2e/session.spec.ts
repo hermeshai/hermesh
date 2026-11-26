@@ -503,6 +503,19 @@ test("a multi-question decision presents one item at a time, auto-advances, and 
   }
 });
 
+/** The owner's own picture in the session's Lightbox: its name, the picture, Close and no menu; not Her's lightbox. */
+async function expectOwnPicture(page: Page, name: string): Promise<Locator> {
+  const lb = page.getByTestId("image-lightbox");
+  await expect(lb).toBeVisible();
+  await expect(lb).toHaveAttribute("data-source", "attachments");
+  await expect(lb.getByTestId("lightbox-title")).toHaveText(name);
+  await expectImageLoaded(lb.getByTestId("lightbox-image"));
+  await expect(lb.getByTestId("lightbox-close")).toBeVisible();
+  await expect(lb.getByTestId("lightbox-more")).toHaveCount(0);
+  await expect(page.locator(".lightbox")).toHaveCount(0);
+  return lb;
+}
+
 async function expectImageLoaded(img: Locator, timeout = 30_000): Promise<void> {
   await expect(img).toBeVisible({ timeout });
   await expect
@@ -539,11 +552,23 @@ test("a screenshot pasted into the box is attached and goes with the message; ce
     await (await uploaded).finished();
     await expect(tiles).toHaveCount(1);
     await snap(page, "session-pasted-picture");
+    // Clicked in the box, it opens in the session's Lightbox (as a reply's pictures do), with no menu: it is the owner's own.
+    await tiles.first().locator(".tile-open").click();
+    await expectOwnPicture(page, "image.png");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("image-lightbox")).toHaveCount(0);
+    await expect(input).toHaveValue("images");
     // Sent, the user's own bubble shows the picture thumbnail, and the agent has it.
     await input.press("Enter");
     const log = page.getByRole("log");
     await expectImageLoaded(log.locator(".um").first().locator(".um-att .tile.img img"));
     await expect(log.locator(".am").first()).toContainText("images: image.png", { timeout: 30_000 });
+    // On the bubble, the same Lightbox.
+    await log.locator(".um").first().locator(".um-att .tile.img .tile-open").click();
+    await expectOwnPicture(page, "image.png");
+    await snap(page, "session-own-picture-lightbox");
+    await page.getByTestId("lightbox-close").click();
+    await expect(page.getByTestId("image-lightbox")).toHaveCount(0);
 
     // An attachment-only message (no text) sends and shows its thumbnail without an empty text bubble.
     await page.getByTestId("thread-composer-input").focus();
@@ -623,6 +648,13 @@ test("files dragged over a session's window are attached to its box when let go,
     await expectImageLoaded(reloadedBubble.locator('.um-att .tile.img[title="shot.png"] img'));
     await expect(reloadedBubble.locator('.um-att .tile.file[title="notes.md"]')).toBeVisible();
     await snap(page, "session-sent-attachments");
+    // Read back from the machine, the picture opens in the Lightbox at its size; the Markdown file is not a picture.
+    await reloadedBubble.locator('.um-att .tile.img[title="shot.png"] .tile-open').click();
+    const lb = await expectOwnPicture(page, "shot.png");
+    await expect(lb.getByTestId("lightbox-meta")).toContainText("32 × 32");
+    await expect(lb.getByTestId("lightbox-prev")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(lb).toHaveCount(0);
   } finally {
     await app.close();
   }
@@ -750,6 +782,11 @@ test("a turn of many steps opens them in a card that stops growing and scrolls i
     const out = card.locator(".tool.open .out");
     await expect(out).toBeInViewport();
     expect((await out.boundingBox())!.height).toBeLessThanOrEqual(180);
+    // Opening it scrolls the card to it, smoothly, from the next frame: still for a moment before scrolling on, or that
+    // scroll lands after the next one and carries the card back.
+    await expect
+      .poll(() => scroller.evaluate((el) => new Promise<boolean>((done) => { const top = el.scrollTop; setTimeout(() => done(el.scrollTop === top), 200); })))
+      .toBe(true);
     // At the top: nothing above fades, more below does.
     await scroller.evaluate((el) => el.scrollTo({ top: 0 }));
     await expect(card).not.toHaveClass(/\bmore-up\b/);

@@ -6,6 +6,7 @@ import { i18n } from "../../shared/i18n";
 import { layoutOf, setCard, setSidebar } from "./layout";
 import { copySessionId, focusAnswer, interrupt } from "./session/actions";
 import { frontRequest } from "./RequestCards";
+import { panelOf } from "./session/files/panel";
 import { archive, grantLabel, listSections, unarchive } from "./Sidebar";
 import { useStore, type Store } from "./store";
 
@@ -61,7 +62,8 @@ function run(st: Store, c: Command) {
     case "nextActive":
       return next(st, isActive);
     case "toggleInspector":
-      return s && setCard(st, layoutOf(st).card === "hidden" || st.background);
+      // Not while the side panel is open: the info card cannot show beside it.
+      return s && !panelOf(s.sessionId).open && setCard(st, layoutOf(st).card === "hidden" || st.background);
     case "toggleSidebar":
       return setSidebar(st, layoutOf(st).sidebar === "hidden");
     case "newGrant":

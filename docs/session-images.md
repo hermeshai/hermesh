@@ -129,3 +129,28 @@ Files inside `s.folder` are already preserved per turn by `vcs.CaptureCheckpoint
 - **Viewport & concurrency**: Trigger `ReadFile` via `IntersectionObserver` (`rootMargin: "300px"`) on Mac and SwiftUI `.task` inside `LazyVStack` on iPhone, capped at **3 concurrent** image fetches per session so large PNGs never contend with live `SubscribeSession` deltas over a slow relay.
 - **Virtual scroll stability (Mac)**: Store `{ status, objectUrl, width, height }` in a module-level LRU store (`useSyncExternalStore`, max 80 ObjectURLs, revoking evicted ones) keyed by `session\0run\0path`. When `useVirtualRows` unmounts and remounts a row, its exact `aspect-ratio` and `blob:` URL are available synchronously on frame 0.
 - **Downsampled thumbnails (iPhone)**: Decode inline cards off the main actor via `CGImageSourceCreateThumbnailAtIndex` (`kCGImageSourceThumbnailMaxPixelSize: 960`), keeping scroll memory under `~2 MB` per screenshot; decode full-resolution `UIImage` only when the Lightbox opens.
+
+---
+
+## 5. The owner's own pictures use the same Lightbox (2026-11-26)
+
+Every picture in a coding session now opens in this one Lightbox, on both apps: a reply's pictures (§3) and the
+pictures the owner sent with a prompt, on its bubble and, on the Mac, in the composer before sending.
+
+| Where | Before | Now |
+|---|---|---|
+| A prompt bubble's picture (Mac) | Her's plain `Lightbox` (`her/Composer.tsx`) | The session Lightbox (`ImageLightbox`, `data-source="attachments"`) |
+| A picture in the composer (Mac) | Her's plain `Lightbox` | The same |
+| A prompt bubble's picture (iPhone) | Quick Look | `SessionImageLightbox` (`LightboxItem.attachment`) |
+| The iPhone composer | Chips with no preview | Unchanged |
+
+- **One prompt's pictures step together**: the bubble's (or the composer's) pictures, from the one clicked; its other
+  files are not in it.
+- **No menu**: the owner sent these, so there is nothing to save, share or find, and a blob has no path to copy. The top
+  bar keeps its three columns with only ✕ on the right (iPhone: an empty slot where ⋯ is, so the name stays centred).
+  The same gestures, keys and metadata (`1 / N · W×H · size`) as a reply's pictures.
+- **Where the bytes come from**: the bubble's own blob store (`session/attachments.ts` on the Mac,
+  `SessionAttachmentStore` on the iPhone): what was sent from this device or seen before shows at once; otherwise
+  `DownloadBlob` once.
+- **Not pictures** (a `.html`, `.md` …) on a bubble are unchanged for now: nothing on the Mac, Quick Look on the iPhone.
+- Her's own conversation keeps Her's `Lightbox`.
