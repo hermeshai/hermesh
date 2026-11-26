@@ -177,6 +177,8 @@ test("the sidebar shows the window's material; the toggle sits after the traffic
   const show = (await page.getByRole("button", { name: "显示边栏" }).boundingBox())!;
   expect(Math.abs(show.x - toggle.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(show.y + show.height / 2 - 22)).toBeLessThanOrEqual(1);
+  // Chromium resolves -webkit-app-region in DOM order (ignoring z-index): no later drag region may cover the toggle.
+  expect(await effectiveAppRegionAt(page, show.x + show.width / 2, show.y + show.height / 2)).toBe("no-drag");
   await page.getByRole("button", { name: "显示边栏" }).click();
   await expect.poll(async () => Math.round((await page.getByRole("complementary", { name: "边栏" }).boundingBox())!.width)).toBe(272);
   await app.close();
@@ -237,6 +239,27 @@ test("the avatar opens the account menu above it, opaque, by mouse and keyboard"
 
 /** The titles of the list's groups, top to bottom. */
 const groups = async (page: Page) => (await sessionList(page)).locator(".grp-h").allInnerTexts();
+
+/**
+ * Last -webkit-app-region ("drag" | "no-drag") covering (x, y) in document order, matching Chromium's
+ * CollectDraggableRegions + Electron's DraggableRegionsToSkRegion evaluation (which ignores z-index).
+ */
+async function effectiveAppRegionAt(page: Page, x: number, y: number): Promise<string | null> {
+  return page.evaluate(({ x, y }) => {
+    let last: string | null = null;
+    for (const el of document.querySelectorAll("*")) {
+      const style = getComputedStyle(el);
+      const region = style.getPropertyValue("-webkit-app-region") || style.getPropertyValue("app-region");
+      if (region !== "drag" && region !== "no-drag") continue;
+      if (style.visibility === "hidden" || style.display === "none") continue;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+        last = region;
+      }
+    }
+    return last;
+  }, { x, y });
+}
 
 test("the view menu groups, sorts and shows the list from submenus, opaque over it, and is kept for next time", async () => {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
@@ -492,10 +515,17 @@ test("a narrow window hides the info card, then the sidebar; asked for, they sho
   await expect.poll(async () => Math.round((await conversation.boundingBox())!.width)).toBe(800);
   await snap(page, "layout-800");
   // Asked for, the sidebar shows over the session, which stays where it is; a click beside it puts it away.
+  const showBox = (await showSidebar.boundingBox())!;
+  expect(await effectiveAppRegionAt(page, showBox.x + showBox.width / 2, showBox.y + showBox.height / 2)).toBe("no-drag");
   await showSidebar.click();
   await expect(main).toHaveClass(/\bpeek\b/);
   await expect.poll(async () => Math.round((await sidebar.boundingBox())!.width)).toBe(272);
   expect(Math.round((await conversation.boundingBox())!.width)).toBe(800);
+  const peekHide = (await sidebar.getByRole("button", { name: "隐藏边栏" }).boundingBox())!;
+  const peekSearch = (await sidebar.getByRole("button", { name: "搜索" }).boundingBox())!;
+  expect(await effectiveAppRegionAt(page, peekHide.x + peekHide.width / 2, peekHide.y + peekHide.height / 2)).toBe("no-drag");
+  expect(await effectiveAppRegionAt(page, peekSearch.x + peekSearch.width / 2, peekSearch.y + peekSearch.height / 2)).toBe("no-drag");
+  expect(await effectiveAppRegionAt(page, 700, 22)).toBe("no-drag");
   await snap(page, "layout-800-sidebar-over");
   await page.locator(".peek-scrim").click({ position: { x: 700, y: 400 } });
   await expect(main).not.toHaveClass(/\bpeek\b/);
