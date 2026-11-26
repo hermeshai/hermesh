@@ -502,6 +502,28 @@ test("a question waits in the control area; the owner picks an option by key and
   await expect(ctl).toContainText("选哪个颜色");
   await expect(ctl).toContainText("还剩");
   await expect(ctl.getByTestId("question-step")).toHaveText("1 / 2");
+  // A long header tag truncates inside the card without wrapping the agent label or pushing controls off-card.
+  const overflow = await ctl.evaluate((el) => {
+    const tag = el.querySelector<HTMLElement>(".qx-tag");
+    const who = el.querySelector<HTMLElement>(".qx-who");
+    const right = el.querySelector<HTMLElement>(".qx-r");
+    if (!tag || !who || !right) return null;
+    const orig = tag.textContent;
+    tag.textContent = "我测量了两张截图的精确像素：输入框距侧栏 32px、内容区距侧栏 52px，这是一个非常非常长的头部标签用于验证不会溢出卡片或挤压右侧控件";
+    const cardRect = el.getBoundingClientRect();
+    const tagRect = tag.getBoundingClientRect();
+    const whoRect = who.getBoundingClientRect();
+    const rightRect = right.getBoundingClientRect();
+    const style = getComputedStyle(tag);
+    tag.textContent = orig;
+    return {
+      tagFits: tagRect.right <= cardRect.right + 1,
+      rightFits: rightRect.right <= cardRect.right + 1,
+      whoSingleLine: whoRect.height < 24,
+      ellipsis: style.textOverflow === "ellipsis" && style.overflow === "hidden",
+    };
+  });
+  expect(overflow).toEqual({ tagFits: true, rightFits: true, whoSingleLine: true, ellipsis: true });
   const answer = ctl.getByRole("button", { name: /^回答/ });
   await expect(answer).toBeDisabled();
   await snap(page, "session-question");
