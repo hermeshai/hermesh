@@ -1021,10 +1021,10 @@ func (tx *Tx) PutBackgroundTask(bt *sessionv1.BackgroundTask) error {
 		if bt.StartedAt == nil && prev.StartedAt != nil {
 			bt.StartedAt = prev.StartedAt
 		}
-		if bt.RunId == "" {
+		if prev.RunId != "" {
 			bt.RunId = prev.RunId
 		}
-		if bt.ItemId == "" {
+		if prev.ItemId != "" {
 			bt.ItemId = prev.ItemId
 		}
 		if bt.Kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_UNSPECIFIED {

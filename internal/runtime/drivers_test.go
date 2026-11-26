@@ -1013,6 +1013,299 @@ func runMockACP() {
 						"params":  map[string]any{"type": "assistant.idle"},
 					})
 				}()
+			} else if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "agy_auto_bg_chain") {
+				sysDir := filepath.Join(os.Getenv("MOCK_AGY_BRAIN_DIR"), ".system_generated")
+				tasksDir := filepath.Join(sysDir, "tasks")
+				msgsDir := filepath.Join(sysDir, "messages")
+				_ = os.MkdirAll(tasksDir, 0o755)
+				log10 := filepath.Join(tasksDir, "task-10.log")
+				log11 := filepath.Join(tasksDir, "task-11.log")
+				_ = os.WriteFile(log10, []byte("=== RUN   TestRaceSuite\n"), 0o644)
+				toFileURI := func(path string) string {
+					sl := filepath.ToSlash(path)
+					if strings.HasPrefix(sl, "/") {
+						return "file://" + sl
+					}
+					return "file:///" + sl
+				}
+
+				// 1. Synchronous command with IsDaemon:true that exits immediately (must NOT become a BackgroundTask):
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_sync_exit",
+							"title":         "run_command",
+							"kind":          "execute",
+							"status":        "completed",
+							"rawInput": map[string]any{
+								"CommandLine": "echo instant",
+								"IsDaemon":    true,
+								"toolSummary": "Instant check",
+							},
+							"content": []any{
+								map[string]any{
+									"type": "content",
+									"content": map[string]any{
+										"type": "text",
+										"text": "Created At: 2026-11-26T15:00:00Z\nCompleted At: 2026-11-26T15:00:00Z\nCommand exited with code 0.\n\nCommand output:\ninstant\n",
+									},
+								},
+							},
+						},
+					},
+				})
+
+				// 2. Antigravity run_command auto-backgrounded after WaitMsBeforeAsync (no run_in_background flag):
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_agy_1",
+							"title":         "run_command",
+							"kind":          "execute",
+							"status":        "in_progress",
+							"rawInput": map[string]any{
+								"CommandLine":                "go test -race ./...",
+								"WaitMsBeforeAsync":          500,
+								"NotificationTimeoutSeconds": 60,
+								"toolSummary":                "Run race suite",
+							},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call_update",
+							"toolCallId":    "tc_agy_1",
+							"status":        "completed",
+							"content": []any{
+								map[string]any{
+									"type": "content",
+									"content": map[string]any{
+										"type": "text",
+										"text": "Tool is running as a background task with task id: conv_99/task-10\nTask logs are available at: " + toFileURI(log10) + "\n\nLog output:\n=== RUN   TestRaceSuite\n\nYOU MUST TAKE ONE OF THE FOLLOWING TWO ACTIONS: wait or continue.",
+									},
+								},
+							},
+						},
+					},
+				})
+
+				// 3. Daemon + Subagent launched in Turn #1 (both immediately acked with status:"completed"):
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_agy_daemon",
+							"title":         "run_command",
+							"kind":          "execute",
+							"status":        "completed",
+							"rawInput": map[string]any{
+								"CommandLine": "pnpm dev",
+								"IsDaemon":    true,
+								"toolSummary": "Dev watch server",
+							},
+							"content": []any{
+								map[string]any{
+									"type": "content",
+									"content": map[string]any{
+										"type": "text",
+										"text": "Tool is running as a background task with task id: conv_99/task-daemon\n\nLog output:\nlistening on :3000\n\nYOU MUST TAKE ONE OF THE FOLLOWING TWO ACTIONS: ...",
+									},
+								},
+							},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_agy_sub",
+							"title":         "invoke_subagent",
+							"kind":          "other",
+							"status":        "completed",
+							"rawInput": map[string]any{
+								"TypeName": "research",
+								"Role":     "Log Analyzer",
+								"Prompt":   "Inspect flaky test logs",
+							},
+							"content": []any{
+								map[string]any{
+									"type":    "content",
+									"content": map[string]any{"type": "text", "text": `{"conversationId": "sub_conv_77"}`},
+								},
+							},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "agent_message_chunk",
+							"content":       map[string]any{"type": "text", "text": "Tests running in background."},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      promptReqID,
+					"result":  map[string]any{"stopReason": "end_turn"},
+				})
+
+				// Background progression orchestrated via gate files in MOCK_AGY_BRAIN_DIR so there are zero flaky sleeps:
+				go func() {
+					waitGate := func(name string) bool {
+						p := filepath.Join(os.Getenv("MOCK_AGY_BRAIN_DIR"), name)
+						for i := 0; i < 400; i++ {
+							if _, err := os.Stat(p); err == nil {
+								return true
+							}
+							time.Sleep(15 * time.Millisecond)
+						}
+						return false
+					}
+					if !waitGate("step_timeout_wake") {
+						return
+					}
+					_ = os.MkdirAll(msgsDir, 0o755)
+					_ = os.WriteFile(filepath.Join(msgsDir, "m0_still_running.json"), []byte(`{"sender":"conv_99/task-10","content":"Task id \"conv_99/task-10\" is still running after 60s."}`), 0o644)
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "agent_message_chunk",
+								"content":       map[string]any{"type": "text", "text": "Still waiting on race suite..."},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{"sessionUpdate": "usage_update", "used": 900, "size": 200000},
+						},
+					})
+
+					if !waitGate("step_fail_and_chain") {
+						return
+					}
+					_ = os.WriteFile(log10, []byte("=== RUN   TestRaceSuite\n--- FAIL: TestRaceSuite (1.2s)\n失败原因: 竞态冲突\n"), 0o644)
+					_ = os.WriteFile(filepath.Join(msgsDir, "m1_done.json"), []byte(`{"sender":"conv_99/task-10","content":"Task id \"conv_99/task-10\" finished with result:\nThe tool's output was truncated due to being too long.\n\nHere is a preview:\nCommand exited with code 1.\n"}`), 0o644)
+					_ = os.WriteFile(log11, []byte("=== RUN   TestRaceSuiteFixed\n"), 0o644)
+
+					// Agent kills daemon + subagent and launches chained task-11 in Wakeup #1:
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "tool_call",
+								"toolCallId":    "tc_kill_daemon",
+								"title":         "manage_task",
+								"kind":          "other",
+								"status":        "completed",
+								"rawInput":      map[string]any{"Action": "kill", "TaskId": "conv_99/task-daemon"},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "tool_call",
+								"toolCallId":    "tc_kill_sub",
+								"title":         "manage_subagents",
+								"kind":          "other",
+								"status":        "completed",
+								"rawInput":      map[string]any{"Action": "kill", "ConversationIds": []string{"sub_conv_77"}},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "tool_call",
+								"toolCallId":    "tc_agy_2",
+								"title":         "run_command",
+								"kind":          "execute",
+								"status":        "completed",
+								"rawInput": map[string]any{
+									"CommandLine":       "go test -race ./internal/runtime/...",
+									"WaitMsBeforeAsync": 500,
+									"toolSummary":       "Re-run fixed race suite",
+								},
+								"content": []any{
+									map[string]any{
+										"type": "content",
+										"content": map[string]any{
+											"type": "text",
+											"text": "Tool is running as a background task with task id: conv_99/task-11\nTask logs are available at: " + toFileURI(log11) + "\n\nLog output:\n=== RUN   TestRaceSuiteFixed\n\nYOU MUST TAKE ONE OF THE FOLLOWING TWO ACTIONS: ...",
+										},
+									},
+								},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "agent_message_chunk",
+								"content":       map[string]any{"type": "text", "text": "Fixed race and launched re-run."},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{"sessionUpdate": "usage_update", "used": 1400, "size": 200000},
+						},
+					})
+
+					if !waitGate("step_finish_chain") {
+						return
+					}
+					_ = os.WriteFile(log11, []byte("=== RUN   TestRaceSuiteFixed\n--- PASS: TestRaceSuiteFixed (0.4s)\nPASS\n"), 0o644)
+					_ = os.WriteFile(filepath.Join(msgsDir, "m2_done.json"), []byte(`{"sender":"conv_99/task-11","content":"Task id \"conv_99/task-11\" finished with result:\nCommand exited with code 0.\n"}`), 0o644)
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "agent_message_chunk",
+								"content":       map[string]any{"type": "text", "text": "All race tests passed!"},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{"sessionUpdate": "usage_update", "used": 1600, "size": 200000},
+						},
+					})
+				}()
 			} else if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "multistep_acp") {
 				write(map[string]any{
 					"jsonrpc": "2.0",
@@ -1992,5 +2285,155 @@ cxDeepLoop:
 	}
 	if !sawCopilotSubRunning || !sawCopilotSubDone {
 		t.Fatalf("Copilot sessionEvent subagent mismatch: running=%v done=%v", sawCopilotSubRunning, sawCopilotSubDone)
+	}
+}
+
+func TestAntigravityACPAutoBackgroundLogStreamingAndChainedSettlement(t *testing.T) {
+	ctx := context.Background()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	brainDir := t.TempDir()
+
+	drv := acp.NewDriver("")
+	drv.PostPromptMergeWindow = 40 * time.Millisecond
+	drv.OutOfTurnDebounce = 40 * time.Millisecond
+	drv.TaskLogPollInterval = 20 * time.Millisecond
+
+	sess, err := drv.StartSession(ctx, runtime.StartSpec{
+		SessionID: "th_agy_chain",
+		Workdir:   t.TempDir(),
+		Instance: &sessionv1.ProviderInstanceConfig{
+			InstanceId: "antigravity",
+			Driver:     "acp",
+			AcpFlavor:  "antigravity",
+			BinaryPath: exe,
+			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--", "acp"},
+			Env: map[string]string{
+				"HERMESH_MOCK_DRIVER": "acp",
+				"MOCK_AGY_BRAIN_DIR":  brainDir,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	defer sess.Close()
+
+	if err := sess.StartTurn(ctx, runtime.TurnInput{RunID: "r_agy_1", Prompt: "agy_auto_bg_chain"}); err != nil {
+		t.Fatal(err)
+	}
+
+	bgByID := map[string]runtime.Event{}
+	toolDone := map[string]runtime.Event{}
+	timeout := time.After(8 * time.Second)
+	waitTurn := func(label string) {
+		t.Helper()
+		for {
+			select {
+			case <-timeout:
+				t.Fatalf("timed out waiting for %s", label)
+			case ev := <-sess.Events():
+				if ev.Kind == runtime.EventBackgroundTask {
+					bgByID[ev.TaskID] = ev
+				}
+				if ev.Kind == runtime.EventToolCompleted {
+					toolDone[ev.ItemID] = ev
+				}
+				if ev.Kind == runtime.EventTurnCompleted {
+					return
+				}
+			}
+		}
+	}
+
+	// 1. Turn #1 finishes: verify synchronous command did NOT become a BackgroundTask,
+	// while auto-backgrounded run_command, daemon, and subagent all became RUNNING BackgroundTasks
+	// with clean human titles and wrapper-stripped output.
+	waitTurn("Turn #1")
+	if _, bad := bgByID["tc_sync_exit"]; bad {
+		t.Fatalf("synchronous run_command with IsDaemon=true that exited immediately must not become a BackgroundTask")
+	}
+	if _, premature := toolDone["tc_agy_1"]; premature {
+		t.Fatalf("auto-backgrounded run_command launch ack must not emit premature EventToolCompleted")
+	}
+	bg1 := bgByID["tc_agy_1"]
+	if bg1.BackgroundStatus != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING ||
+		bg1.ToolName != "Run race suite" ||
+		bg1.Command != "go test -race ./..." ||
+		strings.Contains(bg1.Output, "YOU MUST TAKE ONE OF THE FOLLOWING") {
+		t.Fatalf("unexpected tc_agy_1 initial BackgroundTask: %+v", bg1)
+	}
+	bgSub := bgByID["tc_agy_sub"]
+	if bgSub.BackgroundKind != sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT ||
+		bgSub.ToolName != "Log Analyzer" ||
+		bgSub.Command != "Inspect flaky test logs" {
+		t.Fatalf("unexpected tc_agy_sub BackgroundTask: %+v", bgSub)
+	}
+
+	// 2. Append live UTF-8 output to task-10.log while idle and verify TaskLogPollInterval streams it:
+	log10 := filepath.Join(brainDir, ".system_generated", "tasks", "task-10.log")
+	if err := os.WriteFile(log10, []byte("=== RUN   TestRaceSuite\n正在执行并发压测 50/100...\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sawLiveStream := false
+	for !sawLiveStream {
+		select {
+		case <-timeout:
+			t.Fatal("timed out waiting for live task-10.log tail streaming")
+		case ev := <-sess.Events():
+			if ev.Kind == runtime.EventBackgroundTask {
+				bgByID[ev.TaskID] = ev
+				if ev.TaskID == "tc_agy_1" && strings.Contains(ev.Output, "正在执行并发压测 50/100...") {
+					sawLiveStream = true
+				}
+			}
+		}
+	}
+
+	// 3. Trigger NotificationTimeoutSeconds ("still running") wakeup: tc_agy_1 MUST remain RUNNING!
+	if err := os.WriteFile(filepath.Join(brainDir, "step_timeout_wake"), []byte("1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	waitTurn("Timeout Wakeup")
+	if bgByID["tc_agy_1"].BackgroundStatus != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+		t.Fatalf("still-running timeout wakeup must NOT mark tc_agy_1 completed, got %+v", bgByID["tc_agy_1"])
+	}
+
+	// 4. Trigger task-10 failure (ExitCode=1) + daemon/subagent kills + chained launch of task-11:
+	if err := os.WriteFile(filepath.Join(brainDir, "step_fail_and_chain"), []byte("1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	waitTurn("Failure & Chained Launch Wakeup")
+
+	if bgByID["tc_agy_1"].BackgroundStatus != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED ||
+		!bgByID["tc_agy_1"].HasExitCode || bgByID["tc_agy_1"].ExitCode != 1 ||
+		!strings.Contains(bgByID["tc_agy_1"].Output, "失败原因: 竞态冲突") {
+		t.Fatalf("expected tc_agy_1 to settle as FAILED (exitCode=1) with final log tail, got %+v", bgByID["tc_agy_1"])
+	}
+	if td, ok := toolDone["tc_agy_1"]; !ok || td.ExitCode != 1 {
+		t.Fatalf("expected EventToolCompleted for tc_agy_1 with exitCode=1, got %+v", td)
+	}
+	if bgByID["tc_agy_daemon"].BackgroundStatus != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED {
+		t.Fatalf("expected manage_task(kill) to stop tc_agy_daemon, got %+v", bgByID["tc_agy_daemon"])
+	}
+	if bgByID["tc_agy_sub"].BackgroundStatus != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED {
+		t.Fatalf("expected manage_subagents(kill) to stop tc_agy_sub, got %+v", bgByID["tc_agy_sub"])
+	}
+	// Crucial check: newly-launched chained task tc_agy_2 MUST still be RUNNING after Wakeup #1 settles!
+	if bgByID["tc_agy_2"].BackgroundStatus != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+		t.Fatalf("chained task tc_agy_2 launched during Wakeup #1 was prematurely settled: %+v", bgByID["tc_agy_2"])
+	}
+
+	// 5. Trigger task-11 completion (ExitCode=0):
+	if err := os.WriteFile(filepath.Join(brainDir, "step_finish_chain"), []byte("1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	waitTurn("Chained Completion Wakeup")
+	if bgByID["tc_agy_2"].BackgroundStatus != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED ||
+		!bgByID["tc_agy_2"].HasExitCode || bgByID["tc_agy_2"].ExitCode != 0 ||
+		!strings.Contains(bgByID["tc_agy_2"].Output, "--- PASS: TestRaceSuiteFixed") {
+		t.Fatalf("expected tc_agy_2 to settle as COMPLETED (exitCode=0), got %+v", bgByID["tc_agy_2"])
 	}
 }

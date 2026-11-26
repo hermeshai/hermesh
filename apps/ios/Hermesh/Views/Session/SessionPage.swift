@@ -1549,8 +1549,9 @@ private struct BackgroundTasksSheet: View {
                     .textSelection(.enabled)
             }
             if !bt.outputTail.isEmpty {
+                let cleanOutput = Self.stripANSI(bt.outputTail)
                 ScrollView(.vertical) {
-                    Text(verbatim: bt.outputTail)
+                    Text(verbatim: cleanOutput)
                         .font(.system(size: 11.5, design: .monospaced))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
@@ -1582,5 +1583,9 @@ private struct BackgroundTasksSheet: View {
         case .failed: bt.hasExitCode ? String(localized: "Failed (\(bt.exitCode))") : String(localized: "Failed")
         default: String(localized: "Stopped")
         }
+    }
+
+    private static func stripANSI(_ text: String) -> String {
+        text.replacingOccurrences(of: #"\u{001B}\[[0-9;]*[A-Za-z]"#, with: "", options: .regularExpression)
     }
 }
