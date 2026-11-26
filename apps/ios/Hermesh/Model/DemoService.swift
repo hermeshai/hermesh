@@ -159,6 +159,9 @@ final class DemoService {
         if Self.manyTools {
             seedManyTools()
         }
+        if Self.codeBlockRunner {
+            seedCodeBlockRunner()
+        }
         #endif
         _ = pairing(.client)
     }
@@ -414,6 +417,15 @@ final class DemoService {
         #endif
     }()
 
+    // Simulator-only fixture for CodeBlockRunnerUITests.
+    private static let codeBlockRunner: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-DemoCodeBlockRunner")
+        #else
+        false
+        #endif
+    }()
+
     private var sampleQuestion = Question()
     private var greetings: [String: String] = [:]
     private var wakes: [Wake] = []
@@ -581,7 +593,6 @@ final class DemoService {
             let req = try Hermesh_Session_V1_UpdateSessionRequest(jsonUTF8Data: data, options: dec)
             guard let i = world.sessions.firstIndex(where: { $0.sessionID == req.sessionID }) else { throw CancellationError() }
             if !req.title.isEmpty { world.sessions[i].title = req.title }
-            if req.regenerateTitle, !req.locale.isEmpty { world.sessions[i].titleLocale = req.locale }
             if req.hasArchived_p { world.sessions[i].status = req.archived ? .archived : .idle }
             if req.hasModelSelection { world.sessions[i].modelSelection = req.modelSelection }
             if req.runtimeMode != .unspecified { world.sessions[i].runtimeMode = req.runtimeMode }
@@ -848,7 +859,73 @@ final class DemoService {
                 c.onTermination = { [weak self] _ in Task { @MainActor in self?.followers[token] = nil } }
             }
         }
+        if rpc == "RunCommand" {
+            let request = try Hermesh_Session_V1_RunCommandRequest(jsonUTF8Data: data, options: dec)
+            guard world.sessions.contains(where: { $0.sessionID == request.sessionID }) else {
+                throw APIError(code: "not_found", message: "session not found")
+            }
+            return streamDemoRunCommand(request)
+        }
         throw APIError(code: "unimplemented", message: String(localized: "This action needs a real connection. Exit the demo to set up your own workspace."))
+    }
+
+    private func streamDemoRunCommand(_ request: Hermesh_Session_V1_RunCommandRequest) -> AsyncThrowingStream<Data, Error> {
+        let cmd = request.command
+        return AsyncThrowingStream { c in
+            let job = Task {
+                func emit(_ build: (inout Hermesh_Session_V1_RunCommandEvent) -> Void) throws {
+                    var ev = Hermesh_Session_V1_RunCommandEvent()
+                    build(&ev)
+                    c.yield(try ev.jsonUTF8Data())
+                }
+                do {
+                    if cmd.contains("sleep") {
+                        try emit { $0.outputDelta = "starting step 1...\n" }
+                        for _ in 0 ..< 50 {
+                            try await Task.sleep(for: .milliseconds(100))
+                            if Task.isCancelled { return }
+                        }
+                        try emit {
+                            $0.done = true
+                            $0.exitCode = 0
+                            $0.durationMs = 5000
+                        }
+                        c.finish()
+                        return
+                    }
+                    try await Task.sleep(for: .milliseconds(50))
+                    if Task.isCancelled { return }
+                    if cmd.contains("exit 1") {
+                        try emit { $0.outputDelta = "\u{001B}[31mFAIL\u{001B}[0m check exited with status 1\n" }
+                        try emit {
+                            $0.done = true
+                            $0.exitCode = 1
+                            $0.durationMs = 65
+                        }
+                        c.finish()
+                        return
+                    }
+                    try emit { $0.outputDelta = "\u{001B}[32m✓\u{001B}[0m workspace ready\n" }
+                    try await Task.sleep(for: .milliseconds(50))
+                    if Task.isCancelled { return }
+                    let body = cmd.contains("rm -rf")
+                        ? "cleaned ./dist\n"
+                        : "README.md\nsrc/\npackage.json\n"
+                    try emit { $0.outputDelta = body }
+                    try emit {
+                        $0.done = true
+                        $0.exitCode = 0
+                        $0.durationMs = 110
+                    }
+                    c.finish()
+                } catch is CancellationError {
+                    c.finish()
+                } catch {
+                    c.finish(throwing: error)
+                }
+            }
+            c.onTermination = { _ in job.cancel() }
+        }
     }
 
     #if targetEnvironment(simulator)
@@ -996,6 +1073,77 @@ final class DemoService {
         addHistory(id: "demo-long-history", title: "Long history session", prefix: "Long", turns: 24, status: .idle, updatedOffset: 20)
         addHistory(id: "demo-delayed-history", title: "Delayed history session", prefix: "Delayed", turns: 24, status: .idle, updatedOffset: 10)
         addHistory(id: "demo-streaming-session", title: "Streaming session", prefix: "Stream", turns: 20, status: .running, updatedOffset: 30)
+    }
+
+    private func seedCodeBlockRunner() {
+        let id = "demo-codeblock-runner"
+        var s = session(id, title: "Code block runner session", machine: "demo-mac", status: .idle)
+        s.agent = "claude"
+        s.createdBy = "owner"
+        s.updatedAt = .init(date: .now.addingTimeInterval(50))
+        s.progress.turnCount = 4
+        world.sessions.insert(s, at: 0)
+
+        let turns: [(prompt: String, reply: String)] = [
+            (
+                "Give me a multi-line script to list workspace files.",
+                """
+                Here is a multi-line script to list workspace files:
+
+                ```bash
+                #!/usr/bin/env bash
+                # List workspace entries
+                for entry in README.md src package.json; do
+                  echo "$entry"
+                done
+                ```
+                """
+            ),
+            (
+                "Give me a long-running check command.",
+                """
+                Long-running check:
+
+                ```bash
+                echo "starting..." && sleep 5
+                ```
+                """
+            ),
+            (
+                "Give me a command to clean dist.",
+                """
+                Destructive cleanup:
+
+                ```bash
+                rm -rf ./dist && echo "cleaned"
+                ```
+                """
+            ),
+            (
+                "Show an example curl command with an API key.",
+                """
+                Masked secret check:
+
+                ```bash
+                OPENAI_API_KEY=sk-proj-1234567890abcdefghij curl -fsSL https://api.example.com/v1/models
+                ```
+                """
+            ),
+        ]
+
+        for (idx, t) in turns.enumerated() {
+            let ord = UInt32(idx + 1)
+            let rid = "r\(ord)"
+            beginRun(id, runID: rid, ordinal: ord, asker: "owner", status: .completed)
+            appendItem(id, runID: rid, kind: .userMessage) {
+                $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+                $0.text = t.prompt
+            }
+            appendItem(id, runID: rid, kind: .assistantMessage) {
+                $0.text = t.reply
+            }
+        }
+        syncSession(id)
     }
 
     private func streamSessionDetailRegression(

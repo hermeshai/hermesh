@@ -51,14 +51,14 @@ export function SidePanel({ home, running }: { home: FilesHome; running: boolean
       aria-label={t("panel.title")}
       data-testid="side-panel"
     >
-      <div className="sfp-strip">
+      <div className="sfp-strip drag">
         <div className="sfp-tabs" role="tablist">
           {p.tabs.map((x) => (
             <div
               key={x.key}
               role="tab"
               aria-selected={x === tab}
-              className={`sfp-tab ${x === tab ? "on" : ""}`}
+              className={`sfp-tab no-drag ${x === tab ? "on" : ""}`}
               title={x.file.path || t("files.tree")}
               data-path={x.file.path}
               data-kind={x.kind}

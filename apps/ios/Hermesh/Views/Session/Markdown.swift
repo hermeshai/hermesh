@@ -650,53 +650,153 @@ nonisolated private struct LongestWord: LayoutValueKey {
     static let defaultValue: CGFloat = 0
 }
 
-/// A fenced block, as on the Mac: a bar with its language (a shell's with a
-/// terminal mark) and Copy, then the code, coloured when it names its
-/// language, scrolling sideways rather than wrapping.
+/// A fenced block, as on the Mac: keeps the original script or code intact on top,
+/// offers prompt-stripped Copy, secret masking, and 1-click workspace execution with
+/// a destructive-command confirmation bar and an attached bottom terminal output drawer.
 struct FencedCode: View {
+    @Environment(\.sessionCodeActions) private var actions
     let text: String
     let lang: String
     let font: Font
     var ground = Palette.code
     /// Just copied: the button shows a check a moment.
     @State private var copied = false
+    @State private var revealed = false
+    @State private var confirming = false
 
     var body: some View {
+        let eff = effectiveCodeLang(lang: lang, text: text)
+        let secret = hasSecrets(text)
+        let shownText = (secret && !revealed) ? maskSecrets(text) : text
+        let copyTarget = eff.shell ? cleanShellCommand(text) : text
+        let plan = (!secret || revealed) ? inspectRunnableShell(lang: lang, text: text) : nil
+        let runState = CodeBlockRunStore.shared.state(sessionID: actions?.sessionID ?? "", blockText: text)
+        let isRunning = runState?.status == .running
+
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 5) {
-                if !lang.isEmpty {
-                    if Self.shells.contains(lang.lowercased()) { Image(systemName: "terminal") }
-                    Text(lang).font(.caption.monospaced())
+                if !eff.lang.isEmpty {
+                    if eff.shell { Image(systemName: "terminal") }
+                    Text(verbatim: eff.lang).font(.caption.monospaced()).lineLimit(1)
                 }
-                Spacer(minLength: 8)
+                if hiddenChars(text) {
+                    Label("Hidden characters", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 6)
+                if secret {
+                    Button {
+                        revealed.toggle()
+                    } label: {
+                        Image(systemName: revealed ? "eye.slash" : "eye")
+                            .padding(.horizontal, 8).frame(maxHeight: .infinity).contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text(revealed ? "Hide Secrets" : "Reveal Masked Secrets"))
+                    .accessibilityIdentifier("code-secret-toggle")
+                }
+                if let actions, isRunning {
+                    Button {
+                        CodeBlockRunStore.shared.stop(sessionID: actions.sessionID, blockText: text)
+                    } label: {
+                        Label("Stop", systemImage: "stop.fill")
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 8).frame(maxHeight: .infinity).contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("code-stop")
+                } else if let actions, let plan {
+                    Button {
+                        triggerRun(actions: actions, plan: plan)
+                    } label: {
+                        if runState != nil {
+                            Label("Rerun", systemImage: "arrow.clockwise")
+                                .padding(.horizontal, 8).frame(maxHeight: .infinity).contentShape(.rect)
+                        } else if plan.destructive {
+                            Label("Run…", systemImage: "play.fill")
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal, 8).frame(maxHeight: .infinity).contentShape(.rect)
+                        } else {
+                            Label("Run", systemImage: "play.fill")
+                                .foregroundStyle(.green)
+                                .padding(.horizontal, 8).frame(maxHeight: .infinity).contentShape(.rect)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text(runState != nil ? "Rerun" : "Run"))
+                    .accessibilityIdentifier("code-run")
+                }
                 Button {
-                    UIPasteboard.general.string = text
+                    UIPasteboard.general.string = copyTarget
                     copied = true
                 } label: {
                     Label("Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
                         .padding(.horizontal, 10).frame(maxHeight: .infinity).contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(copied ? Text("Copied") : Text("Copy Code"))
+                .accessibilityLabel(copied ? Text("Copied") : Text(eff.shell ? "Copy Command" : "Copy Code"))
                 .accessibilityIdentifier("code-copy")
             }
             .font(.caption).foregroundStyle(.secondary)
             .padding(.leading, 12)
             .frame(height: 30)
             .overlay(alignment: .bottom) { Rectangle().fill(Palette.separator).frame(height: 0.5) }
+
             ScrollView(.horizontal, showsIndicators: false) {
                 Group {
-                    if lang.isEmpty { SwiftUI.Text(text) } else { CodeText(text: text, lang: lang) }
+                    if eff.lang.isEmpty { SwiftUI.Text(shownText) } else { CodeText(text: shownText, lang: eff.lang) }
                 }
                 .font(font).lineSpacing(4)
                 .fixedSize()
                 .padding(.horizontal, 12).padding(.vertical, 10)
             }
             .textSelection(.enabled)
+
+            if confirming, let actions, let plan {
+                Rectangle().fill(Palette.separator).frame(height: 0.5)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Text("This script contains destructive operations. Run it in the current workspace?")
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    HStack(spacing: 12) {
+                        Spacer(minLength: 0)
+                        Button("Cancel") {
+                            confirming = false
+                        }
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("code-confirm-cancel")
+                        Button("Run Anyway") {
+                            confirming = false
+                            CodeBlockRunStore.shared.start(actions: actions, blockText: text, command: plan.command)
+                        }
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("code-confirm-run")
+                    }
+                }
+                .font(.caption)
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                .background(Color.orange.opacity(0.08))
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("code-confirm-bar")
+            }
+
+            if let runState, let actions {
+                InlineTerminalDrawer(run: runState, actions: actions, blockText: text)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .background(ground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(isRunning ? Color.accentColor.opacity(0.45) : Palette.separator, lineWidth: isRunning ? 1 : 0.5)
+        )
         .task(id: copied) {
             guard copied else { return }
             try? await Task.sleep(for: .seconds(1.5))
@@ -706,7 +806,12 @@ struct FencedCode: View {
         .accessibilityIdentifier("code-block")
     }
 
-    /// Languages of commands to run, not code to read (the Mac's list).
-    static let shells: Set<String> = ["bash", "sh", "zsh", "shell", "shellscript", "console", "terminal", "fish", "ksh", "csh", "tcsh",
-                                      "powershell", "pwsh", "ps1", "cmd", "bat", "batch"]
+    private func triggerRun(actions: SessionCodeActions, plan: RunnableShellPlan) {
+        if plan.destructive {
+            confirming = true
+            return
+        }
+        confirming = false
+        CodeBlockRunStore.shared.start(actions: actions, blockText: text, command: plan.command)
+    }
 }

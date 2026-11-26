@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { cli, fixture, launch, snap, sessionList } from "./app";
+import { cli, fixture, gitRepo, launch, snap, sessionList } from "./app";
 
 // The session list as a chat app's: the newest page at once, older ones as
 // the list scrolls to its end, and what changes shows up as it happens.
@@ -171,6 +172,83 @@ test("grouped by project, long project groups fold to five while keeping active,
     await loadOlderBtn.click();
     await expect(list.getByText("没有更早的任务了")).toBeVisible();
   }
+
+  await app.close();
+});
+
+test("only pushed or merged sessions show a sidebar git mark, and hovering shows a read-only git status card", async () => {
+  test.setTimeout(120_000);
+  const repo = gitRepo("gitdemo");
+  const origin = path.join(fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "hmorig-"))), "origin.git");
+  const gitEnv = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" };
+  execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin], { env: gitEnv });
+  execFileSync("git", ["remote", "add", "origin", origin], { cwd: repo, env: gitEnv });
+  execFileSync("git", ["push", "-q", "-u", "origin", "main"], { cwd: repo, env: gitEnv });
+
+  const { app, page } = await launch();
+  await page.evaluate(async (dir) => {
+    const st = await fetch("app://hermesh/api/hermesh.local.v1.LocalService/GetStatus", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).then((r) => r.json());
+    await fetch("app://hermesh/api/hermesh.local.v1.LocalService/AddProject", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ machineId: st.localMachineId, projectId: "gitdemo", path: dir, workspace: "WORKSPACE_WORKTREE" }),
+    });
+  }, repo);
+
+  const started = JSON.parse(
+    await cli("session", "start", "--project", "gitdemo", "--agent", "gemini", "--title", "实现分支感知", "--prompt", "write feature.ts export const ok = true;\nsay 改好了", "--wait", "-o", "json"),
+  ).session as { session_id: string };
+
+  const list = await sessionList(page);
+  const row = list.getByRole("listitem").filter({ hasText: "实现分支感知" });
+  await expect(row).toBeVisible();
+  // Dirty worktree: no sidebar row icon, hover card shows uncommitted status and has zero action buttons.
+  await expect(row.locator(".smeta [role=img]")).toHaveCount(0);
+  await row.hover();
+  const card = page.getByTestId("session-hover-card");
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("实现分支感知");
+  await expect(card).toContainText("1 个文件改动未提交");
+  await expect(card).toContainText("+1");
+  await expect(card.locator("button")).toHaveCount(0);
+  await page.locator(".side-h").hover();
+  await expect(card).toHaveCount(0);
+
+  // Local commit (unpushed): sidebar row stays unmarked, hover card shows ahead commit summary.
+  await cli("session", "send", started.session_id, "--message", "shell git -c user.name=t -c user.email=t@t add -A && git -c user.name=t -c user.email=t@t commit -m 'feat: add status perception'\nsay 已提交", "--wait");
+  await row.hover();
+  await expect(card).toContainText("1 个本地提交待推送");
+  await expect(card).toContainText("feat: add status perception");
+  await page.locator(".side-h").hover();
+  await expect(row.locator(".smeta [role=img]")).toHaveCount(0);
+
+  const info = await page.evaluate(async (sessionId) => {
+    const r = await fetch("app://hermesh/api/hermesh.session.v1.SessionService/GetSession", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId }),
+    });
+    const ws = (await r.json()).projection.session.workspaceStrategy;
+    return { worktreePath: ws.worktreePath as string, branch: ws.branch as string };
+  }, started.session_id);
+
+  // Push externally and focus window: sidebar row lights up the pushed mark.
+  execFileSync("git", ["push", "-q", "origin", info.branch], { cwd: info.worktreePath, env: gitEnv });
+  await page.waitForTimeout(1600);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(row.getByRole("img", { name: "已推送" })).toBeVisible();
+  await row.hover();
+  await expect(card).toContainText("已提交并推送");
+  await expect(card).toContainText("feat: add status perception");
+  await page.locator(".side-h").hover();
+
+  // Merge into main externally and focus window: sidebar mark updates automatically to merged.
+  execFileSync("git", ["merge", "-q", "--no-ff", "-m", "Merge feature", info.branch], { cwd: repo, env: gitEnv });
+  await page.waitForTimeout(1600);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(row.getByRole("img", { name: "已合并" })).toBeVisible();
+  await row.hover();
+  await expect(card).toContainText("已合并至 main");
 
   await app.close();
 });

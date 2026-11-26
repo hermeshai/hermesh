@@ -342,7 +342,9 @@ final class DemoUITests: XCTestCase {
 
     func testReviewSessionLifecycle() {
         enterWorkDemo(); reach("session-Add a welcome page"); tap("session-Add a welcome page")
-        tap("session-more"); tap("Copy Task ID")
+        tap("session-more")
+        XCTAssertFalse(app.buttons["Regenerate Title"].exists)
+        tap("Copy Task ID")
         XCTAssertTrue(contains("Copied the task ID").waitForExistence(timeout: 5))
         tap("session-more"); tap("Rename")
         replace(app.alerts.textFields.firstMatch, with: "Review Session"); tap("rename-confirm")
@@ -648,7 +650,9 @@ final class DemoUITests: XCTestCase {
         edit.tap()
         XCTAssertTrue(output.waitForExistence(timeout: 5))
         XCTAssertTrue((output.value as? String ?? output.label).contains("Updated the sample welcome page."))
-        tap("session-more"); tap("Copy Task ID")
+        tap("session-more")
+        XCTAssertFalse(app.buttons["Regenerate Title"].exists)
+        tap("Copy Task ID")
         place("Overview"); tap("run-demo-task")
         let answer = app.textFields["answer-text"]
         answer.press(forDuration: 1.2)

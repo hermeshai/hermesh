@@ -387,6 +387,7 @@ struct SessionPage: View {
         let grant = model.grantLabel(s)
         let steps = groupSteps(sessionTranscript(activeProj))
         let files = model.sessionFiles.model(s.sessionID, api: model.api)
+        let codeActions = codeActions(for: s)
         return ScrollView {
             VStack(alignment: .leading, spacing: 13) {
                 if s.status == .archived { ArchivedNote(session: s) }
@@ -394,6 +395,7 @@ struct SessionPage: View {
                     StepView(step: step, session: s, previousTurn: previousTurn(steps, before: i))
                 }
                 .environment(\.sessionFiles, files)
+                .environment(\.sessionCodeActions, codeActions)
                 .environment(\.openURL, OpenURLAction { url in
                     guard let route = FileRefLink.route(url, session: s.sessionID) else { return .systemAction }
                     if case .sessionFile(_, let r, let p, let line, _) = route, isSessionImage(p, line: line > 0 ? line : nil) {
@@ -567,9 +569,16 @@ struct SessionPage: View {
         focused || !draft.isEmpty || !attached.isEmpty || attaching || pickingModel
     }
 
+    private var isShellDraft: Bool {
+        guard !isNew else { return false }
+        let trimmed = draft.drop(while: { $0 == " " || $0 == "\t" })
+        return trimmed.first == "!"
+    }
+
     private var box: some View {
         let ready = !sending && starting == nil && uploading == 0 && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attached.isEmpty)
         let open = boxOpen
+        let shellDraft = isShellDraft
         let ends = HStack(spacing: 8) {
             if running {
                 Button { stop() } label: {
@@ -622,6 +631,7 @@ struct SessionPage: View {
                 if !open { plusButton }
                 TextField(isNew && starting == nil ? String(localized: "Describe what to build, debug or plan") : running ? String(localized: "Say more; it goes to the next turn") : String(localized: "Keep going"),
                           text: $draft, axis: .vertical)
+                    .font(shellDraft ? .body.monospaced() : .body)
                     .lineLimit(open ? 2 ... 6 : 1 ... 6)
                     .focused($focused)
                     .padding(.vertical, 8).padding(.leading, open ? 10 : 0)
@@ -632,6 +642,14 @@ struct SessionPage: View {
                 HStack(spacing: 6) {
                     plusButton
                     modelButton
+                    if shellDraft {
+                        Label("Direct shell", systemImage: "terminal")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 9).frame(height: 36)
+                            .background(Palette.fill2, in: Capsule())
+                            .accessibilityIdentifier("thread-shell-badge")
+                    }
                     Spacer(minLength: 0)
                     ends
                 }
@@ -1054,6 +1072,62 @@ struct SessionPage: View {
                 model.report(error)
                 if draft.isEmpty { draft = text }
                 if attached.isEmpty { attached = files }
+            }
+        }
+    }
+
+    private func codeActions(for s: Session) -> SessionCodeActions? {
+        guard !s.sessionID.isEmpty, s.status != .archived, let api = model.api else { return nil }
+        let sid = s.sessionID
+        let mid = s.machineID
+        return SessionCodeActions(
+            sessionID: sid,
+            runStream: { cmd in api.runCommand(sid, command: cmd, machineID: mid) },
+            sendOutputToChat: { cmd, code, out, stopped in
+                sendOutputToChat(sessionID: sid, command: cmd, exitCode: code, output: out, stopped: stopped)
+            }
+        )
+    }
+
+    private func sendOutputToChat(sessionID sid: String, command: String, exitCode: Int32, output: String, stopped: Bool) {
+        guard !sid.isEmpty, currentSession?.status != .archived, let api = model.api else { return }
+        let cleanOut = stripTerminalEscapes(output).trimmingCharacters(in: .whitespacesAndNewlines)
+        let capped: String = if cleanOut.count > 12_000 {
+            "\(cleanOut.prefix(6_000))\n...[truncated]...\n\(cleanOut.suffix(6_000))"
+        } else {
+            cleanOut
+        }
+        let header = stopped
+            ? String(localized: "Command stopped manually; output so far:")
+            : String(localized: "Command result (exit code \(Int(exitCode))):")
+        let bodyText = capped.isEmpty
+            ? "\(header)\n```bash\n\(command)\n```\n\(String(localized: "(no output)"))"
+            : "\(header)\n```bash\n\(command)\n```\n```text\n\(capped)\n```"
+        spoken += 1
+        var r = Hermesh_Session_V1_DispatchMessageRequest()
+        r.commandID = UUID().uuidString
+        r.sessionID = sid
+        r.text = bodyText
+        r.locale = AppLocale.current
+        r.intent = .queue
+        if !selection.instanceID.isEmpty { r.modelSelection = selection }
+        r.runtimeMode = clamped
+        r.interactionMode = plan ? .plan : .code
+        let before = lastSend
+        lastSend = Task {
+            await before?.value
+            do {
+                let res = try await api.dispatchMessage(r)
+                if res.queuedOffline {
+                    var next = projection ?? .init()
+                    if res.hasSession { next.session = res.session }
+                    if res.hasRun, !next.runs.contains(where: { $0.runID == res.run.runID }) {
+                        next.runs.append(res.run)
+                    }
+                    projection = next
+                }
+            } catch {
+                model.report(error)
             }
         }
     }

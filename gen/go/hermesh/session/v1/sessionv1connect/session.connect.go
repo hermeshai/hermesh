@@ -115,6 +115,9 @@ const (
 	// SessionServiceRunCommandProcedure is the fully-qualified name of the SessionService's RunCommand
 	// RPC.
 	SessionServiceRunCommandProcedure = "/hermesh.session.v1.SessionService/RunCommand"
+	// SessionServiceRefreshGitStatusProcedure is the fully-qualified name of the SessionService's
+	// RefreshGitStatus RPC.
+	SessionServiceRefreshGitStatusProcedure = "/hermesh.session.v1.SessionService/RefreshGitStatus"
 )
 
 // SessionServiceClient is a client for the hermesh.session.v1.SessionService service.
@@ -154,6 +157,7 @@ type SessionServiceClient interface {
 	// streams its live output without creating a turn or waking the coding agent.
 	// Cancelling the stream terminates the command's process group immediately.
 	RunCommand(context.Context, *v1.RunCommandRequest) (*connect.ServerStreamForClient[v1.RunCommandEvent], error)
+	RefreshGitStatus(context.Context, *v1.RefreshGitStatusRequest) (*v1.RefreshGitStatusResponse, error)
 }
 
 // NewSessionServiceClient constructs a client for the hermesh.session.v1.SessionService service. By
@@ -335,6 +339,12 @@ func NewSessionServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(sessionServiceMethods.ByName("RunCommand")),
 			connect.WithClientOptions(opts...),
 		),
+		refreshGitStatus: connect.NewClient[v1.RefreshGitStatusRequest, v1.RefreshGitStatusResponse](
+			httpClient,
+			baseURL+SessionServiceRefreshGitStatusProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("RefreshGitStatus")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -368,6 +378,7 @@ type sessionServiceClient struct {
 	readFile               *connect.Client[v1.ReadFileRequest, v1.ReadFileResponse]
 	readFileBytes          *connect.Client[v1.ReadFileBytesRequest, v1.ReadFileBytesResponse]
 	runCommand             *connect.Client[v1.RunCommandRequest, v1.RunCommandEvent]
+	refreshGitStatus       *connect.Client[v1.RefreshGitStatusRequest, v1.RefreshGitStatusResponse]
 }
 
 // ListProviders calls hermesh.session.v1.SessionService.ListProviders.
@@ -610,6 +621,15 @@ func (c *sessionServiceClient) RunCommand(ctx context.Context, req *v1.RunComman
 	return c.runCommand.CallServerStream(ctx, connect.NewRequest(req))
 }
 
+// RefreshGitStatus calls hermesh.session.v1.SessionService.RefreshGitStatus.
+func (c *sessionServiceClient) RefreshGitStatus(ctx context.Context, req *v1.RefreshGitStatusRequest) (*v1.RefreshGitStatusResponse, error) {
+	response, err := c.refreshGitStatus.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // SessionServiceHandler is an implementation of the hermesh.session.v1.SessionService service.
 type SessionServiceHandler interface {
 	ListProviders(context.Context, *v1.ListProvidersRequest) (*v1.ListProvidersResponse, error)
@@ -647,6 +667,7 @@ type SessionServiceHandler interface {
 	// streams its live output without creating a turn or waking the coding agent.
 	// Cancelling the stream terminates the command's process group immediately.
 	RunCommand(context.Context, *v1.RunCommandRequest, *connect.ServerStream[v1.RunCommandEvent]) error
+	RefreshGitStatus(context.Context, *v1.RefreshGitStatusRequest) (*v1.RefreshGitStatusResponse, error)
 }
 
 // NewSessionServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -824,6 +845,12 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 		connect.WithSchema(sessionServiceMethods.ByName("RunCommand")),
 		connect.WithHandlerOptions(opts...),
 	)
+	sessionServiceRefreshGitStatusHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceRefreshGitStatusProcedure,
+		svc.RefreshGitStatus,
+		connect.WithSchema(sessionServiceMethods.ByName("RefreshGitStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.session.v1.SessionService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SessionServiceListProvidersProcedure:
@@ -882,6 +909,8 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 			sessionServiceReadFileBytesHandler.ServeHTTP(w, r)
 		case SessionServiceRunCommandProcedure:
 			sessionServiceRunCommandHandler.ServeHTTP(w, r)
+		case SessionServiceRefreshGitStatusProcedure:
+			sessionServiceRefreshGitStatusHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1001,4 +1030,8 @@ func (UnimplementedSessionServiceHandler) ReadFileBytes(context.Context, *v1.Rea
 
 func (UnimplementedSessionServiceHandler) RunCommand(context.Context, *v1.RunCommandRequest, *connect.ServerStream[v1.RunCommandEvent]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.RunCommand is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) RefreshGitStatus(context.Context, *v1.RefreshGitStatusRequest) (*v1.RefreshGitStatusResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.RefreshGitStatus is not implemented"))
 }

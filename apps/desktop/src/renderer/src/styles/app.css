@@ -27,10 +27,12 @@
   /* The owner's messages: the brand blue, white words, as on the iPhone. */
   --bub:var(--accent);--bub-fg:#fff;--msg:var(--l1);
   --glass:rgba(255,255,255,.72);--glass-sh:0 0 0 .5px rgba(0,0,0,.10),0 2px 8px rgba(0,0,0,.08);
+  --bar-tint:rgba(255,255,255,.7);
   /* The box one writes in (her.css .cmp): the light along its top, its shadows at rest and while written in. */
   --cmp-hi:transparent;--cmp-lift:0 .5px 1px rgba(0,0,0,.05),0 2px 6px rgba(10,20,50,.05);--cmp-lift-f:0 .5px 1px rgba(0,0,0,.06),0 3px 10px rgba(10,20,50,.08);
   --shadow-win:0 0 0 .5px rgba(0,0,0,.20),0 24px 70px rgba(10,20,50,.30),0 8px 22px rgba(10,20,50,.14);
   --code:#f6f7fa;--add-bg:rgba(23,146,79,.10);--del-bg:rgba(215,51,63,.08);--add-fg:#127443;--del-fg:#b0232f;
+  --gh-push:#1a7f37;--gh-push-bg:rgba(26,127,55,.09);--gh-merge:#8250df;--gh-merge-bg:rgba(130,80,223,.09);--gh-ahead:#0969da;--gh-ahead-bg:rgba(9,105,218,.09);--gh-dirty:#bc4c00;--gh-dirty-bg:rgba(188,76,0,.09);
   --touch:#ff375f;--scrim:rgba(0,0,0,.22);--scrim-blur:blur(12px) saturate(1.2);--lg-bg:rgba(255,255,255,.62);--lg-hi:rgba(255,255,255,.95);--lg-edge:rgba(0,0,0,.08);
   color-scheme:light;
 }
@@ -53,9 +55,11 @@
   /* The agent's words: near white, a step brighter than other text. */
   --msg:rgba(255,255,255,.95);
   --glass:rgba(60,60,66,.62);--glass-sh:0 0 0 .5px rgba(255,255,255,.10),0 2px 10px rgba(0,0,0,.3);
+  --bar-tint:rgba(30,30,33,.6);
   --cmp-hi:rgba(255,255,255,.08);--cmp-lift:0 .5px 1px rgba(0,0,0,.3),0 2px 6px rgba(0,0,0,.14);--cmp-lift-f:0 .5px 1px rgba(0,0,0,.34),0 3px 10px rgba(0,0,0,.2);
   --shadow-win:0 0 0 .5px rgba(255,255,255,.14),0 24px 70px rgba(0,0,0,.6),0 8px 22px rgba(0,0,0,.35);
   --code:#18181b;--add-bg:rgba(63,207,134,.12);--del-bg:rgba(255,102,112,.11);--add-fg:#5fe0a0;--del-fg:#ff8c94;
+  --gh-push:#3fb950;--gh-push-bg:rgba(63,185,80,.13);--gh-merge:#a371f7;--gh-merge-bg:rgba(163,113,247,.13);--gh-ahead:#58a6ff;--gh-ahead-bg:rgba(88,166,255,.13);--gh-dirty:#d29922;--gh-dirty-bg:rgba(210,153,34,.13);
   --scrim:rgba(0,0,0,.4);--lg-bg:rgba(52,52,58,.58);--lg-hi:rgba(255,255,255,.14);--lg-edge:rgba(255,255,255,.12);
   color-scheme:dark;
 }
@@ -77,6 +81,7 @@
   --menu:rgba(19,19,23,.94);--menu-solid:#131317;--menu-bd:rgba(255,255,255,.085);
   --bub:#1f1f24;--bub-fg:var(--l1);--bot-reply:var(--win2);--bot-user:#1f1f24;--msg:#fafafa;
   --glass:rgba(19,19,23,.92);--glass-sh:inset 0 1px 0 rgba(255,255,255,.085),0 0 0 .5px rgba(255,255,255,.085),0 20px 44px -12px rgba(0,0,0,.375);
+  --bar-tint:rgba(7,7,9,.78);
   --cmp-hi:rgba(255,255,255,.035);--cmp-lift:0 0 0 1px rgba(255,255,255,.09),0 8px 24px -8px rgba(0,0,0,.32);--cmp-lift-f:0 0 0 1px rgba(255,255,255,.16),0 8px 24px -8px rgba(0,0,0,.36);
   --code:#0d0d11;--add-bg:rgba(122,174,102,.12);--del-bg:rgba(222,85,85,.11);--add-fg:#98ca84;--del-fg:#f28b8b;
   --scrim:rgba(0,0,0,.64);--lg-bg:rgba(19,19,23,.78);--lg-hi:rgba(255,255,255,.10);--lg-edge:rgba(255,255,255,.085);
@@ -200,7 +205,7 @@ button{font:inherit;color:inherit}
 .mainwrap{position:relative;display:grid;grid-template-columns:272px minmax(0,1fr);height:100%;transition:grid-template-columns .3s cubic-bezier(.2,0,0,1)}
 .mainwrap.noside{grid-template-columns:0 minmax(0,1fr)}
 /* Hidden, the sidebar leaves its toggle where it was, over the page's toolbar, which makes room for it. */
-.side-float{position:absolute;top:0;left:0;z-index:3;height:44px;display:flex;align-items:center;gap:2px;padding-left:79px}
+.side-float{position:absolute;top:0;left:0;z-index:6;height:44px;display:flex;align-items:center;gap:2px;padding-left:79px}
 .noside .ctool{padding-left:117px}
 /* Edge to edge: the sidebar fills the window from top to bottom and left to its edge, one hairline from the content. */
 .side{background:var(--side);border-right:.5px solid var(--sep);display:flex;flex-direction:column;min-height:0;overflow:hidden}
@@ -308,6 +313,42 @@ html.vibrant .grp-hrow{position:static;background:transparent}
 @keyframes stitle-run-back{0%{transform:translateX(100%)}93.75%,100%{transform:translateX(-100%)}}
 @media (prefers-reduced-motion:reduce){.stitle.run{color:inherit}.stitle .shine{display:none}}
 .smeta{display:inline-flex;align-items:center;gap:5px;font-size:12px;line-height:16px;color:var(--l2);flex:none;font-variant-numeric:tabular-nums}
+.gmark{display:inline-flex;align-items:center;justify-content:center;flex:none}
+.gmark .ic{width:13.5px;height:13.5px;stroke-width:1.45}
+.gmark.pushed{color:var(--gh-push)}
+.gmark.merged{color:var(--gh-merge)}
+.srow.arch .gmark{opacity:.72}
+/* Read-only hover card anchored outside the sidebar's right edge (portal to body so .side overflow never clips it). */
+.shover-card{position:fixed;z-index:25;width:296px;pointer-events:none;background:color-mix(in srgb,var(--menu-solid) 92%,transparent);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border-radius:var(--r-card);box-shadow:0 0 0 .5px var(--menu-bd),0 14px 36px rgba(0,0,0,.20),0 2px 6px rgba(0,0,0,.08);padding:11px 12px;display:flex;flex-direction:column;gap:9px;animation:shover-in .14s cubic-bezier(.2,0,0,1)}
+@keyframes shover-in{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.shover-card{animation:none}}
+.shover-head{display:flex;align-items:flex-start;gap:8px}
+.shover-logo{display:flex;flex:none;margin-top:1px}
+.shover-hmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.shover-title{font-size:13px;font-weight:var(--font-weight-semibold);line-height:1.35;color:var(--l1);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.shover-sub{font-size:11.5px;line-height:1.3;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.shover-git{--git-c:var(--l2);border-radius:var(--r-md);padding:8px 9px;background:var(--fill);box-shadow:inset 0 0 0 .5px var(--sep);display:flex;flex-direction:column;gap:5px}
+.shover-git.pushed{--git-c:var(--gh-push);background:var(--gh-push-bg);box-shadow:inset 0 0 0 .5px color-mix(in srgb,var(--gh-push) 24%,transparent)}
+.shover-git.merged{--git-c:var(--gh-merge);background:var(--gh-merge-bg);box-shadow:inset 0 0 0 .5px color-mix(in srgb,var(--gh-merge) 24%,transparent)}
+.shover-git.unpushed{--git-c:var(--gh-ahead);background:var(--gh-ahead-bg);box-shadow:inset 0 0 0 .5px color-mix(in srgb,var(--gh-ahead) 22%,transparent)}
+.shover-git.dirty{--git-c:var(--gh-dirty);background:var(--gh-dirty-bg);box-shadow:inset 0 0 0 .5px color-mix(in srgb,var(--gh-dirty) 22%,transparent)}
+.shover-git-top{display:flex;align-items:center;gap:6px;min-width:0}
+.shover-git-top>.ic{width:14px;height:14px;stroke-width:1.4;color:var(--git-c);flex:none}
+.shover-state{font-size:12px;font-weight:var(--font-weight-semibold);color:var(--git-c);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shover-diff{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:11px;font-weight:500;flex:none;font-variant-numeric:tabular-nums}
+.shover-add{color:var(--gh-push)}
+.shover-del{color:var(--del-fg)}
+.shover-dbar{display:inline-flex;gap:1.5px;margin-left:1px}
+.shover-sq{width:6px;height:6px;border-radius:1.2px;background:var(--fill3)}
+.shover-sq.add{background:var(--gh-push)}
+.shover-sq.del{background:var(--del-fg)}
+.shover-row{display:flex;align-items:center;gap:5px;font-size:11.5px;line-height:16px;color:var(--l2);min-width:0}
+.shover-row>.ic{width:12.5px;height:12.5px;color:var(--l3);flex:none}
+.shover-ref{font-family:var(--mono);font-size:11px;color:var(--l1);background:color-mix(in srgb,var(--win) 55%,var(--fill2));padding:0 4px;border-radius:4px;max-width:118px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shover-arr{color:var(--l3);flex:none;font-size:11px}
+.shover-sha{font-family:var(--mono);font-size:11px;color:var(--l2);flex:none}
+.shover-subj{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--l1)}
+.shover-hint{font-size:11px;line-height:1.35;color:var(--l2)}
 .sl2{display:flex;align-items:baseline;gap:8px;font-size:12px;line-height:16px;color:color-mix(in srgb,var(--l2) 78%,transparent);margin-top:2px}
 .sl2t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stime{flex:none;font-size:12px;font-variant-numeric:tabular-nums}
@@ -721,6 +762,24 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .livebar{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--l2);padding:8px 2px 0}
 .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--l2);height:100%;text-align:center;padding:40px}
 .empty b{color:var(--l1);font-size:15px}
+/* A session page: the conversation's column, and the file panel beside it when open. */
+.spage{flex:1;min-height:0;display:flex;position:relative}
+.spage>.scol{position:relative;flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
+/* On a session page the bar floats over the conversation as liquid glass (glass.tsx): the conversation
+   scrolls under it and shows through, blurred, bending at the bar's bottom edge; a hairline closes it.
+   The bending is its inline backdrop-filter once measured; until then, and where SVG backdrops don't
+   work, it is frosted. */
+.spage>.scol>.ctool{position:absolute;top:0;left:0;right:0;z-index:5;background:var(--bar-tint);box-shadow:inset 0 -.5px 0 var(--sep);
+  backdrop-filter:blur(18px) saturate(1.8);-webkit-backdrop-filter:blur(18px) saturate(1.8)}
+.glass-defs{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
+.spage .dwrap{border-top:0}
+.spage .dbody{padding-top:calc(44px + var(--sp-3))}
+.spage .empty{padding-top:84px}
+.spage .insp-col{top:calc(44px + var(--sp-3))}
+/* Reduce transparency (System Settings › Accessibility › Display): a solid bar. */
+@media (prefers-reduced-transparency:reduce){.spage>.scol>.ctool{backdrop-filter:none !important;-webkit-backdrop-filter:none !important;background:var(--win)}}
+/* With the file panel open on the right, Windows' caption buttons sit over the panel's strip instead. */
+html[data-platform=win] .spage.bgopen .ctool{padding-right:14px}
 /* info */
 .form{display:flex;flex-direction:column;gap:18px}
 .fgroup{background:var(--win2);border-radius:var(--r-card)}

@@ -104,7 +104,12 @@ const paths: Record<string, string> = {
   window: "<rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"1.6\"/><path d=\"M2 6h12M4 4.6h.1M5.6 4.6h.1\"/>",
   // A pulse: the Progress entry.
   pulse: "<path d=\"M1.8 8.4h2.8l1.9-4.8 3 8.8 1.9-4h2.8\"/>",
-  // A kitten's head: a sub-agent of Her's.
+  // GitHub Primer Octicon-style repository state glyphs on 16×16.
+  gitPushed: "<circle cx=\"4.5\" cy=\"3.8\" r=\"1.55\"/><circle cx=\"4.5\" cy=\"12.2\" r=\"1.55\"/><circle cx=\"11.5\" cy=\"12.2\" r=\"1.55\"/><path d=\"M4.5 5.4v5.2M11.5 10.6V5.6c0-1.1-.9-1.8-2-1.8H8\"/><path d=\"M9.5 2.2L7.8 3.8l1.7 1.6\"/>",
+  gitMerged: "<circle cx=\"4.5\" cy=\"3.8\" r=\"1.55\"/><circle cx=\"4.5\" cy=\"12.2\" r=\"1.55\"/><circle cx=\"11.8\" cy=\"8.8\" r=\"1.55\"/><path d=\"M4.5 5.4v5.2M4.5 5.4c0 2.5 2.4 3.4 5.7 3.4\"/>",
+  gitUnpushed: "<circle cx=\"8\" cy=\"11.6\" r=\"1.75\"/><path d=\"M3.2 11.6h3M9.8 11.6h3M8 8.2V2.6M5.5 5.1L8 2.6l2.5 2.5\"/>",
+  gitDirty: "<rect x=\"2.4\" y=\"2.4\" width=\"11.2\" height=\"11.2\" rx=\"2.4\"/><circle cx=\"8\" cy=\"8\" r=\"2.1\" fill=\"currentColor\" stroke=\"none\"/>",
+  gitCommit: "<circle cx=\"8\" cy=\"8\" r=\"2.3\"/><path d=\"M1.8 8h3.9M10.3 8h3.9\"/>",
 };
 
 export type IconName = keyof typeof paths;

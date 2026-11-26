@@ -88,7 +88,6 @@
   "sessionMenu": {
     "open": "Open",
     "rename": "Rename",
-    "regenerateTitle": "Regenerate Title",
     "archive": "Archive",
     "unarchive": "Unarchive",
     "copyId": "Copy Task ID",
@@ -254,5 +253,21 @@
   "workspaceKept": {
     "text": "The environment kept this task’s worktree to protect local changes or files. Update Hermesh on that environment to archive without releasing the worktree.",
     "textPath": "The environment kept this task’s worktree to protect local files ({{path}}). Update Hermesh on that environment to archive without releasing the worktree."
+  },
+  "git": {
+    "pushed": "Pushed",
+    "merged": "Merged",
+    "hoverPushed": "Committed & pushed",
+    "hoverMerged": "Merged into {{target}}",
+    "hoverUnpushed_one": "{{count}} local commit unpushed",
+    "hoverUnpushed_other": "{{count}} local commits unpushed",
+    "hoverDirty_one": "{{count}} uncommitted file",
+    "hoverDirty_other": "{{count}} uncommitted files",
+    "hoverClean": "No code changes",
+    "hintPushed": "Synced to remote branch {{target}}",
+    "hintMerged": "Changes are already in {{target}}",
+    "hintUnpushed": "Committed locally; push when ready",
+    "hintDirty": "Modified in working tree, not yet committed",
+    "hintClean": "Working tree clean, no new commits"
   }
 }

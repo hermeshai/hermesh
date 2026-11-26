@@ -49,6 +49,7 @@ import {
 } from "@hermesh/core";
 import { local, sessions as sessionApi } from "./api";
 import { ConnectionLine } from "./ConnectionCapsule";
+import { GlassBar } from "./glass";
 import { Icon } from "./icons";
 import { layoutOf, setCard } from "./layout";
 import { keys, ownKeys } from "./platform";
@@ -774,142 +775,102 @@ export function SessionPage() {
       : "…";
   const renamingHeaderTitle = Boolean(activeSessionId && currentSession && renamingSessionId === currentSession.sessionId);
 
-  return (
+  const header = (
     <>
-      <div className="ctool drag">
-        <div className="ctitle">
-          {renamingHeaderTitle && currentSession ? (
-            <TitleInput
-              key={currentSession.sessionId}
-              initial={shownSessionTitle}
-              className="crename"
-              testId="thread-title-input"
-              onDone={(title) => {
-                const sid = currentSession.sessionId;
-                setRenamingSessionId((cur) => (cur === sid ? null : cur));
-                if (!title) return;
-                setPendingTitle({ id: sid, title });
-                void st
-                  .run(async () => {
-                    const res = await sessionApi.updateSession({ sessionId: sid, title });
-                    if (res.session) {
-                      setProjection((prev) => {
-                        if (!prev || prev.session?.sessionId !== sid) return prev;
-                        const next = { ...prev, session: res.session };
-                        rememberProjection(sid, next);
-                        return next;
-                      });
-                    }
-                  })
-                  .finally(() => setPendingTitle((cur) => (cur?.id === sid ? null : cur)));
-              }}
-            />
-          ) : activeSessionId && currentSession ? (
-            <h2
-              className="no-drag"
-              data-testid="thread-title"
-              title={shownSessionTitle}
-              onDoubleClick={() => setRenamingSessionId(currentSession.sessionId)}
-            >
-              {shownSessionTitle}
-            </h2>
-          ) : (
-            <h2 data-testid="thread-title">
-              {activeSessionId ? "…" : starting ? (firstLine(starting.req.initialPrompt ?? "") || t("launch.title")) : t("launch.title")}
-            </h2>
-          )}
-          {activeSessionId && currentSession && (
-            <span className="th-where" data-testid="session-where">
-              <Icon name={targetMachine?.local ? "laptop" : "server"} />
-              {targetMachine?.machineName ?? currentSession.machineId} · {currentSession.projectId === SCRATCH_PROJECT ? t("launch.scratch") : currentSession.projectId}
-            </span>
-          )}
-        </div>
-        {activeSessionId && allBgTasks.length > 0 && (
-          <button
-            type="button"
-            className={`tb ${background ? "on" : ""}`}
-            title={t("background.title")}
-            aria-label={t("background.title")}
-            aria-pressed={background}
-            data-testid="toolbar-background-btn"
-            onClick={() => st.set({ background: !background })}
+      <div className="ctitle">
+        {renamingHeaderTitle && currentSession ? (
+          <TitleInput
+            key={currentSession.sessionId}
+            initial={shownSessionTitle}
+            className="crename"
+            testId="thread-title-input"
+            onDone={(title) => {
+              const sid = currentSession.sessionId;
+              setRenamingSessionId((cur) => (cur === sid ? null : cur));
+              if (!title) return;
+              setPendingTitle({ id: sid, title });
+              void st
+                .run(async () => {
+                  const res = await sessionApi.updateSession({ sessionId: sid, title });
+                  if (res.session) {
+                    setProjection((prev) => {
+                      if (!prev || prev.session?.sessionId !== sid) return prev;
+                      const next = { ...prev, session: res.session };
+                      rememberProjection(sid, next);
+                      return next;
+                    });
+                  }
+                })
+                .finally(() => setPendingTitle((cur) => (cur?.id === sid ? null : cur)));
+            }}
+          />
+        ) : activeSessionId && currentSession ? (
+          <h2
+            className="no-drag"
+            data-testid="thread-title"
+            title={shownSessionTitle}
+            onDoubleClick={() => setRenamingSessionId(currentSession.sessionId)}
           >
-            <Icon name="layers" />
-            {activeBgTasks.length > 0 && <span className="tb-badge" data-testid="toolbar-background-badge">{activeBgTasks.length}</span>}
-          </button>
+            {shownSessionTitle}
+          </h2>
+        ) : (
+          <h2 data-testid="thread-title">
+            {activeSessionId ? "…" : starting ? (firstLine(starting.req.initialPrompt ?? "") || t("launch.title")) : t("launch.title")}
+          </h2>
         )}
-        {activeSessionId && (
-          <button
-            className={`tb ${info ? "on" : ""}`}
-            title={ts(info ? "page.hideInfo" : "page.showInfo", { keys: keys(ownKeys.toggleInspector) })}
-            aria-label={ts("page.info")}
-            aria-pressed={info}
-            disabled={filesOpen}
-            data-testid="toolbar-info-btn"
-            onClick={() => setCard(st, !info)}
-          >
-            <Icon name="info" />
-          </button>
-        )}
-        {activeSessionId && (
-          <button
-            className={`tb ${filesOpen ? "on" : ""}`}
-            title={ts(filesOpen ? "page.hidePanel" : "page.showPanel")}
-            aria-label={ts("panel.title")}
-            aria-pressed={filesOpen}
-            data-testid="toolbar-panel-btn"
-            onClick={() => setPanelOpen(filePanel, !filesOpen)}
-          >
-            <Icon name="panelRight" />
-          </button>
+        {activeSessionId && currentSession && (
+          <span className="th-where" data-testid="session-where">
+            <Icon name={targetMachine?.local ? "laptop" : "server"} />
+            {targetMachine?.machineName ?? currentSession.machineId} · {currentSession.projectId === SCRATCH_PROJECT ? t("launch.scratch") : currentSession.projectId}
+          </span>
         )}
       </div>
-      {!activeSessionId && starting ? (
-        // From Send until the machine answers, as the session's page will be: the owner's message, faded, with where it
-        // is under it ("Sending…" once that takes 400 ms), or why it was not sent, with Try Again and Edit.
-        <div className="dwrap th" data-testid="thread-page">
-          <div className="dmain" data-testid="session-starting">
-            <ChatFrame
-              key="starting"
-              rows={[startingRow(starting)]}
-              initial={rowHeights}
-              label={ts("chat.log")}
-              follow={undefined}
-              row={() => (
-                <UserBubble
-                  text={starting.req.initialPrompt ?? ""}
-                  attachments={starting.files}
-                  machineId={starting.req.machineId}
-                  at={starting.at}
-                  waiting={!starting.refused}
-                  note={starting.refused
-                    ? <PromptNote kind="refused" why={starting.refused} onRetry={() => void begin({ ...starting, refused: undefined })} onEdit={editStart} />
-                    : <PromptNote kind="sending" />}
-                />
-              )}
-              foot={<ConnectionLine machine={targetMachine} linkUp={reachable} />}
-              control={(onHeight) => (
-                <ComposerZone onHeight={onHeight}>
-                  <ThreadComposer
-                    {...composerProps}
-                    value={prompt}
-                    onChange={setPrompt}
-                    onSend={() => {}}
-                    running={false}
-                    sending
-                    placeholder={t("composer.placeholderIdle")}
-                    attachments={attachments}
-                    onAttach={handleAttachFiles}
-                    onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
-                    offline={!machineOnline}
-                  />
-                </ComposerZone>
-              )}
-            />
-          </div>
-        </div>
-      ) : !activeSessionId ? (
+      {activeSessionId && allBgTasks.length > 0 && (
+        <button
+          type="button"
+          className={`tb ${background ? "on" : ""}`}
+          title={t("background.title")}
+          aria-label={t("background.title")}
+          aria-pressed={background}
+          data-testid="toolbar-background-btn"
+          onClick={() => st.set({ background: !background })}
+        >
+          <Icon name="layers" />
+          {activeBgTasks.length > 0 && <span className="tb-badge" data-testid="toolbar-background-badge">{activeBgTasks.length}</span>}
+        </button>
+      )}
+      {activeSessionId && (
+        <button
+          className={`tb ${info ? "on" : ""}`}
+          title={ts(info ? "page.hideInfo" : "page.showInfo", { keys: keys(ownKeys.toggleInspector) })}
+          aria-label={ts("page.info")}
+          aria-pressed={info}
+          disabled={filesOpen}
+          data-testid="toolbar-info-btn"
+          onClick={() => setCard(st, !info)}
+        >
+          <Icon name="info" />
+        </button>
+      )}
+      {activeSessionId && (
+        <button
+          className={`tb ${filesOpen ? "on" : ""}`}
+          title={ts(filesOpen ? "page.hidePanel" : "page.showPanel")}
+          aria-label={ts("panel.title")}
+          aria-pressed={filesOpen}
+          data-testid="toolbar-panel-btn"
+          onClick={() => setPanelOpen(filePanel, !filesOpen)}
+        >
+          <Icon name="panelRight" />
+        </button>
+      )}
+    </>
+  );
+
+  if (!activeSessionId && !starting) {
+    return (
+      <>
+        <div className="ctool drag">{header}</div>
         <div className="dwrap th" data-testid="thread-page">
           <div className="dmain" data-testid="thread-launch-card">
             {ask}
@@ -937,72 +898,50 @@ export function SessionPage() {
             </div>
           </div>
         </div>
-      ) : (
-        <div className={`dwrap th ${dock ? "dock" : ""}`} data-testid="thread-page">
-          <div className="dmain">
-            <ContentScope value={activeSessionId}>
-              <SessionRunContext.Provider value={codeActions}>
-              <FilesHomeContext.Provider value={filesHome}>
+        {/* The composer's pictures open here. */}
+        <ImageLightboxHost />
+      </>
+    );
+  }
+
+  return (
+    <div className={`spage ${filesOpen ? "bgopen" : ""}`}>
+      <div className="scol">
+        <GlassBar className="ctool drag">{header}</GlassBar>
+        {!activeSessionId && starting ? (
+          // From Send until the machine answers, as the session's page will be: the owner's message, faded, with where it
+          // is under it ("Sending…" once that takes 400 ms), or why it was not sent, with Try Again and Edit.
+          <div className="dwrap th" data-testid="thread-page">
+            <div className="dmain" data-testid="session-starting">
               <ChatFrame
-                key={activeSessionId}
-                rows={rows}
+                key="starting"
+                rows={[startingRow(starting)]}
                 initial={rowHeights}
                 label={ts("chat.log")}
-                follow={currentSession?.status}
-                spoken={spoken}
-                unread={unread && session ? <Unread s={session} /> : undefined}
-                row={(r) =>
-                  currentSession?.offlineQueued && r.it.kind === "user" ? (
-                    // Queued here while its machine is offline: faded, and said under it, with Discard.
-                    <UserBubble
-                      text={r.it.text}
-                      attachments={r.it.attachments}
-                      sessionId={activeSessionId}
-                      machineId={currentSession.machineId}
-                      at={r.it.at}
-                      waiting
-                      note={<PromptNote kind="waiting" machine={targetMachine?.machineName ?? currentSession.machineId} onDiscard={discardOffline} />}
-                    />
-                  ) : (
-                    <Row it={r.it} rowKey={r.key} end={r.end} live={r.live} sessionId={activeSessionId} machineId={currentSession?.machineId} clients={st.clients} starter={session?.createdBy ?? "owner"} previous={r.previous} />
-                  )
-                }
-                head={
-                  archived && session && (
-                    <div className="anote">
-                      <Icon name="archive" className="sm" />
-                      {ts("chat.archived")}
-                      <button className="link" onClick={() => unarchive(st, session)}>{ts("chat.unarchive")}</button>
-                    </div>
-                  )
-                }
-                foot={
-                  session && (
-                    <>
-                      <ConnectionLine machine={targetMachine} linkUp={archived || (following && reachable)} work={work} />
-                      <BackgroundLine tasks={activeBgTasks} />
-                      <Stale s={session} behind={behind} />
-                      {failure && <Failed s={session} failure={failure} grant={grant} />}
-                    </>
-                  )
-                }
-                control={archived ? undefined : (onHeight) => (
+                follow={undefined}
+                row={() => (
+                  <UserBubble
+                    text={starting.req.initialPrompt ?? ""}
+                    attachments={starting.files}
+                    machineId={starting.req.machineId}
+                    at={starting.at}
+                    waiting={!starting.refused}
+                    note={starting.refused
+                      ? <PromptNote kind="refused" why={starting.refused} onRetry={() => void begin({ ...starting, refused: undefined })} onEdit={editStart} />
+                      : <PromptNote kind="sending" />}
+                  />
+                )}
+                foot={<ConnectionLine machine={targetMachine} linkUp={reachable} />}
+                control={(onHeight) => (
                   <ComposerZone onHeight={onHeight}>
-                    {requestCard}
-                    {queueCard}
-                    {slashRow}
                     <ThreadComposer
                       {...composerProps}
                       value={prompt}
-                      onChange={(v) => {
-                        setPrompt(v);
-                        setSlashOpen(v.startsWith("/") && !v.includes(" "));
-                      }}
-                      onSend={() => submitMessage()}
-                      onStop={handleStop}
-                      running={running}
-                      sending={busySend}
-                      placeholder={running ? t("composer.placeholderRunning") : t("composer.placeholderIdle")}
+                      onChange={setPrompt}
+                      onSend={() => {}}
+                      running={false}
+                      sending
+                      placeholder={t("composer.placeholderIdle")}
                       attachments={attachments}
                       onAttach={handleAttachFiles}
                       onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
@@ -1011,18 +950,95 @@ export function SessionPage() {
                   </ComposerZone>
                 )}
               />
-              </FilesHomeContext.Provider>
-              </SessionRunContext.Provider>
-            </ContentScope>
+            </div>
           </div>
-          {filesHome && <SidePanel home={filesHome} running={running} />}
-          {info && session && <Inspector s={session} providers={providers} />}
-          {background && !filesOpen && <Background tasks={allBgTasks} onStop={handleStopBackgroundTask} />}
-        </div>
-      )}
-      {/* Outside the branches: the composer's and a starting prompt's pictures open here too. */}
+        ) : (
+          <div className={`dwrap th ${dock ? "dock" : ""}`} data-testid="thread-page">
+            <div className="dmain">
+              <ContentScope value={activeSessionId!}>
+                <SessionRunContext.Provider value={codeActions}>
+                <FilesHomeContext.Provider value={filesHome}>
+                <ChatFrame
+                  key={activeSessionId}
+                  rows={rows}
+                  initial={rowHeights}
+                  label={ts("chat.log")}
+                  follow={currentSession?.status}
+                  spoken={spoken}
+                  unread={unread && session ? <Unread s={session} /> : undefined}
+                  row={(r) =>
+                    currentSession?.offlineQueued && r.it.kind === "user" ? (
+                      // Queued here while its machine is offline: faded, and said under it, with Discard.
+                      <UserBubble
+                        text={r.it.text}
+                        attachments={r.it.attachments}
+                        sessionId={activeSessionId}
+                        machineId={currentSession.machineId}
+                        at={r.it.at}
+                        waiting
+                        note={<PromptNote kind="waiting" machine={targetMachine?.machineName ?? currentSession.machineId} onDiscard={discardOffline} />}
+                      />
+                    ) : (
+                      <Row it={r.it} rowKey={r.key} end={r.end} live={r.live} sessionId={activeSessionId!} machineId={currentSession?.machineId} clients={st.clients} starter={session?.createdBy ?? "owner"} previous={r.previous} />
+                    )
+                  }
+                  head={
+                    archived && session && (
+                      <div className="anote">
+                        <Icon name="archive" className="sm" />
+                        {ts("chat.archived")}
+                        <button className="link" onClick={() => unarchive(st, session)}>{ts("chat.unarchive")}</button>
+                      </div>
+                    )
+                  }
+                  foot={
+                    session && (
+                      <>
+                        <ConnectionLine machine={targetMachine} linkUp={archived || (following && reachable)} work={work} />
+                        <BackgroundLine tasks={activeBgTasks} />
+                        <Stale s={session} behind={behind} />
+                        {failure && <Failed s={session} failure={failure} grant={grant} />}
+                      </>
+                    )
+                  }
+                  control={archived ? undefined : (onHeight) => (
+                    <ComposerZone onHeight={onHeight}>
+                      {requestCard}
+                      {queueCard}
+                      {slashRow}
+                      <ThreadComposer
+                        {...composerProps}
+                        value={prompt}
+                        onChange={(v) => {
+                          setPrompt(v);
+                          setSlashOpen(v.startsWith("/") && !v.includes(" "));
+                        }}
+                        onSend={() => submitMessage()}
+                        onStop={handleStop}
+                        running={running}
+                        sending={busySend}
+                        placeholder={running ? t("composer.placeholderRunning") : t("composer.placeholderIdle")}
+                        attachments={attachments}
+                        onAttach={handleAttachFiles}
+                        onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
+                        offline={!machineOnline}
+                      />
+                    </ComposerZone>
+                  )}
+                />
+                </FilesHomeContext.Provider>
+                </SessionRunContext.Provider>
+              </ContentScope>
+            </div>
+            {info && session && <Inspector s={session} providers={providers} />}
+            {background && !filesOpen && <Background tasks={allBgTasks} onStop={handleStopBackgroundTask} />}
+          </div>
+        )}
+      </div>
+      {activeSessionId && filesHome && <SidePanel home={filesHome} running={running} />}
+      {/* A starting prompt's pictures open here too. */}
       <ImageLightboxHost />
-    </>
+    </div>
   );
 }
 

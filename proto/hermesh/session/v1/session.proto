@@ -107,6 +107,9 @@ service SessionService {
   rpc RunCommand(RunCommandRequest) returns (stream RunCommandEvent) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
+  rpc RefreshGitStatus(RefreshGitStatusRequest) returns (RefreshGitStatusResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
 }
 
 enum SessionStatus {
@@ -427,6 +430,25 @@ enum TitleState {
   TITLE_STATE_LOCKED = 4;
 }
 
+enum GitState {
+  GIT_STATE_UNSPECIFIED = 0;
+  GIT_STATE_CLEAN = 1;
+  GIT_STATE_DIRTY = 2;
+  GIT_STATE_UNPUSHED = 3;
+  GIT_STATE_PUSHED = 4;
+  GIT_STATE_MERGED = 5;
+}
+
+message GitStatus {
+  GitState state = 1;
+  string branch = 2;
+  string target_ref = 3;
+  uint32 dirty_files = 4;
+  uint32 commits_ahead = 5;
+  string head_commit = 6;
+  string head_subject = 7;
+}
+
 // Session is the unified coding-agent session record across all initiators
 // (owner UI, Her, MCP, CLI).
 message Session {
@@ -475,6 +497,7 @@ message Session {
   bool title_generating = 41;
   TitleState title_state = 42;
   uint64 title_seq = 43;
+  GitStatus git_status = 44;
 }
 
 enum SessionView {
@@ -1344,4 +1367,13 @@ message RunCommandEvent {
   uint64 duration_ms = 4;
   bool timed_out = 5;
   bool truncated = 6;
+}
+
+message RefreshGitStatusRequest {
+  string machine_id = 1;
+  repeated string session_ids = 2;
+}
+
+message RefreshGitStatusResponse {
+  repeated Session sessions = 1;
 }
