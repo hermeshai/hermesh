@@ -1,0 +1,1880 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>iPhone 选项框随内容底部 & 样式 A 精简版 · 原型</title>
+<style>
+:root {
+  --font-ios: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --dt: 16px; /* Dynamic Type base: 16px (std) | 19px (lg) | 22.5px (xl) */
+}
+
+[data-font="std"] { --dt: 16px; }
+[data-font="lg"]  { --dt: 19px; }
+[data-font="xl"]  { --dt: 22px; }
+
+[data-theme="dark"] {
+  --page: #0b0c10;
+  --page-fg: #ededf2;
+  --page-fg2: #9497a6;
+  --page-bd: rgba(255,255,255,.085);
+  --page-card: #15161c;
+  --page-btn: rgba(255,255,255,.08);
+  --page-bar: rgba(20,21,26,.92);
+
+  --ios-bg: #000000;
+  --ios-bg-rgb: 0,0,0;
+  --win: #18181c;
+  --l1: rgba(255,255,255,.92);
+  --l2: rgba(235,235,245,.58);
+  --l3: rgba(235,235,245,.34);
+  --sep: rgba(255,255,255,.095);
+  --fill: rgba(255,255,255,.055);
+  --fill2: rgba(255,255,255,.092);
+  --fill3: rgba(255,255,255,.14);
+  --card-surf: rgba(28,28,32,.92);
+  --card-in: rgba(255,255,255,.058);
+
+  --accent: #4a66ff;
+  --accent-t: #97a9ff;
+  --accent-bg: rgba(74,102,255,.17);
+  --accent-bd: rgba(102,128,255,.45);
+
+  --ok: #30c988;
+  --ok-bg: rgba(48,201,136,.15);
+  --ok-bd: rgba(48,201,136,.30);
+  --orange: #f09a36;
+  --orange-bg: rgba(240,154,54,.14);
+
+  --glass: rgba(34,34,39,.80);
+  --glass-sh: 0 0 0 .5px rgba(255,255,255,.13), inset 0 .5px 0 rgba(255,255,255,.12), 0 12px 32px rgba(0,0,0,.55);
+  --kb: #26262a;
+  --key: #525257;
+  --key2: #39393e;
+}
+
+[data-theme="light"] {
+  --page: #e8eaf0;
+  --page-fg: #1b1c22;
+  --page-fg2: #606370;
+  --page-bd: rgba(0,0,0,.085);
+  --page-card: #ffffff;
+  --page-btn: rgba(20,24,40,.065);
+  --page-bar: rgba(246,247,250,.92);
+
+  --ios-bg: #fbfbfc;
+  --ios-bg-rgb: 251,251,252;
+  --win: #ffffff;
+  --l1: rgba(0,0,0,.88);
+  --l2: rgba(60,60,67,.62);
+  --l3: rgba(60,60,67,.36);
+  --sep: rgba(0,0,0,.085);
+  --fill: rgba(118,118,128,.08);
+  --fill2: rgba(118,118,128,.135);
+  --fill3: rgba(118,118,128,.20);
+  --card-surf: rgba(255,255,255,.95);
+  --card-in: rgba(118,118,128,.075);
+
+  --accent: #3d5bff;
+  --accent-t: #2c49eb;
+  --accent-bg: rgba(61,91,255,.10);
+  --accent-bd: rgba(61,91,255,.30);
+
+  --ok: #159962;
+  --ok-bg: rgba(21,153,98,.11);
+  --ok-bd: rgba(21,153,98,.25);
+  --orange: #d47508;
+  --orange-bg: rgba(212,117,8,.11);
+
+  --glass: rgba(250,250,252,.84);
+  --glass-sh: 0 0 0 .5px rgba(0,0,0,.09), 0 10px 28px rgba(20,24,40,.11), 0 2px 6px rgba(20,24,40,.05);
+  --kb: #d2d4da;
+  --key: #ffffff;
+  --key2: #adb1ba;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; overflow-x: hidden; }
+body {
+  background: var(--page);
+  color: var(--page-fg);
+  font: 14px/1.5 var(--font-ios);
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: 84px;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+input { font: inherit; color: inherit; }
+svg { display: block; flex: none; }
+
+/* ---------- Desktop Page Header (hidden on phone so mobile has ZERO header stacking!) ---------- */
+.desk-top {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 18px 24px 6px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+}
+.desk-top h1 { font-size: 18px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+.desk-top .sub { font-size: 13px; color: var(--page-fg2); }
+
+/* ---------- Stage ---------- */
+.stage {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 12px 20px 18px;
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.dev-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.col-head {
+  width: 100%;
+  max-width: 402px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px;
+  font-size: 12.5px;
+  color: var(--page-fg2);
+}
+.col-head b { color: var(--page-fg); font-weight: 650; }
+.badge-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-pill.bad { background: rgba(235,85,85,.15); color: #f27272; }
+[data-theme="light"] .badge-pill.bad { color: #cf3434; }
+.badge-pill.good { background: var(--ok-bg); color: var(--ok); }
+
+/* ---------- iPhone Viewport ---------- */
+.phone {
+  width: 402px;
+  height: 852px;
+  border-radius: 56px;
+  background: var(--ios-bg);
+  position: relative;
+  overflow: hidden;
+  overflow: clip;
+  box-shadow: 0 0 0 10px #1b1b1e, 0 0 0 11.5px #38383f, 0 26px 68px rgba(0,0,0,.45);
+  color: var(--l1);
+  font-size: var(--dt);
+  line-height: 1.44;
+  font-family: var(--font-ios);
+  user-select: none;
+}
+.island {
+  position: absolute;
+  top: 11px; left: 50%;
+  transform: translateX(-50%);
+  width: 122px; height: 35px;
+  border-radius: 20px;
+  background: #000;
+  z-index: 25;
+}
+.ios-sb {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 32px 0 42px;
+  font-weight: 600;
+  font-size: 15.5px;
+  z-index: 24;
+  pointer-events: none;
+}
+.ios-top-fade {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 114px;
+  z-index: 18;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(var(--ios-bg-rgb), .95) 0%,
+    rgba(var(--ios-bg-rgb), .82) 50%,
+    rgba(var(--ios-bg-rgb), 0) 100%
+  );
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+}
+.ios-nav {
+  position: absolute;
+  top: 54px; left: 0; right: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 20;
+  pointer-events: none;
+}
+.ios-nav > * { pointer-events: auto; }
+.glass {
+  background: var(--glass);
+  box-shadow: var(--glass-sh);
+  backdrop-filter: blur(26px) saturate(1.55);
+  -webkit-backdrop-filter: blur(26px) saturate(1.55);
+}
+.ios-orb {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--l1);
+  position: relative;
+  flex: none;
+}
+.ios-orb .dot-org {
+  position: absolute;
+  top: 9px; right: 9px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--orange);
+}
+.ios-tcap {
+  height: 42px;
+  max-width: 220px;
+  min-width: 0;
+  border-radius: 21px;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.18;
+}
+.ios-tcap b {
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ios-tcap small {
+  font-size: 10.5px;
+  color: var(--l2);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.home-bar {
+  position: absolute;
+  bottom: 8px; left: 50%;
+  transform: translateX(-50%);
+  width: 136px; height: 5px;
+  border-radius: 3px;
+  background: var(--l1);
+  opacity: .82;
+  z-index: 30;
+  pointer-events: none;
+}
+
+/* ---------- Conversation Scroll Stream ---------- */
+.ios-scroll {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 110px 18px 98px;
+  display: flex;
+  flex-direction: column;
+  gap: .75em;
+  scrollbar-width: none;
+}
+.ios-scroll::-webkit-scrollbar { display: none; }
+.phone.legacy-pin .ios-scroll { padding-bottom: 560px; }
+.phone.kb .ios-scroll { padding-bottom: 292px; }
+
+.chat-in {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: .78em;
+}
+
+.um {
+  align-self: flex-end;
+  max-width: 84%;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 19px;
+  padding: .56em .88em;
+  font-size: .96em;
+  line-height: 1.44;
+  overflow-wrap: anywhere;
+}
+.am {
+  font-size: .96em;
+  line-height: 1.54;
+  color: var(--l1);
+  display: flex;
+  flex-direction: column;
+  gap: .5em;
+  overflow-wrap: anywhere;
+}
+.am p { margin: 0; }
+.am ul { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: .32em; }
+.am li::marker { color: var(--l3); }
+.am code {
+  font: .86em var(--mono);
+  background: var(--fill2);
+  padding: .08em .34em;
+  border-radius: 5px;
+  overflow-wrap: anywhere;
+}
+
+.tool-ln {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .88em;
+  color: var(--l2);
+  min-width: 0;
+}
+.tool-ln span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-ln .chev { width: 12px; height: 12px; color: var(--l3); }
+.shimmer {
+  background: linear-gradient(90deg, var(--l2) 25%, var(--l1) 50%, var(--l2) 75%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shim 2.4s linear infinite;
+}
+@keyframes shim { from { background-position: 180% 0; } to { background-position: -40% 0; } }
+
+.work-ln {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .88em;
+  color: var(--l2);
+  padding: 2px 0 4px;
+}
+.work-ln .tm { color: var(--l3); font-variant-numeric: tabular-nums; }
+.hermesh-mark {
+  width: 16px; height: 16px;
+  animation: pulse-mk 1.5s ease-in-out infinite;
+}
+@keyframes pulse-mk { 0%, 100% { opacity: .52; transform: scale(.94); } 50% { opacity: 1; transform: scale(1.04); } }
+
+/* ---------- Agent Logo ---------- */
+.ag-logo {
+  width: 1.15em; height: 1.15em;
+  max-width: 22px; max-height: 22px;
+  border-radius: 26%;
+  overflow: hidden;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  box-shadow: 0 0 0 .5px rgba(255,255,255,.14);
+}
+.ag-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ag-logo.claude { background: #d97757; color: #fff; font: 700 .7em/1 var(--font-ios); }
+
+/* ---------- Bottom Dock & Legacy Pinned Panel ---------- */
+.ios-dock {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: 24px;
+  padding: 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 22;
+  transition: opacity .2s;
+  pointer-events: none;
+}
+.ios-dock > * { pointer-events: auto; }
+.phone.kb .ios-dock.after-dock { opacity: 0; pointer-events: none; }
+
+.qpanel-legacy {
+  border-radius: 32px;
+  padding: 15px 15px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-size: 16px;
+}
+.qpanel-legacy .q-opts-leg {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 212px;
+  overflow-y: auto;
+}
+
+/* ========================================================================
+   DECLUTTERED IN-FLOW QUESTION CARD (Dynamic-Type & Long-Text Proof!)
+   ======================================================================== */
+.qcard-flow {
+  margin-top: 2px;
+  border-radius: 22px;
+  padding: .9em;
+  background: var(--card-surf);
+  box-shadow: 0 0 0 .5px var(--sep), inset 0 .5px 0 rgba(255,255,255,.08), 0 8px 24px rgba(0,0,0,.18);
+  display: flex;
+  flex-direction: column;
+  gap: .65em;
+  animation: flow-in .22s var(--ease);
+}
+[data-theme="light"] .qcard-flow {
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.09), 0 6px 20px rgba(15,25,50,.06);
+}
+@keyframes flow-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Top bar: ONLY 2 clean items (Left: Agent | Right: Timer OR ‹ 1/3 ›). Wraps gracefully at huge font! */
+.qh-clean {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: .78em;
+  line-height: 1.3;
+  color: var(--l2);
+}
+.qh-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.qh-who span {
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qh-tm {
+  color: var(--orange);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Single unified stepper for multi-question (NO duplicate progress bars, NO header pills!) */
+.qpager {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--fill2);
+  border-radius: 999px;
+  padding: 2px 4px;
+  min-height: 26px;
+}
+.qpg-btn {
+  width: 26px; height: 24px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--l1);
+}
+.qpg-btn:disabled { opacity: .28; cursor: default; }
+.qpg-num {
+  font-size: .95em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 0 4px;
+  color: var(--l1);
+  white-space: nowrap;
+}
+
+/* Optional full-width eyebrow when header exists (never crammed into top bar!) */
+.q-eyebrow {
+  font-size: .78em;
+  font-weight: 550;
+  line-height: 1.35;
+  color: var(--l2);
+  margin-bottom: -.25em;
+  overflow-wrap: anywhere;
+}
+
+/* Question Title: full width, natural multi-line wrap at any font size */
+.qttl {
+  font-size: .97em;
+  font-weight: 650;
+  line-height: 1.4;
+  color: var(--l1);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.q-note {
+  font-size: .84em;
+  font-weight: 400;
+  color: var(--l2);
+  margin-left: .25em;
+}
+
+/* Options Stack: zero fixed heights, em-scaled badges, natural wrapping */
+.qopts {
+  display: flex;
+  flex-direction: column;
+  gap: .45em;
+}
+.qopt {
+  display: flex;
+  align-items: flex-start;
+  gap: .62em;
+  padding: .65em .78em;
+  border-radius: 15px;
+  background: var(--card-in);
+  text-align: left;
+  width: 100%;
+  transition: background .14s, box-shadow .14s, transform .08s;
+}
+.qopt:active { transform: scale(.992); }
+.qopt.on {
+  background: var(--accent-bg);
+  box-shadow: inset 0 0 0 1.3px var(--accent);
+}
+.qopt .ck {
+  width: 1.18em; height: 1.18em;
+  margin-top: .12em;
+  border-radius: 50%;
+  border: 1.6px solid var(--l3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: #fff;
+}
+.qopt.multi .ck { border-radius: .35em; }
+.qopt.on .ck {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.qopt .ob {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.qopt .ot {
+  font-size: .9em;
+  font-weight: 500;
+  line-height: 1.44;
+  color: var(--l1);
+}
+.rec-badge {
+  display: inline-block;
+  padding: .1em .44em;
+  margin-right: .36em;
+  border-radius: .34em;
+  font-size: .78em;
+  font-weight: 600;
+  line-height: 1.32;
+  background: var(--accent-bg);
+  color: var(--accent-t);
+  vertical-align: baseline;
+}
+.qopt.on .rec-badge {
+  background: var(--accent);
+  color: #fff;
+}
+.qopt .od {
+  font-size: .78em;
+  line-height: 1.4;
+  color: var(--l2);
+  margin-top: .2em;
+}
+
+/* Custom Input Row */
+.qown {
+  display: flex;
+  align-items: center;
+  gap: .5em;
+  padding: .56em .75em;
+  border-radius: 14px;
+  background: var(--card-in);
+  transition: box-shadow .15s, background .15s;
+}
+.qown.filled {
+  background: var(--accent-bg);
+  box-shadow: inset 0 0 0 1.1px var(--accent-bd);
+}
+.qown.typing {
+  background: var(--win);
+  box-shadow: inset 0 0 0 1.4px var(--accent);
+}
+.qown svg { width: 1em; height: 1em; color: var(--l3); }
+.qown.filled svg, .qown.typing svg { color: var(--accent-t); }
+.qown input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  font-size: .86em;
+  color: var(--l1);
+}
+.qown input::placeholder { color: var(--l3); }
+.qown .clr {
+  font-size: .78em;
+  color: var(--l2);
+  padding: .15em .4em;
+  flex: none;
+}
+
+/* Action Row: Side-by-side normally; stacks vertically at Extra-Large font (ViewThatFits!) */
+.qacts {
+  display: flex;
+  align-items: stretch;
+  gap: .5em;
+  padding-top: 2px;
+}
+[data-font="xl"] .qacts {
+  flex-direction: column-reverse;
+}
+.qbtn {
+  flex: 1;
+  min-height: 2.4em;
+  padding: .45em .9em;
+  border-radius: 999px;
+  background: var(--fill2);
+  font-size: .9em;
+  font-weight: 560;
+  line-height: 1.25;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  transition: opacity .15s, transform .08s;
+}
+.qbtn:active:not(:disabled) { transform: scale(.985); }
+.qbtn.pri {
+  background: var(--accent);
+  color: #fff;
+  flex: 1.3;
+}
+[data-font="xl"] .qbtn.pri { flex: 1; }
+.qbtn:disabled { opacity: .36; cursor: default; }
+
+/* ---------- Floating "Back to Question" Pill ---------- */
+.jump-q {
+  position: absolute;
+  left: 50%;
+  bottom: 84px;
+  transform: translateX(-50%) translateY(10px);
+  z-index: 23;
+  min-height: 36px;
+  max-width: calc(100% - 32px);
+  padding: 5px 12px 5px 9px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 560;
+  color: var(--l1);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s var(--ease), transform .2s var(--ease);
+  white-space: nowrap;
+}
+.jump-q.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+.jump-q .arr {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------- Bottom Composer Capsule ---------- */
+.ios-cmp {
+  height: 48px;
+  border-radius: 24px;
+  padding: 6px 6px 6px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 2px;
+  font-size: 15px;
+}
+.cmp-ic {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--fill2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--l1);
+}
+.cmp-send {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: .42;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.cmp-ph {
+  flex: 1;
+  color: var(--l3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Simulated iOS Keyboard ---------- */
+.ios-kbd {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 256px;
+  background: var(--kb);
+  transform: translateY(102%);
+  transition: transform .26s var(--ease);
+  z-index: 26;
+  padding: 9px 4px 0;
+  font-size: 16px;
+}
+.phone.kb .ios-kbd { transform: none; }
+.kr { display: flex; justify-content: center; gap: 5px; margin-bottom: 9px; }
+.kk {
+  height: 39px;
+  flex: 0 0 33px;
+  border-radius: 6px;
+  background: var(--key);
+  box-shadow: 0 1px 0 rgba(0,0,0,.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  color: var(--l1);
+}
+.kk.w { flex-basis: 44px; background: var(--key2); font-size: 13.5px; }
+.kk.sp { flex: 1; max-width: 180px; font-size: 14px; }
+.kk.rt { flex-basis: 82px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; }
+
+/* ========================================================================
+   SETTLED (ANSWERED) QUESTION CARD: BEFORE vs CLEAN STYLE A (WITH 推荐 TAG!)
+   ======================================================================== */
+.settled-legacy {
+  border-radius: 12px;
+  background: var(--fill);
+  padding: 10px 12px;
+  font-size: .82em;
+  line-height: 1.46;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow-wrap: anywhere;
+}
+.settled-legacy .leg-qrow { display: flex; align-items: baseline; gap: 5px; color: var(--l1); }
+.settled-legacy .leg-qic { width: 14px; height: 14px; color: var(--l2); transform: translateY(2px); flex: none; }
+.settled-legacy .leg-ans { color: var(--l2); }
+
+/* Clean Style A: ZERO top header bar clutter! Pure Question -> Highlighted Answer with 推荐 badge! */
+.settled-a {
+  border-radius: 16px;
+  background: var(--fill);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  padding: .75em .82em;
+  display: flex;
+  flex-direction: column;
+  gap: .65em;
+  animation: settle-morph .22s var(--ease);
+}
+@keyframes settle-morph {
+  from { opacity: .55; transform: scale(.985); }
+  to { opacity: 1; transform: none; }
+}
+.sa-item + .sa-item {
+  padding-top: .65em;
+  border-top: .5px solid var(--sep);
+}
+.sa-q {
+  font-size: .84em;
+  line-height: 1.45;
+  color: var(--l2);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.sa-ans {
+  margin-top: .42em;
+  padding: .56em .72em;
+  border-radius: 11px;
+  background: var(--fill2);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  display: flex;
+  align-items: flex-start;
+  gap: .52em;
+}
+.sa-ans.muted {
+  background: transparent;
+}
+.sa-ck {
+  width: 1.15em; height: 1.15em;
+  margin-top: .14em;
+  border-radius: 50%;
+  background: var(--ok-bg);
+  color: var(--ok);
+  box-shadow: inset 0 0 0 .5px var(--ok-bd);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  font-size: .88em;
+}
+.sa-ck.skip { background: var(--fill2); color: var(--l2); box-shadow: none; }
+.sa-atxt {
+  flex: 1;
+  min-width: 0;
+  font-size: .9em;
+  font-weight: 520;
+  line-height: 1.45;
+  color: var(--l1);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.sa-ans.muted .sa-atxt {
+  color: var(--l2);
+  font-weight: 450;
+}
+.sa-rec {
+  display: inline-block;
+  padding: .09em .42em;
+  margin-right: .35em;
+  border-radius: .32em;
+  font-size: .78em;
+  font-weight: 600;
+  line-height: 1.32;
+  background: var(--accent-bg);
+  color: var(--accent-t);
+  vertical-align: baseline;
+}
+
+/* ---------- Desktop Bottom Control Bar ---------- */
+.desk-ctl {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 90;
+  background: var(--page-bar);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--page-bd);
+  padding: 9px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+}
+.desk-ctl .g { display: flex; gap: 4px; align-items: center; }
+.desk-ctl .g > b { color: var(--page-fg2); font-weight: 500; margin-right: 2px; }
+.desk-ctl button {
+  height: 27px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: var(--page-btn);
+  color: var(--page-fg);
+  font-size: 12px;
+}
+.desk-ctl button.on { background: var(--accent); color: #fff; }
+
+/* ========================================================================
+   MOBILE NATIVE FULL-SCREEN EXPERIENCE (Zero stacked demo headers/tabs!)
+   When opened on iPhone (<= 860px), render 1:1 full-screen native view +
+   one tiny floating "⚙ 调试" pill!
+   ======================================================================== */
+.mob-fab, .mob-sheet, .mob-scrim { display: none; }
+
+@media (max-width: 860px) {
+  html, body { height: 100%; overflow: hidden; padding: 0; background: var(--ios-bg); }
+  .desk-top, .col-head, .desk-ctl { display: none !important; }
+  .stage { padding: 0; margin: 0; width: 100vw; height: 100dvh; display: block; }
+  .dev-col { width: 100%; height: 100%; gap: 0; }
+  .stage[data-mob="after"] .col-before { display: none; }
+  .stage[data-mob="before"] .col-after { display: none; }
+
+  /* Frameless full-bleed phone viewport so it doesn't double-bezel inside iPhone! */
+  .phone {
+    width: 100vw;
+    height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .island, .ios-sb, .ios-nav, .ios-top-fade, .home-bar { display: none !important; }
+  .ios-scroll { padding: 14px 18px calc(86px + env(safe-area-inset-bottom, 0px)); }
+  .phone.legacy-pin .ios-scroll { padding-bottom: calc(540px + env(safe-area-inset-bottom, 0px)); }
+  .phone.kb .ios-scroll { padding-bottom: 280px; }
+  .ios-dock { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .jump-q { bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
+
+  /* Single compact floating ⚙ pill at top-right to switch state/font without crowding! */
+  .mob-fab {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    position: fixed;
+    top: 10px;
+    right: 14px;
+    z-index: 95;
+    height: 32px;
+    padding: 0 11px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 560;
+    color: var(--l1);
+  }
+  .mob-scrim.open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.42);
+    z-index: 96;
+  }
+  .mob-sheet.open {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: fixed;
+    left: 12px; right: 12px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    z-index: 97;
+    background: var(--page-card);
+    color: var(--page-fg);
+    border: .5px solid var(--page-bd);
+    border-radius: 22px;
+    padding: 15px 16px;
+    box-shadow: 0 18px 48px rgba(0,0,0,.5);
+  }
+  .ms-row { display: flex; flex-direction: column; gap: 6px; }
+  .ms-lbl { font-size: 12px; color: var(--page-fg2); font-weight: 550; }
+  .ms-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ms-btns button {
+    flex: 1 1 auto;
+    min-height: 32px;
+    padding: 4px 10px;
+    border-radius: 9px;
+    font-size: 12.5px;
+    font-weight: 520;
+    background: var(--page-btn);
+    color: var(--page-fg);
+  }
+  .ms-btns button.on { background: var(--accent); color: #fff; }
+}
+</style>
+</head>
+<body data-font="std">
+
+<div class="desk-top">
+  <div>
+    <h1>iPhone 选项框「跟随内容底部」& 样式 A 精简版 · 原型</h1>
+    <div class="sub">去掉卡片顶部堆叠标签与重复进度条 · 样式 A 保留「推荐」标且去掉冗余表头 · 完整适配大字号与超长文案</div>
+  </div>
+</div>
+
+<div class="stage" id="stage" data-mob="after">
+  <!-- ================= LEFT: BEFORE ================= -->
+  <div class="dev-col col-before">
+    <div class="col-head">
+      <span><b>现状（修改前）</b> · 固定底部 + 顶栏堆叠</span>
+      <span class="badge-pill bad">遮挡正文 · 拥挤裁切</span>
+    </div>
+
+    <div class="phone" id="phone-before">
+      <div class="island"></div>
+      <div class="ios-sb"><span>02:19</span><span style="font-size:12.5px">5G · 94%</span></div>
+      <div class="ios-top-fade"></div>
+      <div class="ios-nav">
+        <button class="ios-orb glass" aria-label="菜单">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h11M4 17h16"/></svg>
+          <span class="dot-org"></span>
+        </button>
+        <div class="ios-tcap glass">
+          <b id="ttl-before">我现在有一个困惑，在使用…</b>
+          <small>yee-homebook/hermesh</small>
+        </div>
+        <button class="ios-orb glass" aria-label="更多">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/></svg>
+        </button>
+      </div>
+
+      <div class="ios-scroll" id="scroll-before">
+        <div class="chat-in" id="chat-before"></div>
+      </div>
+
+      <div class="ios-dock" id="dock-before"></div>
+      <div class="home-bar"></div>
+    </div>
+  </div>
+
+  <!-- ================= RIGHT: AFTER ================= -->
+  <div class="dev-col col-after">
+    <div class="col-head">
+      <span><b>优化后</b> · 随内容底部 + 极简顶栏 + 样式 A</span>
+      <span class="badge-pill good">呼吸感 · 大字号友好</span>
+    </div>
+
+    <div class="phone" id="phone-after">
+      <div class="island"></div>
+      <div class="ios-sb"><span>02:19</span><span style="font-size:12.5px">5G · 94%</span></div>
+      <div class="ios-top-fade"></div>
+      <div class="ios-nav">
+        <button class="ios-orb glass" aria-label="菜单">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h11M4 17h16"/></svg>
+          <span class="dot-org"></span>
+        </button>
+        <div class="ios-tcap glass">
+          <b id="ttl-after">我现在有一个困惑，在使用…</b>
+          <small>yee-homebook/hermesh</small>
+        </div>
+        <button class="ios-orb glass" aria-label="更多">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/></svg>
+        </button>
+      </div>
+
+      <div class="ios-scroll" id="scroll-after">
+        <div class="chat-in" id="chat-after"></div>
+      </div>
+
+      <button type="button" class="jump-q glass" id="jump-q">
+        <span id="jump-logo"></span>
+        <span>回到问题</span>
+        <span class="arr"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M4.2 8.8L8 12.6l3.8-3.8"/></svg></span>
+      </button>
+
+      <div class="ios-dock after-dock" id="dock-after">
+        <div class="ios-cmp glass">
+          <span class="cmp-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+          <span class="cmp-ph">继续说，会排到下一轮…</span>
+          <span class="cmp-ic"><i style="width:10px;height:10px;border-radius:2px;background:currentColor;display:block"></i></span>
+          <span class="cmp-send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></span>
+        </div>
+      </div>
+
+      <div class="ios-kbd" id="ios-kbd">
+        <div class="kr"><span class="kk">Q</span><span class="kk">W</span><span class="kk">E</span><span class="kk">R</span><span class="kk">T</span><span class="kk">Y</span><span class="kk">U</span><span class="kk">I</span><span class="kk">O</span><span class="kk">P</span></div>
+        <div class="kr"><span class="kk">A</span><span class="kk">S</span><span class="kk">D</span><span class="kk">F</span><span class="kk">G</span><span class="kk">H</span><span class="kk">J</span><span class="kk">K</span><span class="kk">L</span></div>
+        <div class="kr"><span class="kk w">⇧</span><span class="kk">Z</span><span class="kk">X</span><span class="kk">C</span><span class="kk">V</span><span class="kk">B</span><span class="kk">N</span><span class="kk">M</span><span class="kk w">⌫</span></div>
+        <div class="kr"><span class="kk w">123</span><span class="kk sp">空格</span><button type="button" class="kk rt" id="kb-done">完成</button></div>
+      </div>
+
+      <div class="home-bar"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile-only Minimal Floating Trigger + Drawer (keeps iPhone screen 100% clean!) -->
+<button type="button" class="mob-fab glass" id="mob-fab">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"/></svg>
+  <span id="mob-fab-lbl">切换状态 / 字号</span>
+</button>
+<div class="mob-scrim" id="mob-scrim"></div>
+<div class="mob-sheet" id="mob-sheet"></div>
+
+<!-- Desktop Bottom Bar -->
+<div class="desk-ctl" id="desk-ctl"></div>
+
+<script>
+const AG_ICON = "data:image/png;base64,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";
+
+const SCENES = {
+  real: {
+    name: "单题实测",
+    title: "我现在有一个困惑，在使用…",
+    agent: "Antigravity",
+    userMsg: "我现在有一个困惑，在使用深色主题时侧边栏已推送/已合并的绿紫图标有点抢视线，悬停浮层里信息也比较密，怎么降噪更好？",
+    agentHtml: `
+      <p>我检查了 <code>Sidebar.tsx</code> 与 <code>git-status.css</code> 里现有的状态色值：目前列表行内与悬停卡片共用了高饱和语义色，多会话并列时确实容易形成彩色噪点。</p>
+      <ul>
+        <li><b>列表行内图标</b>：建议显著压低明度与饱和度，让未选中会话保持安静，把视觉重心还给会话标题。</li>
+        <li><b>悬停详情浮层</b>：仅在主动 Hover 查看 Git 交付卡片时保留清晰但柔和的鼠尾草绿与灰紫语义区分。</li>
+      </ul>
+      <p>我们可以按下面三种方式之一把视觉降噪调舒服，你更倾向哪种？</p>
+    `,
+    items: [
+      {
+        id: "q1",
+        header: "",
+        text: "侧边栏与悬停浮层的颜色降噪方式，你更倾向哪一种？",
+        allowOther: true,
+        options: [
+          {
+            label: "(Recommended) 保留绿/紫习惯，但大幅降饱和并压低侧边栏亮度（对齐主题鼠尾草绿与灰紫，安静不抢标题）",
+            description: ""
+          },
+          {
+            label: "极致克制：侧边栏行内图标统一用中性浅灰（无彩色），仅在 Hover 浮层内保留柔和语义色",
+            description: ""
+          },
+          {
+            label: "合并色相：侧边栏“已推送/已合并”统一用低饱和暗绿（仅靠图标形状区分），去掉列表紫色",
+            description: ""
+          }
+        ]
+      }
+    ]
+  },
+  multi: {
+    name: "多题 1/3",
+    title: "iPhone 会话提问体验打磨",
+    agent: "Claude",
+    userMsg: "帮我把会话里的选项框遮挡和回答后卡片样式一起梳理一下，动手前跟我确认关键细节。",
+    agentHtml: `
+      <p>已核对 <code>SessionPage.swift</code> 与 <code>QuestionPanel.swift</code>，动手前有 3 个细节想和你确认：</p>
+    `,
+    items: [
+      {
+        id: "m1",
+        header: "布局位置",
+        text: "待回答面板在 iPhone 会话页中如何放置？",
+        allowOther: true,
+        options: [
+          { label: "(Recommended) 跟随 ScrollView 内容底部流式呈现，上滑时浮现「回到问题 ↓」", description: "彻底消除正文遮挡与内部嵌套裁切" },
+          { label: "仍固定在底部，默认收成单行摘要条", description: "每次作答需多点一次展开" }
+        ]
+      },
+      {
+        id: "m2",
+        header: "完成态展示",
+        text: "选择完成后的样式 A 卡片保留哪些元素？",
+        multiSelect: true,
+        allowOther: false,
+        options: [
+          { label: "(Recommended) 柔和问题原文 + 带翠绿 ✓ 与「推荐」标的高亮答案块", description: "" },
+          { label: "(Recommended) 去掉卡片顶部多余表头与重复的 ask_question 工具行", description: "" },
+          { label: "支持大字号下按钮自动纵向排布，绝不挤压折行", description: "" }
+        ]
+      },
+      {
+        id: "m3",
+        header: "",
+        text: "Mac 桌面端已完成问答卡片是否同步更新为同款样式？",
+        optional: true,
+        allowOther: true,
+        options: [
+          { label: "(Recommended) 双端同步美化已完成卡片", description: "" },
+          { label: "本次仅修改 iPhone 端", description: "" }
+        ]
+      }
+    ]
+  },
+  longtext: {
+    name: "超长文案压测",
+    title: "极端超长标题与路径折行压测",
+    agent: "Antigravity",
+    userMsg: "测试一下当分类标题、英文文件路径和选项描述都非常长，同时系统开启大字号时的卡片表现。",
+    agentHtml: `
+      <p>正在检查 <code>packages/HermeshKit/Sources/HermeshSessions/QuestionSteps.swift</code> 与 <code>apps/ios/Hermesh/Views/Session/QuestionPanel.swift</code> 的极端排版边界：</p>
+    `,
+    items: [
+      {
+        id: "x1",
+        header: "跨模块长路径与无空格标识符折行策略（packages/HermeshKit/Sources/HermeshSessions）",
+        text: "当工具传入超长分类标签与包含连续长路径 packages/HermeshKit/Sources/HermeshSessions/Transcript.swift 的问题时，卡片顶部如何避免挤压截断？",
+        multiSelect: true,
+        allowOther: true,
+        options: [
+          {
+            label: "(Recommended) 顶栏仅保留「谁提问」与「步进器」两项；分类标签独立成行自然折行，多选说明并入问题末尾，字号放大时按钮自动改为上下堆叠",
+            description: "即使在 iOS 辅助功能特大字号（AX）下也不会出现胶囊碰撞或文字裁切"
+          },
+          {
+            label: "继续把分类胶囊、多选胶囊、倒计时与步进器全部塞在同一行顶栏里强行省略截断",
+            description: "窄屏上只剩两三个字加省略号，可读性差"
+          }
+        ]
+      },
+      {
+        id: "x2",
+        header: "超长完成态回显压测",
+        text: "回答完成后如果有多个超长选项同时被勾选，样式 A 卡片内部如何渲染？",
+        allowOther: false,
+        options: [
+          {
+            label: "(Recommended) 去掉已完成卡片顶部的冗余「Agent 提问 · 已回答」栏，直接展示完整问题与带「推荐」标的答案块，随内容自然换行",
+            description: ""
+          },
+          {
+            label: "限制单行高度超出部分显示省略号",
+            description: ""
+          }
+        ]
+      }
+    ]
+  }
+};
+
+function makeDev(defaultPick) {
+  return {
+    step: 0,
+    chosen: defaultPick ? { ...defaultPick } : {},
+    texts: {},
+    settled: null,
+    typing: false
+  };
+}
+
+const S = {
+  scene: "real",
+  font: "std",      // "std" | "lg" | "xl"
+  mobTab: "after",  // "after" | "before"
+  sheetOpen: false,
+  theme: "dark",
+  before: makeDev(),
+  after: makeDev()
+};
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function parseLabel(label) {
+  const m = /^\s*(?:\(Recommended\)|（推荐）)\s*/i.exec(label || "");
+  return m ? { rec: true, text: label.slice(m[0].length) } : { rec: false, text: label || "" };
+}
+
+function agentLogoHtml(agent) {
+  if (agent === "Antigravity") {
+    return `<span class="ag-logo"><img src="${AG_ICON}" alt="Antigravity"></span>`;
+  }
+  return `<span class="ag-logo claude">C</span>`;
+}
+
+function isItemAnswered(dev, it) {
+  return (dev.chosen[it.id] || []).length > 0 || (dev.texts[it.id] || "").trim() !== "";
+}
+
+function isReady(dev, items) {
+  return items.every((it) => it.optional || isItemAnswered(dev, it));
+}
+
+function nextUnanswered(dev, items, from) {
+  for (let off = 1; off < items.length; off++) {
+    const i = (from + off) % items.length;
+    if (!items[i].optional && !isItemAnswered(dev, items[i])) return i;
+  }
+  for (let off = 1; off < items.length; off++) {
+    const i = (from + off) % items.length;
+    if (!isItemAnswered(dev, items[i])) return i;
+  }
+  return -1;
+}
+
+function checkSvg(sz = 12) {
+  return `<svg width="${sz}" height="${sz}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3.3 8.4l3 3.1 6.4-6.8"/></svg>`;
+}
+
+function chevR(sz = 12) {
+  return `<svg class="chev" width="${sz}" height="${sz}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5L10.5 8 6 12.5"/></svg>`;
+}
+
+function hermeshMarkSvg() {
+  return `<svg class="hermesh-mark" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-width="2.4">
+    <line x1="4" y1="13" x2="18" y2="5" stroke="#2adbc9"/>
+    <line x1="6" y1="4" x2="16" y2="20" stroke="#4a7aff"/>
+    <line x1="5" y1="18" x2="20" y2="14" stroke="#8566ff"/>
+  </svg>`;
+}
+
+function applyPhasePreset(phase) {
+  const sc = SCENES[S.scene];
+  const def = {};
+  sc.items.forEach((it) => {
+    if (it.options.length > 0) {
+      def[it.id] = it.multiSelect ? [it.options[0].label, it.options[1]?.label].filter(Boolean) : [it.options[0].label];
+    }
+  });
+
+  if (phase === "pending") {
+    S.before = makeDev({});
+    S.after = makeDev({ [sc.items[0].id]: [sc.items[0].options[0].label] });
+  } else if (phase === "answered") {
+    S.before = makeDev(def);
+    S.before.settled = { kind: "answered" };
+    S.after = makeDev(def);
+    S.after.settled = { kind: "answered" };
+  } else if (phase === "declined") {
+    S.before = makeDev({});
+    S.before.settled = { kind: "declined" };
+    S.after = makeDev({});
+    S.after.settled = { kind: "declined" };
+  }
+  render(true);
+}
+
+/* ---------- BEFORE Question Card (shows old crowded top bar + nested scroll) ---------- */
+function buildLegacyQuestionHtml(dev, sc) {
+  const items = sc.items;
+  const idx = Math.min(dev.step, items.length - 1);
+  const it = items[idx];
+  const multi = items.length > 1;
+  const ready = isReady(dev, items);
+  const txtVal = dev.texts[it.id] || "";
+
+  const optsHtml = it.options.map((o) => {
+    const on = (dev.chosen[it.id] || []).includes(o.label);
+    const p = parseLabel(o.label);
+    return `
+      <button type="button" class="qopt ${on ? "on" : ""} ${it.multiSelect ? "multi" : ""}" data-w="before" data-pick="${esc(o.label)}">
+        <span class="ck">${on ? checkSvg(11) : ""}</span>
+        <span class="ob"><div class="ot">${p.rec ? `<span class="rec-badge">推荐</span>` : ""}${esc(p.text)}</div></span>
+      </button>
+    `;
+  }).join("");
+
+  return `
+    <div class="qpanel-legacy glass" id="qcard-before">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--l2);overflow:hidden">
+        ${agentLogoHtml(sc.agent)}
+        <span style="white-space:nowrap">${esc(sc.agent)} 问你</span>
+        ${it.header ? `<span style="padding:2px 7px;border-radius:99px;background:var(--fill2);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.header)}</span>` : ""}
+        ${it.multiSelect ? `<span style="padding:2px 7px;border-radius:99px;background:var(--accent-bg);color:var(--accent-t);font-size:11px;white-space:nowrap">可多选</span>` : ""}
+        <span style="margin-left:auto;color:var(--orange);font-size:12px;white-space:nowrap">还剩 30 分钟</span>
+        ${multi ? `<span class="qpager"><span class="qpg-num">${idx + 1}/${items.length}</span></span>` : ""}
+      </div>
+      <div style="font-size:15px;font-weight:650;line-height:1.36">${esc(it.text)}</div>
+      <div class="q-opts-leg">${optsHtml}</div>
+      <div class="qown">
+        <input type="text" data-w="before" data-custom="${it.id}" value="${esc(txtVal)}" placeholder="或者直接写下你的回答…">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button type="button" class="qbtn" data-w="before" data-submit="decline">不回答</button>
+        <button type="button" class="qbtn pri" data-w="before" data-submit="answer" ${ready ? "" : "disabled"}>回答</button>
+      </div>
+    </div>
+  `;
+}
+
+/* ---------- AFTER Question Card (Decluttered Top + Full Flow + Dynamic Type Ready) ---------- */
+function buildCleanFlowQuestionHtml(dev, sc) {
+  const items = sc.items;
+  const idx = Math.min(dev.step, items.length - 1);
+  const it = items[idx];
+  const multi = items.length > 1;
+  const ready = isReady(dev, items);
+  const curAns = isItemAnswered(dev, it);
+  const nextIdx = idx + 1 < items.length ? idx + 1 : nextUnanswered(dev, items, idx);
+  const txtVal = dev.texts[it.id] || "";
+
+  // Top row has ONLY 2 items: Left (Agent + optional quiet time) | Right (Time OR Stepper ‹ 1/3 ›)
+  const rightControl = multi ? `
+    <span class="qpager">
+      <button type="button" class="qpg-btn" data-w="after" data-step="${idx - 1}" ${idx === 0 ? "disabled" : ""} aria-label="上一个">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5L5.5 8 10 12.5"/></svg>
+      </button>
+      <span class="qpg-num">${idx + 1} / ${items.length}</span>
+      <button type="button" class="qpg-btn" data-w="after" data-step="${idx + 1}" ${idx >= items.length - 1 ? "disabled" : ""} aria-label="下一个">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5L10.5 8 6 12.5"/></svg>
+      </button>
+    </span>
+  ` : `<span class="qh-tm">还剩 30 分钟</span>`;
+
+  // Header tag (if present) gets its own full-width muted eyebrow — never stuffed into the top bar!
+  const eyebrowHtml = (it.header && it.header !== it.text) ? `<div class="q-eyebrow">${esc(it.header)}</div>` : "";
+
+  // Multi-select / optional notes sit naturally at the end of the question text
+  const notes = [];
+  if (it.multiSelect) notes.push("可多选");
+  if (it.optional) notes.push("选填");
+  const noteHtml = notes.length ? `<span class="q-note">（${notes.join(" · ")}）</span>` : "";
+
+  const optsHtml = it.options.map((o) => {
+    const on = (dev.chosen[it.id] || []).includes(o.label);
+    const p = parseLabel(o.label);
+    return `
+      <button type="button" class="qopt ${on ? "on" : ""} ${it.multiSelect ? "multi" : ""}" data-w="after" data-pick="${esc(o.label)}">
+        <span class="ck">${on ? checkSvg(11) : ""}</span>
+        <span class="ob">
+          <div class="ot">${p.rec ? `<span class="rec-badge">推荐</span>` : ""}${esc(p.text)}</div>
+          ${o.description ? `<div class="od">${esc(o.description)}</div>` : ""}
+        </span>
+      </button>
+    `;
+  }).join("");
+
+  const customHtml = (it.allowOther || it.options.length === 0) ? `
+    <div class="qown ${txtVal.trim() ? "filled" : ""} ${dev.typing ? "typing" : ""}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+      </svg>
+      <input type="text" data-w="after" data-custom="${it.id}" value="${esc(txtVal)}" placeholder="${it.options.length === 0 ? "写下你的回答…" : "或者直接写下你的回答…"}">
+      ${txtVal ? `<button type="button" class="clr" data-w="after" data-clear="${it.id}">清空</button>` : ""}
+    </div>
+  ` : "";
+
+  let priBtn = `<button type="button" class="qbtn pri" data-w="after" data-submit="answer" ${ready ? "" : "disabled"}>回答</button>`;
+  if (!ready && multi && curAns && nextIdx !== -1) {
+    priBtn = `<button type="button" class="qbtn pri" data-w="after" data-step="${nextIdx}">继续</button>`;
+  } else if (!ready && multi && it.optional && nextIdx !== -1) {
+    priBtn = `<button type="button" class="qbtn" data-w="after" data-step="${nextIdx}">跳过</button>`;
+  }
+
+  return `
+    <div class="qcard-flow" id="qcard-after">
+      <div class="qh-clean">
+        <span class="qh-who">
+          ${agentLogoHtml(sc.agent)}
+          <span>${esc(sc.agent)} 问你${multi ? " · 30m" : ""}</span>
+        </span>
+        ${rightControl}
+      </div>
+      ${eyebrowHtml}
+      <div class="qttl">${esc(it.text)}${noteHtml}</div>
+      <div class="qopts">${optsHtml}</div>
+      ${customHtml}
+      <div class="qacts">
+        <button type="button" class="qbtn" data-w="after" data-submit="decline">不回答</button>
+        ${priBtn}
+      </div>
+    </div>
+  `;
+}
+
+/* ---------- Settled Rendering: Before vs Clean Style A (with 推荐 badge kept!) ---------- */
+function buildSettledBeforeHtml(dev, sc) {
+  const qJoined = sc.items.map((x) => x.text).join(" ");
+  const rawAns = dev.settled.kind === "declined"
+    ? "你选择了不回答"
+    : "你回答: " + sc.items.map((it) => [...(dev.chosen[it.id] || []), (dev.texts[it.id] || "").trim()].filter(Boolean).join(", ")).filter(Boolean).join("；");
+
+  return `
+    <div class="tool-ln"><span>已使用 Run ask_question</span>${chevR(12)}</div>
+    <div class="settled-legacy">
+      <div class="leg-qrow">
+        <svg class="leg-qic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+          <circle cx="10" cy="10" r="8"/>
+          <path d="M7.8 7.6a2.3 2.3 0 0 1 4.4.8c0 1.5-2.2 1.9-2.2 3.2" stroke-linecap="round"/>
+          <circle cx="10" cy="14.3" r=".9" fill="currentColor" stroke="none"/>
+        </svg>
+        <span><b>agent 提问：</b> ${esc(qJoined)}</span>
+      </div>
+      <div class="leg-ans">${esc(rawAns)}</div>
+    </div>
+  `;
+}
+
+function buildSettledStyleAHtml(dev, sc) {
+  const kind = dev.settled.kind;
+  const rowsHtml = sc.items.map((it) => {
+    const sel = (dev.chosen[it.id] || []).map(parseLabel);
+    const txt = (dev.texts[it.id] || "").trim();
+    const qLine = (it.header && it.header !== it.text) ? `${esc(it.header)} · ${esc(it.text)}` : esc(it.text);
+
+    if (kind === "declined") {
+      return `
+        <div class="sa-item">
+          <div class="sa-q">${qLine}</div>
+          <div class="sa-ans muted">
+            <span class="sa-ck skip">—</span>
+            <span class="sa-atxt">已选择不回答，交由 Agent 自行判断</span>
+          </div>
+        </div>
+      `;
+    }
+
+    const hasAns = sel.length > 0 || !!txt;
+    const ansHtml = !hasAns
+      ? `<span class="sa-atxt">已跳过此选填项</span>`
+      : `<span class="sa-atxt">${[
+          ...sel.map((p) => `${p.rec ? `<span class="sa-rec">推荐</span>` : ""}${esc(p.text)}`),
+          ...(txt ? [esc(txt)] : [])
+        ].join("；")}</span>`;
+
+    return `
+      <div class="sa-item">
+        <div class="sa-q">${qLine}</div>
+        <div class="sa-ans ${hasAns ? "" : "muted"}">
+          <span class="sa-ck ${hasAns ? "" : "skip"}">${hasAns ? checkSvg(11) : "—"}</span>
+          ${ansHtml}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  // Zero redundant top bar ("Antigravity 提问 · 已回答") — straight to clean Question + Checked Answer!
+  return `<div class="settled-a">${rowsHtml}</div>`;
+}
+
+function postContinuationHtml() {
+  return `
+    <div class="tool-ln">
+      <span>运行了 2 条命令、读取了 5 个文件、编辑了 7…</span>
+      ${chevR(12)}
+    </div>
+    <div class="work-ln">
+      ${hermeshMarkSvg()}
+      <span class="shimmer">思考中</span>
+      <span class="tm">5:48</span>
+    </div>
+  `;
+}
+
+function render(scrollEnd = false) {
+  const sc = SCENES[S.scene];
+  document.documentElement.setAttribute("data-theme", S.theme);
+  document.body.setAttribute("data-font", S.font);
+  document.getElementById("stage").setAttribute("data-mob", S.mobTab);
+
+  document.getElementById("ttl-before").textContent = sc.title;
+  document.getElementById("ttl-after").textContent = sc.title;
+  document.getElementById("jump-logo").innerHTML = agentLogoHtml(sc.agent);
+
+  // 1. BEFORE
+  const phoneBefore = document.getElementById("phone-before");
+  const chatBefore = document.getElementById("chat-before");
+  const dockBefore = document.getElementById("dock-before");
+  const beforePending = !S.before.settled;
+  phoneBefore.classList.toggle("legacy-pin", beforePending);
+
+  const cmpBeforeHtml = `
+    <div class="ios-cmp glass">
+      <span class="cmp-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+      <span class="cmp-ph">继续说，会排到下一轮…</span>
+      <span class="cmp-ic"><i style="width:10px;height:10px;border-radius:2px;background:currentColor;display:block"></i></span>
+      <span class="cmp-send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></span>
+    </div>
+  `;
+
+  if (beforePending) {
+    chatBefore.innerHTML = `
+      <div class="um">${esc(sc.userMsg)}</div>
+      <div class="am">${sc.agentHtml}</div>
+      <div class="tool-ln"><span class="shimmer">正在使用 Run ask_question</span></div>
+    `;
+    dockBefore.innerHTML = buildLegacyQuestionHtml(S.before, sc) + cmpBeforeHtml;
+  } else {
+    chatBefore.innerHTML = `
+      <div class="um">${esc(sc.userMsg)}</div>
+      <div class="am">${sc.agentHtml}</div>
+      ${buildSettledBeforeHtml(S.before, sc)}
+      ${postContinuationHtml()}
+    `;
+    dockBefore.innerHTML = cmpBeforeHtml;
+  }
+
+  // 2. AFTER
+  const phoneAfter = document.getElementById("phone-after");
+  const chatAfter = document.getElementById("chat-after");
+  const afterPending = !S.after.settled;
+  phoneAfter.classList.toggle("kb", afterPending && S.after.typing);
+
+  if (afterPending) {
+    chatAfter.innerHTML = `
+      <div class="um">${esc(sc.userMsg)}</div>
+      <div class="am">${sc.agentHtml}</div>
+      ${buildCleanFlowQuestionHtml(S.after, sc)}
+    `;
+  } else {
+    chatAfter.innerHTML = `
+      <div class="um">${esc(sc.userMsg)}</div>
+      <div class="am">${sc.agentHtml}</div>
+      ${buildSettledStyleAHtml(S.after, sc)}
+      ${postContinuationHtml()}
+    `;
+  }
+
+  renderControls();
+
+  if (scrollEnd) {
+    requestAnimationFrame(() => {
+      const sb = document.getElementById("scroll-before");
+      const sa = document.getElementById("scroll-after");
+      sb.scrollTop = sb.scrollHeight;
+      sa.scrollTop = sa.scrollHeight;
+      updateJumpPill();
+    });
+  } else {
+    requestAnimationFrame(updateJumpPill);
+  }
+}
+
+function renderControls() {
+  const settled = S.after.settled?.kind;
+  const fontName = S.font === "std" ? "标准" : S.font === "lg" ? "大字" : "特大";
+  const stName = !settled ? "待回答" : settled === "answered" ? "已回答" : "已跳过";
+  document.getElementById("mob-fab-lbl").textContent = `${stName} · ${fontName}`;
+
+  document.getElementById("desk-ctl").innerHTML = `
+    <div class="g">
+      <b>状态：</b>
+      <button type="button" data-phase="pending" class="${!settled ? "on" : ""}">待回答（随内容滚动）</button>
+      <button type="button" data-phase="answered" class="${settled === "answered" ? "on" : ""}">已回答（样式 A + 推荐标）</button>
+      <button type="button" data-phase="declined" class="${settled === "declined" ? "on" : ""}">不回答</button>
+    </div>
+    <div class="g">
+      <b>场景：</b>
+      <button type="button" data-scene="real" class="${S.scene === "real" ? "on" : ""}">单题实测</button>
+      <button type="button" data-scene="multi" class="${S.scene === "multi" ? "on" : ""}">多题 1/3</button>
+      <button type="button" data-scene="longtext" class="${S.scene === "longtext" ? "on" : ""}">超长文案压测</button>
+    </div>
+    <div class="g">
+      <b>字号：</b>
+      <button type="button" data-font-pick="std" class="${S.font === "std" ? "on" : ""}">标准</button>
+      <button type="button" data-font-pick="lg" class="${S.font === "lg" ? "on" : ""}">大字</button>
+      <button type="button" data-font-pick="xl" class="${S.font === "xl" ? "on" : ""}">特大（按钮纵向）</button>
+    </div>
+    <div class="g">
+      <b>外观：</b>
+      <button type="button" data-theme-pick="dark" class="${S.theme === "dark" ? "on" : ""}">深色</button>
+      <button type="button" data-theme-pick="light" class="${S.theme === "light" ? "on" : ""}">浅色</button>
+    </div>
+  `;
+
+  const scEl = document.getElementById("mob-scrim");
+  const shEl = document.getElementById("mob-sheet");
+  scEl.classList.toggle("open", S.sheetOpen);
+  shEl.classList.toggle("open", S.sheetOpen);
+  shEl.innerHTML = `
+    <div class="ms-row">
+      <div class="ms-lbl">视图对比</div>
+      <div class="ms-btns">
+        <button type="button" data-mob-pick="after" class="${S.mobTab === "after" ? "on" : ""}">优化后（推荐）</button>
+        <button type="button" data-mob-pick="before" class="${S.mobTab === "before" ? "on" : ""}">现状对比</button>
+      </div>
+    </div>
+    <div class="ms-row">
+      <div class="ms-lbl">提问状态</div>
+      <div class="ms-btns">
+        <button type="button" data-phase="pending" class="${!settled ? "on" : ""}">待回答</button>
+        <button type="button" data-phase="answered" class="${settled === "answered" ? "on" : ""}">已回答（样式 A）</button>
+        <button type="button" data-phase="declined" class="${settled === "declined" ? "on" : ""}">不回答</button>
+      </div>
+    </div>
+    <div class="ms-row">
+      <div class="ms-lbl">测试场景</div>
+      <div class="ms-btns">
+        <button type="button" data-scene="real" class="${S.scene === "real" ? "on" : ""}">单题实测</button>
+        <button type="button" data-scene="multi" class="${S.scene === "multi" ? "on" : ""}">多题 1/3</button>
+        <button type="button" data-scene="longtext" class="${S.scene === "longtext" ? "on" : ""}">超长文案</button>
+      </div>
+    </div>
+    <div class="ms-row">
+      <div class="ms-lbl">系统字号 & 外观</div>
+      <div class="ms-btns">
+        <button type="button" data-font-pick="std" class="${S.font === "std" ? "on" : ""}">标准字号</button>
+        <button type="button" data-font-pick="lg" class="${S.font === "lg" ? "on" : ""}">大字</button>
+        <button type="button" data-font-pick="xl" class="${S.font === "xl" ? "on" : ""}">特大字号</button>
+        <button type="button" data-theme-pick="${S.theme === "dark" ? "light" : "dark"}">${S.theme === "dark" ? "切浅色" : "切深色"}</button>
+      </div>
+    </div>
+  `;
+}
+
+function updateJumpPill() {
+  const sa = document.getElementById("scroll-after");
+  const pill = document.getElementById("jump-q");
+  if (!sa || !pill) return;
+  const distFromBottom = sa.scrollHeight - sa.scrollTop - sa.clientHeight;
+  pill.classList.toggle("show", !S.after.settled && !S.after.typing && distFromBottom > 130);
+}
+
+document.getElementById("scroll-after").addEventListener("scroll", updateJumpPill, { passive: true });
+document.getElementById("jump-q").addEventListener("click", () => {
+  document.getElementById("scroll-after").scrollTo({ top: 99999, behavior: "smooth" });
+});
+
+document.addEventListener("click", (e) => {
+  const t = e.target instanceof Element ? e.target : null;
+  if (!t) return;
+
+  if (t.closest("#mob-fab")) {
+    S.sheetOpen = !S.sheetOpen;
+    renderControls();
+    return;
+  }
+  if (t.id === "mob-scrim") {
+    S.sheetOpen = false;
+    renderControls();
+    return;
+  }
+
+  const mobBtn = t.closest("[data-mob-pick]");
+  if (mobBtn) {
+    S.mobTab = mobBtn.getAttribute("data-mob-pick");
+    S.sheetOpen = false;
+    render(false);
+    return;
+  }
+
+  const phaseBtn = t.closest("[data-phase]");
+  if (phaseBtn) {
+    S.sheetOpen = false;
+    applyPhasePreset(phaseBtn.getAttribute("data-phase"));
+    return;
+  }
+
+  const sceneBtn = t.closest("[data-scene]");
+  if (sceneBtn) {
+    S.scene = sceneBtn.getAttribute("data-scene");
+    S.sheetOpen = false;
+    applyPhasePreset(S.after.settled ? "answered" : "pending");
+    return;
+  }
+
+  const fontBtn = t.closest("[data-font-pick]");
+  if (fontBtn) {
+    S.font = fontBtn.getAttribute("data-font-pick");
+    S.sheetOpen = false;
+    render(false);
+    return;
+  }
+
+  const themeBtn = t.closest("[data-theme-pick]");
+  if (themeBtn) {
+    S.theme = themeBtn.getAttribute("data-theme-pick");
+    S.sheetOpen = false;
+    render(false);
+    return;
+  }
+
+  const stepBtn = t.closest("[data-step]");
+  if (stepBtn) {
+    const w = stepBtn.getAttribute("data-w");
+    const target = Number(stepBtn.getAttribute("data-step"));
+    const dev = S[w];
+    const items = SCENES[S.scene].items;
+    if (dev && target >= 0 && target < items.length) {
+      dev.step = target;
+      dev.typing = false;
+      render(false);
+    }
+    return;
+  }
+
+  const pickBtn = t.closest("[data-pick]");
+  if (pickBtn) {
+    const w = pickBtn.getAttribute("data-w");
+    const label = pickBtn.getAttribute("data-pick");
+    const dev = S[w];
+    const items = SCENES[S.scene].items;
+    const it = items[Math.min(dev.step, items.length - 1)];
+    dev.typing = false;
+    const cur = dev.chosen[it.id] || [];
+    if (it.multiSelect) {
+      dev.chosen[it.id] = cur.includes(label) ? cur.filter((x) => x !== label) : [...cur, label];
+      render(false);
+    } else {
+      dev.chosen[it.id] = [label];
+      dev.texts[it.id] = "";
+      render(false);
+      if (items.length > 1) {
+        const nxt = nextUnanswered(dev, items, dev.step);
+        if (nxt !== -1) {
+          setTimeout(() => {
+            dev.step = nxt;
+            render(false);
+          }, 180);
+        }
+      }
+    }
+    return;
+  }
+
+  const clrBtn = t.closest("[data-clear]");
+  if (clrBtn) {
+    const w = clrBtn.getAttribute("data-w");
+    const id = clrBtn.getAttribute("data-clear");
+    S[w].texts[id] = "";
+    S[w].typing = false;
+    render(false);
+    return;
+  }
+
+  const subBtn = t.closest("[data-submit]");
+  if (subBtn) {
+    const w = subBtn.getAttribute("data-w");
+    const mode = subBtn.getAttribute("data-submit");
+    const dev = S[w];
+    dev.typing = false;
+    dev.settled = { kind: mode === "decline" ? "declined" : "answered" };
+    render(true);
+    return;
+  }
+
+  if (t.id === "kb-done") {
+    S.after.typing = false;
+    render(false);
+  }
+});
+
+document.addEventListener("focusin", (e) => {
+  const inp = e.target;
+  if (inp instanceof HTMLInputElement && inp.getAttribute("data-w") === "after") {
+    S.after.typing = true;
+    document.getElementById("phone-after").classList.add("kb");
+    inp.closest(".qown")?.classList.add("typing");
+    setTimeout(() => {
+      const sa = document.getElementById("scroll-after");
+      sa.scrollTo({ top: sa.scrollHeight, behavior: "smooth" });
+      updateJumpPill();
+    }, 80);
+  }
+});
+
+document.addEventListener("input", (e) => {
+  const inp = e.target;
+  if (!(inp instanceof HTMLInputElement)) return;
+  const w = inp.getAttribute("data-w");
+  const id = inp.getAttribute("data-custom");
+  if (!w || !id) return;
+  const dev = S[w];
+  const items = SCENES[S.scene].items;
+  const it = items.find((x) => x.id === id);
+  dev.texts[id] = inp.value;
+  if (it && !it.multiSelect && inp.value.trim() !== "") {
+    dev.chosen[id] = [];
+  }
+  const pos = inp.selectionStart;
+  render(false);
+  const nextInp = document.querySelector(`input[data-w="${w}"][data-custom="${id}"]`);
+  if (nextInp instanceof HTMLInputElement) {
+    nextInp.focus();
+    if (pos !== null) nextInp.setSelectionRange(pos, pos);
+  }
+});
+
+applyPhasePreset("pending");
+</script>
+</body>
+</html>

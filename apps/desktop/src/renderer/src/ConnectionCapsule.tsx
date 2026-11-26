@@ -142,7 +142,7 @@ export function ConnectionLine({
     return (
       <div className={`th-work ${delayWork ? "delayed" : ""}`} data-testid="thread-working">
         <Mark size={18} variant="seq" />
-        <span className="shimmer">{work.text}</span>
+        <span className="th-work-t shimmer" title={work.text}>{work.text}</span>
         {work.since && <span className="el">· {clockText(elapsedSeconds(work.since, now))}</span>}
       </div>
     );

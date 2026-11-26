@@ -38,8 +38,11 @@ test("large formulas fall back to code before KaTeX", () => {
   for (const source of ['$$\n' + 'x'.repeat(5001) + '\n$$', '```math\n' + 'x'.repeat(5001) + '\n```']) assert.ok(!render(source).includes('class="katex"'));
 });
 test("callouts and fixed disclosure directives preserve content", () => {
-  const html = render('> [!WARNING]\n> Check inputs.\n\n:::details{title="More"}\nDetails\n:::');
+  const html = render('> [!WARNING]\n> Check inputs.\n\n> [!NOTE] Inline callout body.\n\n:::details{title="More"}\nDetails\n:::');
   assert.ok(html.includes('data-kind="warning"'));
+  assert.ok(html.includes('data-kind="note"'));
+  assert.ok(html.includes('Inline callout body.'));
+  assert.ok(!html.includes('[!NOTE]'));
   assert.ok(html.includes('<details data-title="More">'));
   assert.ok(html.includes('Details'));
 });

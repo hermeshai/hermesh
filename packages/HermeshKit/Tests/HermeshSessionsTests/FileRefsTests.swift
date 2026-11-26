@@ -45,3 +45,14 @@ private func ref(_ any: Any?) -> FileRef? {
         #expect(sameImagePath(a, b) == (c["same"] as! Bool), "\(a) vs \(b)")
     }
 }
+
+@Test func resolveDocPathResolvesRelativePathsInsideMarkdownDocuments() {
+    #expect(resolveDocPath("", "imgs/a.png") == "imgs/a.png")
+    #expect(resolveDocPath("docs/guide", "./shot.png") == "docs/guide/shot.png")
+    #expect(resolveDocPath("docs/guide", "../assets/a.png") == "docs/assets/a.png")
+    #expect(resolveDocPath("/Users/me/.gemini/antigravity-cli/brain/123", "dark.png") == "/Users/me/.gemini/antigravity-cli/brain/123/dark.png")
+    #expect(resolveDocPath("/Users/me/docs", "../../etc/a.png") == "/Users/etc/a.png")
+    #expect(resolveDocPath("/Users/me/docs", "../../../etc/a.png") == "/etc/a.png")
+    #expect(resolveDocPath("docs/guide", "/tmp/shot.png") == "/tmp/shot.png")
+    #expect(resolveDocPath("/Users/me/docs", "~/shot.png") == "~/shot.png")
+}

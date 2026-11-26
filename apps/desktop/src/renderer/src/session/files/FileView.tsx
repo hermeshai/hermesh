@@ -99,10 +99,13 @@ export function TextBody({ res, file, name, line, endLine, source }: { res: Read
   if (res.kind === FileContentKind.BINARY) return <Card name={shown.name} text={t("files.binary")}>{save}</Card>;
   if (res.kind === FileContentKind.TOO_LARGE) return <Card name={shown.name} text={t("files.tooLarge", { size: sizeText(res.size) })}>{save}</Card>;
   if (view === "markdown" && !source && shown.line === undefined) {
+    const docPath = res.path || file.path;
+    const slash = Math.max(docPath.lastIndexOf("/"), docPath.lastIndexOf("\\"));
+    const basePath = slash > 0 ? docPath.slice(0, slash) : "";
     return (
       <div className="fpv-read" data-testid="file-markdown">
         <div className="fpv-col">
-          <Markdown text={res.text} mode="document" />
+          <Markdown text={res.text} mode="document" basePath={basePath} />
         </div>
       </div>
     );

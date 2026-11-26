@@ -102,3 +102,15 @@ test("the cases both apps share", async () => {
   for (const c of shared.images) assert.equal(sessionImageRef(c.href), c.path, c.href);
   for (const c of shared.sameImage) assert.equal(sameImagePath(c.a, c.b), c.same, `${c.a} vs ${c.b}`);
 });
+
+test("resolveDocPath resolves relative paths inside Markdown documents", async () => {
+  const { resolveDocPath } = await import("./fileView.ts");
+  assert.equal(resolveDocPath("", "imgs/a.png"), "imgs/a.png");
+  assert.equal(resolveDocPath("docs/guide", "./shot.png"), "docs/guide/shot.png");
+  assert.equal(resolveDocPath("docs/guide", "../assets/a.png"), "docs/assets/a.png");
+  assert.equal(resolveDocPath("/Users/me/.gemini/antigravity-cli/brain/123", "dark.png"), "/Users/me/.gemini/antigravity-cli/brain/123/dark.png");
+  assert.equal(resolveDocPath("/Users/me/docs", "../../etc/a.png"), "/Users/etc/a.png");
+  assert.equal(resolveDocPath("/Users/me/docs", "../../../etc/a.png"), "/etc/a.png");
+  assert.equal(resolveDocPath("docs/guide", "/tmp/shot.png"), "/tmp/shot.png");
+  assert.equal(resolveDocPath("/Users/me/docs", "~/shot.png"), "~/shot.png");
+});

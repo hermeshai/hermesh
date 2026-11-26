@@ -93,6 +93,7 @@
 "Yesterday %@" = "昨天 %@";
 "You answered: %@" = "你回答：%@";
 "You chose not to answer" = "你选择不回答";
+"Skipped" = "已跳过";
 "just now" = "刚刚";
 /* A command being run (the status “Running” is another word in some languages) */
 "verb.running" = "正在运行";

@@ -10,6 +10,7 @@ import SwiftUI
 struct MarkdownText: View {
     let text: String
     var style: MarkdownStyle = .reply
+    var basePath = ""
     /// Its blocks laid out as they scroll into view (a file's page), not all at once (a reply).
     var lazy = false
 
@@ -17,12 +18,12 @@ struct MarkdownText: View {
     @Environment(\.filesRun) private var run
 
     var body: some View {
-        let blocks = parsed(text)
+        let blocks = parsed(text, basePath: basePath)
         let imgs = replyImagesOf(blocks)
         MarkdownBlocks(blocks: blocks, style: style, lazy: lazy)
             .environment(\.replyImages, imgs)
             // In a session's reply, which of the paths it writes are files is asked of its machine once.
-            .task(id: files == nil ? "" : "\(run)\u{0}\(text)") {
+            .task(id: files == nil ? "" : "\(run)\u{0}\(basePath)\u{0}\(text)") {
                 if let files {
                     files.registerGallery(run: run, gallery: imgs.gallery)
                     files.want(run: run, paths: fileRefPaths(blocks))
@@ -40,7 +41,7 @@ struct DraftMarkdownText: View {
     var animatedFromBlock: Int = .max
 
     var body: some View {
-        var blocks = splitBlocks(text)
+        var blocks = splitBlocks(unwrapCarousels(text))
         let last = closingOpenMarks(withoutOpenTable(blocks.removeLast()))
         let settledCount = blocks.count
         return VStack(alignment: .leading, spacing: MarkdownStyle.reply.gap) {
@@ -58,13 +59,20 @@ struct DraftMarkdownText: View {
 /// Releases a live reply one visual row at a time with a left-to-right silk wipe mask,
 /// and settles to static `MarkdownText` with zero overhead on completed replies.
 struct StreamingMarkdownText: View {
-    let text: String
+    private let rawText: String
     let streaming: Bool
     @Environment(\.accessibilityReduceMotion) private var still
     @State private var shownCount: Int = 0
     @State private var animating = false
     @State private var startBlock: Int = .max
     @State private var initialized = false
+
+    init(text: String, streaming: Bool) {
+        self.rawText = text
+        self.streaming = streaming
+    }
+
+    private var text: String { unwrapCarousels(rawText) }
 
     var body: some View {
         if !streaming && !animating {
@@ -186,6 +194,19 @@ struct MarkdownStyle {
 
 // MARK: Blocks
 
+enum CalloutKind: String {
+    case note, tip, important, warning, caution
+
+    var color: Color {
+        switch self {
+        case .note, .important: .accentColor
+        case .tip: .green
+        case .warning: .orange
+        case .caution: .red
+        }
+    }
+}
+
 indirect enum MarkdownBlock {
     case paragraph(AttributedString)
     case images(items: [ReplyImageItem], fromLinks: Bool)
@@ -193,6 +214,7 @@ indirect enum MarkdownBlock {
     case list(ordered: Bool, start: Int, items: [MarkdownItem])
     case code(lang: String, text: String)
     case quote([MarkdownBlock])
+    case callout(CalloutKind, [MarkdownBlock])
     /// Its rows as wide as its head, each column set as its delimiter row says.
     case table(head: [AttributedString], rows: [[AttributedString]], align: [Markdown.Table.ColumnAlignment?])
     case rule
@@ -213,24 +235,25 @@ struct MarkdownItem {
 /// Parsed replies, so a row laid out again parses nothing.
 @MainActor private var parsedReplies: [String: [MarkdownBlock]] = [:]
 
-@MainActor private func parsed(_ text: String) -> [MarkdownBlock] {
-    if let hit = parsedReplies[text] { return hit }
+@MainActor private func parsed(_ text: String, basePath: String = "") -> [MarkdownBlock] {
+    let cacheKey = basePath.isEmpty ? text : "\(basePath)\u{0}\(text)"
+    if let hit = parsedReplies[cacheKey] { return hit }
     // Footnotes come out of the source before Markdown reads it, which has none of its own, and show after it.
-    let notes = liftFootnotes(text)
-    var blocks = markdownBlocks(notes.text)
-    if !notes.notes.isEmpty { blocks.append(.footnotes(notes.notes.map(markdownBlocks))) }
+    let notes = liftFootnotes(unwrapCarousels(text))
+    var blocks = markdownBlocks(notes.text, basePath: basePath)
+    if !notes.notes.isEmpty { blocks.append(.footnotes(notes.notes.map { markdownBlocks($0, basePath: basePath) })) }
     if parsedReplies.count > 400 { parsedReplies.removeAll() }
-    parsedReplies[text] = blocks
+    parsedReplies[cacheKey] = blocks
     return blocks
 }
 
-private func markdownBlocks(_ text: String) -> [MarkdownBlock] {
+private func markdownBlocks(_ text: String, basePath: String = "") -> [MarkdownBlock] {
     // Math comes out of the source before Markdown reads it, and goes back in after (HermeshSessions' Math.swift).
     let lifted = liftMath(text)
     let doc = Document(parsing: lifted.text)
-    let explicit = collectExplicitImages(doc)
+    let explicit = collectExplicitImages(doc, basePath: basePath)
     var claimed = explicit
-    return convertChildren(Array(doc.blockChildren), claimed: &claimed, topLevel: true).flatMap { withMath($0, lifted.spans) }
+    return convertChildren(Array(doc.blockChildren), claimed: &claimed, topLevel: true, basePath: basePath).flatMap { withMath($0, lifted.spans) }
 }
 
 private func replyImagesOf(_ blocks: [MarkdownBlock]) -> ReplyImages {
@@ -244,7 +267,7 @@ private func replyImagesOf(_ blocks: [MarkdownBlock]) -> ReplyImages {
                 if !gallery.contains(where: { sameImagePath($0.path, it.path) }) { gallery.append(it) }
             }
         case .list(_, _, let items): items.forEach { $0.blocks.forEach(walk) }
-        case .quote(let bs): bs.forEach(walk)
+        case .quote(let bs), .callout(_, let bs): bs.forEach(walk)
         case .footnotes(let notes): notes.forEach { $0.forEach(walk) }
         default: break
         }
@@ -253,12 +276,12 @@ private func replyImagesOf(_ blocks: [MarkdownBlock]) -> ReplyImages {
     return ReplyImages(explicit: explicit, gallery: gallery)
 }
 
-private func collectExplicitImages(_ root: Markup) -> [String] {
+private func collectExplicitImages(_ root: Markup, basePath: String) -> [String] {
     var out: [String] = []
     func walk(_ m: Markup) {
-        if let img = m as? Markdown.Image, let p = sessionImageRef(img.source ?? ""),
-           !out.contains(where: { sameImagePath($0, p) }) {
-            out.append(p)
+        if let img = m as? Markdown.Image, let raw = sessionImageRef(img.source ?? "") {
+            let p = resolveDocPath(basePath, raw)
+            if !out.contains(where: { sameImagePath($0, p) }) { out.append(p) }
             return
         }
         for c in m.children { walk(c) }
@@ -267,16 +290,18 @@ private func collectExplicitImages(_ root: Markup) -> [String] {
     return out
 }
 
-private func collectLinkedImages(_ root: Markup, claimed: inout [String]) -> [ReplyImageItem] {
+private func collectLinkedImages(_ root: Markup, claimed: inout [String], basePath: String) -> [ReplyImageItem] {
     var out: [ReplyImageItem] = []
     func walk(_ m: Markup) {
         if m is InlineCode || m is Markdown.CodeBlock { return }
         if let link = m as? Markdown.Link {
-            if let p = sessionImageRef(link.destination ?? ""),
-               !claimed.contains(where: { sameImagePath($0, p) }),
-               !out.contains(where: { sameImagePath($0.path, p) }) {
-                claimed.append(p)
-                out.append(ReplyImageItem(path: p, caption: link.plainText.trimmingCharacters(in: .whitespacesAndNewlines)))
+            if let raw = sessionImageRef(link.destination ?? "") {
+                let p = resolveDocPath(basePath, raw)
+                if !claimed.contains(where: { sameImagePath($0, p) }),
+                   !out.contains(where: { sameImagePath($0.path, p) }) {
+                    claimed.append(p)
+                    out.append(ReplyImageItem(path: p, caption: link.plainText.trimmingCharacters(in: .whitespacesAndNewlines)))
+                }
             }
             return
         }
@@ -286,42 +311,62 @@ private func collectLinkedImages(_ root: Markup, claimed: inout [String]) -> [Re
     return out
 }
 
-private func convertChildren(_ children: [BlockMarkup], claimed: inout [String], topLevel: Bool) -> [MarkdownBlock] {
+private let calloutHead = #/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:[ \t]+|\n|$)/#.ignoresCase()
+
+private func parseCallout(_ blocks: [MarkdownBlock]) -> (CalloutKind, [MarkdownBlock])? {
+    guard case .paragraph(let first)? = blocks.first else { return nil }
+    let plain = String(first.characters)
+    guard let m = plain.firstMatch(of: calloutHead),
+          let kind = CalloutKind(rawValue: m.output.1.lowercased()) else { return nil }
+    let dropCount = plain.distance(from: plain.startIndex, to: m.range.upperBound)
+    let cutIdx = first.characters.index(first.startIndex, offsetBy: dropCount)
+    let rest = trimmed(first[cutIdx ..< first.endIndex])
+    var tail = Array(blocks.dropFirst())
+    if !rest.characters.isEmpty { tail.insert(.paragraph(rest), at: 0) }
+    return (kind, tail)
+}
+
+private func convertChildren(_ children: [BlockMarkup], claimed: inout [String], topLevel: Bool, basePath: String) -> [MarkdownBlock] {
     var out: [MarkdownBlock] = []
     for m in children {
         switch m {
         case let p as Paragraph:
-            out.append(contentsOf: paragraphBlocks(p))
+            out.append(contentsOf: paragraphBlocks(p, basePath: basePath))
             if topLevel {
-                let linked = collectLinkedImages(p, claimed: &claimed)
+                let linked = collectLinkedImages(p, claimed: &claimed, basePath: basePath)
                 if !linked.isEmpty { out.append(.images(items: linked, fromLinks: true)) }
             }
         case let l as OrderedList:
-            out.append(.list(ordered: true, start: Int(l.startIndex), items: l.listItems.map { item($0, claimed: &claimed) }))
+            out.append(.list(ordered: true, start: Int(l.startIndex), items: l.listItems.map { item($0, claimed: &claimed, basePath: basePath) }))
             if topLevel {
-                let linked = collectLinkedImages(l, claimed: &claimed)
+                let linked = collectLinkedImages(l, claimed: &claimed, basePath: basePath)
                 if !linked.isEmpty { out.append(.images(items: linked, fromLinks: true)) }
             }
         case let l as UnorderedList:
-            out.append(.list(ordered: false, start: 1, items: l.listItems.map { item($0, claimed: &claimed) }))
+            out.append(.list(ordered: false, start: 1, items: l.listItems.map { item($0, claimed: &claimed, basePath: basePath) }))
             if topLevel {
-                let linked = collectLinkedImages(l, claimed: &claimed)
+                let linked = collectLinkedImages(l, claimed: &claimed, basePath: basePath)
                 if !linked.isEmpty { out.append(.images(items: linked, fromLinks: true)) }
             }
         case let q as BlockQuote:
-            out.append(.quote(convertChildren(Array(q.blockChildren), claimed: &claimed, topLevel: false)))
+            let inner = convertChildren(Array(q.blockChildren), claimed: &claimed, topLevel: false, basePath: basePath)
+            if let (kind, calloutBlocks) = parseCallout(inner), !calloutBlocks.isEmpty {
+                out.append(.callout(kind, calloutBlocks))
+            } else {
+                out.append(.quote(inner))
+            }
             if topLevel {
-                let linked = collectLinkedImages(q, claimed: &claimed)
+                let linked = collectLinkedImages(q, claimed: &claimed, basePath: basePath)
                 if !linked.isEmpty { out.append(.images(items: linked, fromLinks: true)) }
             }
         default:
-            if let b = block(m) { out.append(b) }
+            if let b = block(m, basePath: basePath) { out.append(b) }
         }
     }
     return out
 }
 
-private func paragraphBlocks(_ p: Paragraph) -> [MarkdownBlock] {
+private func paragraphBlocks(_ p: Paragraph, basePath: String) -> [MarkdownBlock] {
     var out: [MarkdownBlock] = []
     var prose = AttributedString()
     var imgBuf: [ReplyImageItem] = []
@@ -337,7 +382,8 @@ private func paragraphBlocks(_ p: Paragraph) -> [MarkdownBlock] {
         }
     }
     for c in p.children {
-        if let img = c as? Markdown.Image, let path = sessionImageRef(img.source ?? "") {
+        if let img = c as? Markdown.Image, let raw = sessionImageRef(img.source ?? "") {
+            let path = resolveDocPath(basePath, raw)
             flushProse()
             if !imgBuf.contains(where: { sameImagePath($0.path, path) }) {
                 imgBuf.append(ReplyImageItem(path: path, caption: img.plainText.trimmingCharacters(in: .whitespacesAndNewlines)))
@@ -349,22 +395,22 @@ private func paragraphBlocks(_ p: Paragraph) -> [MarkdownBlock] {
             if let t = c as? Markdown.Text, t.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
         }
         flushImgs()
-        prose += inline(c)
+        prose += inline(c, basePath: basePath)
     }
     flushImgs()
     flushProse()
     return out
 }
 
-private func block(_ m: Markup) -> MarkdownBlock? {
+private func block(_ m: Markup, basePath: String) -> MarkdownBlock? {
     switch m {
-    case let p as Paragraph: return .paragraph(inlines(p))
-    case let h as Heading: return .heading(level: h.level, inlines(h))
+    case let p as Paragraph: return .paragraph(inlines(p, basePath: basePath))
+    case let h as Heading: return .heading(level: h.level, inlines(h, basePath: basePath))
     case let c as Markdown.CodeBlock: return .code(lang: c.language ?? "", text: c.code.hasSuffix("\n") ? String(c.code.dropLast()) : c.code)
     case let t as Markdown.Table:
-        let head = Array(t.head.cells.map(inlines))
+        let head = Array(t.head.cells.map { inlines($0, basePath: basePath) })
         // A row short of cells is filled out; cells past the head's are not shown, as GitHub does.
-        let rows: [[AttributedString]] = t.body.rows.map { r in (Array(r.cells.map(inlines)) + Array(repeating: AttributedString(), count: head.count)).prefix(head.count).map { $0 } }
+        let rows: [[AttributedString]] = t.body.rows.map { r in (Array(r.cells.map { inlines($0, basePath: basePath) }) + Array(repeating: AttributedString(), count: head.count)).prefix(head.count).map { $0 } }
         return .table(head: head, rows: rows, align: (0 ..< head.count).map { $0 < t.columnAlignments.count ? t.columnAlignments[$0] : nil })
     case is ThematicBreak: return .rule
     case let h as HTMLBlock: return .paragraph(AttributedString(h.rawHTML.trimmingCharacters(in: .newlines)))
@@ -405,6 +451,7 @@ private func withMath(_ block: MarkdownBlock, _ spans: [MathSpan]) -> [MarkdownB
         default: return [.code(lang: lang, text: source)]
         }
     case .quote(let blocks): return [.quote(blocks.flatMap { withMath($0, spans) })]
+    case .callout(let kind, let blocks): return [.callout(kind, blocks.flatMap { withMath($0, spans) })]
     case .table(let head, let rows, let align): return [.table(head: head.map { withMath($0, spans) }, rows: rows.map { $0.map { withMath($0, spans) } }, align: align)]
     case .images, .rule, .math, .diagram, .footnotes: return [block]
     }
@@ -444,19 +491,19 @@ private func trimmed(_ text: AttributedSubstring) -> AttributedString {
     return AttributedString(text[from..<to])
 }
 
-private func item(_ i: ListItem, claimed: inout [String]) -> MarkdownItem {
-    MarkdownItem(checked: i.checkbox.map { $0 == .checked }, blocks: convertChildren(Array(i.blockChildren), claimed: &claimed, topLevel: false))
+private func item(_ i: ListItem, claimed: inout [String], basePath: String) -> MarkdownItem {
+    MarkdownItem(checked: i.checkbox.map { $0 == .checked }, blocks: convertChildren(Array(i.blockChildren), claimed: &claimed, topLevel: false, basePath: basePath))
 }
 
 private let web = #/^https?:\/\//#.ignoresCase()
 /// Chinese text and punctuation: a bare link ends before them.
 private let wide = #/[\x{3000}-\x{303F}\x{3400}-\x{9FFF}\x{FF00}-\x{FFEF}]/#
 
-private func inlines(_ m: Markup) -> AttributedString {
-    m.children.reduce(into: AttributedString()) { $0 += inline($1) }
+private func inlines(_ m: Markup, basePath: String) -> AttributedString {
+    m.children.reduce(into: AttributedString()) { $0 += inline($1, basePath: basePath) }
 }
 
-private func inline(_ m: Markup) -> AttributedString {
+private func inline(_ m: Markup, basePath: String) -> AttributedString {
     switch m {
     case let t as Markdown.Text: return bareLinks(t.string)
     case is SoftBreak, is LineBreak: return AttributedString("\n")
@@ -464,7 +511,9 @@ private func inline(_ m: Markup) -> AttributedString {
         var s = AttributedString(c.code)
         s.inlinePresentationIntent = .code
         // A path the session's machine may say is a file (SessionFiles.swift): a tag once it does.
-        if let r = fileOfCode(c.code) { s[FileRefAttribute.self] = FileRefMark(path: r.path, line: r.line, endLine: r.endLine, code: true) }
+        if let r = fileOfCode(c.code) {
+            s[FileRefAttribute.self] = FileRefMark(path: resolveDocPath(basePath, r.path), line: r.line, endLine: r.endLine, code: true)
+        }
         return s
     case let h as InlineHTML: return AttributedString(h.rawHTML)
     case let i as Markdown.Image: return AttributedString(i.plainText)
@@ -479,13 +528,14 @@ private func inline(_ m: Markup) -> AttributedString {
         }
         // A link to a session's file: a tag in a session's reply (SessionFiles.swift), its words elsewhere.
         if let r = fileOfLink(l.destination ?? "") {
-            var s = inlines(l)
-            s[FileRefAttribute.self] = FileRefMark(path: r.path, line: r.line, endLine: r.endLine, code: false)
+            var s = inlines(l, basePath: basePath)
+            let resolved = (l.destination ?? "").lowercased().hasPrefix("file:") ? r.path : resolveDocPath(basePath, r.path)
+            s[FileRefAttribute.self] = FileRefMark(path: resolved, line: r.line, endLine: r.endLine, code: false)
             return s
         }
-        return linked(inlines(l), l.destination ?? "")
+        return linked(inlines(l, basePath: basePath), l.destination ?? "")
     default:
-        var s = inlines(m)
+        var s = inlines(m, basePath: basePath)
         let intent: InlinePresentationIntent? = switch m {
         case is Emphasis: .emphasized
         case is Strong: .stronglyEmphasized
@@ -605,6 +655,18 @@ private struct BlockView: View {
                 .foregroundStyle(.secondary)
                 .padding(.leading, 12)
                 .overlay(alignment: .leading) { Rectangle().fill(Palette.fill3).frame(width: 2) }
+        case .callout(let kind, let blocks):
+            MarkdownBlocks(blocks: blocks, style: style, draft: draft)
+                .padding(.leading, 14).padding(.trailing, 12).padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Palette.fill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(alignment: .leading) {
+                    UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10, style: .continuous)
+                        .fill(kind.color).frame(width: 3)
+                }
+                .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5) }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("markdown-callout-\(kind.rawValue)")
         case .table(let head, let rows, let align):
             // In a box with its header shaded and its numbers in columns, as on the Mac; as wide as it is, its text
             // wrapping to fit the page, and scrolling sideways once its columns are as narrow as they go.

@@ -1,10 +1,10 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Client, Machine } from "@hermesh/proto/local";
-import { FailureKind, type AttachmentRef, type Failure, type Session, type ToolCall, type ToolResult } from "@hermesh/proto/session";
+import { FailureKind, QuestionResolution, type AttachmentRef, type Failure, type Session, type ToolCall, type ToolResult } from "@hermesh/proto/session";
 import {
   agoText, codingAgentTitle, dateOf, failureAdvice, failureHeadline, failureTitle, isArchivable,
-  interrupter, isInterruption, resolutionTitle, stepSummary, toolObject, toolSummary, toolVerb,
+  interrupter, isInterruption, settledQuestionRows, stepSummary, toolObject, toolSummary, toolVerb,
   turnTimeLine, workspaceDetails, workspaceTitle, type Step, type WorkspaceRow,
 } from "@hermesh/core";
 import { Mark, agentName } from "@hermesh/ui";
@@ -423,16 +423,46 @@ function RowView({ it, rowKey, end, live, sessionId, machineId, clients, starter
       ) : (
         <ToolGroup id={rowKey} calls={it.calls} sessionId={sessionId} />
       );
-    case "question":
+    case "question": {
       // The pending question is in the control area; a settled one stays in the conversation.
       if (!it.resolution) return null;
+      const resolveName = (by: string) => {
+        const l = clients.find((c) => c.clientId === by)?.label;
+        return l ? agentName(l) : by;
+      };
+      const rows = settledQuestionRows(it.question, it.resolution, resolveName);
+      const byOther = it.resolution.by !== "" && it.resolution.by !== "owner" && it.resolution.resolution === QuestionResolution.ANSWERED
+        ? resolveName(it.resolution.by)
+        : null;
       return (
-        <div className="tq">
-          <Icon name="q" className="sm" /><b>{t("chat.agentAsked")}</b>
-          <span className="sel-text">{it.question.items.map((x) => x.text).join(" ")}</span>
-          <div className="ans">{resolutionTitle(it.resolution, (by) => { const l = clients.find((c) => c.clientId === by)?.label; return l ? agentName(l) : by; })}</div>
+        <div className="tq" data-testid="settled-question">
+          {byOther && <div className="tq-by">{t("chat.answeredBy", { name: byOther })}</div>}
+          {rows.map((row, idx) => (
+            <div key={idx} className="tq-item">
+              {row.prompt !== "" && <div className="tq-q sel-text">{row.prompt}</div>}
+              {(row.choices.length > 0 || row.statusText !== "") && (
+                <div className={`tq-ans ${row.status === "answered" ? "" : "muted"}`}>
+                  <span className={`tq-ck ${row.status === "answered" ? "ok" : "skip"}`} aria-hidden="true">
+                    {row.status === "answered" ? <Icon name="check" /> : "—"}
+                  </span>
+                  <span className="tq-atxt sel-text">
+                    {row.status === "answered"
+                      ? row.choices.map((c, ci) => (
+                          <span key={ci}>
+                            {ci > 0 && " · "}
+                            {c.recommended && <span className="tq-rec">{t("question.recommended")}</span>}
+                            {c.text}
+                          </span>
+                        ))
+                      : row.statusText}
+                  </span>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       );
+    }
     case "turnEnd": {
       const end = it.end;
       if (end.isError && isInterruption(end.failure)) return <InterruptNote failure={end.failure} clients={clients} />;

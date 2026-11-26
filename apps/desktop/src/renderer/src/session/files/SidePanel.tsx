@@ -4,7 +4,7 @@ import { fileView } from "@hermesh/her-client";
 import { Icon } from "../../icons";
 import { machineName } from "../../Sidebar";
 import { useStore } from "../../store";
-import { sizeText, type FilesHome } from "./files";
+import { FilesHomeContext, FilesRunContext, sizeText, type FilesHome } from "./files";
 import { AttachmentBody, Card, fileError, Loading, PageBody, PdfBody, TextBody, VersionBar } from "./FileView";
 import { fileMenu } from "./open";
 import { activate, closeTab, openProject, refreshTree, setMax, setPreview, setTree, switchRun, usePanel, type Panel, type Tab } from "./panel";
@@ -89,7 +89,11 @@ export function SidePanel({ home, running }: { home: FilesHome; running: boolean
         </button>
       </div>
       {tab && <Bar home={home} p={p} tab={tab} />}
-      <div className="sfp-body">{tab && <Body home={home} p={p} tab={tab} />}</div>
+      <FilesHomeContext.Provider value={home}>
+        <FilesRunContext.Provider value={tab?.file.run ?? ""}>
+          <div className="sfp-body">{tab && <Body home={home} p={p} tab={tab} />}</div>
+        </FilesRunContext.Provider>
+      </FilesHomeContext.Provider>
       {tab?.file.path && tab.kind !== "attachment" && tab.read && "res" in tab.read && <VersionBar res={tab.read.res} run={tab.file.run} turnRun={tab.replyRun} onRun={(run) => switchRun(p, tab, run)} />}
       {!p.max && <div className="sfp-grip" role="separator" aria-orientation="vertical" aria-label={t("files.resize")} tabIndex={0} {...grip} />}
     </aside>

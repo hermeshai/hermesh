@@ -14978,6 +14978,26 @@
         }
       }
     },
+    "Back to question": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回到问题"
+          }
+        }
+      }
+    },
+    "%@ answered": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已回答"
+          }
+        }
+      }
+    },
     "Typing…": {
       "localizations": {
         "zh-Hans": {
@@ -19506,12 +19526,12 @@
         }
       }
     },
-    "Show or Hide the Tree": {
+    "Current Session": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "显示或隐藏目录树"
+            "value": "当前会话"
           }
         }
       }

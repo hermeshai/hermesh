@@ -6,7 +6,7 @@ import Markdown from "react-markdown";
 import gfm from "remark-gfm";
 import math from "remark-math";
 import directive from "remark-directive";
-import { createMarkdownSlices, pendingText } from "./parse.ts";
+import { createMarkdownSlices, pendingText, unwrapCarousels } from "./parse.ts";
 
 const render = (text: string) => renderToStaticMarkup(createElement(Markdown, { remarkPlugins: [gfm, [math, { singleDollarTextMath: false }], directive], children: text })).replace(/>\s+</g, "><");
 const cases = [
@@ -76,4 +76,24 @@ test("replaced source resets cached prefixes", () => {
   const split = createMarkdownSlices();
   split("# old\n\nold tail", true);
   assert.equal(split("# new\n\nnew tail", false).map((b) => render(b.text)).join(""), render("# new\n\nnew tail"));
+});
+
+test("unwrapCarousels merges pure-image slides and separates mixed slides without touching outer or inner code fences", () => {
+  const pure = "Before\n\n````carousel\n![Dark](/tmp/dark.png)\n<!-- slide -->\n![Light](/tmp/light.png)\n````\n\nAfter";
+  assert.equal(unwrapCarousels(pure), "Before\n\n![Dark](/tmp/dark.png)\n![Light](/tmp/light.png)\n\nAfter");
+
+  const mixed = "````carousel\n![Shot](/tmp/a.png)\n<!-- slide -->\n```python\nprint('<!-- slide -->')\n```\n````";
+  assert.equal(unwrapCarousels(mixed), "![Shot](/tmp/a.png)\n\n---\n\n```python\nprint('<!-- slide -->')\n```");
+
+  const quoted = "`````markdown\n````carousel\n![Literal](/tmp/a.png)\n````\n`````";
+  assert.equal(unwrapCarousels(quoted), quoted);
+
+  const streaming = "````carousel\n![One](/tmp/1.png)\n<!-- slide -->\n![Two](/tmp/2.png)";
+  assert.equal(unwrapCarousels(streaming), "![One](/tmp/1.png)\n![Two](/tmp/2.png)");
+
+  const spaced = "See ![shot](/Users/me/Library/Application Support/Hermesh/shot.png) and `[raw](/Application Support/x.png)`";
+  assert.equal(
+    unwrapCarousels(spaced),
+    "See ![shot](/Users/me/Library/Application%20Support/Hermesh/shot.png) and `[raw](/Application Support/x.png)`",
+  );
 });
