@@ -182,6 +182,8 @@ export type Bridge = {
   openActivityMonitor(): void;
   /** Opens a project's folder on this computer in its file browser or a terminal. */
   openFolder(path: string, to: "files" | "terminal"): void;
+  /** Opens a local session's working folder (its git worktree when present, else its project folder) in Finder/Explorer or terminal. */
+  openSessionFolder(sessionId: string, to: "files" | "terminal"): Promise<boolean>;
   /** Shows in Finder a worktree erasing everything kept (it had uncommitted changes). */
   revealKeptWorktree(path: string): void;
   /** The app's updates (main/updater.ts). */

@@ -1448,9 +1448,10 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *session
 	}
 
 	isActive := sess.ActiveRunId != "" && (sess.Status == sessionv1.SessionStatus_SESSION_STATUS_RUNNING || sess.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT)
+	_, isShellShortcut := ParseShellShortcut(p.Actor, req.Text)
 
-	// Mid-turn STEER path when an active run is running!
-	if isActive && intent != sessionv1.DispatchIntent_DISPATCH_INTENT_QUEUE && intent != sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT {
+	// Mid-turn STEER path when an active run is running! (Shell shortcuts run in their own turn.)
+	if isActive && !isShellShortcut && intent != sessionv1.DispatchIntent_DISPATCH_INTENT_QUEUE && intent != sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT {
 		lease := e.sup.Get(sess.ActiveProviderSessionId)
 		canLiveSteer := sess.Status == sessionv1.SessionStatus_SESSION_STATUS_RUNNING &&
 			lease != nil && SelectionsEqual(lease.Selection, sel)
@@ -2391,6 +2392,16 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 		close(baseline)
 	}
 
+	runPrompt := curRun.Prompt
+	if shellCmd, isShell := ParseShellShortcut(curRun.GetAuthor(), curRun.Prompt); isShell {
+		<-baseline
+		var interrupted bool
+		runPrompt, interrupted = e.execOwnerShellCommand(runCtx, sess, curRun, workdir, prevTreeOID, shellCmd)
+		if interrupted {
+			return
+		}
+	}
+
 	instCfg, drv, err := e.resolveInstanceConfig(nil, sess.ProjectId, curRun.ModelSelection.GetInstanceId())
 	if err != nil {
 		e.finishRunFailed(sessionID, runID, "provider_unavailable", err.Error(), &runtime.Failure{
@@ -2606,7 +2617,7 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 		return tx.PutRun(rNow)
 	})
 
-	promptToSend := curRun.Prompt
+	promptToSend := runPrompt
 	if currentPS == nil && !freshContext {
 		var priorUnexecuted []string
 		for _, pr := range runs {
@@ -2615,11 +2626,11 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 			}
 		}
 		if len(priorUnexecuted) > 0 {
-			promptToSend = strings.Join(append(priorUnexecuted, curRun.Prompt), "\n")
+			promptToSend = strings.Join(append(priorUnexecuted, runPrompt), "\n")
 		}
 	}
 	if handoffPrefix != "" {
-		promptToSend = handoffPrefix + "\n\n" + curRun.Prompt
+		promptToSend = handoffPrefix + "\n\n" + runPrompt
 	}
 
 	if err := activeLease.Session.StartTurn(runCtx, runtime.TurnInput{

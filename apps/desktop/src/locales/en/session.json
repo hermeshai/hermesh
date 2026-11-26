@@ -120,7 +120,14 @@
     "hidden": "Hidden characters",
     "hiddenTip": "This code has characters you can't see. Check it before you paste it.",
     "copyCode": "Copy Code",
-    "copyCommand": "Copy Command"
+    "copyCommand": "Copy Command",
+    "run": "Run",
+    "runTip": "Run in this session’s workspace and let the agent continue",
+    "runInSession": "Run in Session",
+    "copyAndOpenTerminal": "Copy Command & Open Terminal",
+    "copiedAndOpenedTerminal": "Command copied; opening terminal",
+    "showSecrets": "Reveal Masked Secrets",
+    "hideSecrets": "Hide Secrets"
   },
   "files": {
     "open": "Open",

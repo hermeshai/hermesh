@@ -6,7 +6,7 @@ import { openComputerPermission } from "./computer";
 import { daemonInfo, quitForRelaunch, startBackgroundService, stopBackgroundService } from "./daemon";
 import { cancelHerChatGpt, cancelHerConnector, herConsoleURL, herFilesKept, reopenHerChatGpt, reopenHerConnector, readHerFile, saveHerFile, signInHerChatGpt, signInHerConnector } from "./her";
 import { preferences, setPreferences, world } from "./notify";
-import { closeSessionPage, openSessionPage, openSessionPageInBrowser, placeSessionPage, quickLookSessionFile, refOf, revealSessionFile, saveSessionFile } from "./sessionFiles";
+import { closeSessionPage, openCheckedFolder, openSessionFolder, openSessionPage, openSessionPageInBrowser, placeSessionPage, quickLookSessionFile, refOf, revealSessionFile, saveSessionFile } from "./sessionFiles";
 import { platform } from "./platform";
 import { cancelSignIn, completeResume, completeSignIn, connectURL, errorMessage, signIn, signInPending, takeLinks } from "./signin";
 import { catchUp, check, download, install, openUpdates, returnToApproval, setAutoDownload, snooze, updateInfo } from "./updater";
@@ -291,7 +291,11 @@ export function registerIPC() {
   ipcMain.on("open-computer-permission", (e, kind: unknown) => trusted(e) && void openComputerPermission(kind));
   // A folder only, opened by the system's file browser or a terminal there: never a file or an app run.
   ipcMain.on("open-folder", (e, dir: unknown, to: unknown) => {
-    if (trusted(e) && (to === "files" || to === "terminal") && typeof dir === "string" && path.isAbsolute(dir)) platform.openFolder(path.normalize(dir), to);
+    if (trusted(e) && (to === "files" || to === "terminal") && typeof dir === "string" && path.isAbsolute(dir)) void openCheckedFolder(dir, to);
+  });
+  ipcMain.handle("open-session-folder", (e, sessionId: unknown, to: unknown) => {
+    if (!trusted(e) || (to !== "files" && to !== "terminal") || typeof sessionId !== "string") return false;
+    return openSessionFolder(sessionId, to);
   });
   // Only what erasing everything kept (hermeshd's kept-worktrees), never any path the page names.
   ipcMain.on("reveal-kept-worktree", (e, p) => {

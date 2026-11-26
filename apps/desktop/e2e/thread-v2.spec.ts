@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import type { TrayView } from "../src/shared/bridge";
-import { launch, pickFrom, snap } from "./app";
+import { launch, onWindows, pickFrom, snap } from "./app";
 
 // The composer's line (docs/thread-composer.md): the project and model menus, and the permission mode menu.
 async function pickDemoAndScripted(page: Page) {
@@ -306,6 +306,78 @@ test("sending a message while scrolled up in a session automatically scrolls bac
     await expect.poll(below).toBeLessThan(80);
     await expect(replies(page).last()).toContainText("followup_from_scrolled_up", { timeout: 15_000 });
     await expect.poll(below).toBeLessThan(80);
+  } finally {
+    await app.close();
+  }
+});
+
+test("sniffs shell blocks, masks secrets, runs codeblock and ! shell shortcuts in the session worktree with ANSI output, and wakes the agent", async () => {
+  const { app, page } = await launch();
+  try {
+    await page.setViewportSize({ width: 1440, height: 820 });
+    await page.getByTestId("nav-new-thread").click();
+    await pickDemoAndScripted(page);
+    await pickMode(page, "runtime-mode-4");
+
+    // 1. Agent outputs an untagged CLI block (`$ echo ...`) and a bash block with an API key.
+    const replyMd = [
+      "say Here are two commands:",
+      "say ```",
+      "say $ echo e2e_codeblock_run_ok",
+      "say ```",
+      "say ```bash",
+      'say curl -H "Authorization: Bearer sk-proj-1234567890abcdefghij" https://example.com',
+      "say ```",
+    ].join("\n");
+    const input = page.getByTestId("thread-composer-input");
+    await input.fill(replyMd);
+    await page.getByTestId("composer-submit-btn").click();
+
+    const blocks = conversation(page).locator(".cblock");
+    await expect(blocks).toHaveCount(2, { timeout: 15_000 });
+
+    // Untagged `$ echo ...` fence is auto-sniffed as `bash` and exposes the 1-click Run button.
+    const firstBlock = blocks.nth(0);
+    await expect(firstBlock.locator(".cb-lang")).toContainText("bash");
+    await expect(firstBlock.getByTestId("codeblock-run-btn")).toBeVisible();
+
+    // Secret-bearing block masks the token by default and hides Run until revealed.
+    const secretBlock = blocks.nth(1);
+    await expect(secretBlock.locator("pre")).toContainText("••••••••");
+    await expect(secretBlock.locator("pre")).not.toContainText("1234567890abcdefghij");
+    await expect(secretBlock.getByTestId("codeblock-run-btn")).toHaveCount(0);
+
+    await secretBlock.getByTestId("codeblock-secret-toggle").click();
+    await expect(secretBlock.locator("pre")).toContainText("sk-proj-1234567890abcdefghij");
+    await expect(secretBlock.getByTestId("codeblock-run-btn")).toBeVisible();
+
+    // 2. Click Run on the first block: strips `$ `, runs in the session worktree, and wakes the agent.
+    await firstBlock.getByTestId("codeblock-run-btn").click();
+    await expect(replies(page).last()).toContainText("Reviewed echo e2e_codeblock_run_ok", { timeout: 15_000 });
+    await expect(replies(page).last()).toContainText("Exit code: 0");
+
+    // 3. Type a `! <cmd>` shell shortcut in the composer: shows shell badge, renders ANSI colours, and Inspector reflects worktree path.
+    const ansiCmd = onWindows
+      ? '! Write-Output "$([char]27)[32mansi_green_ok$([char]27)[0m"'
+      : "! printf '\\033[32mansi_green_ok\\033[0m\\n'";
+    await input.fill(ansiCmd);
+    await expect(page.getByTestId("composer-shell-badge")).toBeVisible();
+    await input.press("Enter");
+
+    await expect(replies(page).last()).toContainText("Exit code: 0", { timeout: 15_000 });
+
+    // Expand the latest tool step group/row and verify `.ansi-green` span rendered inside `.term-out`.
+    const lastTool = conversation(page).locator(".tgroup, .tool").last();
+    await lastTool.locator("button").first().click();
+    if ((await lastTool.locator(".tool:not(.open) .th").count()) > 0) {
+      await lastTool.locator(".tool:not(.open) .th").last().click();
+    }
+    await expect(conversation(page).locator(".term-out .ansi-green").last()).toContainText("ansi_green_ok");
+
+    // Inspector's project button points to the isolated worktrees/<sessionId> path, not just the base repo.
+    const envCard = page.getByRole("complementary", { name: "任务信息" });
+    const projBtnTitle = await envCard.locator(".insp-pick").first().getAttribute("title");
+    expect(projBtnTitle ?? "").toContain("worktrees");
   } finally {
     await app.close();
   }

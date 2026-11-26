@@ -61,7 +61,7 @@ import { ComposerPlace, LaunchAsk, ModelButtons, ThreadComposer, type Branches, 
 import { Inspector } from "./session/Inspector";
 import { SessionRequest } from "./session/Request";
 import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, remember } from "./session/choices";
-import { ContentScope } from "./session/scope";
+import { ContentScope, SessionRunContext } from "./session/scope";
 import { FilesHomeContext, type FilesHome } from "./session/files/files";
 import { FileViewHost } from "./session/files/FileView";
 import { ImageLightboxHost } from "./session/files/ImageLightbox";
@@ -517,6 +517,25 @@ export function SessionPage() {
     }
   };
 
+  const runShellShortcut = (rawCmd: string) => {
+    const cmd = rawCmd.trim();
+    if (!activeSessionId || !cmd || archived) return;
+    setSpoken((n) => n + 1);
+    const req = {
+      sessionId: activeSessionId,
+      text: `! ${cmd}`,
+      attachments: [],
+      intent: DispatchIntent.QUEUE,
+      modelSelection: modelSel.instanceId ? modelSel : undefined,
+      runtimeMode: clampedMode,
+      interactionMode,
+      locale: language(),
+    };
+    const job = sends.current.then(() => sessionApi.dispatchMessage(req));
+    sends.current = job.catch(() => {});
+    void job.catch((e) => st.show(errorText(e)));
+  };
+
   const handleAttachFiles = async (files: File[]) => {
     for (const f of files) {
       try {
@@ -898,6 +917,7 @@ export function SessionPage() {
         <div className={`dwrap th ${dock ? "dock" : ""}`} data-testid="thread-page">
           <div className="dmain">
             <ContentScope value={activeSessionId}>
+              <SessionRunContext.Provider value={archived ? null : runShellShortcut}>
               <FilesHomeContext.Provider value={filesHome}>
               <ChatFrame
                 key={activeSessionId}
@@ -968,6 +988,7 @@ export function SessionPage() {
                 )}
               />
               </FilesHomeContext.Provider>
+              </SessionRunContext.Provider>
             </ContentScope>
           </div>
           {filesHome && <FilePanel home={filesHome} running={running} />}

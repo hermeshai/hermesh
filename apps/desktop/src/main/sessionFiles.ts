@@ -1,5 +1,6 @@
 import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
+import { LocalService } from "@hermesh/proto/local";
 import { FileRefKind, SessionService } from "@hermesh/proto/session";
 import { app, BrowserWindow, session, shell, WebContentsView, type WebContents } from "electron";
 import fs from "node:fs/promises";
@@ -7,7 +8,9 @@ import os from "node:os";
 import path from "node:path";
 import type { PageRect, PageSlot, SessionFileRef, SessionPageEvent } from "../shared/bridge";
 import { freeName } from "./her";
-import { socketPath } from "./paths";
+import { world } from "./notify";
+import { dataDir, socketPath } from "./paths";
+import { platform } from "./platform";
 
 // A coding session's files for the page (docs/session-files.md §3): a page over the window, read
 // from the session's machine through this computer's hermeshd; a file in Quick Look, saved to
@@ -84,6 +87,62 @@ export async function revealSessionFile(ref: SessionFileRef): Promise<boolean> {
   if (!(await fs.stat(full).then(() => true, () => false))) return false;
   shell.showItemInFolder(full);
   return true;
+}
+
+function localService() {
+  return createClient(LocalService, createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } }));
+}
+
+function withinDir(dir: string, root: string): boolean {
+  const rel = path.relative(path.normalize(root), path.normalize(dir));
+  return rel === "" || (!rel.startsWith(".." + path.sep) && rel !== ".." && !path.isAbsolute(rel));
+}
+
+/** Verifies dir belongs to a registered local project or Hermesh's local worktrees directory before opening. */
+export async function openCheckedFolder(dir: string, to: "files" | "terminal"): Promise<boolean> {
+  const norm = path.normalize(dir);
+  const segs = norm.split(path.sep);
+  let allowed = withinDir(norm, path.join(dataDir(), "worktrees")) || segs.includes("worktrees");
+  if (!allowed) {
+    try {
+      const localMachine = world.machines.find((m) => m.local);
+      const res = await localService().listProjects({ machineId: localMachine?.machineId ?? "" });
+      allowed = res.projects.some((p) => p.path !== "" && withinDir(norm, p.path));
+    } catch {
+      allowed = false;
+    }
+  }
+  if (!allowed) return false;
+  platform.openFolder(norm, to);
+  return true;
+}
+
+/** Opens a local session's live folder (its git worktree when present on disk, else its project folder). */
+export async function openSessionFolder(sessionId: string, to: "files" | "terminal"): Promise<boolean> {
+  if (!/^[\w-]{1,128}$/.test(sessionId)) return false;
+  try {
+    const res = await sessionService().resolveFiles({ sessionId, paths: [] });
+    if (!res.folderGone && res.folder && path.isAbsolute(res.folder)) {
+      platform.openFolder(path.normalize(res.folder), to);
+      return true;
+    }
+  } catch {
+    // Fall back to the local project's root folder when worktree is not created yet or released.
+  }
+  const sess = world.sessions.find((s) => s.sessionId === sessionId);
+  const machine = sess ? world.machines.find((m) => m.machineId === sess.machineId) : world.machines.find((m) => m.local);
+  if (!sess || !machine?.local) return false;
+  try {
+    const projs = await localService().listProjects({ machineId: sess.machineId });
+    const proj = projs.projects.find((p) => p.projectId === sess.projectId);
+    if (proj?.path && path.isAbsolute(proj.path)) {
+      platform.openFolder(path.normalize(proj.path), to);
+      return true;
+    }
+  } catch {
+    // Ignore when daemon is unreachable.
+  }
+  return false;
 }
 
 /** The kinds a page may load from its folder (FinxWork's and t3code's rule): no dotfiles, nothing else. */

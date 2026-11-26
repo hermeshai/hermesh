@@ -346,7 +346,12 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 	}
 
 	lines := strings.Split(strings.TrimSpace(prompt), "\n")
-	if len(lines) == 1 && !isDirective(lines[0]) {
+	if strings.Contains(prompt, "The user ran a shell command in the workspace:\n$ ") {
+		_, after, _ := strings.Cut(prompt, "The user ran a shell command in the workspace:\n$ ")
+		cmdLine, rest, _ := strings.Cut(after, "\n")
+		exitLine, _, _ := strings.Cut(rest, "\n")
+		lines = []string{"say Reviewed `" + strings.TrimSpace(cmdLine) + "` (" + strings.TrimSpace(exitLine) + ")"}
+	} else if len(lines) == 1 && !isDirective(lines[0]) {
 		if strings.Contains(strings.ToLower(lines[0]), "single word: ready") {
 			lines = []string{"say ready"}
 		} else {

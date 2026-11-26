@@ -169,9 +169,17 @@ function toolItem(it: TurnItem, run: Run | undefined, activeBgItems: ReadonlySet
     kind: "tool",
     seq,
     call: create(ToolCallSchema, { callId, kind: shell ? "shell" : toolKind(name), name, summary: shell ? it.command : it.filePath }),
-    result: running
+    result: running && it.output === ""
       ? undefined
-      : create(ToolResultSchema, { callId, summary: it.output, isError: it.status === "failed" || it.exitCode !== 0, truncated: it.outputTruncated }),
+      : create(ToolResultSchema, {
+          callId,
+          summary: it.output,
+          isError: !running && (it.status === "failed" || it.exitCode !== 0),
+          truncated: it.outputTruncated,
+          preview: running,
+          size: it.outputSize,
+          blobSha256: it.outputBlobSha256,
+        }),
     running,
   };
 }

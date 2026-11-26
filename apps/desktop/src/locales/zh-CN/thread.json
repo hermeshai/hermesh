@@ -100,7 +100,9 @@
     "placeholderIdle": "继续聊…",
     "placeholderRunning": "继续说，会排到下一轮…",
     "nextTurn": "将在下一轮处理",
-    "addAttachment": "添加附件…"
+    "addAttachment": "添加附件…",
+    "shellBadge": "命令直通",
+    "shellHint": "在当前工作区直接执行 ! 后的命令，完成后自动把输出交给智能体继续思考"
   },
   "queue": {
     "heading": "待执行队列（{{count}}）",

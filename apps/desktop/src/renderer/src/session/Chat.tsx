@@ -18,6 +18,7 @@ import { useNow, useStore } from "../store";
 import { attachmentSnapshot, isImageAttachment, loadAttachmentBlob, subscribeAttachments } from "./attachments";
 import { Code } from "./Code";
 import { Markdown } from "./Markdown";
+import { TerminalOutput } from "./TerminalOutput";
 import { FilesRunContext, sizeText } from "./files/files";
 import { partialOutput, useToolOutput } from "./output";
 import { useRowKept, useRowState } from "./useRowState";
@@ -866,7 +867,7 @@ export function ToolLine({ verb, object, title, shell, running, failed, denied =
         )}
         {output && <Icon name="caret" className="chev" />}
       </button>
-      {output && <div className="out sel-text">{output}</div>}
+      {output && (prose ? <div className="out sel-text">{output}</div> : <TerminalOutput text={output} follow={running} />)}
     </div>
   );
 }

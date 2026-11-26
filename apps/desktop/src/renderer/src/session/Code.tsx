@@ -47,8 +47,21 @@ export const Code = memo(function Code({ text, lang }: { text: string; lang: str
   return <span className="hl">{result.tokens!.map((line, i) => <TokenLine key={i} line={line} newline={i > 0} />)}{text.slice(result.text.length)}</span>;
 });
 
+function sameStyle(a: ThemedToken["htmlStyle"], b: ThemedToken["htmlStyle"]): boolean {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  const ka = Object.keys(a);
+  const kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  for (let i = 0; i < ka.length; i++) {
+    const k = ka[i]!;
+    if (a[k] !== b[k]) return false;
+  }
+  return true;
+}
+
 // Worker messages clone arrays. Compare the small visible token representation
 // so completed lines do not rebuild thousands of React spans on every delta.
 const TokenLine = memo(function TokenLine({ line, newline }: { line: ThemedToken[]; newline: boolean }) {
   return <span>{newline && "\n"}{line.map((token, j) => <span key={j} style={token.htmlStyle as CSSProperties}>{token.content}</span>)}</span>;
-}, (a, b) => a.newline === b.newline && a.line.length === b.line.length && a.line.every((token, i) => token.content === b.line[i].content && JSON.stringify(token.htmlStyle) === JSON.stringify(b.line[i].htmlStyle)));
+}, (a, b) => a.newline === b.newline && a.line.length === b.line.length && a.line.every((token, i) => token.content === b.line[i].content && sameStyle(token.htmlStyle, b.line[i].htmlStyle)));

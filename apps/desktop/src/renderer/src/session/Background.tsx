@@ -12,6 +12,7 @@ import { Icon } from "../icons";
 import { useNow, useStore } from "../store";
 import { formatTaskTiming, stripAnsi, taskLabel, taskSecondary, type TimeTranslate } from "./backgroundModel";
 import { Markdown } from "./Markdown";
+import { TerminalOutput } from "./TerminalOutput";
 
 const tTime = i18n.getFixedT(null, "her") as unknown as TimeTranslate;
 
@@ -333,7 +334,7 @@ function Process({
           />
         )}
         {cleanOutput !== "" && (
-          <pre className="bgc-out sel-text" data-testid={`bg-task-output-${bt.taskId}`}>{cleanOutput}</pre>
+          <TerminalOutput text={bt.outputTail} follow={isRunning} className="bgc-out sel-text" testId={`bg-task-output-${bt.taskId}`} />
         )}
         {shownSummary !== "" && (
           <div className="am">

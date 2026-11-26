@@ -100,7 +100,9 @@
     "placeholderIdle": "Keep going…",
     "placeholderRunning": "Say more; it goes to the next turn…",
     "nextTurn": "Handled in the next turn",
-    "addAttachment": "Add Attachment…"
+    "addAttachment": "Add Attachment…",
+    "shellBadge": "Shell",
+    "shellHint": "Runs the command after ! in this session’s workspace and hands the output to the agent"
   },
   "queue": {
     "heading": "Queued Follow-ups ({{count}})",
