@@ -58,6 +58,7 @@ import { grantLabel, unarchive } from "./Sidebar";
 import { errorText, useNow, useStore } from "./store";
 import { Background, BackgroundLine } from "./session/Background";
 import { ChatFrame, Failed, PromptNote, Row, Stale, Unread, UserBubble, rowHeights, rowsOf, type ChatRow } from "./session/Chat";
+import { keepAttachmentBlob } from "./session/attachments";
 import { ComposerPlace, LaunchAsk, ModelButtons, ThreadComposer, type Branches, type Place } from "./session/Composer";
 import { Inspector } from "./session/Inspector";
 import { SessionRequest } from "./session/Request";
@@ -508,7 +509,10 @@ export function SessionPage() {
         });
         // The same file twice (pasted again, say) is attached once.
         const att = up.attachment;
-        if (att) setAttachments((prev) => (prev.some((a) => a.blobSha256 === att.blobSha256) ? prev : [...prev, att]));
+        if (att) {
+          keepAttachmentBlob(att.blobSha256, buf, f.type || att.mimeType, att.name || f.name);
+          setAttachments((prev) => (prev.some((a) => a.blobSha256 === att.blobSha256) ? prev : [...prev, att]));
+        }
       } catch (e) {
         st.show(errorText(e));
       }
@@ -637,7 +641,9 @@ export function SessionPage() {
             </>
           ) : (
             <>
-              <span className="th-qtext sel-text" title={qr.prompt}>{qr.prompt}</span>
+              <span className="th-qtext sel-text" title={qr.prompt || qr.attachments.map((a) => a.name).join(", ")}>
+                {qr.prompt || qr.attachments.map((a) => a.name).join(", ")}
+              </span>
               <button className="btn th-qbtn" data-testid={`queue-promote-${idx}`} onClick={() => sessionApi.manageQueue({ sessionId: activeSessionId, operation: QueueOperation.PROMOTE_TO_STEER, runId: qr.runId })}>
                 {t("queue.steerNow")}
               </button>
@@ -704,7 +710,7 @@ export function SessionPage() {
     <>
       <div className="ctool drag">
         <div className="ctitle">
-          <h2 data-testid="thread-title">{activeSessionId ? (currentSession ? displayTitle(currentSession) : "…") : starting ? firstLine(starting.req.initialPrompt ?? "") : t("launch.title")}</h2>
+          <h2 data-testid="thread-title">{activeSessionId ? (currentSession ? displayTitle(currentSession) : "…") : starting ? (firstLine(starting.req.initialPrompt ?? "") || t("launch.title")) : t("launch.title")}</h2>
           {activeSessionId && currentSession && (
             <span className="th-where" data-testid="session-where">
               <Icon name={targetMachine?.local ? "laptop" : "server"} />
@@ -757,6 +763,8 @@ export function SessionPage() {
               row={() => (
                 <UserBubble
                   text={starting.req.initialPrompt ?? ""}
+                  attachments={starting.files}
+                  machineId={starting.req.machineId}
                   at={starting.at}
                   waiting={!starting.refused}
                   note={starting.refused
@@ -829,9 +837,17 @@ export function SessionPage() {
                 row={(r) =>
                   currentSession?.offlineQueued && r.it.kind === "user" ? (
                     // Queued here while its machine is offline: faded, and said under it, with Discard.
-                    <UserBubble text={r.it.text} at={r.it.at} waiting note={<PromptNote kind="waiting" machine={targetMachine?.machineName ?? currentSession.machineId} onDiscard={discardOffline} />} />
+                    <UserBubble
+                      text={r.it.text}
+                      attachments={r.it.attachments}
+                      sessionId={activeSessionId}
+                      machineId={currentSession.machineId}
+                      at={r.it.at}
+                      waiting
+                      note={<PromptNote kind="waiting" machine={targetMachine?.machineName ?? currentSession.machineId} onDiscard={discardOffline} />}
+                    />
                   ) : (
-                    <Row it={r.it} rowKey={r.key} end={r.end} live={r.live} sessionId={activeSessionId} clients={st.clients} starter={session?.createdBy ?? "owner"} previous={r.previous} />
+                    <Row it={r.it} rowKey={r.key} end={r.end} live={r.live} sessionId={activeSessionId} machineId={currentSession?.machineId} clients={st.clients} starter={session?.createdBy ?? "owner"} previous={r.previous} />
                   )
                 }
                 head={
@@ -894,7 +910,7 @@ export function SessionPage() {
 
 /** The one row of a session starting: the owner's message. */
 function startingRow(st: Starting): ChatRow {
-  const it = { kind: "user" as const, seq: 1n, text: st.req.initialPrompt ?? "", at: st.at, asker: "owner" };
+  const it = { kind: "user" as const, seq: 1n, text: st.req.initialPrompt ?? "", attachments: st.files, at: st.at, asker: "owner" };
   return { key: "starting", kind: "user", it, end: false, live: false, previous: undefined };
 }
 

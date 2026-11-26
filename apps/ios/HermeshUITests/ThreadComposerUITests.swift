@@ -120,9 +120,13 @@ extension HermeshUITests {
 
         // Start it: the session's own page, on work-mac in the project. The agent got the photo.
         send("say hello_from_work_mac\ninspect")
-        // At once, as the session will be: the message, under its title, with no wait for the machine on the composer.
-        let first = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'say hello_from_work_mac'")).firstMatch
+        // At once, as the session will be: the message and its photo thumbnail, under its title, with no wait for the machine on the composer.
+        let first = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'say hello_from_work_mac' AND label CONTAINS 'inspect'")).firstMatch
+        let sentPhoto = app.buttons["prompt-attachment-照片.jpg"]
         XCTAssertTrue(first.waitForExistence(timeout: 5), "the message shows at once")
+        XCTAssertTrue(sentPhoto.waitForExistence(timeout: 5), "the photo thumbnail shows on the user's message at once")
+        XCTAssertGreaterThanOrEqual(sentPhoto.frame.width, 60)
+        XCTAssertLessThanOrEqual(sentPhoto.frame.maxY, first.frame.minY + 4, "above the message's words")
         XCTAssertFalse(app.descendants(matching: .any)["new-session-title"].exists, "no longer the composer")
         // Its first turn makes the worktree, on a line of its own under the message; opened, how and where.
         let workspace = app.buttons["thread-workspace"]
@@ -139,6 +143,7 @@ extension HermeshUITests {
         workspace.tap()
         XCTAssertTrue(details.waitForNonExistence(timeout: 10), "closed")
         XCTAssertTrue(reply("attachments=[照片.jpg]").waitForExistence(timeout: 10), "the photo, with the first message")
+        XCTAssertTrue(sentPhoto.exists && sentPhoto.frame.width >= 60, "the photo thumbnail stays on the user's bubble once the session is read")
         XCTAssertFalse(app.descendants(matching: .any)["thread-attached"].exists, "sent: the box holds nothing")
         XCTAssertTrue(text("work-mac/fresh-app").waitForExistence(timeout: 10), "where it runs, under the title")
 

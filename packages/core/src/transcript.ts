@@ -20,6 +20,7 @@ import {
   TurnItemKind,
   WorkspaceAction,
   type Actor,
+  type AttachmentRef,
   type ErrorEvent,
   type Failure,
   type Question,
@@ -47,7 +48,7 @@ export type TranscriptItem =
   /** asker: who asked for the turn (a client id, "owner", or ""). wakeReason: when woken by a background task. */
   | { kind: "turn"; seq: bigint; turn: number; at: Date | undefined; asker: string; wakeReason?: string }
   /** asker: who asked for its turn (a client id, or "owner"; "" when the machine didn't say). */
-  | { kind: "user"; seq: bigint; text: string; at: Date | undefined; asker: string }
+  | { kind: "user"; seq: bigint; text: string; at: Date | undefined; asker: string; attachments?: AttachmentRef[] }
   /** runId: the turn it belongs to, whose files its links open as that turn left them (docs/session-files.md §6.2). */
   | { kind: "agent"; seq: bigint; text: string; at: Date | undefined; runId?: string }
   | { kind: "tool"; seq: bigint; call: ToolCall; result: ToolResult | undefined; resultSeq?: bigint; running: boolean }
@@ -214,6 +215,7 @@ export function sessionTranscript(proj: SessionProjection | null | undefined): T
           text: it.text,
           at,
           asker: it.actor ? actorClientId(it.actor) : run ? actorClientId(run.author) : "",
+          attachments: it.attachments,
         });
         break;
       case TurnItemKind.ASSISTANT_MESSAGE:

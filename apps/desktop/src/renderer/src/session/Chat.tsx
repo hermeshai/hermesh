@@ -1,21 +1,24 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Client, Machine } from "@hermesh/proto/local";
-import { FailureKind, type Failure, type Session, type ToolCall, type ToolResult } from "@hermesh/proto/session";
+import { FailureKind, type AttachmentRef, type Failure, type Session, type ToolCall, type ToolResult } from "@hermesh/proto/session";
 import {
   agoText, codingAgentTitle, dateOf, failureAdvice, failureHeadline, failureTitle, isArchivable,
   interrupter, isInterruption, resolutionTitle, stepSummary, toolObject, toolSummary, toolVerb,
   turnTimeLine, workspaceDetails, workspaceTitle, type Step, type WorkspaceRow,
 } from "@hermesh/core";
 import { Mark, agentName } from "@hermesh/ui";
+import { sessions as sessionApi } from "../api";
 import { GrantAvatar } from "../components";
+import { Tile } from "../her/Composer";
 import { Icon } from "../icons";
 import { HEAVY_ROWS, releaseAfterLeaving } from "../memory";
 import { archive, machineName, senderName } from "../Sidebar";
 import { useNow, useStore } from "../store";
+import { attachmentSnapshot, isImageAttachment, loadAttachmentBlob, subscribeAttachments } from "./attachments";
 import { Code } from "./Code";
 import { Markdown } from "./Markdown";
-import { FilesRunContext } from "./files/files";
+import { FilesRunContext, sizeText } from "./files/files";
 import { partialOutput, useToolOutput } from "./output";
 import { useRowKept, useRowState } from "./useRowState";
 import { useVirtualRows, type VirtualRow } from "./useVirtualRows";
@@ -298,7 +301,7 @@ function draws(it: Step, previous: Date | undefined, current: Failure | undefine
 }
 
 /** starter: who started the session (a client id, or "owner"), for a prompt whose turn doesn't say who asked. */
-type RowProps = { it: Step; rowKey: string; end: boolean; live: boolean; sessionId: string; clients: Client[]; starter: string; previous: Date | undefined };
+type RowProps = { it: Step; rowKey: string; end: boolean; live: boolean; sessionId: string; machineId?: string; clients: Client[]; starter: string; previous: Date | undefined };
 
 /**
  * A row renders again only when what it shows changed: the conversation's
@@ -309,7 +312,7 @@ export const Row = memo(
   RowView,
   (a, b) =>
     sameStep(a.it, b.it) && a.rowKey === b.rowKey && a.end === b.end && a.live === b.live && a.sessionId === b.sessionId &&
-    a.clients === b.clients && a.starter === b.starter && a.previous?.getTime() === b.previous?.getTime(),
+    a.machineId === b.machineId && a.clients === b.clients && a.starter === b.starter && a.previous?.getTime() === b.previous?.getTime(),
 );
 
 function sameStep(a: Step, b: Step): boolean {
@@ -317,6 +320,12 @@ function sameStep(a: Step, b: Step): boolean {
   switch (a.kind) {
     case "turn":
       return a.at?.getTime() === (b as typeof a).at?.getTime();
+    case "user": {
+      const u = b as typeof a;
+      const aa = a.attachments ?? [];
+      const ba = u.attachments ?? [];
+      return a.text === u.text && a.asker === u.asker && aa.length === ba.length && aa.every((x, i) => x.blobSha256 === ba[i]?.blobSha256);
+    }
     case "agent":
       return a.text === (b as typeof a).text;
     case "tools": {
@@ -332,7 +341,7 @@ function sameStep(a: Step, b: Step): boolean {
   }
 }
 
-function RowView({ it, rowKey, end, live, sessionId, clients, starter, previous }: RowProps) {
+function RowView({ it, rowKey, end, live, sessionId, machineId, clients, starter, previous }: RowProps) {
   const { t } = useTranslation("session");
   switch (it.kind) {
     case "turn":
@@ -343,7 +352,7 @@ function RowView({ it, rowKey, end, live, sessionId, clients, starter, previous 
       // session Her started can hold the owner's words too.
       const by = it.asker || starter;
       const from = by === "owner" ? undefined : { name: senderName({ clients }, by), client: clients.find((c) => c.clientId === by) };
-      return <UserBubble text={it.text} at={it.at} from={from} />;
+      return <UserBubble text={it.text} attachments={it.attachments} sessionId={sessionId} machineId={machineId} at={it.at} from={from} />;
     }
     case "agent":
       // A turn's reply is one, however many times it writes: when it is over, its last words say when and Copy.
@@ -398,21 +407,75 @@ function RowView({ it, rowKey, end, live, sessionId, clients, starter, previous 
 /** Who sent work in when it isn't the owner: Her, or another of the owner's agents (its grant, while still known). */
 export type PromptSender = { name: string; client: Client | undefined };
 
+function UserAttachments({ attachments, sessionId, machineId }: { attachments: AttachmentRef[]; sessionId?: string; machineId?: string }) {
+  const urls = useSyncExternalStore(subscribeAttachments, attachmentSnapshot);
+  useEffect(() => {
+    for (const a of attachments) {
+      if (isImageAttachment(a) && urls[a.blobSha256] === undefined) {
+        void loadAttachmentBlob(a, (sha256) =>
+          sessionApi.downloadBlob({ sessionId: sessionId ?? "", machineId: machineId ?? "", blobSha256: sha256 }),
+        );
+      }
+    }
+  }, [attachments.map((a) => a.blobSha256).join("\0"), sessionId, machineId]);
+  return (
+    <div className="um-att" data-testid="user-attachments">
+      {attachments.map((a) => {
+        const img = isImageAttachment(a);
+        const url = img ? urls[a.blobSha256] : null;
+        if (img && url === undefined) {
+          return (
+            <div key={a.blobSha256} className="tile img" title={a.name}>
+              <div className="tile-open" />
+            </div>
+          );
+        }
+        return (
+          <Tile
+            key={a.blobSha256}
+            name={a.name}
+            src={url ?? undefined}
+            meta={!url && a.sizeBytes > 0n ? sizeText(a.sizeBytes) : undefined}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * What was sent to the agent, on the right. The owner's is a blue bubble with nothing on it; one another of the
  * owner's agents sent (`from`) is a quiet one with that agent's face on its corner. On hover, who sent it (not the
  * owner), when, and Copy.
  */
-export function UserBubble({ text, at, from, waiting = false, note }: { text: string; at?: Date; from?: PromptSender; waiting?: boolean; note?: ReactNode }) {
+export function UserBubble({ text, at, from, attachments, sessionId, machineId, waiting = false, note }: {
+  text: string;
+  at?: Date;
+  from?: PromptSender;
+  attachments?: AttachmentRef[];
+  sessionId?: string;
+  machineId?: string;
+  waiting?: boolean;
+  note?: ReactNode;
+}) {
   const { t } = useTranslation("session");
+  const hasAtt = !!attachments && attachments.length > 0;
+  const hasText = text !== "" || !hasAtt;
+  const badge = from && (
+    <span className="um-badge" role="img" aria-label={t("chat.sentBy", { name: from.name })} title={t("chat.sentBy", { name: from.name })} data-testid="prompt-sender">
+      <GrantAvatar c={from.client ?? { label: from.name }} />
+    </span>
+  );
   return (
     <div className={`um ${from ? "from" : ""} ${waiting ? "waiting" : ""}`}>
-      {from && (
-        <span className="um-badge" role="img" aria-label={t("chat.sentBy", { name: from.name })} title={t("chat.sentBy", { name: from.name })} data-testid="prompt-sender">
-          <GrantAvatar c={from.client ?? { label: from.name }} />
-        </span>
+      {!hasText && badge}
+      {hasAtt && <UserAttachments attachments={attachments} sessionId={sessionId} machineId={machineId} />}
+      {hasText && (
+        <div className="bub sel-text">
+          {badge}
+          {text}
+        </div>
       )}
-      <div className="bub sel-text">{text}</div>
       {note}
       {!note && <Copy text={text} at={at} from={from?.name} />}
     </div>
@@ -519,18 +582,21 @@ export function TimeLine({ at, previous }: { at: Date | undefined; previous: Dat
 function Copy({ text, at, from }: { text: string; at?: Date; from?: string }) {
   const { t } = useTranslation("session");
   const [done, setDone] = useState(false);
+  if (text === "" && !at && !from) return null;
   return (
     <div className="msg-act">
       {from && <span className="msg-time">{at ? t("chat.sentByAt", { name: from }) : t("chat.sentBy", { name: from })}</span>}
       {at && <SentAt at={at} />}
-      <button
-        className="tb"
-        aria-label={t("chat.copy")}
-        title={t("chat.copy")}
-        onClick={() => navigator.clipboard.writeText(text).then(() => (setDone(true), setTimeout(() => setDone(false), 1500)))}
-      >
-        <Icon name={done ? "check" : "copy"} className="sm" />
-      </button>
+      {text !== "" && (
+        <button
+          className="tb"
+          aria-label={t("chat.copy")}
+          title={t("chat.copy")}
+          onClick={() => navigator.clipboard.writeText(text).then(() => (setDone(true), setTimeout(() => setDone(false), 1500)))}
+        >
+          <Icon name={done ? "check" : "copy"} className="sm" />
+        </button>
+      )}
     </div>
   );
 }

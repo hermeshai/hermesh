@@ -1628,30 +1628,52 @@ func (s *ownerSessionService) UploadBlob(_ context.Context, req *sessionv1.Uploa
 
 func (s *ownerSessionService) DownloadBlob(ctx context.Context, req *sessionv1.DownloadBlobRequest) (*sessionv1.DownloadBlobResponse, error) {
 	o := s.o()
-	if eng, _ := o.localEngineFor(req.MachineId); eng != nil {
+	if eng, _ := o.localEngineFor(""); eng != nil {
 		if data, name, mime, err := eng.Store().GetBlob(req.BlobSha256); err == nil {
 			return &sessionv1.DownloadBlobResponse{Data: data, Name: name, MimeType: mime, SizeBytes: uint64(len(data))}, nil
 		}
-		if req.MachineId != "" {
-			return nil, connect.NewError(connect.CodeNotFound, errors.New("blob not found"))
-		}
-	} else if req.MachineId != "" {
-		pm, dErr := o.dialRemoteSessionMachine(ctx, req.MachineId)
-		if dErr != nil {
-			return nil, dErr
-		}
-		return pm.Session.DownloadBlob(ctx, req)
 	}
 	var name, mime string
 	var data []byte
-	err := o.st.db.QueryRow(`SELECT name, mime_type, data FROM sessions_blobs WHERE sha256 = ?`, req.BlobSha256).Scan(&name, &mime, &data)
-	if err == nil {
+	if err := o.st.db.QueryRow(`SELECT name, mime_type, data FROM sessions_blobs WHERE sha256 = ?`, req.BlobSha256).Scan(&name, &mime, &data); err == nil {
 		return &sessionv1.DownloadBlobResponse{Data: data, Name: name, MimeType: mime, SizeBytes: uint64(len(data))}, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
 	}
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("blob not found"))
+
+	machineID := req.MachineId
+	if machineID == "" && req.SessionId != "" {
+		if eng, mid, err := o.resolveMachineForSession(ctx, req.SessionId); err == nil {
+			if eng != nil {
+				if data, name, mime, gErr := eng.Store().GetBlob(req.BlobSha256); gErr == nil {
+					return &sessionv1.DownloadBlobResponse{Data: data, Name: name, MimeType: mime, SizeBytes: uint64(len(data))}, nil
+				}
+				return nil, connect.NewError(connect.CodeNotFound, errors.New("blob not found"))
+			}
+			machineID = mid
+		}
 	}
-	return nil, err
+	if machineID != "" {
+		if eng, _ := o.localEngineFor(machineID); eng != nil {
+			if data, name, mime, err := eng.Store().GetBlob(req.BlobSha256); err == nil {
+				return &sessionv1.DownloadBlobResponse{Data: data, Name: name, MimeType: mime, SizeBytes: uint64(len(data))}, nil
+			}
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("blob not found"))
+		}
+		pm, dErr := o.dialRemoteSessionMachine(ctx, machineID)
+		if dErr != nil {
+			return nil, dErr
+		}
+		res, rErr := pm.Session.DownloadBlob(ctx, req)
+		if rErr == nil && len(res.GetData()) > 0 && len(res.GetData()) <= 8<<20 {
+			_, _ = o.st.db.Exec(
+				`INSERT OR IGNORE INTO sessions_blobs(sha256, name, mime_type, data, created_at) VALUES(?, ?, ?, ?, ?)`,
+				req.BlobSha256, res.GetName(), res.GetMimeType(), res.GetData(), time.Now().UnixMilli(),
+			)
+		}
+		return res, rErr
+	}
+	return nil, connect.NewError(connect.CodeNotFound, errors.New("blob not found"))
 }
 
 func (s *ownerSessionService) ListOutbox(_ context.Context, req *sessionv1.ListOutboxRequest) (*sessionv1.ListOutboxResponse, error) {
