@@ -1,9 +1,10 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { SessionStatus, type Session } from "@hermesh/proto/session";
+import { GitState, SessionStatus, type Session } from "@hermesh/proto/session";
 import {
-  bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, language, listTime, needsAttention,
-  SECTION_EXPAND_STEP, SECTION_INITIAL_LIMIT, sessionSections, sliceSectionSessions, statusTitle, teamState, updatedDate, type SessionBucket, type SessionSection, type SessionView,
+  bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, diffBarBlocks, displayTitle, isActive, isArchivable, isFailed, listTime, needsAttention,
+  SECTION_EXPAND_STEP, SECTION_INITIAL_LIMIT, sessionGitMark, sessionSections, sessionsNeedingGitRefresh, sliceSectionSessions, statusTitle, teamState, updatedDate, type SessionBucket, type SessionSection, type SessionView,
   SCRATCH_PROJECT,
 } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
@@ -59,10 +60,6 @@ export function archive(st: Store, s: Session) {
 
 export function unarchive(st: Store, s: Session, done?: string) {
   return st.run(() => setSessionArchived(s.sessionId, false), done);
-}
-
-export function regenerateTitle(st: Store, s: Session) {
-  return st.run(() => sessionApi.updateSession({ sessionId: s.sessionId, regenerateTitle: true, locale: language() }));
 }
 
 /** Delete, once confirmed: what goes for good, what stays (the branch), and that a turn in progress is interrupted. */
@@ -245,6 +242,90 @@ function Sessions({ now }: { now: Date }) {
   // The rows get the store as of a click, so a change elsewhere doesn't render them again.
   const latest = useRef(st);
   latest.current = st;
+
+  const [hovered, setHovered] = useState<{ sessionId: string; top: number; left: number } | null>(null);
+  const hoveredRef = useRef(hovered);
+  hoveredRef.current = hovered;
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverCtrl = useRef<RowHoverController>({
+    enter(sessionId, rowEl) {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+      const delay = hoveredRef.current ? 30 : 180;
+      hoverTimer.current = setTimeout(() => {
+        const cur = latest.current;
+        if (cur.renaming || cur.searching || cur.sheet) return;
+        const sideRect = rowEl.closest(".side")?.getBoundingClientRect();
+        const rowRect = rowEl.getBoundingClientRect();
+        if (rowRect.width === 0 && rowRect.height === 0) return;
+        setHovered({
+          sessionId,
+          top: rowRect.top,
+          left: (sideRect ? sideRect.right : rowRect.right) + 8,
+        });
+      }, delay);
+    },
+    leave(sessionId) {
+      if (hoverTimer.current) {
+        clearTimeout(hoverTimer.current);
+        hoverTimer.current = null;
+      }
+      setHovered((cur) => (cur?.sessionId === sessionId ? null : cur));
+    },
+    dismiss() {
+      if (hoverTimer.current) {
+        clearTimeout(hoverTimer.current);
+        hoverTimer.current = null;
+      }
+      setHovered(null);
+    },
+  });
+  useEffect(() => {
+    if (st.renaming || st.searching || st.sheet) hoverCtrl.current.dismiss();
+  }, [st.renaming, st.searching, st.sheet]);
+  useEffect(() => {
+    const onBlur = () => hoverCtrl.current.dismiss();
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    };
+  }, []);
+
+  // Re-evaluate local Git delivery state on initial load and whenever the window regains focus.
+  const gitRefreshBusy = useRef(false);
+  const gitRefreshLast = useRef(0);
+  useEffect(() => {
+    if (!st.sessionsLoaded) return;
+    const triggerRefresh = (force = false) => {
+      const nowMs = Date.now();
+      if (gitRefreshBusy.current || (!force && nowMs - gitRefreshLast.current < 1500)) return;
+      const cur = latest.current;
+      const selId = cur.selection.kind === "session" ? cur.selection.id : null;
+      const sessionIds = sessionsNeedingGitRefresh(cur.sessions, selId, 20);
+      if (sessionIds.length === 0) return;
+      gitRefreshBusy.current = true;
+      gitRefreshLast.current = nowMs;
+      sessionApi.refreshGitStatus({ sessionIds }).catch(() => {}).finally(() => {
+        gitRefreshBusy.current = false;
+      });
+    };
+    triggerRefresh(true);
+    const offIpc = window.hermesh?.onWindowFocus((focused) => {
+      if (focused) triggerRefresh(false);
+    });
+    const onFocus = () => triggerRefresh(false);
+    const onVis = () => {
+      if (document.visibilityState === "visible") triggerRefresh(false);
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      offIpc?.();
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [st.sessionsLoaded]);
+
   // Older sessions load as the end of the list comes into view (again after each page, until the list is full or there are no more).
   // While an open group hides rows behind "Show more", ask on demand instead of pulling page after page into a folded tail.
   const { moreSessions, loadOlderSessions } = st;
@@ -266,8 +347,9 @@ function Sessions({ now }: { now: Date }) {
     setExpanded({ group: view.group, limits: { ...limits, [id]: curLimit + SECTION_EXPAND_STEP } });
     if (hiddenCount <= SECTION_EXPAND_STEP && moreSessions) loadOlderSessions();
   };
+  const hoveredSession = hovered ? sessions.find((s) => s.sessionId === hovered.sessionId) : undefined;
   return (
-    <div className="side-list" ref={list}>
+    <div className="side-list" ref={list} onScroll={() => hoverCtrl.current.dismiss()}>
       <div className="side-sessions" role="list" aria-label={t("sidebar.sessions")}>
         {rendered.map(({ sec, id, open, limit, slice }) => (
           <div key={id} role="group" aria-label={sectionTitle(st, sec)}>
@@ -292,6 +374,7 @@ function Sessions({ now }: { now: Date }) {
                 meta={view.metadata}
                 renaming={st.renaming === s.sessionId}
                 store={latest}
+                hover={hoverCtrl}
               />
             ))}
             {open && slice.hiddenCount > 0 && (
@@ -322,6 +405,14 @@ function Sessions({ now }: { now: Date }) {
           </div>
         )}
       </div>
+      {hovered && hoveredSession && (
+        <SessionHoverCard
+          s={hoveredSession}
+          sender={senderName(st, hoveredSession.createdBy)}
+          now={now}
+          anchor={hovered}
+        />
+      )}
     </div>
   );
 }
@@ -419,14 +510,20 @@ export function AccountMenu() {
   );
 }
 
+type RowHoverController = {
+  enter: (sessionId: string, rowEl: HTMLElement) => void;
+  leave: (sessionId: string) => void;
+  dismiss: () => void;
+};
+
 /**
  * A session in the sidebar (docs/her-team.md §16): the coding agent's logo (with a brand-blue orbit while it runs),
  * the title (shimmering while it runs), and one mark (an orange dot while it waits for the owner, a red one when it
- * failed); with metadata, who sent the work
+ * failed, or a delivered Git icon when pushed/merged); with metadata, who sent the work
  * to which agent, the project and the time. ⋯ in the mark's place on hover; right-click for the native menu.
  */
-export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renaming, store }: {
-  s: Session; sel: boolean; sender: string; meta: boolean; renaming: boolean; store: RefObject<Store>;
+export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renaming, store, hover }: {
+  s: Session; sel: boolean; sender: string; meta: boolean; renaming: boolean; store: RefObject<Store>; hover?: RefObject<RowHoverController>;
 }) {
   const { t } = useTranslation("common");
   const archived = s.status === SessionStatus.ARCHIVED;
@@ -442,12 +539,21 @@ export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renam
       role="listitem"
       aria-current={sel || undefined}
       tabIndex={0}
-      onClick={() => !renaming && store.current.select(s.sessionId)}
-      onDoubleClick={() => !renaming && store.current.set({ renaming: s.sessionId })}
+      onMouseEnter={(e) => !renaming && !menu && hover?.current.enter(s.sessionId, e.currentTarget)}
+      onMouseLeave={() => hover?.current.leave(s.sessionId)}
+      onClick={() => {
+        hover?.current.dismiss();
+        if (!renaming) store.current.select(s.sessionId);
+      }}
+      onDoubleClick={() => {
+        hover?.current.dismiss();
+        if (!renaming) store.current.set({ renaming: s.sessionId });
+      }}
       onKeyDown={(e) => !renaming && e.key === "Enter" && store.current.select(s.sessionId)}
       onContextMenu={(e) => {
         if (renaming) return;
         e.preventDefault();
+        hover?.current.dismiss();
         sessionMenu(store.current, s);
       }}
     >
@@ -483,6 +589,7 @@ export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renam
               onDoubleClick={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
+                hover?.current.dismiss();
                 const r = e.currentTarget.getBoundingClientRect();
                 setMenu(menu ? null : { x: r.right, y: r.bottom + 4, key: e.detail === 0 });
               }}
@@ -510,7 +617,6 @@ async function sessionMenu(st: Store, s: Session) {
     { id: "open", label: i18n.t("common:sessionMenu.open") },
     { separator: true },
     { id: "rename", label: i18n.t("common:sessionMenu.rename") },
-    { id: "regenerateTitle", label: i18n.t("common:sessionMenu.regenerateTitle"), enabled: !s.titleGenerating },
     { id: archived ? "unarchive" : "archive", label: i18n.t(archived ? "common:sessionMenu.unarchive" : "common:sessionMenu.archive"), enabled: archived || isArchivable(s) },
     { separator: true },
     { id: "copy", label: i18n.t("common:sessionMenu.copyId") },
@@ -522,8 +628,6 @@ async function sessionMenu(st: Store, s: Session) {
       return st.select(s.sessionId);
     case "rename":
       return st.set({ renaming: s.sessionId });
-    case "regenerateTitle":
-      return regenerateTitle(st, s);
     case "archive":
       return archive(st, s);
     case "unarchive":
@@ -536,8 +640,8 @@ async function sessionMenu(st: Store, s: Session) {
 }
 
 /**
- * A row's ⋯ menu: rename, regenerate title, archive (or unarchive), and delete
- * after a separator. Drawn like the view menu, right-aligned under its button;
+ * A row's ⋯ menu: rename, archive (or unarchive), and delete after a
+ * separator. Drawn like the view menu, right-aligned under its button;
  * clicks stay in the menu, not the row.
  */
 function RowMenu({ s, at, store, onClose }: { s: Session; at: { x: number; y: number; key: boolean }; store: RefObject<Store>; onClose: () => void }) {
@@ -547,7 +651,6 @@ function RowMenu({ s, at, store, onClose }: { s: Session; at: { x: number; y: nu
   const archived = s.status === SessionStatus.ARCHIVED;
   const items: ({ id: string; label: string; run: () => void; disabled?: boolean; danger?: boolean } | null)[] = [
     { id: "rename", label: t("sessionMenu.rename"), run: () => store.current.set({ renaming: s.sessionId }) },
-    { id: "regenerateTitle", label: t("sessionMenu.regenerateTitle"), run: () => regenerateTitle(store.current, s), disabled: s.titleGenerating },
     archived
       ? { id: "unarchive", label: t("sessionMenu.unarchive"), run: () => unarchive(store.current, s) }
       : { id: "archive", label: t("sessionMenu.archive"), run: () => archive(store.current, s), disabled: !isArchivable(s) },
@@ -673,14 +776,135 @@ export function TitleInput({
   );
 }
 
-/** A row's one mark, its state in words for screen readers; a running, idle or archived session has none. */
+/** A row's one mark, its state in words for screen readers; settled pushed/merged sessions show their Git mark. */
 function RowMark({ s }: { s: Session }) {
   const { t } = useTranslation("common");
   if (s.status === SessionStatus.WAITING_INPUT) return <span className="dot-w" role="img" aria-label={t("status.waiting")} />;
   if (isFailed(s)) return <span className="dot-r" role="img" aria-label={t(s.status === SessionStatus.CRASHED ? "status.crashed" : "status.failed")} />;
   // Its machine cannot be read now: say so, there is no mark for it.
   if (s.status === SessionStatus.UNSPECIFIED) return <>{statusTitle(s.status)}</>;
+  const gitMark = sessionGitMark(s);
+  if (gitMark === "pushed") return <span className="gmark pushed" role="img" aria-label={t("git.pushed")}><Icon name="gitPushed" /></span>;
+  if (gitMark === "merged") return <span className="gmark merged" role="img" aria-label={t("git.merged")}><Icon name="gitMerged" /></span>;
   return null;
+}
+
+/**
+ * Pure read-only hover card anchored beside the sidebar: full title, metadata,
+ * and local Git delivery status (branch, diff bar, latest session commit).
+ */
+function SessionHoverCard({ s, sender, now, anchor }: {
+  s: Session;
+  sender: string;
+  now: Date;
+  anchor: { top: number; left: number };
+}) {
+  const { t } = useTranslation("common");
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: anchor.left, top: anchor.top - 4 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const h = el.offsetHeight;
+    const w = el.offsetWidth;
+    setPos({
+      left: Math.max(8, Math.min(anchor.left, innerWidth - w - 8)),
+      top: Math.max(8, Math.min(anchor.top - 4, innerHeight - h - 8)),
+    });
+  }, [anchor.left, anchor.top, s]);
+
+  const timeText = s.status === SessionStatus.RUNNING
+    ? clockText(elapsedSeconds(dateOf(s.progress?.turnStartedAt) ?? createdDate(s), now))
+    : listTime(updatedDate(s), now);
+  const gs = s.gitStatus;
+  const gitState = gs?.state ?? GitState.UNSPECIFIED;
+  const diff = s.progress?.diffStat;
+  const ins = diff?.insertions ?? 0;
+  const del = diff?.deletions ?? 0;
+  const showDiff = ins > 0 || del > 0;
+  const blocks = showDiff ? diffBarBlocks(ins, del) : null;
+
+  let gitTone = "clean";
+  let gitIcon = "check";
+  let gitLabel = "";
+  let gitHint = "";
+  if (gitState === GitState.PUSHED) {
+    gitTone = "pushed";
+    gitIcon = "gitPushed";
+    gitLabel = t("git.hoverPushed");
+    gitHint = t("git.hintPushed", { target: gs?.targetRef || "origin" });
+  } else if (gitState === GitState.MERGED) {
+    gitTone = "merged";
+    gitIcon = "gitMerged";
+    const target = gs?.targetRef || "main";
+    gitLabel = t("git.hoverMerged", { target });
+    gitHint = t("git.hintMerged", { target });
+  } else if (gitState === GitState.UNPUSHED) {
+    gitTone = "unpushed";
+    gitIcon = "gitUnpushed";
+    gitLabel = t("git.hoverUnpushed", { count: Math.max(1, gs?.commitsAhead ?? 1) });
+    gitHint = t("git.hintUnpushed");
+  } else if (gitState === GitState.DIRTY) {
+    gitTone = "dirty";
+    gitIcon = "gitDirty";
+    gitLabel = t("git.hoverDirty", { count: Math.max(1, gs?.dirtyFiles ?? diff?.filesChanged ?? 1) });
+    gitHint = t("git.hintDirty");
+  } else if (gitState === GitState.CLEAN) {
+    gitTone = "clean";
+    gitIcon = "check";
+    gitLabel = t("git.hoverClean");
+    gitHint = t("git.hintClean");
+  }
+
+  return createPortal(
+    <div className="shover-card" data-testid="session-hover-card" ref={ref} style={pos} role="tooltip">
+      <div className="shover-head">
+        <span className="shover-logo"><AgentLogo agent={s.agent} size={18} /></span>
+        <div className="shover-hmain">
+          <div className="shover-title">{displayTitle(s)}</div>
+          <div className="shover-sub">{sender} → {codingAgentShort(s.agent)} · {s.projectId} · {timeText}</div>
+        </div>
+      </div>
+      {gitState !== GitState.UNSPECIFIED && (
+        <div className={`shover-git ${gitTone}`}>
+          <div className="shover-git-top">
+            <Icon name={gitIcon} />
+            <span className="shover-state">{gitLabel}</span>
+            {blocks && (
+              <span className="shover-diff">
+                <span className="shover-add">+{ins}</span>
+                <span className="shover-del">−{del}</span>
+                <span className="shover-dbar" aria-hidden="true">
+                  {blocks.map((b, i) => <i key={i} className={`shover-sq ${b === "empty" ? "" : b}`} />)}
+                </span>
+              </span>
+            )}
+          </div>
+          {gs?.branch && (
+            <div className="shover-row">
+              <Icon name="branch" className="sm" />
+              <code className="shover-ref">{gs.branch}</code>
+              {gs.targetRef && gs.targetRef !== gs.branch && (
+                <>
+                  <span className="shover-arr">→</span>
+                  <code className="shover-ref">{gs.targetRef}</code>
+                </>
+              )}
+            </div>
+          )}
+          {gs?.headCommit && (
+            <div className="shover-row">
+              <Icon name="gitCommit" className="sm" />
+              <code className="shover-sha">{gs.headCommit}</code>
+              {gs.headSubject && <span className="shover-subj">{gs.headSubject}</span>}
+            </div>
+          )}
+          <div className="shover-hint">{gitHint}</div>
+        </div>
+      )}
+    </div>,
+    document.body,
+  );
 }
 
 /** The second line's right end, under the status: how long a running turn has run, else when the session last changed. */

@@ -7,7 +7,7 @@ async function pickDemoAndScripted(page: Page, projectBtn: string, modelBtn: str
   await pickFrom(page.getByRole("button", { name: modelBtn }), page.getByTestId("picker-provider-scripted").getByTestId("picker-model-scripted-pro"));
 }
 
-test("generates titles in the client's active UI language and switches language on Regenerate Title", async () => {
+test("generates titles in the client's active UI language", async () => {
   // 1. Launch app in Simplified Chinese (zh-CN) and submit an English prompt.
   const zh = await launch();
   try {
@@ -26,20 +26,20 @@ test("generates titles in the client's active UI language and switches language 
     await zh.app.close();
   }
 
-  // 2. Launch app in English (en) against the same daemon and click "Regenerate Title" in the sidebar ⋯ menu.
+  // 2. Launch app in English (en) against the same daemon and submit a Chinese prompt.
   const en = await launch(undefined, { systemLanguages: ["en-US"] });
   try {
     await en.page.setViewportSize({ width: 1440, height: 800 });
+    await en.page.getByTestId("nav-new-thread").click();
+    await expect(en.page.getByTestId("thread-page")).toBeVisible();
+
+    await pickDemoAndScripted(en.page, "Project", "Model");
+    await en.page.getByTestId("thread-composer-input").fill("say 修复 auth_guard.ts 里的认证问题");
+    await en.page.getByTestId("composer-submit-btn").click();
+
     const list = await sessionList(en.page);
-    const oldRow = list.getByRole("listitem").filter({ hasText: "修复 session_guard.ts 问题" });
-    await expect(oldRow).toBeVisible({ timeout: 15_000 });
-
-    await oldRow.hover();
-    await oldRow.getByRole("button", { name: "More" }).click();
-    const menu = en.page.getByRole("menu", { name: "More" });
-    await menu.getByRole("menuitem", { name: "Regenerate Title" }).click();
-
-    await expect(list.getByRole("listitem").filter({ hasText: "Fix session_guard.ts issue" })).toBeVisible({ timeout: 15_000 });
+    await expect(list.getByRole("listitem").filter({ hasText: "Fix auth_guard.ts issue" })).toBeVisible({ timeout: 15_000 });
+    await expect(en.page.getByRole("heading", { name: "Fix auth_guard.ts issue" })).toBeVisible({ timeout: 15_000 });
   } finally {
     await en.app.close();
   }

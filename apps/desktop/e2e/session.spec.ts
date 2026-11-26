@@ -284,6 +284,80 @@ test("double-clicking the top session title edits it in place without shifting t
   }
 });
 
+test("the session title bar floats over the conversation as liquid glass, resizing its lens filter and keeping controls clickable", async () => {
+  const paragraphs = Array.from({ length: 18 }, (_, i) => `### 第 ${i + 1} 节：液态玻璃验证\n\n这里是一段包含 \`inline_code_${i}\` 与彩色块的内容，用来在标题栏下方滚动并折射显示。`).join("\n\n");
+  await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "液态玻璃标题栏", "--prompt", `say ${paragraphs}`, "--wait");
+  const { app, page } = await launch();
+  try {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.getByTestId("nav-new-thread").click();
+    await expect(page.locator(".ctool.glassbar")).toHaveCount(0);
+
+    await open(page, "液态玻璃标题栏");
+    const bar = page.locator(".ctool.glassbar");
+    await expect(bar).toBeVisible();
+    const barBox = (await bar.boundingBox())!;
+    expect(barBox.y).toBe(0);
+    expect(barBox.height).toBe(44);
+
+    const filterInfo = await bar.evaluate((el) => {
+      const bf = getComputedStyle(el).backdropFilter || el.style.backdropFilter;
+      const filter = el.querySelector("svg.glass-defs filter");
+      const mapHref = el.querySelector("svg.glass-defs feImage")?.getAttribute("href") ?? "";
+      const scales = [...el.querySelectorAll("feDisplacementMap")].map((n) => Number(n.getAttribute("scale")));
+      const bg = getComputedStyle(el).backgroundColor;
+      return {
+        position: getComputedStyle(el).position,
+        bf,
+        filterId: filter?.id ?? "",
+        w: Number(filter?.getAttribute("width") ?? 0),
+        h: Number(filter?.getAttribute("height") ?? 0),
+        mapSvg: mapHref.startsWith("data:image/svg+xml;utf8,") ? decodeURIComponent(mapHref.slice("data:image/svg+xml;utf8,".length)) : "",
+        scales,
+        bg,
+      };
+    });
+    expect(filterInfo.position).toBe("absolute");
+    expect(filterInfo.filterId).toMatch(/^lg/);
+    expect(filterInfo.bf).toContain(`#${filterInfo.filterId}`);
+    expect(filterInfo.w).toBe(Math.round(barBox.width));
+    expect(filterInfo.h).toBe(44);
+    expect(filterInfo.mapSvg).toContain(`offset="${(44 - 14) / 44}" stop-color="rgb(128,128,128)"`);
+    expect(filterInfo.mapSvg).toContain('offset="1" stop-color="rgb(128,128,0)"');
+    expect(filterInfo.scales).toEqual([22, 25, 28]);
+    expect(filterInfo.bg).toMatch(/^rgba\(/);
+
+    const scroller = page.locator(".spage .cscroll");
+    expect((await scroller.boundingBox())!.y).toBe(0);
+    const card = page.getByRole("complementary", { name: "任务信息" });
+    await expect(card).toBeVisible();
+    expect((await card.boundingBox())!.y).toBeGreaterThanOrEqual(44 + 20);
+
+    await scroller.evaluate((el) => {
+      el.scrollTop = 180;
+    });
+    await expect.poll(async () =>
+      scroller.evaluate((el) => {
+        const body = el.querySelector(".dbody")!.getBoundingClientRect();
+        return body.top < 0 && body.bottom > 44;
+      }),
+    ).toBe(true);
+    await snap(page, "session-liquid-glass-light");
+    await page.emulateMedia({ colorScheme: "dark" });
+    await snap(page, "session-liquid-glass-dark");
+    await page.emulateMedia({ colorScheme: "light" });
+
+    if (onMac) {
+      await page.getByRole("button", { name: "隐藏边栏" }).click();
+      await expect.poll(async () => bar.evaluate((el) => Number(el.querySelector("svg.glass-defs filter")?.getAttribute("width") ?? 0))).toBe(1280);
+      await page.getByRole("button", { name: "显示边栏" }).click();
+      await expect(page.getByRole("complementary", { name: "边栏" })).toBeVisible();
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 test("the session card floats over the conversation with what a glance needs, and the toolbar hides it", async () => {
   const { app, page } = await launch();
   // The card docks only when there is room beside the conversation, regardless of the runner's display size.

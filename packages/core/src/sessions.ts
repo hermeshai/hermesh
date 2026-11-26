@@ -1,5 +1,5 @@
 import { timestampDate, type Timestamp } from "@bufbuild/protobuf/wkt";
-import { FailureKind, SessionStatus, type Question, type Session, type SessionCursor } from "@hermesh/proto/session";
+import { FailureKind, GitState, SessionStatus, type Question, type Session, type SessionCursor } from "@hermesh/proto/session";
 import { codingAgentTitle } from "./agents";
 import { isYesterday, sameDay, withinWeek } from "./calendar";
 import { t } from "./i18n";
@@ -49,6 +49,80 @@ export function isActive(s: Session): boolean {
 /** A turn that the owner can interrupt. */
 export function isInterruptible(s: Session): boolean {
   return isActive(s) || s.status === SessionStatus.WAITING_INPUT;
+}
+
+export type GitMark = "pushed" | "merged";
+
+/**
+ * The sidebar row's delivered-code mark: shown only when a settled session's
+ * code has been pushed to a remote or merged into the base branch.
+ */
+export function sessionGitMark(s: Session): GitMark | null {
+  if (needsAttention(s) || isActive(s) || s.status === SessionStatus.UNSPECIFIED) return null;
+  switch (s.gitStatus?.state) {
+    case GitState.PUSHED:
+      return "pushed";
+    case GitState.MERGED:
+      return "merged";
+    default:
+      return null;
+  }
+}
+
+export type DiffBlock = "add" | "del" | "empty";
+
+/** GitHub-style 5-square proportional diff bar for +insertions / -deletions. */
+export function diffBarBlocks(insertions: number, deletions: number): [DiffBlock, DiffBlock, DiffBlock, DiffBlock, DiffBlock] {
+  const ins = Math.max(0, Math.trunc(insertions));
+  const del = Math.max(0, Math.trunc(deletions));
+  const total = ins + del;
+  if (total === 0) return ["empty", "empty", "empty", "empty", "empty"];
+  let addCount: number;
+  let delCount: number;
+  if (total < 5) {
+    addCount = ins;
+    delCount = del;
+  } else {
+    addCount = Math.round((ins / total) * 5);
+    if (ins > 0 && addCount === 0) addCount = 1;
+    if (del > 0 && addCount === 5) addCount = 4;
+    delCount = 5 - addCount;
+  }
+  const out: DiffBlock[] = [];
+  for (let i = 0; i < addCount; i++) out.push("add");
+  for (let i = 0; i < delCount; i++) out.push("del");
+  while (out.length < 5) out.push("empty");
+  return out as [DiffBlock, DiffBlock, DiffBlock, DiffBlock, DiffBlock];
+}
+
+/**
+ * Settled non-archived sessions whose local Git status may have advanced
+ * outside Hermesh (e.g. manual commit/push/merge in terminal or IDE).
+ */
+export function sessionsNeedingGitRefresh(sessions: readonly Session[], selectedId?: string | null, limit = 20): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const eligible = (s: Session) => {
+    if (isActive(s) || s.status === SessionStatus.ARCHIVED || s.status === SessionStatus.UNSPECIFIED) return false;
+    const st = s.gitStatus?.state ?? GitState.UNSPECIFIED;
+    return st === GitState.UNSPECIFIED || st === GitState.DIRTY || st === GitState.UNPUSHED || st === GitState.PUSHED;
+  };
+  if (selectedId) {
+    const sel = sessions.find((s) => s.sessionId === selectedId);
+    if (sel && eligible(sel)) {
+      seen.add(sel.sessionId);
+      out.push(sel.sessionId);
+    }
+  }
+  for (const s of sessions) {
+    if (out.length >= limit) break;
+    if (seen.has(s.sessionId)) continue;
+    if (eligible(s)) {
+      seen.add(s.sessionId);
+      out.push(s.sessionId);
+    }
+  }
+  return out;
 }
 
 export function isArchivable(s: Session): boolean {

@@ -52,10 +52,13 @@
 .sfp{flex:none;position:relative;display:flex;flex-direction:column;min-height:0;width:clamp(420px,56%,960px);background:var(--win);border-left:.5px solid var(--sep);container-type:inline-size}
 .sfp.sized{width:var(--sfp-w)}
 .sfp.max{flex:1;width:auto;min-width:0;border-left:0}
-.dwrap:has(> .sfp.max) > .dmain{display:none}
+.spage:has(> .sfp.max) > .scol{display:none}
 .sfp-grip{position:absolute;left:-3px;top:0;bottom:0;width:6px;cursor:col-resize;z-index:2}
 .sfp-grip:hover,.sfp.resizing .sfp-grip{background:var(--sel)}
-.sfp-strip{height:40px;flex:none;display:flex;align-items:center;gap:2px;padding:0 8px 0 10px;min-width:0;border-bottom:.5px solid var(--sep)}
+.sfp-strip{height:44px;flex:none;display:flex;align-items:center;gap:2px;padding:0 8px 0 10px;min-width:0;border-bottom:.5px solid var(--sep)}
+html[data-platform=win] .sfp-strip{padding-right:calc(var(--caption) + 8px)}
+.noside .sfp.max .sfp-strip{padding-left:117px}
+html[data-platform=win] .noside .sfp.max .sfp-strip,html[data-platform=linux] .noside .sfp.max .sfp-strip{padding-left:76px}
 .sfp-tabs{flex:0 1 auto;display:flex;align-items:center;gap:2px;min-width:0;overflow-x:auto;scrollbar-width:none}
 .sfp-tabs::-webkit-scrollbar{display:none}
 .sfp-tab{flex:0 1 168px;min-width:64px;height:28px;display:flex;align-items:center;gap:5px;padding:0 4px 0 8px;border-radius:8px;font-size:12.5px;color:var(--l2);cursor:default;user-select:none}

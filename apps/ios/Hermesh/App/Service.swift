@@ -127,6 +127,14 @@ extension AppAPI {
         return stream("\(sessionSvc)/SubscribeSession", r)
     }
 
+    func runCommand(_ sessionID: String, command: String, machineID: String = "") -> AsyncThrowingStream<Hermesh_Session_V1_RunCommandEvent, Error> {
+        var r = Hermesh_Session_V1_RunCommandRequest()
+        r.machineID = machineID
+        r.sessionID = sessionID
+        r.command = command
+        return stream("\(sessionSvc)/RunCommand", r)
+    }
+
     func dispatchMessage(_ r: Hermesh_Session_V1_DispatchMessageRequest) async throws -> Hermesh_Session_V1_DispatchMessageResponse {
         var req = r
         if req.locale.isEmpty { req.locale = AppLocale.current }
@@ -270,15 +278,6 @@ extension AppAPI {
         r.commandID = UUID().uuidString
         r.sessionID = sessionID
         r.title = title
-        return try await updateSession(r).session
-    }
-
-    func regenerateTitle(_ sessionID: String) async throws -> Hermesh_Session_V1_Session {
-        var r = Hermesh_Session_V1_UpdateSessionRequest()
-        r.commandID = UUID().uuidString
-        r.sessionID = sessionID
-        r.regenerateTitle = true
-        r.locale = AppLocale.current
         return try await updateSession(r).session
     }
 

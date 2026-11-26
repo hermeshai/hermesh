@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -765,30 +766,213 @@ func (e *Engine) rebindSessionsMachineID(machineID string) error {
 		return nil
 	})
 	if err == nil && len(updated) > 0 {
-		if e.cfg.OnSessionChanged != nil {
-			for _, s := range updated {
-				e.cfg.OnSessionChanged(s)
-			}
-		}
-		e.mu.Lock()
-		for sub := range e.shellSubs {
-			var filtered []*sessionv1.Session
-			for _, s := range updated {
-				if sub.includeArchived || s.Status != sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
-					filtered = append(filtered, s)
-				}
-			}
-			if len(filtered) == 0 {
-				continue
-			}
-			select {
-			case sub.ch <- &sessionv1.WatchSessionsResponse{Sessions: filtered}:
-			default:
-			}
-		}
-		e.mu.Unlock()
+		e.notifyOutOfBandSessionChanges(updated)
 	}
 	return err
+}
+
+func (e *Engine) notifyOutOfBandSessionChanges(updated []*sessionv1.Session) {
+	if len(updated) == 0 {
+		return
+	}
+	if e.cfg.OnSessionChanged != nil {
+		for _, s := range updated {
+			e.cfg.OnSessionChanged(s)
+		}
+	}
+	e.mu.Lock()
+	for sub := range e.shellSubs {
+		var filtered []*sessionv1.Session
+		for _, s := range updated {
+			if sub.includeArchived || s.Status != sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+				filtered = append(filtered, s)
+			}
+		}
+		if len(filtered) == 0 {
+			continue
+		}
+		select {
+		case sub.ch <- &sessionv1.WatchSessionsResponse{Sessions: filtered}:
+		default:
+		}
+	}
+	e.mu.Unlock()
+}
+
+func (e *Engine) inspectSessionGitStatus(ctx context.Context, sess *sessionv1.Session, cp *sessionv1.Checkpoint, cumStat *sessionv1.DiffStat) *sessionv1.GitStatus {
+	if sess == nil {
+		return nil
+	}
+	ws, err := e.st.Workspace(sess.ProjectId)
+	if err != nil {
+		return nil
+	}
+	strat := sess.GetWorkspaceStrategy()
+	mode := strat.GetMode()
+	if mode == identityv1.Workspace_WORKSPACE_UNSPECIFIED {
+		mode = sess.Workspace
+	}
+	sessionBranch := cmp.Or(strat.GetBranch(), sess.Branch)
+	workdir := ws.Path
+	if mode == identityv1.Workspace_WORKSPACE_WORKTREE {
+		workdir = strat.GetWorktreePath()
+	}
+
+	ckpts, _ := e.st.Checkpoints(sess.SessionId)
+	var initialHeadOID, initialTreeOID string
+	if len(ckpts) > 0 && ckpts[0].RunOrdinal == 0 {
+		initialHeadOID = ckpts[0].HeadOid
+		initialTreeOID = ckpts[0].GitTreeOid
+	}
+	latestCp := cp
+	if latestCp == nil && len(ckpts) > 0 && ckpts[len(ckpts)-1].RunOrdinal > 0 {
+		latestCp = ckpts[len(ckpts)-1]
+	}
+	diffStat := cumStat
+	if diffStat == nil {
+		diffStat = sess.GetProgress().GetDiffStat()
+	}
+	hasChangesHint := diffStat.GetFilesChanged() > 0
+
+	gCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	// An in-place session shares the project folder with other sessions: if its own
+	// turns changed neither the working tree nor HEAD, keep it CLEAN even if later
+	// work in that shared folder modified or pushed commits.
+	if mode != identityv1.Workspace_WORKSPACE_WORKTREE && initialTreeOID != "" && latestCp != nil &&
+		latestCp.GitTreeOid == initialTreeOID && latestCp.HeadOid == initialHeadOID && !hasChangesHint {
+		if !vcs.IsGitRepo(gCtx, ws.Path) {
+			return nil
+		}
+		return &sessionv1.GitStatus{
+			State:  sessionv1.GitState_GIT_STATE_CLEAN,
+			Branch: cmp.Or(vcs.CurrentBranch(gCtx, ws.Path), sessionBranch),
+		}
+	}
+
+	return e.vcs.InspectGitStatus(gCtx, vcs.GitStatusInput{
+		Workdir:        workdir,
+		RepoPath:       ws.Path,
+		SessionBranch:  sessionBranch,
+		BaseRef:        cmp.Or(strat.GetBaseRef(), ws.DefaultBaseRef),
+		InitialHeadOID: initialHeadOID,
+		HasChangesHint: hasChangesHint,
+	})
+}
+
+func (e *Engine) RefreshGitStatus(ctx context.Context, p *Principal, sessionIDs []string) (*sessionv1.RefreshGitStatusResponse, error) {
+	if p == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
+	}
+	var candidates []*sessionv1.Session
+	if len(sessionIDs) > 0 {
+		seen := make(map[string]bool, len(sessionIDs))
+		for _, id := range sessionIDs {
+			if id == "" || seen[id] {
+				continue
+			}
+			seen[id] = true
+			s, err := e.st.Session(id)
+			if err == nil && p.canViewSession(s) {
+				candidates = append(candidates, s)
+			}
+			if len(candidates) >= 64 {
+				break
+			}
+		}
+	} else {
+		all, err := e.st.ListSessions("", false, 30)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range all {
+			if p.canViewSession(s) && s.ActiveRunId == "" {
+				candidates = append(candidates, s)
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		return &sessionv1.RefreshGitStatusResponse{}, nil
+	}
+
+	computed := make([]*sessionv1.GitStatus, len(candidates))
+	inspected := make([]bool, len(candidates))
+	sem := make(chan struct{}, 4)
+	var wg sync.WaitGroup
+	for i, s := range candidates {
+		if s.ActiveRunId != "" {
+			continue
+		}
+		i, s := i, s
+		wg.Go(func() {
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-sem }()
+			if ctx.Err() != nil {
+				return
+			}
+			computed[i] = e.inspectSessionGitStatus(ctx, s, nil, nil)
+			inspected[i] = true
+		})
+	}
+	wg.Wait()
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	type gitPatch struct {
+		sessionID string
+		gitStatus *sessionv1.GitStatus
+	}
+	var patches []gitPatch
+	for i, s := range candidates {
+		if inspected[i] && !proto.Equal(s.GitStatus, computed[i]) {
+			patches = append(patches, gitPatch{sessionID: s.SessionId, gitStatus: computed[i]})
+		}
+	}
+
+	byID := make(map[string]*sessionv1.Session, len(candidates))
+	for _, s := range candidates {
+		byID[s.SessionId] = s
+	}
+
+	if len(patches) > 0 {
+		var changed []*sessionv1.Session
+		_, err := e.st.Mutate(func(tx *store.Tx) error {
+			for _, pt := range patches {
+				cur, gErr := tx.GetSession(pt.sessionID)
+				if gErr != nil || cur.ActiveRunId != "" {
+					continue
+				}
+				if proto.Equal(cur.GitStatus, pt.gitStatus) {
+					byID[cur.SessionId] = proto.Clone(cur).(*sessionv1.Session)
+					continue
+				}
+				cur.GitStatus = pt.gitStatus
+				if pErr := tx.PutSessionPreserveUpdatedAt(cur); pErr != nil {
+					return pErr
+				}
+				cloned := proto.Clone(cur).(*sessionv1.Session)
+				changed = append(changed, cloned)
+				byID[cur.SessionId] = cloned
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		e.notifyOutOfBandSessionChanges(changed)
+	}
+
+	out := make([]*sessionv1.Session, 0, len(candidates))
+	for _, s := range candidates {
+		out = append(out, byID[s.SessionId])
+	}
+	return &sessionv1.RefreshGitStatusResponse{Sessions: out}, nil
 }
 
 func (e *Engine) newSessionID() string {
@@ -3819,6 +4003,8 @@ func (e *Engine) recordSwitchItem(sessionID, runID string, fromSel, toSel *sessi
 func (e *Engine) finishRunCompleted(sessionID, runID, psID string, cp *sessionv1.Checkpoint, cumStat *sessionv1.DiffStat, resultText string, pendingPlan *sessionv1.PlanReviewPayload) {
 	e.maybeRefineTitleBeforeTurnEnd(sessionID, runID, cp, resultText)
 	unlock := e.lockSession(sessionID)
+	preSess, _ := e.st.Session(sessionID)
+	gitStatus := e.inspectSessionGitStatus(e.bgCtx, preSess, cp, cumStat)
 	if pendingPlan != nil {
 		if existing, rErr := e.st.RuntimeRequests(sessionID); rErr == nil {
 			for _, rq := range existing {
@@ -3877,6 +4063,7 @@ func (e *Engine) finishRunCompleted(sessionID, runID, psID string, cp *sessionv1
 		if cumStat != nil {
 			sess.Progress.DiffStat = cumStat
 		}
+		sess.GitStatus = gitStatus
 		if strings.TrimSpace(resultText) != "" {
 			sess.Result = resultText
 			sess.Progress.LastMessageExcerpt = excerptText(resultText, 240)
@@ -4001,6 +4188,8 @@ func (e *Engine) finishRunCompleted(sessionID, runID, psID string, cp *sessionv1
 
 func (e *Engine) finishRunInterrupted(sessionID, runID, reason string, cp *sessionv1.Checkpoint, cumStat *sessionv1.DiffStat) {
 	unlock := e.lockSession(sessionID)
+	preSess, _ := e.st.Session(sessionID)
+	gitStatus := e.inspectSessionGitStatus(e.bgCtx, preSess, cp, cumStat)
 	var nextQueued *sessionv1.Run
 	var nextItem *sessionv1.TurnItem
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
@@ -4052,6 +4241,7 @@ func (e *Engine) finishRunInterrupted(sessionID, runID, reason string, cp *sessi
 		if cumStat != nil {
 			sess.Progress.DiffStat = cumStat
 		}
+		sess.GitStatus = gitStatus
 		if err := tx.PutRun(r); err != nil {
 			return err
 		}
@@ -4137,6 +4327,8 @@ func (e *Engine) finishRunFailed(sessionID, runID, code, msg string, f *runtime.
 func (e *Engine) finishRunFailedWithCheckpoint(sessionID, runID, code, msg string, f *runtime.Failure, cp *sessionv1.Checkpoint, cumStat *sessionv1.DiffStat) {
 	e.maybeRefineTitleBeforeTurnEnd(sessionID, runID, cp, msg)
 	unlock := e.lockSession(sessionID)
+	preSess, _ := e.st.Session(sessionID)
+	gitStatus := e.inspectSessionGitStatus(e.bgCtx, preSess, cp, cumStat)
 	var protoFail *sessionv1.Failure
 	if f != nil {
 		protoFail = f.Proto()
@@ -4183,6 +4375,7 @@ func (e *Engine) finishRunFailedWithCheckpoint(sessionID, runID, code, msg strin
 		if cumStat != nil {
 			sess.Progress.DiffStat = cumStat
 		}
+		sess.GitStatus = gitStatus
 		if err := tx.PutRun(r); err != nil {
 			return err
 		}
@@ -5737,6 +5930,11 @@ func (e *Engine) RollbackCheckpoint(ctx context.Context, p *Principal, req *sess
 	if sess.ActiveProviderSessionId != "" {
 		e.sup.Detach(sess.ActiveProviderSessionId, false)
 	}
+	var rbCp *sessionv1.Checkpoint
+	if req.RestoreFiles {
+		rbCp = target
+	}
+	gitStatus := e.inspectSessionGitStatus(ctx, sess, rbCp, nil)
 
 	runs, _ := e.st.Runs(req.SessionId)
 	var res *sessionv1.RollbackCheckpointResponse
@@ -5766,6 +5964,7 @@ func (e *Engine) RollbackCheckpoint(ctx context.Context, p *Principal, req *sess
 		sNow.ActiveProviderSessionId = ""
 		sNow.Error = ""
 		sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+		sNow.GitStatus = gitStatus
 		notice := &sessionv1.TurnItem{
 			ItemId:       newID("rb"),
 			SessionId:    req.SessionId,
