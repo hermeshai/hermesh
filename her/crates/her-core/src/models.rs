@@ -296,6 +296,123 @@ pub fn set_shown(llm: &ModelRegistry, configured: Option<&str>, reference: &str,
     llm.directory().set_shown(reference, shown, by_default).map_err(|e| e.message)
 }
 
+fn small_model_tier(id: &str, name: &str) -> u8 {
+    let text = format!("{} {}", id.to_ascii_lowercase(), name.to_ascii_lowercase());
+    if text.contains("flash-lite") || text.contains("flash_lite") {
+        return 0;
+    }
+    let tokens: Vec<&str> = text
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .collect();
+    let has = |w: &str| tokens.contains(&w);
+    if has("opus")
+        || has("ultra")
+        || has("reasoner")
+        || has("o1")
+        || has("o3")
+        || has("orchestrator")
+        || has("120b")
+        || has("405b")
+        || text.contains("deep-research")
+    {
+        return 3;
+    }
+    if has("nano") || has("lite") || has("8b") || has("7b") || has("4b") {
+        return 0;
+    }
+    if has("flash") || has("haiku") || has("mini") || has("small") || has("turbo") || has("instant") || has("fast") || has("air") {
+        return 1;
+    }
+    if has("pro") || has("max") {
+        return 3;
+    }
+    2
+}
+
+fn effective_cost_micros(model: &Model, tier: u8) -> u64 {
+    if model.cost.is_configured() {
+        let blended = model.cost.input + 0.25 * model.cost.output;
+        let usd = match model.currency {
+            her_llm::Currency::Cny => blended / 7.2,
+            _ => blended,
+        };
+        if usd > 0.0 {
+            return (usd * 1_000_000.0).round() as u64;
+        }
+    }
+    match tier {
+        0 => 100_000,
+        1 => 400_000,
+        2 => 3_000_000,
+        _ => 15_000_000,
+    }
+}
+
+/// Picks the smallest/cheapest usable chat models across configured providers without probing the
+/// network: first the best overall candidate, followed by at most one fallback from each remaining
+/// usable provider in ascending cost/size order. May read saved keys (the keychain), so it blocks.
+pub fn smallest_models(
+    llm: &ModelRegistry,
+    configured: Option<&str>,
+    with_images: bool,
+) -> Vec<std::sync::Arc<Model>> {
+    let directory = llm.directory();
+    let configured_provider = configured.and_then(|r| r.split_once('/')).map(|(p, _)| p);
+    struct Cand {
+        key: (u8, u8, u8, u64, u8, u8, std::cmp::Reverse<Option<String>>, String),
+        provider: String,
+        model: std::sync::Arc<Model>,
+    }
+    let mut cands = Vec::new();
+    for provider in llm.providers() {
+        if matches!(provider.auth.status(&provider.id), AuthStatus::Missing(_)) {
+            continue;
+        }
+        let merged = directory.models(&provider);
+        if unreachable(&provider, merged.list.as_ref()) {
+            continue;
+        }
+        let not_pref_prov = u8::from(configured_provider != Some(provider.id.as_str()));
+        for m in merged.models.iter().filter(|m| m.meta.chat) {
+            let reference = m.model.reference();
+            let Ok(resolved) = llm.resolve(&reference) else {
+                continue;
+            };
+            let tier = small_model_tier(&m.model.id, &m.model.name);
+            let image_miss = u8::from(with_images && !m.model.accepts_images());
+            let deprecated = u8::from(m.meta.deprecated);
+            let heavy = u8::from(
+                tier >= 3 || (m.model.reasoning && !m.model.offers(ThinkingLevel::Off) && tier > 1),
+            );
+            let cost = effective_cost_micros(&m.model, tier);
+            cands.push(Cand {
+                key: (
+                    image_miss,
+                    deprecated,
+                    heavy,
+                    cost,
+                    tier,
+                    not_pref_prov,
+                    std::cmp::Reverse(m.meta.released.clone()),
+                    reference,
+                ),
+                provider: provider.id.clone(),
+                model: resolved.model,
+            });
+        }
+    }
+    cands.sort_by(|a, b| a.key.cmp(&b.key));
+    let mut seen_providers = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for c in cands {
+        if seen_providers.insert(c.provider) {
+            out.push(c.model);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -444,5 +561,67 @@ mod tests {
             checked += 1;
         }
         assert!(checked >= 14, "{checked}");
+    }
+
+    #[test]
+    fn smallest_models_picks_cheapest_flash_tier_and_deduplicates_providers() {
+        let dir = tempfile::tempdir().unwrap();
+        let toml = r#"
+[providers.alpha]
+api = "openai-chat"
+base_url = "https://alpha.invalid/v1"
+api_key = "k1"
+list_models = false
+
+[[providers.alpha.models]]
+id = "alpha-pro"
+cost = { input = 10.0, output = 30.0 }
+
+[[providers.alpha.models]]
+id = "alpha-flash"
+cost = { input = 0.15, output = 0.60 }
+
+[providers.beta]
+api = "openai-chat"
+base_url = "https://beta.invalid/v1"
+api_key = "k2"
+list_models = false
+
+[[providers.beta.models]]
+id = "beta-reasoner"
+reasoning = true
+cost = { input = 0.10, output = 0.40 }
+
+[[providers.beta.models]]
+id = "beta-mini"
+input = ["text", "image"]
+
+[providers.unkeyed]
+api = "openai-chat"
+base_url = "https://unkeyed.invalid/v1"
+api_key_env = "HER_TEST_MISSING_KEY_SMALLEST"
+list_models = false
+
+[[providers.unkeyed.models]]
+id = "unkeyed-nano"
+cost = { input = 0.01, output = 0.02 }
+"#;
+        let llm = ModelRegistry::new(
+            Catalog::from_toml(toml).unwrap(),
+            RegistryOptions { models_dir: Some(dir.path().to_path_buf()), ..Default::default() },
+        );
+        let text_picks: Vec<String> = smallest_models(&llm, None, false)
+            .into_iter()
+            .map(|m| m.reference())
+            .collect();
+        // alpha-flash ($0.30 blended) beats unpriced beta-mini ($0.40 tier estimate) and avoids beta-reasoner / alpha-pro; unkeyed is skipped.
+        assert_eq!(text_picks, vec!["alpha/alpha-flash", "beta/beta-mini"]);
+
+        let image_picks: Vec<String> = smallest_models(&llm, None, true)
+            .into_iter()
+            .map(|m| m.reference())
+            .collect();
+        // When an image is attached, image-capable beta-mini wins first, with alpha-flash as text fallback.
+        assert_eq!(image_picks, vec!["beta/beta-mini", "alpha/alpha-flash"]);
     }
 }

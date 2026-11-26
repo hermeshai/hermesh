@@ -186,6 +186,49 @@ func (d *Driver) GenerateTitle(ctx context.Context, cfg *sessionv1.ProviderInsta
 		return runtime.TitleGenResult{}, errors.New("acp session/new returned empty sessionId")
 	}
 
+	// Switch the new ACP session to its smallest offered model and lowest
+	// reasoning effort directly from session/new's inline options (0 extra probes).
+	opts := optionsOf(newRes)
+	if opts.model != nil {
+		var offered []runtime.Model
+		for _, c := range opts.model.values() {
+			offered = append(offered, runtime.Model{ID: c.Value, Name: c.Name})
+		}
+		wantModel := strings.TrimSpace(req.ModelHint)
+		if wantModel == "" || !slices.ContainsFunc(offered, func(m runtime.Model) bool { return m.ID == wantModel }) {
+			wantModel, _ = runtime.PickSmallModelID(offered)
+		}
+		if wantModel != "" && wantModel != opts.model.current() {
+			if setRes, sErr := call("session/set_config_option", map[string]any{
+				"sessionId": nr.SessionID,
+				"configId":  opts.model.ID,
+				"value":     wantModel,
+			}); sErr == nil {
+				opts = optionsOf(setRes)
+			}
+		}
+	} else if len(opts.legacy) > 0 {
+		wantModel := strings.TrimSpace(req.ModelHint)
+		if wantModel == "" || !slices.ContainsFunc(opts.legacy, func(m runtime.Model) bool { return m.ID == wantModel }) {
+			wantModel, _ = runtime.PickSmallModelID(opts.legacy)
+		}
+		if wantModel != "" && wantModel != opts.current {
+			_, _ = call("session/set_model", map[string]any{
+				"sessionId": nr.SessionID,
+				"modelId":   wantModel,
+			})
+		}
+	}
+	if opts.thought != nil {
+		if wantEffort := runtime.PickLowestEffort(opts.efforts()); wantEffort != "" && wantEffort != opts.thought.current() {
+			_, _ = call("session/set_config_option", map[string]any{
+				"sessionId": nr.SessionID,
+				"configId":  opts.thought.ID,
+				"value":     wantEffort,
+			})
+		}
+	}
+
 	wrappedPrompt := "Do not call any tools, read files, or run commands. Reply ONLY with the requested JSON object.\n\n" + req.Prompt
 	if _, err := call("session/prompt", map[string]any{
 		"sessionId": nr.SessionID,

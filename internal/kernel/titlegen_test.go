@@ -370,3 +370,128 @@ func TestHerForeignAgentTitleTranslatedToClientLocale(t *testing.T) {
 		t.Fatalf("expected 0 extra LLM calls for matching Her title, got %d", calls.Load()-beforeCalls)
 	}
 }
+
+type mockTitleGen struct {
+	enabled bool
+	fn      func(ctx context.Context, req runtime.TitleGenRequest) (runtime.TitleGenResult, error)
+}
+
+func (m *mockTitleGen) TitleGeneratorEnabled() bool { return m.enabled }
+func (m *mockTitleGen) GenerateTitle(ctx context.Context, _ *sessionv1.ProviderInstanceConfig, req runtime.TitleGenRequest) (runtime.TitleGenResult, error) {
+	return m.fn(ctx, req)
+}
+
+func TestPrimaryHerGeneratorPriorityCurrentCLIFallbackAndTimeoutRecovery(t *testing.T) {
+	var (
+		herCalls     atomic.Int32
+		primaryCalls atomic.Int32
+		otherCalls   atomic.Int32
+		gotHint      atomic.Value
+		gotImgCount  atomic.Int32
+	)
+	herGen := &mockTitleGen{
+		enabled: true,
+		fn: func(_ context.Context, _ runtime.TitleGenRequest) (runtime.TitleGenResult, error) {
+			herCalls.Add(1)
+			return runtime.TitleGenResult{Title: "Her 极速轻量标题", Provisional: false}, nil
+		},
+	}
+
+	primaryDrv := scripted.NewDriver()
+	primaryDrv.EnableTitleGen = true
+	primaryDrv.TitleFunc = func(_ context.Context, req runtime.TitleGenRequest) (runtime.TitleGenResult, error) {
+		primaryCalls.Add(1)
+		gotHint.Store(req.ModelHint)
+		gotImgCount.Store(int32(len(req.Images)))
+		if strings.Contains(req.Prompt, "Mode: initial") && strings.Contains(req.Prompt, "SIMULATE_INITIAL_TIMEOUT") {
+			return runtime.TitleGenResult{}, context.DeadlineExceeded
+		}
+		return runtime.TitleGenResult{Title: "当前 CLI 小模型标题", Provisional: false}, nil
+	}
+
+	otherDrv := scripted.NewDriver()
+	otherDrv.EnableTitleGen = true
+	otherDrv.TitleFunc = func(_ context.Context, _ runtime.TitleGenRequest) (runtime.TitleGenResult, error) {
+		otherCalls.Add(1)
+		return runtime.TitleGenResult{Title: "不该被调用的其他 CLI", Provisional: false}, nil
+	}
+
+	repo := initTestRepo(t)
+	eng, err := kernel.Open(kernel.Config{
+		DataDir:               t.TempDir(),
+		Drivers:               map[string]runtime.Driver{"scripted": primaryDrv, "othercli": otherDrv},
+		IncludeScripted:       true,
+		PrimaryTitleGenerator: herGen,
+		CachedAgentModels: func(agent string) []runtime.Model {
+			if agent == "scripted" {
+				return []runtime.Model{
+					{ID: "gemini-4-neon-high", Name: "Gemini 4 Neon (High)"},
+					{ID: "gemini-3.8-flash-low", Name: "Gemini 3.8 Flash (Low)"},
+				}
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+	if err := eng.SyncWorkspace("demo", repo, "main", identityv1.Workspace_WORKSPACE_IN_PLACE, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	owner := kernel.OwnerPrincipal("owner", "Owner")
+
+	// 1. When Her is enabled, Her handles title generation with 0 CLI calls.
+	s1, err := eng.StartSession(context.Background(), owner, &sessionv1.StartSessionRequest{
+		CommandId:      "cmd_her_prio",
+		ProjectId:      "demo",
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "scripted"},
+		InitialPrompt:  "say Check why sidebar active sessions reorder rapidly when streaming",
+		Locale:         "zh-CN",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got1 := waitForSessionPred(t, eng, owner, s1.Session.SessionId, func(s *sessionv1.Session) bool {
+		return !s.TitleGenerating && s.Title == "Her 极速轻量标题"
+	})
+	if got1.TitleState != sessionv1.TitleState_TITLE_STATE_FINAL || herCalls.Load() != 1 || primaryCalls.Load() != 0 || otherCalls.Load() != 0 {
+		t.Fatalf("expected Her only (1,0,0), got (%d,%d,%d) state=%+v", herCalls.Load(), primaryCalls.Load(), otherCalls.Load(), got1)
+	}
+
+	// 2. When Her is off/unavailable, fallback uses ONLY the session's own CLI
+	// with its cached smallest ModelHint, skips unnecessary image uploads when
+	// text is already descriptive, and recovers on Turn 1 completion if Pass 1 times out!
+	herGen.enabled = false
+	pngData := []byte("\x89PNG\r\n\x1a\nfake")
+	att, err := eng.Store().PutBlob("shot.png", "image/png", pngData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2, err := eng.StartSession(context.Background(), owner, &sessionv1.StartSessionRequest{
+		CommandId:      "cmd_cli_timeout_recover",
+		ProjectId:      "demo",
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "scripted"},
+		InitialPrompt:  "sleep 150ms\nsay SIMULATE_INITIAL_TIMEOUT 如果现在进行中有很多个会话你是怎么控制排序的为什么会跳动",
+		Attachments:    []*sessionv1.AttachmentRef{att},
+		Locale:         "zh-CN",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got2 := waitForSessionPred(t, eng, owner, s2.Session.SessionId, func(s *sessionv1.Session) bool {
+		return s.Status == sessionv1.SessionStatus_SESSION_STATUS_IDLE && !s.TitleGenerating
+	})
+	if got2.Title != "当前 CLI 小模型标题" || got2.TitleState != sessionv1.TitleState_TITLE_STATE_FINAL {
+		t.Fatalf("expected Turn 1 refine recovery after Pass 1 timeout, got %+v", got2)
+	}
+	if hint, _ := gotHint.Load().(string); hint != "gemini-3.8-flash-low" {
+		t.Fatalf("expected cached smallest ModelHint=gemini-3.8-flash-low, got %q", hint)
+	}
+	if gotImgCount.Load() != 0 {
+		t.Fatalf("expected descriptive text prompt to skip image attachment, got %d images", gotImgCount.Load())
+	}
+	if otherCalls.Load() != 0 {
+		t.Fatalf("expected 0 calls to unrelated CLI driver, got %d", otherCalls.Load())
+	}
+}

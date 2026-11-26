@@ -3573,6 +3573,23 @@ export type ModelsShowParams = {
   shown: boolean;
 };
 
+/** An inline base64 image passed to `models/title`. */
+export type ModelsTitleImage = {
+  data: string;
+  mime_type: string;
+};
+
+/** `models/title`: stateless, tool-free completion on the smallest available chat model. */
+export type ModelsTitleParams = {
+  images?: ModelsTitleImage[];
+  prompt: string;
+};
+
+export type ModelsTitleResult = {
+  model: string;
+  text: string;
+};
+
 export type MotionDirection = "left" | "right" | "up" | "down" | "in" | "out";
 
 /** `a:buAutoNum@type`, snake_cased: `arabic_period` is "1.", `alpha_lc_paren_r` is "a)", `ea1_chs_period` is "一、". Others the engine knows pass through as written. */
@@ -5260,6 +5277,7 @@ export interface Methods {
   "models/list": [Record<string, never>, ModelsListResult];
   "models/refresh": [ModelsRefreshParams, ModelsRefreshResult];
   "models/show": [ModelsShowParams, Empty];
+  "models/title": [ModelsTitleParams, ModelsTitleResult];
   "pptx/metafile": [PptxMetafileParams, PptxMetafileResult];
   "pptx/read": [PptxReadParams, PptxReadResult];
   "pptx/write": [PptxWriteParams, FilesWriteResult];
