@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { create } from "@bufbuild/protobuf";
-import { ApprovalDecision, QuestionAnswerSchema, type Session } from "@hermesh/proto/session";
+import { ApprovalDecision, QuestionAnswerSchema, type Question, type Session } from "@hermesh/proto/session";
 import {
   clockText, codingAgentTitle, createdDate, dateOf, displayTitle, elapsedSeconds, listTime, pendingQuestion, quickChoice, teamState, todayStats, updatedDate,
   type TeamState,
@@ -9,6 +10,7 @@ import {
 import { AgentLogo } from "@hermesh/ui";
 import { sessions } from "./api";
 import { Icon } from "./icons";
+import { summarizeQuestion } from "./session/question-state";
 import { senderLine } from "./Sidebar";
 import { useNow, useStore, type Store } from "./store";
 import "./team.css";
@@ -80,6 +82,14 @@ export function QuickAnswer({ s }: { s: Session }) {
   );
 }
 
+/** Concise single-line prompt summary for Overview and the team panel. */
+export function questionWords(q: Question | undefined, t: TFunction<"common">): string {
+  if (!q) return "";
+  const { count, text } = summarizeQuestion(q.items);
+  if (count <= 1) return text;
+  return text ? t("team.questionSummary", { count, text }) : t("team.questionCount", { count });
+}
+
 /** What needs the owner: each question (answered here when one click can), each request to connect, each failed session. */
 export function NeedsYou({ team, onOpen }: { team: TeamState; onOpen?: () => void }) {
   const { t } = useTranslation("common");
@@ -88,8 +98,7 @@ export function NeedsYou({ team, onOpen }: { team: TeamState; onOpen?: () => voi
   return (
     <>
       {team.waiting.map((s) => {
-        const q = pendingQuestion(s);
-        const words = q?.items.map((i) => i.text || i.header).filter(Boolean).join(" ") ?? "";
+        const words = questionWords(pendingQuestion(s), t);
         return (
           <div key={s.sessionId} className="tm-need">
             <button className="tm-row" onClick={() => open(s)}>
@@ -99,7 +108,7 @@ export function NeedsYou({ team, onOpen }: { team: TeamState; onOpen?: () => voi
                 <span>{senderLine(st, s)}</span>
               </span>
             </button>
-            {words && <div className="tm-q">{words}</div>}
+            {words && <div className="tm-q" title={words}>{words}</div>}
             <QuickAnswer s={s} />
           </div>
         );
