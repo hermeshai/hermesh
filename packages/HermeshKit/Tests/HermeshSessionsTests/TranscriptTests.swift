@@ -262,6 +262,15 @@ private func kind(_ it: TranscriptItem) -> String {
     r.size = 2
     r.preview = true
     #expect(partialOutput(r))
+
+    var c = ToolCall()
+    c.input = "{\"path\":\"a.go\"}"
+    c.inputSize = UInt64(c.input.utf8.count)
+    #expect(!partialInput(c))
+    c.inputTruncated = true
+    c.inputBlobSha256 = "sha_in"
+    c.inputSize = 40_000
+    #expect(partialInput(c))
 }
 
 @Test func interrupterIsWhoTheMachineRecorded() {

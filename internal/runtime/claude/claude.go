@@ -965,6 +965,7 @@ func (s *session) readLoop() {
 							Text:     toolDescription(c.Input),
 							ToolName: c.Name,
 							Command:  cmd,
+							Input:    runtime.FormatToolJSON(c.Input),
 							FilePath: summaryPath,
 						})
 						if isAsyncLaunch && asyncMeta.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE && c.ID != "" {
@@ -1179,7 +1180,7 @@ func extractToolResultText(raw json.RawMessage) string {
 		}
 		return strings.Join(parts, "\n")
 	}
-	return string(raw)
+	return runtime.FormatToolJSON(raw)
 }
 
 func toolSummaryPath(raw json.RawMessage, targetPath string) string {

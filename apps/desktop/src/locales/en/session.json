@@ -24,6 +24,8 @@
     "sentByAt": "Sent by {{name}} ·",
     "turnFailed": "Turn {{turn}} failed: {{title}}",
     "copy": "Copy",
+    "toolInput": "Input",
+    "toolOutput": "Output",
     "inProgress": "In progress",
     "truncated": "… (truncated)",
     "outputUnreadable": "… (remaining output unavailable)",

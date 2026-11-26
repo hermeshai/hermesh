@@ -98,10 +98,24 @@ test("a finished session shows both turns, what the agent did, and that it is do
   await expect(page.getByRole("region", { name: "这一轮" })).toHaveCount(0);
   await snap(page, "session-chat");
 
-  // A tool's output opens under it.
+  // A tool's input and output open under it, without any synthetic "completed" placeholder when stdout is empty.
   const shell = log.getByRole("button", { name: /^已运行.*echo ran/ });
   await shell.click();
   await expect(shell).toHaveAttribute("aria-expanded", "true");
+  const shellOut = shell.locator("..").locator(".out");
+  await expect(shellOut).toContainText("输入");
+  await expect(shellOut).toContainText('"command": "echo ran > ran.txt"');
+  await expect(shellOut).toContainText("输出");
+  await expect(shellOut).toContainText("（无输出）");
+  await expect(shellOut).not.toContainText("completed");
+
+  const editStep = log.getByRole("button", { name: /^已编辑\s*hello\.txt/ }).first();
+  await editStep.click();
+  const editOut = editStep.locator("..").locator(".out");
+  await expect(editOut).toContainText("输入");
+  await expect(editOut).toContainText('"content": "hello"');
+  await expect(editOut).toContainText("输出");
+  await expect(editOut).toContainText("wrote hello.txt");
 
   // A turn that writes several times is one reply: only its last words keep room below for when and Copy.
   const early = log.locator(".am").filter({ hasText: "先写文件" });

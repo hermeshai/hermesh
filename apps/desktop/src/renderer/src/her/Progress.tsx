@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import {
   agentBrief, agentCalls, agentElapsed, agentHistoryCursor, agentPost, agentState, agentTaskOf, agentTitles, agentTokens, messageBody, pendingApproval, progressGroups, stepsOf,
-  toolObject, toolOutput, type AgentLaunch, type AgentPost, type AgentState, type AgentView, type ProgressGroup, type ProgressTask, type SessionView, type Step, type WorkItem,
+  toolInput, toolObject, toolOutput, type AgentLaunch, type AgentPost, type AgentState, type AgentView, type ProgressGroup, type ProgressTask, type SessionView, type Step, type WorkItem,
 } from "@hermesh/her-client";
 import type { BotSummary } from "@hermesh/her-protocol";
 import { clockText, elapsedSeconds, listTime, tokensText, turnTimeLine } from "@hermesh/core";
@@ -642,6 +642,7 @@ function WorkLine({ item }: { item: WorkItem }) {
       running={atWorkNow(item)}
       failed={tool.state === "failed" || denied}
       denied={denied}
+      input={toolInput(tool)}
       output={toolOutput(tool)}
       open={open}
       onToggle={() => setOpen(!open)}

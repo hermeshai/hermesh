@@ -892,7 +892,7 @@ private struct WorkLine: View {
                      shell: false, running: false, failed: false, output: words, inCard: inCard, open: $open)
         case .tool(let tool):
             ToolLine(verb: herStepVerb(tool), object: tool.object, shell: tool.category == "execute", running: tool.state == .live,
-                     failed: tool.state == .failed || tool.state == .denied, output: tool.output, inCard: inCard, open: $open)
+                     failed: tool.state == .failed || tool.state == .denied, input: tool.input, output: tool.output, inCard: inCard, open: $open)
         default:
             EmptyView()
         }
@@ -969,12 +969,13 @@ struct StepRow: View {
                 }
             }
         case .tool(let tool):
+            let expandable = !tool.input.isEmpty || !tool.output.isEmpty
             VStack(alignment: .leading, spacing: 0) {
-                fold(openable: !tool.output.isEmpty) {
+                fold(openable: expandable) {
                     StepWords(tool: tool)
                 }
-                if open, !tool.output.isEmpty {
-                    OutputText(text: tool.output)
+                if open, expandable {
+                    OutputText(input: tool.input, text: tool.output, running: tool.state == .live)
                         .padding(10)
                         .background(Palette.code, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .padding(.bottom, 4)

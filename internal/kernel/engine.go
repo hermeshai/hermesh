@@ -3457,21 +3457,22 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					status = "failed"
 				}
 			}
-			output := ev.Output
-			outputSize := uint64(len(output))
-			truncated := false
-			blobSha := ""
-			if len(output) > maxInlineToolOutput {
-				if ref, bErr := e.st.PutBlob("output.txt", "text/plain; charset=utf-8", []byte(output)); bErr == nil {
-					blobSha = ref.BlobSha256
+			inlineBlob := func(name, raw string) (text string, truncated bool, sha string, size uint64) {
+				size = uint64(len(raw))
+				if len(raw) <= maxInlineToolOutput {
+					return raw, false, "", size
+				}
+				if ref, bErr := e.st.PutBlob(name, "text/plain; charset=utf-8", []byte(raw)); bErr == nil {
+					sha = ref.BlobSha256
 				}
 				cut := maxInlineToolOutput
-				for cut > 0 && !utf8.RuneStart(output[cut]) {
+				for cut > 0 && !utf8.RuneStart(raw[cut]) {
 					cut--
 				}
-				output = output[:cut] + "\n...[output truncated]..."
-				truncated = true
+				return raw[:cut] + "\n...[output truncated]...", true, sha, size
 			}
+			input, inputTruncated, inputBlobSha, inputSize := inlineBlob("input.txt", ev.Input)
+			output, truncated, blobSha, outputSize := inlineBlob("output.txt", ev.Output)
 			existingScoped := pump.lookupScopedItem(ev.ItemID)
 			cur := pump.getActive()
 			// A background task completing on its own updates its original TurnItem
@@ -3484,6 +3485,12 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					}
 					prev.Status = status
 					prev.ExitCode = ev.ExitCode
+					if input != "" {
+						prev.Input = input
+						prev.InputTruncated = inputTruncated
+						prev.InputBlobSha256 = inputBlobSha
+						prev.InputSize = inputSize
+					}
 					if output != "" {
 						prev.Output = output
 						prev.OutputTruncated = truncated
@@ -3540,6 +3547,12 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					if text == "" {
 						text = prev.Text
 					}
+					if input == "" && prev.Input != "" {
+						input = prev.Input
+						inputTruncated = prev.InputTruncated
+						inputBlobSha = prev.InputBlobSha256
+						inputSize = prev.InputSize
+					}
 					if output == "" && prev.Output != "" {
 						output = prev.Output
 						truncated = prev.OutputTruncated
@@ -3560,6 +3573,10 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					Text:             text,
 					ToolName:         toolName,
 					Command:          cmd,
+					Input:            input,
+					InputTruncated:   inputTruncated,
+					InputBlobSha256:  inputBlobSha,
+					InputSize:        inputSize,
 					FilePath:         filePath,
 					ExitCode:         ev.ExitCode,
 					Output:           output,
@@ -6312,6 +6329,9 @@ func (e *Engine) DeleteSession(ctx context.Context, p *Principal, sessionID stri
 	var candidateBlobs []string
 	if items, iErr := e.st.TurnItems(sessionID); iErr == nil {
 		for _, it := range items {
+			if it.InputBlobSha256 != "" {
+				candidateBlobs = append(candidateBlobs, it.InputBlobSha256)
+			}
 			if it.OutputBlobSha256 != "" {
 				candidateBlobs = append(candidateBlobs, it.OutputBlobSha256)
 			}

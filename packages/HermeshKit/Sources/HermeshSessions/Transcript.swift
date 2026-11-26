@@ -29,6 +29,11 @@ public struct ToolItem: Equatable {
     }
 }
 
+/// Whether a call's event holds only the first 16 KiB of its input arguments.
+public func partialInput(_ c: ToolCall) -> Bool {
+    (c.inputTruncated && !c.inputBlobSha256.isEmpty) || c.inputSize > UInt64(c.input.utf8.count)
+}
+
 /// Whether a result's event holds only part of its output: a preview, or its first 16 KiB.
 public func partialOutput(_ r: ToolResult) -> Bool {
     r.preview || r.size > UInt64(r.summary.utf8.count)
@@ -154,6 +159,10 @@ private func toolItem(_ it: Hermesh_Session_V1_TurnItem, run: Hermesh_Session_V1
     var call = ToolCall()
     call.callID = it.itemID
     if it.status == "denied" { call.decision = "deny" }
+    call.input = it.input
+    call.inputTruncated = it.inputTruncated
+    call.inputBlobSha256 = it.inputBlobSha256
+    call.inputSize = it.inputSize
     var result = ToolResult()
     result.callID = it.itemID
     if it.kind == .fileChange {

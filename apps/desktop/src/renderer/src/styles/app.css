@@ -677,6 +677,15 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .term-out:hover .term-copy,.term-copy:focus-visible{opacity:1}
 .term-copy:hover{background:var(--fill2);color:var(--l1)}
 .term-copy .ic{width:12.5px;height:12.5px}
+.tool-io{white-space:normal}
+.tio-sec+.tio-sec{margin-top:6px;padding-top:6px;border-top:1px solid var(--sep)}
+.tio-h{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px;font-family:var(--font);font-size:11px;font-weight:500;line-height:16px;color:var(--l3);user-select:none}
+.tio-copy{width:20px;height:20px;padding:0;border:0;border-radius:var(--r-xs);background:none;color:var(--l3);display:inline-flex;align-items:center;justify-content:center;opacity:0;cursor:pointer;transition:opacity .12s}
+.tio-sec:hover .tio-copy,.tio-copy:focus-visible{opacity:1}
+.tio-copy:hover{background:var(--fill2);color:var(--l1)}
+.tio-copy .ic{width:12px;height:12px}
+.tio-body{white-space:pre-wrap;overflow-wrap:anywhere}
+.tio-empty{font-family:var(--font);color:var(--l3)}
 .ansi-b{font-weight:600}
 .ansi-d{opacity:.65}
 .ansi-i{font-style:italic}

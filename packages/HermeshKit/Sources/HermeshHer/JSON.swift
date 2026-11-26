@@ -66,6 +66,20 @@ public enum JSON: Hashable, Sendable {
 
     /// A string with something besides spaces in it, else nil.
     var text: String? { string.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 } }
+
+    /// Formatted JSON for non-empty object/array tool arguments, else "".
+    public var prettyObjectString: String {
+        switch self {
+        case .object(let o) where !o.isEmpty:
+            guard let d = try? JSONSerialization.data(withJSONObject: any, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return "" }
+            return String(decoding: d, as: UTF8.self)
+        case .array(let a) where !a.isEmpty:
+            guard let d = try? JSONSerialization.data(withJSONObject: any, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return "" }
+            return String(decoding: d, as: UTF8.self)
+        default:
+            return ""
+        }
+    }
 }
 
 extension JSON: ExpressibleByDictionaryLiteral, ExpressibleByArrayLiteral, ExpressibleByStringLiteral,

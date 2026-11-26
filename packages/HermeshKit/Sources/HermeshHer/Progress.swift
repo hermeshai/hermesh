@@ -250,7 +250,7 @@ public func herAgentHistoryCursor(_ a: HerAgent) -> String? {
 /// How a tool call stands. awaiting: it waits for the owner's approval.
 public enum HerToolState: Equatable, Sendable { case live, awaiting, done, failed, denied, cancelled }
 
-/// A call of the record: what it is, how it went, and what it gave back.
+/// A call of the record: what it is, how it went, and what it took and gave back.
 public struct HerToolStep: Equatable, Sendable {
     public var callID: String
     public var name: String
@@ -259,8 +259,20 @@ public struct HerToolStep: Equatable, Sendable {
     /// One line: the command, or "read <path>".
     public var title: String
     public var state: HerToolState
+    /// Its arguments as formatted JSON, when non-empty.
+    public var input: String
     /// Its result's text.
     public var output: String
+
+    public init(callID: String, name: String, category: String, title: String, state: HerToolState, input: String = "", output: String) {
+        self.callID = callID
+        self.name = name
+        self.category = category
+        self.title = title
+        self.state = state
+        self.input = input
+        self.output = output
+    }
 
     /// What it acted on, without its tool's name in front.
     public var object: String { herToolObject(name: name, title: title, category: category) }
@@ -302,7 +314,7 @@ public func herSteps(_ v: HerSession) -> [HerStep] {
             if let r { r.isError ? (l?.phase == .denied || deniedText(r.text) ? .denied : .failed) : .done }
             else if let l { l.phase == .denied ? .denied : l.phase == .awaitingApproval ? .awaiting : .live }
             else { open ? .live : .cancelled }
-        return HerToolStep(callID: c.id, name: target.name, category: d.category, title: d.title, state: state, output: r?.text ?? "")
+        return HerToolStep(callID: c.id, name: target.name, category: d.category, title: d.title, state: state, input: target.args.prettyObjectString, output: r?.text ?? "")
     }
 
     var out: [HerStep] = []

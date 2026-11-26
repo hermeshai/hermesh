@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toolObject, toolOutput, type Step, type ToolView, type WorkItem } from "@hermesh/her-client";
-import { Code } from "../session/Code";
+import { toolInput, toolObject, toolOutput, type Step, type ToolView, type WorkItem } from "@hermesh/her-client";
+import { ToolLine } from "../session/Chat";
 import { Markdown } from "../session/Markdown";
-import { TerminalOutput } from "../session/TerminalOutput";
 import { Icon } from "../icons";
 import { toolVerb } from "./format";
 
@@ -52,24 +51,21 @@ function StepRow({ item }: { item: WorkItem }) {
 
 function ToolStep({ tool }: { tool: ToolView }) {
   const [open, setOpen] = useState(false);
-  const output = toolOutput(tool);
-  const object = toolObject(tool);
   const spinning = tool.state === "running" || tool.state === "pending" || tool.state === "streaming";
   const denied = tool.state === "denied" || tool.state === "awaiting_approval";
   return (
-    <div className={`tool ${tool.state === "failed" ? "err" : ""} ${denied ? "denied" : ""} ${open && output ? "open" : ""}`}>
-      <button className={`th ${spinning ? "shimmer" : ""}`} onClick={() => output && setOpen(!open)} aria-expanded={output ? open : undefined} aria-busy={spinning || undefined}>
-        <span className="vb">{toolVerb(tool)}</span>
-        {tool.category === "execute" ? (
-          <code className="sm2 cmd" title={tool.title}>
-            <Code text={object} lang="bash" />
-          </code>
-        ) : (
-          <span className="sm2" title={tool.title}>{object}</span>
-        )}
-        {output && <Icon name="caret" className="chev" />}
-      </button>
-      {output && <TerminalOutput text={output} follow={spinning} />}
-    </div>
+    <ToolLine
+      verb={toolVerb(tool)}
+      object={toolObject(tool)}
+      title={tool.title}
+      shell={tool.category === "execute"}
+      running={spinning}
+      failed={tool.state === "failed" || denied}
+      denied={denied}
+      input={toolInput(tool)}
+      output={toolOutput(tool)}
+      open={open}
+      onToggle={() => setOpen(!open)}
+    />
   );
 }

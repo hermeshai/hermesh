@@ -136,6 +136,10 @@ describe("unified session transcript", () => {
         item(1, "r_live", TurnItemKind.COMMAND_EXECUTION, { command: "go test ./...", status: "running", output: "ok pkg/a\n" }),
         item(2, "r_live", TurnItemKind.COMMAND_EXECUTION, {
           command: "cat big.log",
+          input: '{\n  "command": "cat big.log"\n}',
+          inputTruncated: true,
+          inputBlobSha256: "sha_in_456",
+          inputSize: 20480n,
           status: "completed",
           output: "head...",
           outputTruncated: true,
@@ -148,6 +152,10 @@ describe("unified session transcript", () => {
     expect(rows[1]?.kind === "tool" && rows[1].running).toBe(true);
     expect(rows[1]?.kind === "tool" && rows[1].result?.summary).toBe("ok pkg/a\n");
     expect(rows[1]?.kind === "tool" && rows[1].result?.isError).toBe(false);
+    expect(rows[2]?.kind === "tool" && rows[2].call.input).toContain('"command": "cat big.log"');
+    expect(rows[2]?.kind === "tool" && rows[2].call.inputTruncated).toBe(true);
+    expect(rows[2]?.kind === "tool" && rows[2].call.inputBlobSha256).toBe("sha_in_456");
+    expect(rows[2]?.kind === "tool" && rows[2].call.inputSize).toBe(20480n);
     expect(rows[2]?.kind === "tool" && rows[2].result?.blobSha256).toBe("sha_big_123");
     expect(rows[2]?.kind === "tool" && rows[2].result?.size).toBe(32768n);
   });

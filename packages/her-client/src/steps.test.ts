@@ -201,7 +201,9 @@ test("the open presentation goes along with a message but is not shown", () => {
 // The cases the core writes its blocks from (internal/owner TestHerReplyBlock), so that what it writes is what is read.
 test("what a message replies to is read back from its block, and shows as a quote, not as words", async () => {
   const { readFileSync } = await import("node:fs");
-  const { replyOf } = await import("./steps.ts");
+  const { replyOf, toolInput } = await import("./steps.ts");
+  assert.equal(toolInput({ args: {} }), "");
+  assert.equal(toolInput({ args: { path: "src/main.rs", limit: 50 } }), '{\n  "path": "src/main.rs",\n  "limit": 50\n}');
   const shared = JSON.parse(readFileSync(new URL("../../../internal/owner/testdata/her_reply.json", import.meta.url), "utf8")) as {
     cases: { reply: { ref: string; own: boolean; text: string; partial: boolean }; block: string }[];
     not: string[];

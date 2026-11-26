@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ToolResult } from "@hermesh/proto/session";
+import type { ToolCall, ToolResult } from "@hermesh/proto/session";
 import { sessions } from "../api";
 
 const MAX_CACHED_OUTPUTS = 32;
@@ -14,17 +14,20 @@ function rememberOutput(key: string, text: string) {
   }
 }
 
+export function partialInput(c: ToolCall): boolean {
+  return c.inputTruncated && c.inputBlobSha256 !== "";
+}
+
 export function partialOutput(r: ToolResult): boolean {
   return r.truncated && r.blobSha256 !== "";
 }
 
-export function useToolOutput(
+function useBlobText(
   sessionId: string,
-  r: ToolResult | undefined,
-  _seq: bigint | undefined,
+  inline: string,
+  blobSha: string,
   open: boolean,
 ): { text: string; reading: boolean; failed: boolean } {
-  const blobSha = r && partialOutput(r) ? r.blobSha256 : "";
   const cacheKey = sessionId && blobSha ? `${sessionId}:${blobSha}` : "";
   const cached = cacheKey ? fullOutputs.get(cacheKey) : undefined;
   const [state, setState] = useState<{ key: string; text?: string; reading: boolean; failed: boolean }>({
@@ -56,7 +59,24 @@ export function useToolOutput(
     return { text: cached, reading: false, failed: false };
   }
   if (cacheKey && state.key === cacheKey) {
-    return { text: state.text ?? r?.summary ?? "", reading: state.reading, failed: state.failed };
+    return { text: state.text ?? inline, reading: state.reading, failed: state.failed };
   }
-  return { text: r?.summary ?? "", reading: false, failed: false };
+  return { text: inline, reading: false, failed: false };
+}
+
+export function useToolInput(
+  sessionId: string,
+  c: ToolCall,
+  open: boolean,
+): { text: string; reading: boolean; failed: boolean } {
+  return useBlobText(sessionId, c.input, partialInput(c) ? c.inputBlobSha256 : "", open);
+}
+
+export function useToolOutput(
+  sessionId: string,
+  r: ToolResult | undefined,
+  _seq: bigint | undefined,
+  open: boolean,
+): { text: string; reading: boolean; failed: boolean } {
+  return useBlobText(sessionId, r?.summary ?? "", r && partialOutput(r) ? r.blobSha256 : "", open);
 }
