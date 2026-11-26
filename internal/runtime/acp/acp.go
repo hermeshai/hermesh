@@ -774,19 +774,23 @@ func (at *acpAgentTerm) flushCarry() {
 }
 
 type acpBgTask struct {
-	taskID       string
-	itemID       string
-	agentID      string
-	logPath      string
-	kind         sessionv1.BackgroundTaskKind
-	title        string
-	command      string
-	output       string
-	awaited      bool
-	asyncLaunch  bool
-	launchedTurn uint64
-	stopScope    sessionv1.BackgroundTaskStopScope
-	running      bool
+	taskID         string
+	itemID         string
+	agentID        string
+	logPath        string
+	kind           sessionv1.BackgroundTaskKind
+	title          string
+	command        string
+	output         string
+	awaited        bool
+	asyncLaunch    bool
+	launchedTurn   uint64
+	maxTriggers    int
+	triggersSeen   int
+	timerCondition string
+	ignoreCondMsgs map[string]bool
+	stopScope      sessionv1.BackgroundTaskStopScope
+	running        bool
 }
 
 type session struct {
@@ -950,7 +954,8 @@ func (s *session) settleOutOfTurn() {
 	if sawReply {
 		for _, bg := range s.bgTasks {
 			trackedByMsgs := bg.messagesDir() != "" || (s.agyMessagesDir != "" && bg.agentID != "")
-			if bg.running && bg.awaited && bg.asyncLaunch && bg.launchedTurn < wokeTurn && !trackedByMsgs {
+			recurringCron := bg.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE && bg.maxTriggers == 0
+			if bg.running && bg.awaited && bg.asyncLaunch && bg.launchedTurn < wokeTurn && !trackedByMsgs && !recurringCron {
 				bg.running = false
 				if st := s.tools[bg.itemID]; st != nil {
 					st.status = "completed"
@@ -1483,8 +1488,55 @@ func (bg *acpBgTask) messagesDir() string {
 }
 
 type agyTaskCompletion struct {
+	status   sessionv1.BackgroundTaskStatus
 	exitCode int32
+	hasExit  bool
 	content  string
+	summary  string
+}
+
+func parseACPScheduleMeta(rawInput json.RawMessage) (maxTriggers int, timerCondition string) {
+	if len(rawInput) == 0 {
+		return 0, ""
+	}
+	var in struct {
+		DurationSeconds int64  `json:"DurationSeconds"`
+		CronExpression  string `json:"CronExpression"`
+		MaxIterations   int    `json:"MaxIterations"`
+		TimerCondition  string `json:"TimerCondition"`
+	}
+	if json.Unmarshal(rawInput, &in) != nil {
+		return 0, ""
+	}
+	if strings.TrimSpace(in.CronExpression) == "" && in.DurationSeconds > 0 {
+		tc := strings.TrimSpace(in.TimerCondition)
+		if tc != "" && !strings.EqualFold(tc, "never") {
+			timerCondition = tc
+		}
+		return 1, timerCondition
+	}
+	if strings.TrimSpace(in.CronExpression) != "" && in.MaxIterations > 0 {
+		return in.MaxIterations, ""
+	}
+	return 0, ""
+}
+
+func snapshotExistingMsgs(dir string) map[string]bool {
+	if dir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(entries))
+	for _, ent := range entries {
+		name := ent.Name()
+		if !ent.IsDir() && name != "read.json" && strings.HasSuffix(name, ".json") {
+			out[filepath.Join(dir, name)] = true
+		}
+	}
+	return out
 }
 
 // syncAntigravityCompletionsLocked inspects unread .system_generated/messages/*.json files
@@ -1521,6 +1573,7 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 		s.seenTaskMsgs = map[string]bool{}
 	}
 	done := map[*acpBgTask]agyTaskCompletion{}
+	var progress []runtime.Event
 	for dir := range dirs {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -1540,8 +1593,12 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 				continue
 			}
 			var msg struct {
-				Sender         string `json:"sender"`
-				Content        string `json:"content"`
+				Sender        string `json:"sender"`
+				Content       string `json:"content"`
+				HideFromUser  bool   `json:"hideFromUser"`
+				RenderDetails struct {
+					MessageTitle string `json:"messageTitle"`
+				} `json:"renderDetails"`
 				SourceMetadata struct {
 					Tool struct {
 						ToolCall struct {
@@ -1554,6 +1611,25 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 				continue
 			}
 			s.seenTaskMsgs[full] = true
+
+			// A one-shot timer with TimerCondition ('any' or a sender ID) is canceled early by Antigravity
+			// as soon as a matching wakeup message arrives.
+			if !msg.HideFromUser && msg.Sender != "" {
+				for _, cand := range s.bgTasks {
+					if !cand.running || cand.timerCondition == "" || msg.Sender == cand.agentID || cand.ignoreCondMsgs[full] {
+						continue
+					}
+					if cand.timerCondition == "any" || cand.timerCondition == msg.Sender {
+						if _, exists := done[cand]; !exists {
+							done[cand] = agyTaskCompletion{
+								status:  sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+								summary: "canceled by timer condition",
+							}
+						}
+					}
+				}
+			}
+
 			bg := byKey[msg.Sender]
 			if bg == nil && msg.SourceMetadata.Tool.ToolCall.ID != "" {
 				bg = byKey[msg.SourceMetadata.Tool.ToolCall.ID]
@@ -1561,20 +1637,66 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 			if bg == nil {
 				continue
 			}
-			isSubagentReply := bg.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT && msg.Sender != "" && msg.Sender == bg.agentID
-			if !strings.Contains(msg.Content, "finished with result:") && !isSubagentReply {
-				continue
-			}
-			code := int32(0)
-			if m := agyExitCodeRE.FindStringSubmatch(msg.Content); len(m) == 2 {
-				if n, pErr := strconv.Atoi(m[1]); pErr == nil {
-					code = int32(n)
+			msgTitle := strings.TrimSpace(msg.RenderDetails.MessageTitle)
+			switch {
+			case strings.Contains(msg.Content, "finished with result:"):
+				code := int32(0)
+				if m := agyExitCodeRE.FindStringSubmatch(msg.Content); len(m) == 2 {
+					if n, pErr := strconv.Atoi(m[1]); pErr == nil {
+						code = int32(n)
+					}
+				}
+				st := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+				if code != 0 {
+					st = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+				}
+				done[bg] = agyTaskCompletion{status: st, exitCode: code, hasExit: true, content: msg.Content}
+
+			case strings.Contains(msg.Content, "was canceled with result:") || strings.HasSuffix(msgTitle, "was canceled"):
+				done[bg] = agyTaskCompletion{
+					status:  sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+					content: msg.Content,
+					summary: "canceled",
+				}
+
+			case bg.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT && msg.Sender != "" && msg.Sender == bg.agentID:
+				done[bg] = agyTaskCompletion{
+					status:  sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
+					hasExit: true,
+					content: msg.Content,
+				}
+
+			case bg.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE &&
+				(strings.HasSuffix(msgTitle, "Timer has expired") || (msg.Sender != "" && msg.Sender == bg.agentID)):
+				bg.triggersSeen++
+				if strings.HasSuffix(msgTitle, "Timer has expired") || (bg.maxTriggers > 0 && bg.triggersSeen >= bg.maxTriggers) {
+					done[bg] = agyTaskCompletion{
+						status:  sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
+						hasExit: true,
+						content: msg.Content,
+					}
+				} else if msg.Content != "" {
+					bg.output = tailUTF8(msg.Content, 16384)
+					if st := s.tools[bg.itemID]; st != nil {
+						st.output = bg.output
+					}
+					progress = append(progress, runtime.Event{
+						Kind:                runtime.EventBackgroundTask,
+						TaskID:              bg.taskID,
+						ItemID:              bg.itemID,
+						ToolName:            bg.title,
+						Command:             bg.command,
+						Output:              bg.output,
+						BackgroundKind:      bg.kind,
+						BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+						BackgroundStopScope: bg.stopScope,
+						BackgroundAwaited:   bg.awaited,
+					})
 				}
 			}
-			done[bg] = agyTaskCompletion{exitCode: code, content: msg.Content}
 		}
 	}
-	var out []runtime.Event
+	out := progress
 	for bg, comp := range done {
 		if bg == nil || !bg.running {
 			continue
@@ -1584,11 +1706,12 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 			if tail, _, _, err := readFileTailUTF8(bg.logPath, 16384); err == nil && tail != "" {
 				bg.output = tail
 			}
-		} else if comp.content != "" {
+		}
+		if bg.output == "" && comp.content != "" {
 			bg.output = tailUTF8(comp.content, 16384)
 		}
 		if st := s.tools[bg.itemID]; st != nil {
-			if comp.exitCode != 0 {
+			if comp.status == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED {
 				st.status = "failed"
 			} else {
 				st.status = "completed"
@@ -1596,10 +1719,6 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 			if bg.output != "" {
 				st.output = bg.output
 			}
-		}
-		bgStatus := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
-		if comp.exitCode != 0 {
-			bgStatus = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
 		}
 		kept, _ := runtime.KeepOutput(bg.output)
 		out = append(out,
@@ -1610,10 +1729,11 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 				ToolName:            bg.title,
 				Command:             bg.command,
 				Output:              bg.output,
+				Text:                comp.summary,
 				ExitCode:            comp.exitCode,
-				HasExitCode:         true,
+				HasExitCode:         comp.hasExit,
 				BackgroundKind:      bg.kind,
-				BackgroundStatus:    bgStatus,
+				BackgroundStatus:    comp.status,
 				BackgroundStopScope: bg.stopScope,
 				BackgroundAwaited:   bg.awaited,
 			},
@@ -1632,7 +1752,10 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 }
 
 func (s *session) startTaskLogPoller(taskID, logPath string) {
-	if logPath == "" {
+	s.mu.Lock()
+	hasMsgsDir := s.agyMessagesDir != ""
+	s.mu.Unlock()
+	if logPath == "" && !hasMsgsDir {
 		return
 	}
 	interval := s.drv.taskLogPollInterval()
@@ -1650,7 +1773,15 @@ func (s *session) startTaskLogPoller(taskID, logPath string) {
 			if !s.Alive() {
 				return
 			}
-			tail, size, mod, err := readFileTailUTF8(logPath, 16384)
+			var tail string
+			var size int64
+			var mod time.Time
+			var err error
+			if logPath != "" {
+				tail, size, mod, err = readFileTailUTF8(logPath, 16384)
+			} else {
+				err = errors.New("no log file")
+			}
 			s.mu.Lock()
 			bg := s.bgTasks[taskID]
 			if bg == nil || !bg.running {
@@ -1792,23 +1923,36 @@ func (s *session) promoteOpenBackgroundWork() (newEvents []runtime.Event, hasAwa
 		}
 		bg := s.bgTasks[id]
 		if bg == nil {
+			maxTrig, timerCond := parseACPScheduleMeta(st.rawInput)
 			bg = &acpBgTask{
-				taskID:       id,
-				itemID:       id,
-				agentID:      st.asyncAgentID,
-				logPath:      st.asyncLogPath,
-				kind:         kind,
-				title:        title,
-				command:      cmd,
-				output:       tailUTF8(st.output, 16384),
-				awaited:      awaited,
-				asyncLaunch:  st.asyncLaunch,
-				launchedTurn: s.turnSeq,
-				stopScope:    sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
-				running:      true,
+				taskID:         id,
+				itemID:         id,
+				agentID:        st.asyncAgentID,
+				logPath:        st.asyncLogPath,
+				kind:           kind,
+				title:          title,
+				command:        cmd,
+				output:         tailUTF8(st.output, 16384),
+				awaited:        awaited,
+				asyncLaunch:    st.asyncLaunch,
+				launchedTurn:   s.turnSeq,
+				maxTriggers:    maxTrig,
+				timerCondition: timerCond,
+				stopScope:      sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+				running:        true,
+			}
+			if d := bg.messagesDir(); d != "" && s.agyMessagesDir == "" {
+				s.agyMessagesDir = d
+			}
+			if bg.timerCondition != "" {
+				msgDir := bg.messagesDir()
+				if msgDir == "" {
+					msgDir = s.agyMessagesDir
+				}
+				bg.ignoreCondMsgs = snapshotExistingMsgs(msgDir)
 			}
 			s.bgTasks[id] = bg
-			if bg.logPath != "" {
+			if bg.logPath != "" || s.agyMessagesDir != "" {
 				pollers = append(pollers, [2]string{bg.taskID, bg.logPath})
 			}
 			newEvents = append(newEvents, runtime.Event{
@@ -2648,26 +2792,36 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 						st.output = tail
 					}
 				}
+				maxTrig, timerCond := parseACPScheduleMeta(st.rawInput)
 				bg = &acpBgTask{
-					taskID:       id,
-					itemID:       id,
-					agentID:      st.asyncAgentID,
-					logPath:      st.asyncLogPath,
-					kind:         kind,
-					title:        bgTitle,
-					command:      bgCmd,
-					output:       tailUTF8(outText, 16384),
-					awaited:      awaited,
-					asyncLaunch:  true,
-					launchedTurn: s.turnSeq,
-					stopScope:    sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
-					running:      true,
+					taskID:         id,
+					itemID:         id,
+					agentID:        st.asyncAgentID,
+					logPath:        st.asyncLogPath,
+					kind:           kind,
+					title:          bgTitle,
+					command:        bgCmd,
+					output:         tailUTF8(outText, 16384),
+					awaited:        awaited,
+					asyncLaunch:    true,
+					launchedTurn:   s.turnSeq,
+					maxTriggers:    maxTrig,
+					timerCondition: timerCond,
+					stopScope:      sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+					running:        true,
 				}
-				s.bgTasks[id] = bg
 				if d := bg.messagesDir(); d != "" && s.agyMessagesDir == "" {
 					s.agyMessagesDir = d
 				}
-				if bg.logPath != "" {
+				if bg.timerCondition != "" {
+					msgDir := bg.messagesDir()
+					if msgDir == "" {
+						msgDir = s.agyMessagesDir
+					}
+					bg.ignoreCondMsgs = snapshotExistingMsgs(msgDir)
+				}
+				s.bgTasks[id] = bg
+				if bg.logPath != "" || s.agyMessagesDir != "" {
 					startPoller = [2]string{bg.taskID, bg.logPath}
 				}
 				bgEv = &runtime.Event{
@@ -2683,8 +2837,9 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					BackgroundAwaited:   bg.awaited,
 				}
 			}
-		} else if status == "completed" && len(st.rawInput) > 0 {
+		} else if (status == "completed" || (status == "failed" && (strings.Contains(outText, "task is not running") || strings.Contains(outText, "not found")))) && len(st.rawInput) > 0 {
 			if killAll, targetIDs := detectACPTaskKill(st.rawInput); killAll || len(targetIDs) > 0 {
+				alreadyDone := status == "failed" && strings.Contains(outText, "(status: DONE)")
 				for _, cand := range s.bgTasks {
 					if !cand.running {
 						continue
@@ -2699,6 +2854,12 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					if tst := s.tools[cand.itemID]; tst != nil {
 						tst.status = "completed"
 					}
+					settledStatus := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+					summaryText := "stopped by agent"
+					if alreadyDone {
+						settledStatus = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+						summaryText = ""
+					}
 					kept, _ := runtime.KeepOutput(cand.output)
 					killedEvs = append(killedEvs,
 						runtime.Event{
@@ -2708,9 +2869,10 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 							ToolName:            cand.title,
 							Command:             cand.command,
 							Output:              cand.output,
-							Text:                "stopped by agent",
+							Text:                summaryText,
+							HasExitCode:         alreadyDone,
 							BackgroundKind:      cand.kind,
-							BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+							BackgroundStatus:    settledStatus,
 							BackgroundStopScope: cand.stopScope,
 							BackgroundAwaited:   cand.awaited,
 						},

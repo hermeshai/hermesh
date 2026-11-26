@@ -14,6 +14,7 @@ import (
 	"time"
 
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/kernel"
 	"github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/internal/runtime/acp"
 	"github.com/hermeshai/hermesh/internal/runtime/claude"
@@ -1367,6 +1368,154 @@ func runMockACP() {
 						},
 					})
 				}()
+			} else if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "agy_schedule_lifecycle") {
+				sysDir := filepath.Join(os.Getenv("MOCK_AGY_BRAIN_DIR"), ".system_generated")
+				tasksDir := filepath.Join(sysDir, "tasks")
+				msgsDir := filepath.Join(sysDir, "messages")
+				_ = os.MkdirAll(tasksDir, 0o755)
+				_ = os.MkdirAll(msgsDir, 0o755)
+				// Pre-existing message before timers are created must NOT falsely trigger TimerCondition:"any".
+				_ = os.WriteFile(filepath.Join(msgsDir, "m_preexisting.json"), []byte(`{"sender":"conv_sched/task-old","content":"old wakeup"}`), 0o644)
+				toFileURI := func(name string) string {
+					full := filepath.Join(tasksDir, name)
+					_ = os.WriteFile(full, nil, 0o644)
+					sl := filepath.ToSlash(full)
+					if strings.HasPrefix(sl, "/") {
+						return "file://" + sl
+					}
+					return "file:///" + sl
+				}
+				emitBgLaunch := func(id, title, kind string, rawIn map[string]any, taskID, logFile string) {
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "tool_call",
+								"toolCallId":    id,
+								"title":         title,
+								"kind":          kind,
+								"status":        "completed",
+								"rawInput":      rawIn,
+								"content": []any{
+									map[string]any{
+										"type": "content",
+										"content": map[string]any{
+											"type": "text",
+											"text": "Tool is running as a background task with task id: " + taskID + "\nTask logs are available at: " + toFileURI(logFile) + "\nYOU MUST TAKE ONE OF THE FOLLOWING TWO ACTIONS: wait or continue.",
+										},
+									},
+								},
+							},
+						},
+					})
+				}
+
+				emitBgLaunch("tc_sched_oneshot", "schedule", "other", map[string]any{
+					"DurationSeconds": 120,
+					"Prompt":          "Check task-361 status if XCUITest has not completed yet.",
+				}, "conv_sched/task-367", "task-367.log")
+				emitBgLaunch("tc_build", "run_command", "execute", map[string]any{
+					"CommandLine":       "xcodebuild test",
+					"WaitMsBeforeAsync": 500,
+					"toolSummary":       "Run iOS UI tests",
+				}, "conv_sched/task-build", "task-build.log")
+				emitBgLaunch("tc_sched_cond", "schedule", "other", map[string]any{
+					"DurationSeconds": 120,
+					"TimerCondition":  "conv_sched/task-build",
+					"Prompt":          "Check build if still running.",
+				}, "conv_sched/task-cond", "task-cond.log")
+				emitBgLaunch("tc_sched_any", "schedule", "other", map[string]any{
+					"DurationSeconds": 180,
+					"TimerCondition":  "any",
+					"Prompt":          "Wake on any message.",
+				}, "conv_sched/task-any", "task-any.log")
+				emitBgLaunch("tc_canceled_cmd", "run_command", "execute", map[string]any{
+					"CommandLine":       "sleep 300",
+					"WaitMsBeforeAsync": 500,
+					"toolSummary":       "Canceled check",
+				}, "conv_sched/task-canceled", "task-canceled.log")
+				emitBgLaunch("tc_cron_bounded", "schedule", "other", map[string]any{
+					"CronExpression": "*/5 * * * *",
+					"MaxIterations":  2,
+					"Prompt":         "Poll CI status.",
+				}, "conv_sched/task-cron", "task-cron.log")
+				emitBgLaunch("tc_already_done", "run_command", "execute", map[string]any{
+					"CommandLine":       "echo stale",
+					"WaitMsBeforeAsync": 500,
+					"toolSummary":       "Stale task",
+				}, "conv_sched/task-stale", "task-stale.log")
+
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "agent_message_chunk",
+							"content":       map[string]any{"type": "text", "text": "Timers and tasks armed."},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      promptReqID,
+					"result":  map[string]any{"stopReason": "end_turn"},
+				})
+
+				go func() {
+					waitGate := func(name string) bool {
+						gp := filepath.Join(os.Getenv("MOCK_AGY_BRAIN_DIR"), name)
+						for i := 0; i < 400; i++ {
+							if _, err := os.Stat(gp); err == nil {
+								return true
+							}
+							time.Sleep(15 * time.Millisecond)
+						}
+						return false
+					}
+					if !waitGate("sched_step_final_kill") {
+						return
+					}
+					_ = os.WriteFile(filepath.Join(msgsDir, "m4_cron_tick2.json"), []byte(`{"sender":"conv_sched/task-cron","content":"Poll CI status (2/2)."}`), 0o644)
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "tool_call",
+								"toolCallId":    "tc_kill_already_done",
+								"title":         "manage_task",
+								"kind":          "other",
+								"status":        "failed",
+								"rawInput":      map[string]any{"Action": "kill", "TaskId": "conv_sched/task-stale"},
+								"content": []any{
+									map[string]any{
+										"type": "content",
+										"content": map[string]any{
+											"type": "text",
+											"text": `Encountered error in tool execution: cannot kill task "conv_sched/task-stale": task is not running (status: DONE)`,
+										},
+									},
+								},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "agent_message_chunk",
+								"content":       map[string]any{"type": "text", "text": "All background timers and tasks settled."},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params":  map[string]any{"update": map[string]any{"sessionUpdate": "usage_update", "used": 1200, "size": 200000}},
+					})
+				}()
 			} else if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "multistep_acp") {
 				write(map[string]any{
 					"jsonrpc": "2.0",
@@ -2609,4 +2758,151 @@ func TestClaudeTodoWriteAndCodexTurnPlanUpdated(t *testing.T) {
 			t.Fatalf("unexpected codex TodoUpdated events: %+v", todos)
 		}
 	})
+}
+
+func TestAntigravityACPScheduleLifecycleSettlesSessionStatus(t *testing.T) {
+	ctx := context.Background()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	brainDir := t.TempDir()
+	msgsDir := filepath.Join(brainDir, ".system_generated", "messages")
+
+	drv := acp.NewDriver("")
+	drv.PostPromptMergeWindow = 40 * time.Millisecond
+	drv.OutOfTurnDebounce = 40 * time.Millisecond
+	drv.TaskLogPollInterval = 20 * time.Millisecond
+
+	eng, err := kernel.Open(kernel.Config{
+		DataDir:   t.TempDir(),
+		MachineID: "m_agy_sched",
+		Drivers:   map[string]runtime.Driver{"acp": drv},
+		IdleTTL:   time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+
+	owner := kernel.OwnerPrincipal("dev_owner", "Owner")
+	if _, err := eng.UpsertProviderInstance(ctx, owner, &sessionv1.ProviderInstanceConfig{
+		InstanceId:  "antigravity",
+		Driver:      "acp",
+		AcpFlavor:   "antigravity",
+		DisplayName: "Antigravity",
+		Enabled:     true,
+		BinaryPath:  exe,
+		LaunchArgs:  []string{"-test.run=TestHelperMockCLI", "--", "acp"},
+		Env: map[string]string{
+			"HERMESH_MOCK_DRIVER": "acp",
+			"MOCK_AGY_BRAIN_DIR":  brainDir,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	launched, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "antigravity", Model: "default"},
+		InitialPrompt:  "agy_schedule_lifecycle",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionID := launched.Session.SessionId
+
+	waitProj := func(label string, pred func(*sessionv1.SessionProjection) bool) *sessionv1.SessionProjection {
+		t.Helper()
+		deadline := time.Now().Add(8 * time.Second)
+		var last *sessionv1.SessionProjection
+		for time.Now().Before(deadline) {
+			p, gErr := eng.GetSession(ctx, owner, sessionID)
+			if gErr == nil {
+				last = p
+				if pred(p) {
+					return p
+				}
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("timed out waiting for %s (last session=%+v bgs=%+v)", label, last.GetSession(), last.GetBackgroundTasks())
+		return nil
+	}
+	bgStatus := func(p *sessionv1.SessionProjection, id string) sessionv1.BackgroundTaskStatus {
+		for _, bt := range p.GetBackgroundTasks() {
+			if bt.TaskId == id {
+				return bt.Status
+			}
+		}
+		return sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_UNSPECIFIED
+	}
+
+	// 1. After Turn #1 finishes, all 7 awaited tasks/schedules are RUNNING (pre-existing message did not cancel tc_sched_any):
+	p1 := waitProj("initial 7 background tasks armed", func(p *sessionv1.SessionProjection) bool {
+		return p.GetSession().GetActiveBackgroundCount() == 7 && p.GetSession().GetActiveRunId() == ""
+	})
+	if bgStatus(p1, "tc_sched_any") != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+		t.Fatalf("pre-existing message must not cancel tc_sched_any: %+v", p1.GetBackgroundTasks())
+	}
+
+	// 2. Hidden cancellation receipt settles tc_canceled_cmd as STOPPED without triggering TimerCondition:"any":
+	if err := os.WriteFile(filepath.Join(msgsDir, "m1_hidden_cancel.json"), []byte(`{"sender":"conv_sched/task-canceled","hideFromUser":true,"renderDetails":{"messageTitle":"Canceled check was canceled"},"content":"Task id \"conv_sched/task-canceled\" was canceled with result:\nTool execution was canceled"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p2 := waitProj("hidden cancellation settled", func(p *sessionv1.SessionProjection) bool {
+		return bgStatus(p, "tc_canceled_cmd") == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+	})
+	if bgStatus(p2, "tc_sched_any") != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+		t.Fatalf("hideFromUser cancellation receipt must not trigger TimerCondition:any: %+v", p2.GetBackgroundTasks())
+	}
+
+	// 3. One-shot schedule expires with authentic Antigravity timer payload (no "finished with result:"):
+	//    tc_sched_oneshot settles COMPLETED, AND tc_sched_any cancels early as STOPPED!
+	if err := os.WriteFile(filepath.Join(msgsDir, "m2_timer_expired.json"), []byte(`{"sender":"conv_sched/task-367","priority":"MESSAGE_PRIORITY_HIGH","renderDetails":{"messageTitle":"2m timer: Timer has expired"},"content":"Check task-361 status if XCUITest has not completed yet."}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	waitProj("one-shot timer expiry and TimerCondition:any early cancel", func(p *sessionv1.SessionProjection) bool {
+		return bgStatus(p, "tc_sched_oneshot") == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED &&
+			bgStatus(p, "tc_sched_any") == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+	})
+
+	// 4. Build finishes + bounded cron fires tick #1 (1/2):
+	//    tc_build settles COMPLETED, tc_sched_cond cancels early via TimerCondition:"conv_sched/task-build",
+	//    while tc_cron_bounded (MaxIterations=2) stays RUNNING on tick #1!
+	if err := os.WriteFile(filepath.Join(msgsDir, "m3_build_and_cron1.json"), []byte(`{"sender":"conv_sched/task-build","content":"Task id \"conv_sched/task-build\" finished with result:\nCommand exited with code 0.\n"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(msgsDir, "m3b_cron_tick1.json"), []byte(`{"sender":"conv_sched/task-cron","content":"Poll CI status (1/2)."}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p4 := waitProj("build finished and conditioned timer canceled", func(p *sessionv1.SessionProjection) bool {
+		return bgStatus(p, "tc_build") == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED &&
+			bgStatus(p, "tc_sched_cond") == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+	})
+	if bgStatus(p4, "tc_cron_bounded") != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+		t.Fatalf("bounded cron (MaxIterations=2) must remain RUNNING after tick #1: %+v", p4.GetBackgroundTasks())
+	}
+
+	// 5. Cron tick #2 (2/2) + manage_task(kill) returning "task is not running (status: DONE)":
+	//    ActiveBackgroundCount reaches 0, Session.Status settles to IDLE, and archiving succeeds!
+	if err := os.WriteFile(filepath.Join(brainDir, "sched_step_final_kill"), []byte("1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p5 := waitProj("all background work settled and session IDLE", func(p *sessionv1.SessionProjection) bool {
+		return p.GetSession().GetActiveBackgroundCount() == 0 &&
+			p.GetSession().GetActiveRunId() == "" &&
+			p.GetSession().GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_IDLE
+	})
+	if bgStatus(p5, "tc_cron_bounded") != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED ||
+		bgStatus(p5, "tc_already_done") != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
+		t.Fatalf("expected cron tick #2 and DONE kill check to settle COMPLETED: %+v", p5.GetBackgroundTasks())
+	}
+	if _, err := eng.UpdateSession(ctx, owner, &sessionv1.UpdateSessionRequest{
+		CommandId:   "cmd_archive_settled",
+		SessionId:   sessionID,
+		HasArchived: true,
+		Archived:    true,
+	}); err != nil {
+		t.Fatalf("expected settled session to archive cleanly without active-background error: %v", err)
+	}
 }
