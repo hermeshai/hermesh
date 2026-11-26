@@ -1791,6 +1791,141 @@ func (s *ownerSessionService) RunCommand(ctx context.Context, req *sessionv1.Run
 	return rStream.Err()
 }
 
+func (s *ownerSessionService) RefreshGitStatus(ctx context.Context, req *sessionv1.RefreshGitStatusRequest) (*sessionv1.RefreshGitStatusResponse, error) {
+	o := s.o()
+	if len(req.SessionIds) == 0 {
+		if req.MachineId != "" {
+			if eng, _ := o.localEngineFor(req.MachineId); eng != nil {
+				return eng.RefreshGitStatus(ctx, o.ownerPrincipal(), nil)
+			}
+			rCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			pm, err := o.dialRemoteSessionMachine(rCtx, req.MachineId)
+			if err != nil {
+				if isOfflineErr(err) {
+					return &sessionv1.RefreshGitStatusResponse{}, nil
+				}
+				return nil, err
+			}
+			res, err := pm.Session.RefreshGitStatus(rCtx, req)
+			if err != nil {
+				if isOfflineErr(err) {
+					return &sessionv1.RefreshGitStatusResponse{}, nil
+				}
+				return nil, err
+			}
+			for _, sess := range res.Sessions {
+				o.cacheSession(sess, nil)
+			}
+			return res, nil
+		}
+
+		var out []*sessionv1.Session
+		var mu sync.Mutex
+		var wg sync.WaitGroup
+		if eng, _ := o.localEngineFor(""); eng != nil {
+			wg.Go(func() {
+				if res, err := eng.RefreshGitStatus(ctx, o.ownerPrincipal(), nil); err == nil {
+					mu.Lock()
+					out = append(out, res.Sessions...)
+					mu.Unlock()
+				}
+			})
+		}
+		machines, _ := o.ListMachines(ctx)
+		for _, m := range machines {
+			if _, isLocal := o.localEngineFor(m.MachineId); isLocal != "" || !m.Online {
+				continue
+			}
+			mid := m.MachineId
+			wg.Go(func() {
+				rCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				defer cancel()
+				pm, err := o.dialRemoteSessionMachine(rCtx, mid)
+				if err != nil {
+					return
+				}
+				res, err := pm.Session.RefreshGitStatus(rCtx, &sessionv1.RefreshGitStatusRequest{MachineId: mid})
+				if err != nil {
+					return
+				}
+				for _, sess := range res.Sessions {
+					o.cacheSession(sess, nil)
+				}
+				mu.Lock()
+				out = append(out, res.Sessions...)
+				mu.Unlock()
+			})
+		}
+		wg.Wait()
+		return &sessionv1.RefreshGitStatusResponse{Sessions: out}, nil
+	}
+
+	var localEng *kernel.Engine
+	var localIDs []string
+	remoteByMachine := map[string][]string{}
+	if req.MachineId != "" {
+		if eng, _ := o.localEngineFor(req.MachineId); eng != nil {
+			localEng = eng
+			localIDs = req.SessionIds
+		} else {
+			remoteByMachine[req.MachineId] = req.SessionIds
+		}
+	} else {
+		for _, sid := range req.SessionIds {
+			eng, mid, err := o.resolveMachineForSession(ctx, sid)
+			if err != nil {
+				continue
+			}
+			if eng != nil {
+				localEng = eng
+				localIDs = append(localIDs, sid)
+			} else if mid != "" {
+				remoteByMachine[mid] = append(remoteByMachine[mid], sid)
+			}
+		}
+	}
+
+	var out []*sessionv1.Session
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	if localEng != nil && len(localIDs) > 0 {
+		wg.Go(func() {
+			if res, err := localEng.RefreshGitStatus(ctx, o.ownerPrincipal(), localIDs); err == nil {
+				mu.Lock()
+				out = append(out, res.Sessions...)
+				mu.Unlock()
+			}
+		})
+	}
+	for mid, ids := range remoteByMachine {
+		mid, ids := mid, ids
+		wg.Go(func() {
+			rCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			pm, err := o.dialRemoteSessionMachine(rCtx, mid)
+			if err != nil {
+				return
+			}
+			res, err := pm.Session.RefreshGitStatus(rCtx, &sessionv1.RefreshGitStatusRequest{
+				MachineId:  mid,
+				SessionIds: ids,
+			})
+			if err != nil {
+				return
+			}
+			for _, sess := range res.Sessions {
+				o.cacheSession(sess, nil)
+			}
+			mu.Lock()
+			out = append(out, res.Sessions...)
+			mu.Unlock()
+		})
+	}
+	wg.Wait()
+	return &sessionv1.RefreshGitStatusResponse{Sessions: out}, nil
+}
+
 // broadcastLocalSessionChange notifies WatchSessions and Watch screens when an
 // offline-queued session changes locally.
 func (r *replica) broadcastLocalSessionChange(sessions []*sessionv1.Session, deleted []string) {

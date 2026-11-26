@@ -244,5 +244,19 @@
   "workspaceKept": {
     "text": "该环境保留了任务的工作目录以保护本地改动或文件。在对应环境上更新 Hermesh 后，即可在保留工作目录的同时归档任务。",
     "textPath": "该环境保留了任务的工作目录以保护本地文件（{{path}}）。在对应环境上更新 Hermesh 后，即可在保留工作目录的同时归档任务。"
+  },
+  "git": {
+    "pushed": "已推送",
+    "merged": "已合并",
+    "hoverPushed": "已提交并推送",
+    "hoverMerged": "已合并至 {{target}}",
+    "hoverUnpushed_other": "{{count}} 个本地提交待推送",
+    "hoverDirty_other": "{{count}} 个文件改动未提交",
+    "hoverClean": "无代码改动",
+    "hintPushed": "代码已同步至远端 {{target}}",
+    "hintMerged": "代码改动已合入 {{target}}",
+    "hintUnpushed": "已完成本地 commit，尚未推送至远端",
+    "hintDirty": "工作区存在未提交改动",
+    "hintClean": "工作区干净，本次任务未产生提交"
   }
 }

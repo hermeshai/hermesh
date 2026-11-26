@@ -456,6 +456,56 @@ public nonisolated enum Hermesh_Session_V1_TitleState: SwiftProtobuf.Enum, Swift
 
 }
 
+public nonisolated enum Hermesh_Session_V1_GitState: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case clean // = 1
+  case dirty // = 2
+  case unpushed // = 3
+  case pushed // = 4
+  case merged // = 5
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .clean
+    case 2: self = .dirty
+    case 3: self = .unpushed
+    case 4: self = .pushed
+    case 5: self = .merged
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .clean: return 1
+    case .dirty: return 2
+    case .unpushed: return 3
+    case .pushed: return 4
+    case .merged: return 5
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Hermesh_Session_V1_GitState] = [
+    .unspecified,
+    .clean,
+    .dirty,
+    .unpushed,
+    .pushed,
+    .merged,
+  ]
+
+}
+
 public nonisolated enum Hermesh_Session_V1_SessionView: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
   case unspecified // = 0
@@ -2072,6 +2122,30 @@ public nonisolated struct Hermesh_Session_V1_SessionProgress: @unchecked Sendabl
   fileprivate var _storage = _StorageClass.defaultInstance
 }
 
+public nonisolated struct Hermesh_Session_V1_GitStatus: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var state: Hermesh_Session_V1_GitState = .unspecified
+
+  public var branch: String = String()
+
+  public var targetRef: String = String()
+
+  public var dirtyFiles: UInt32 = 0
+
+  public var commitsAhead: UInt32 = 0
+
+  public var headCommit: String = String()
+
+  public var headSubject: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 /// Session is the unified coding-agent session record across all initiators
 /// (owner UI, Her, MCP, CLI).
 public nonisolated struct Hermesh_Session_V1_Session: @unchecked Sendable {
@@ -2324,6 +2398,15 @@ public nonisolated struct Hermesh_Session_V1_Session: @unchecked Sendable {
     get {_storage._titleSeq}
     set {_uniqueStorage()._titleSeq = newValue}
   }
+
+  public var gitStatus: Hermesh_Session_V1_GitStatus {
+    get {_storage._gitStatus ?? Hermesh_Session_V1_GitStatus()}
+    set {_uniqueStorage()._gitStatus = newValue}
+  }
+  /// Returns true if `gitStatus` has been explicitly set.
+  public var hasGitStatus: Bool {_storage._gitStatus != nil}
+  /// Clears the value of `gitStatus`. Subsequent reads from it will return its default value.
+  public mutating func clearGitStatus() {_uniqueStorage()._gitStatus = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -4889,6 +4972,32 @@ public nonisolated struct Hermesh_Session_V1_RunCommandEvent: Sendable {
   public init() {}
 }
 
+public nonisolated struct Hermesh_Session_V1_RefreshGitStatusRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var machineID: String = String()
+
+  public var sessionIds: [String] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Session_V1_RefreshGitStatusResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var sessions: [Hermesh_Session_V1_Session] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "hermesh.session.v1"
@@ -4923,6 +5032,10 @@ nonisolated extension Hermesh_Session_V1_QuestionResolution: SwiftProtobuf._Prot
 
 nonisolated extension Hermesh_Session_V1_TitleState: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0TITLE_STATE_UNSPECIFIED\0\u{1}TITLE_STATE_SEED\0\u{1}TITLE_STATE_PROVISIONAL\0\u{1}TITLE_STATE_FINAL\0\u{1}TITLE_STATE_LOCKED\0")
+}
+
+nonisolated extension Hermesh_Session_V1_GitState: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0GIT_STATE_UNSPECIFIED\0\u{1}GIT_STATE_CLEAN\0\u{1}GIT_STATE_DIRTY\0\u{1}GIT_STATE_UNPUSHED\0\u{1}GIT_STATE_PUSHED\0\u{1}GIT_STATE_MERGED\0")
 }
 
 nonisolated extension Hermesh_Session_V1_SessionView: SwiftProtobuf._ProtoNameProviding {
@@ -6630,9 +6743,69 @@ nonisolated extension Hermesh_Session_V1_SessionProgress: SwiftProtobuf.Message,
   }
 }
 
+nonisolated extension Hermesh_Session_V1_GitStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".GitStatus"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}state\0\u{1}branch\0\u{3}target_ref\0\u{3}dirty_files\0\u{3}commits_ahead\0\u{3}head_commit\0\u{3}head_subject\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.state) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.branch) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.targetRef) }()
+      case 4: try { try decoder.decodeSingularUInt32Field(value: &self.dirtyFiles) }()
+      case 5: try { try decoder.decodeSingularUInt32Field(value: &self.commitsAhead) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.headCommit) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.headSubject) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.state != .unspecified {
+      try visitor.visitSingularEnumField(value: self.state, fieldNumber: 1)
+    }
+    if !self.branch.isEmpty {
+      try visitor.visitSingularStringField(value: self.branch, fieldNumber: 2)
+    }
+    if !self.targetRef.isEmpty {
+      try visitor.visitSingularStringField(value: self.targetRef, fieldNumber: 3)
+    }
+    if self.dirtyFiles != 0 {
+      try visitor.visitSingularUInt32Field(value: self.dirtyFiles, fieldNumber: 4)
+    }
+    if self.commitsAhead != 0 {
+      try visitor.visitSingularUInt32Field(value: self.commitsAhead, fieldNumber: 5)
+    }
+    if !self.headCommit.isEmpty {
+      try visitor.visitSingularStringField(value: self.headCommit, fieldNumber: 6)
+    }
+    if !self.headSubject.isEmpty {
+      try visitor.visitSingularStringField(value: self.headSubject, fieldNumber: 7)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Session_V1_GitStatus, rhs: Hermesh_Session_V1_GitStatus) -> Bool {
+    if lhs.state != rhs.state {return false}
+    if lhs.branch != rhs.branch {return false}
+    if lhs.targetRef != rhs.targetRef {return false}
+    if lhs.dirtyFiles != rhs.dirtyFiles {return false}
+    if lhs.commitsAhead != rhs.commitsAhead {return false}
+    if lhs.headCommit != rhs.headCommit {return false}
+    if lhs.headSubject != rhs.headSubject {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Session"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}machine_id\0\u{3}project_id\0\u{1}agent\0\u{2}\u{2}status\0\u{3}created_by\0\u{1}progress\0\u{3}provider_session_ref\0\u{3}created_at\0\u{3}updated_at\0\u{1}error\0\u{1}branch\0\u{1}workspace\0\u{1}result\0\u{1}title\0\u{3}created_as\0\u{1}model\0\u{1}effort\0\u{3}title_renamed\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}effective_runtime_mode\0\u{3}max_runtime_mode\0\u{3}interaction_mode\0\u{3}workspace_strategy\0\u{3}active_provider_session_id\0\u{1}actor\0\u{1}lineage\0\u{3}queue_held\0\u{3}queued_run_count\0\u{3}active_run_id\0\u{3}pending_request_id\0\u{3}context_usage\0\u{1}pinned\0\u{3}offline_queued\0\u{3}archived_at\0\u{3}active_background_count\0\u{3}active_daemon_count\0\u{3}title_locale\0\u{3}title_generating\0\u{3}title_state\0\u{3}title_seq\0\u{b}preset\0\u{c}\u{5}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}machine_id\0\u{3}project_id\0\u{1}agent\0\u{2}\u{2}status\0\u{3}created_by\0\u{1}progress\0\u{3}provider_session_ref\0\u{3}created_at\0\u{3}updated_at\0\u{1}error\0\u{1}branch\0\u{1}workspace\0\u{1}result\0\u{1}title\0\u{3}created_as\0\u{1}model\0\u{1}effort\0\u{3}title_renamed\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}effective_runtime_mode\0\u{3}max_runtime_mode\0\u{3}interaction_mode\0\u{3}workspace_strategy\0\u{3}active_provider_session_id\0\u{1}actor\0\u{1}lineage\0\u{3}queue_held\0\u{3}queued_run_count\0\u{3}active_run_id\0\u{3}pending_request_id\0\u{3}context_usage\0\u{1}pinned\0\u{3}offline_queued\0\u{3}archived_at\0\u{3}active_background_count\0\u{3}active_daemon_count\0\u{3}title_locale\0\u{3}title_generating\0\u{3}title_state\0\u{3}title_seq\0\u{3}git_status\0\u{b}preset\0\u{c}\u{5}\u{1}")
 
   fileprivate class _StorageClass {
     var _sessionID: String = String()
@@ -6677,6 +6850,7 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
     var _titleGenerating: Bool = false
     var _titleState: Hermesh_Session_V1_TitleState = .unspecified
     var _titleSeq: UInt64 = 0
+    var _gitStatus: Hermesh_Session_V1_GitStatus? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -6729,6 +6903,7 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
       _titleGenerating = source._titleGenerating
       _titleState = source._titleState
       _titleSeq = source._titleSeq
+      _gitStatus = source._gitStatus
     }
   }
 
@@ -6789,6 +6964,7 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
         case 41: try { try decoder.decodeSingularBoolField(value: &_storage._titleGenerating) }()
         case 42: try { try decoder.decodeSingularEnumField(value: &_storage._titleState) }()
         case 43: try { try decoder.decodeSingularUInt64Field(value: &_storage._titleSeq) }()
+        case 44: try { try decoder.decodeSingularMessageField(value: &_storage._gitStatus) }()
         default: break
         }
       }
@@ -6927,6 +7103,9 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
       if _storage._titleSeq != 0 {
         try visitor.visitSingularUInt64Field(value: _storage._titleSeq, fieldNumber: 43)
       }
+      try { if let v = _storage._gitStatus {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 44)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -6978,6 +7157,7 @@ nonisolated extension Hermesh_Session_V1_Session: SwiftProtobuf.Message, SwiftPr
         if _storage._titleGenerating != rhs_storage._titleGenerating {return false}
         if _storage._titleState != rhs_storage._titleState {return false}
         if _storage._titleSeq != rhs_storage._titleSeq {return false}
+        if _storage._gitStatus != rhs_storage._gitStatus {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -11719,6 +11899,71 @@ nonisolated extension Hermesh_Session_V1_RunCommandEvent: SwiftProtobuf.Message,
     if lhs.durationMs != rhs.durationMs {return false}
     if lhs.timedOut != rhs.timedOut {return false}
     if lhs.truncated != rhs.truncated {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Session_V1_RefreshGitStatusRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".RefreshGitStatusRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}session_ids\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
+      case 2: try { try decoder.decodeRepeatedStringField(value: &self.sessionIds) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.machineID.isEmpty {
+      try visitor.visitSingularStringField(value: self.machineID, fieldNumber: 1)
+    }
+    if !self.sessionIds.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.sessionIds, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Session_V1_RefreshGitStatusRequest, rhs: Hermesh_Session_V1_RefreshGitStatusRequest) -> Bool {
+    if lhs.machineID != rhs.machineID {return false}
+    if lhs.sessionIds != rhs.sessionIds {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Session_V1_RefreshGitStatusResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".RefreshGitStatusResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}sessions\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.sessions) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.sessions.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.sessions, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Session_V1_RefreshGitStatusResponse, rhs: Hermesh_Session_V1_RefreshGitStatusResponse) -> Bool {
+    if lhs.sessions != rhs.sessions {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
