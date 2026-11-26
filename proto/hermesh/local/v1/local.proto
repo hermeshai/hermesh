@@ -1224,6 +1224,10 @@ message HerSendRequest {
   HerReply reply = 9;
   // The app's UI language (BCP 47, e.g. "zh-CN", "en") when the message was sent.
   string locale = 10;
+  // A conversation of the assistant's besides its main one (her's session id,
+  // docs/her-conversations.md): the message goes there, also when it waits
+  // for the machine. Empty: the main conversation.
+  string conversation = 11;
 }
 
 // What a message replies to: an earlier message of the conversation, or a
@@ -1284,6 +1288,8 @@ message HerWaiting {
   string error = 7;
   HerReply reply = 8;
   string locale = 9;
+  // The conversation it goes to, when it is not the main one (HerSendRequest.conversation).
+  string conversation = 10;
 }
 
 message GetHerConversationRequest {

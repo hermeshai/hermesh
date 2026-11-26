@@ -262,13 +262,13 @@ type Pickers = {
 };
 
 /** A new session's question: the pickers, and under them what happens once it is sent (`after`, kept out of the layout). */
-type LaunchAskProps = Pickers & { after?: ReactNode };
+type LaunchAskProps = Pickers & { after?: ReactNode; /** Who it goes to, above the question (Presence.tsx). */ top?: ReactNode; /** The question rises into place: the owner just switched to the agent. */ rise?: boolean };
 
 /**
  * A new session's question, in the middle of its page: "What should we build in <project>?", and under it the
  * environment it runs on. Both are menus (opening below), set as last time (choices.ts).
  */
-export function LaunchAsk({ machines, projects, projectsStale, choice, onMachine, onProject, onAddProject, after }: LaunchAskProps) {
+export function LaunchAsk({ machines, projects, projectsStale, choice, onMachine, onProject, onAddProject, after, top, rise }: LaunchAskProps) {
   const { t } = useTranslation("thread");
   const machine = machines.find((m) => m.machineId === choice.machineId);
   const machineName = machine?.machineName ?? choice.machineId;
@@ -305,11 +305,12 @@ export function LaunchAsk({ machines, projects, projectsStale, choice, onMachine
   );
   return (
     <div className="th-ask">
-      <h1>
+      {top}
+      <h1 key="agent" className={rise ? "pr-rise" : undefined}>
         <Trans t={t} i18nKey="launch.ask" components={{ project }} />
       </h1>
       <MenuButton
-        className="th-on"
+        className={`th-on ${rise ? "pr-rise" : ""}`}
         below
         title={t("launch.environment")}
         label={
@@ -600,7 +601,7 @@ function ModelPanel({ providers, sel, stale, machineName, projectAgents, onSel, 
   const [query, setQuery] = useState("");
   const find = useRef<HTMLInputElement>(null);
   useEffect(() => find.current?.focus(), []);
-  const usable = providers.filter((p) => ["", "signedOut"].includes(providerUnusable(p, projectAgents)));
+  const usable = providers.filter((p) => ["", "signedOut"].includes(providerUnusable(p, projectAgents))).sort((a, b) => Number(b.instanceId === "her") - Number(a.instanceId === "her"));
   const groups = query.trim() ? findModels(usable, query).map((g) => ({ inst: g.inst, models: g.models })) : usable.map((inst) => ({ inst, models: inst.models }));
   const reasoning = reasoningOf(providers, sel);
   const keys = (e: KeyboardEvent) => {
@@ -639,7 +640,10 @@ function ModelPanel({ providers, sel, stale, machineName, projectAgents, onSel, 
                   key={m.slug}
                   checked={sel.instanceId === g.inst.instanceId && sel.model === m.slug}
                   label={m.name}
-                  value={m.badge ? <span className="th-badge-new">{t("picker.isNew")}</span> : undefined}
+                  value={
+                    g.inst.instanceId === "her" && m.isDefault ? <span className="th-badge-new th-badge-def">{t("launch.defaultModel")}</span>
+                    : m.badge ? <span className="th-badge-new">{t("picker.isNew")}</span> : undefined
+                  }
                   testId={`picker-model-${m.slug}`}
                   onClick={() => {
                     const r = selectModel(providers, sel, g.inst.instanceId, m.slug);

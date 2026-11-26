@@ -135,7 +135,7 @@ func TestDesktop(t *testing.T) {
 	specs, _ := filepath.Glob(filepath.Join(dir, "e2e", "*.spec.ts"))
 	for _, spec := range specs {
 		name := strings.TrimSuffix(filepath.Base(spec), ".spec.ts")
-		if name == "packaged" || name == "update" || name == "her" || name == "her-notifications" || name == "her-chatgpt" || name == "her-older" || name == "her-before" || name == "her-reply" || name == "progress" || name == "her-deliveries" || name == "her-page" || name == "her-long" || name == "coldstart" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer, TestDesktopHerChatGPT, TestDesktopHerOlder, TestDesktopHerBeforeHer, TestDesktopHerReply, TestDesktopHerProgress, TestDesktopHerDeliveries, TestDesktopHerPage, TestDesktopHerLong, TestDesktopColdStart
+		if name == "packaged" || name == "update" || name == "her" || name == "her-notifications" || name == "her-chatgpt" || name == "her-older" || name == "her-before" || name == "her-reply" || name == "progress" || name == "her-deliveries" || name == "her-page" || name == "her-conversations" || name == "her-long" || name == "coldstart" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer, TestDesktopHerChatGPT, TestDesktopHerOlder, TestDesktopHerBeforeHer, TestDesktopHerReply, TestDesktopHerProgress, TestDesktopHerDeliveries, TestDesktopHerPage, TestDesktopHerLong, TestDesktopColdStart
 			continue
 		}
 		// Windows runs its own spec and those ported to it (docs/windows.md §11).
@@ -294,6 +294,23 @@ func TestDesktopHerPage(t *testing.T) {
 		t.Skip("pnpm not installed")
 	}
 	herSpec(t, desktopHerWorld(t), "her-page.spec.ts")
+}
+
+// TestDesktopHerConversations runs the end-to-end test of conversations with
+// Her besides her main one (apps/desktop/e2e/her-conversations.spec.ts,
+// docs/her-conversations.md) in the same world: a new session given to Her,
+// the coding session she starts nested under it in the task list, and its
+// news back in that conversation.
+//
+//	go test ./e2e -run TestDesktopHerConversations -v -timeout 30m
+func TestDesktopHerConversations(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	if _, err := exec.LookPath("pnpm"); err != nil {
+		t.Skip("pnpm not installed")
+	}
+	herSpec(t, desktopHerWorld(t), "her-conversations.spec.ts")
 }
 
 // TestDesktopHerChatGPT runs apps/desktop/e2e/her-chatgpt.spec.ts: on this

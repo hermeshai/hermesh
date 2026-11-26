@@ -62,3 +62,39 @@ func TestResolveInstanceOffersTheAgentsOwnModels(t *testing.T) {
 		t.Fatalf("codex could not tell: the manifest's %v, got %v", want, got)
 	}
 }
+
+type stubHerDriver struct {
+	runtime.Driver
+	on     bool
+	models []*sessionv1.ModelCatalogEntry
+}
+
+func (d *stubHerDriver) Capabilities(string) *sessionv1.ProviderCapabilities {
+	return &sessionv1.ProviderCapabilities{NativeResume: true}
+}
+
+func (d *stubHerDriver) Probe(context.Context, *sessionv1.ProviderInstanceConfig, string) runtime.ProbeResult {
+	if !d.on {
+		return runtime.ProbeResult{Installed: false, Compatibility: sessionv1.CompatibilityStatus_COMPATIBILITY_STATUS_UNSUPPORTED}
+	}
+	return runtime.ProbeResult{Installed: true, Authenticated: len(d.models) > 0, Compatibility: sessionv1.CompatibilityStatus_COMPATIBILITY_STATUS_SUPPORTED, Models: d.models}
+}
+
+func TestResolveHerUsesLiveModelsWithoutStaleCache(t *testing.T) {
+	drv := &stubHerDriver{}
+	s := NewService(map[string]runtime.Driver{"her": drv}, nil)
+	cfg := &sessionv1.ProviderInstanceConfig{InstanceId: "her", Driver: "her", DisplayName: "Her", Enabled: true}
+	ctx := context.Background()
+
+	off := s.ResolveInstance(ctx, cfg, "", false)
+	if off.Installed || len(off.Models) != 0 {
+		t.Fatalf("Her off: installed=%v models=%v", off.Installed, slugs(off))
+	}
+
+	drv.on = true
+	drv.models = []*sessionv1.ModelCatalogEntry{{Slug: "mock/default", Name: "Mock", IsDefault: true}}
+	on := s.ResolveInstance(ctx, cfg, "", false)
+	if !on.Installed || !slices.Equal(slugs(on), []string{"mock/default"}) {
+		t.Fatalf("Her on without explicit refresh: installed=%v models=%v", on.Installed, slugs(on))
+	}
+}

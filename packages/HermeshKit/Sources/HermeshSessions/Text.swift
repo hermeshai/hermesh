@@ -197,6 +197,8 @@ public func agentTitle(_ id: String) -> String {
     case "deepseek": "DeepSeek Harness"
     case "codebuddy": "CodeBuddy Code"
     case "grok": "Grok"
+    // Her, the provider of her own conversations (docs/her-conversations.md).
+    case "her": "Her"
     default: id
     }
 }

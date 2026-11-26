@@ -260,8 +260,8 @@ her run by hermeshd, the host is hermeshd.
 |---|---|---|
 | `mesh/host` | hermeshd → her | Registers this connection as the host and gives the group: its catalog line, its guidelines and its tools. A later host replaces it; it leaves with its connection |
 | `mesh/describe` | her → hermeshd | Before the approval gate, for a tool that writes: what the call would do, in words for the owner, and what "don't ask again" would cover (§5) |
-| `mesh/call` | her → hermeshd | Runs one tool. Params: the assistant's id, the call's id, the tool's name and arguments. Result: the command's JSON document, and details for the apps (§4.5) |
-| `mesh/news` | hermeshd → her | Puts news into an assistant's conversation and wakes her (§6). It answers once the news is in the conversation |
+| `mesh/call` | her → hermeshd | Runs one tool. Params: the assistant's id, the conversation that calls, the call's id, the tool's name and arguments. Result: the command's JSON document, and details for the apps (§4.5) |
+| `mesh/news` | hermeshd → her | Puts news into an assistant's conversation and wakes her (§6): the one `mesh/call` named, else her main one. It answers once the news is in the conversation |
 
 ```json
 // mesh/host
@@ -598,7 +598,8 @@ for the conversation:
 
 | Who started the session | Where its news goes |
 |---|---|
-| Her's own conversation (the only case in this step) | Her's conversation |
+| Her's own conversation | Her's conversation |
+| Another conversation of hers ([her-conversations.md](her-conversations.md)) | That conversation, or the one of hers that last wrote to or answered the session; her main one when that conversation is gone |
 | A sub-agent of hers (later) | That sub-agent, which reports to her when it is done |
 | A sub-agent or routine run that has ended (later) | Her's conversation |
 

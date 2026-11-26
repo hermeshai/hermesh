@@ -453,6 +453,40 @@ pub struct BotOpenParams {
     /// Client's last applied event sequence number.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub after_seq: Option<u64>,
+    /// Another of the bot's conversations to open (`bots/conversation_new`); none: its main one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation: Option<String>,
+}
+
+/// Parameters of `bots/conversation_new`: the bot, and the model and thinking this conversation
+/// runs with; none: those of the bot's main conversation.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct BotConversationNewParams {
+    pub bot_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<ThinkingLevel>,
+}
+
+/// One of a bot's conversations besides its main one.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct BotConversationParams {
+    pub bot_id: String,
+    pub session_id: String,
+}
+
+/// The result of `bots/conversation_new`: the conversation it started.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct BotConversationNewResult {
+    pub session_id: String,
+}
+
+/// The result of `bots/conversations`: the bot's conversations besides its main one, newest
+/// first.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct BotConversationsResult {
+    pub conversations: Vec<crate::api::SessionSummary>,
 }
 
 /// Server notification to `bots/subscribe`rs: the bots that changed, and those deleted.

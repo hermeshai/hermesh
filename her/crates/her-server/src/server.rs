@@ -401,14 +401,15 @@ impl Server {
         (secs > 0).then(|| Duration::from_secs(secs))
     }
 
-    /// Starts the hub of a loaded session; `bot` names the bot whose conversation it is.
+    /// Starts the hub of a loaded session; `bot` names the bot whose conversation it is, and
+    /// whether that is its main one.
     pub(crate) fn register(
         &self,
         kernel: Kernel,
         transcript: Vec<TranscriptItem>,
         attach: Option<AttachRequest>,
         base: SummaryBase,
-        bot: Option<String>,
+        bot: Option<(String, bool)>,
     ) -> String {
         let id = kernel.session_id().to_string();
         let server = Arc::downgrade(&self.0);
@@ -419,14 +420,17 @@ impl Server {
                 inner.sessions.lock().remove(&exit_id);
                 inner.closed_sessions.fetch_add(1, Ordering::Relaxed);
                 match &exit_bot {
-                    Some(bot) => inner.bots.on_unloaded(bot),
+                    Some((bot, true)) => inner.bots.on_unloaded(bot),
+                    // The bot's row is its main conversation's.
+                    Some((_, false)) => {}
                     None => inner.feed.publish(vec![last], Vec::new()),
                 }
             }
         });
         let listing = match bot {
-            Some(id) => hub::Listing::Bot {
+            Some((id, main)) => hub::Listing::Bot {
                 id,
+                main,
                 bots: self.0.bots.clone(),
                 routines: self.0.routines.clone(),
                 deliveries: self.0.deliveries.clone(),
@@ -601,7 +605,7 @@ impl Server {
         deps.mcp_servers = self.session_mcp_servers(&workspace, &overrides.mcp_servers);
         deps.routines = header.bot.is_some().then(|| self.0.routines.clone() as Arc<dyn her_core::routine::RoutineHost>);
         deps.connectors = header.bot.is_some().then(|| self.0.connectors.clone() as Arc<dyn her_core::connect::ConnectorHost>);
-        deps.mesh = header.bot.as_ref().map(|bot| self.bot_mesh(&bot.id));
+        deps.mesh = header.bot.as_ref().map(|bot| self.bot_mesh(&bot.id, Arc::new(std::sync::OnceLock::from(id.to_string()))));
         let base = match self.0.store.summary(&SessionRef::Path(location.clone())) {
             Ok(found) => SummaryBase {
                 updated_at: last_active(&found),
@@ -636,7 +640,11 @@ impl Server {
         if let Some(text) = header.bot.as_ref().and_then(|bot| self.0.routines.listing_of(&bot.id)) {
             kernel.set_routines(text);
         }
-        self.register(kernel, transcript, attach, base, header.bot.map(|bot| bot.id));
+        let bot = header.bot.map(|bot| {
+            let main = self.0.bots.is_main(&bot.id, id);
+            (bot.id, main)
+        });
+        self.register(kernel, transcript, attach, base, bot);
         Ok(())
     }
 
@@ -902,25 +910,34 @@ impl Server {
             .iter()
             .skip(offset)
             .take(limit)
-            .map(|s| {
-                let on_disk = disk_summary(&self.0.home, s);
-                match hubs.get(&s.id) {
-                    // A loaded session's state is the hub's; the log may have been written since.
-                    Some(hub) => {
-                        let mut live = hub.shared.summary.lock().clone();
-                        live.updated_at = live.updated_at.max(on_disk.updated_at);
-                        live.busy = hub.shared.busy.load(Ordering::Relaxed);
-                        live.attached_clients = hub.shared.attached.load(Ordering::Relaxed);
-                        live
-                    }
-                    None => on_disk,
-                }
-            })
+            .map(|s| self.listed(s, hubs.get(&s.id)))
             .collect();
         Ok(SessionListResult {
             sessions,
             next_cursor: (found.len() > offset + limit).then(|| (offset + limit).to_string()),
         })
+    }
+
+    /// A session as the session list shows it, from its log and, when it is loaded, its hub.
+    fn listed(&self, s: &her_core::store::SessionSummary, hub: Option<&HubHandle>) -> SessionSummary {
+        let on_disk = disk_summary(&self.0.home, s);
+        match hub {
+            // A loaded session's state is the hub's; the log may have been written since.
+            Some(hub) => {
+                let mut live = hub.shared.summary.lock().clone();
+                live.updated_at = live.updated_at.max(on_disk.updated_at);
+                live.busy = hub.shared.busy.load(Ordering::Relaxed);
+                live.attached_clients = hub.shared.attached.load(Ordering::Relaxed);
+                live
+            }
+            None => on_disk,
+        }
+    }
+
+    /// One session as the session list would show it; none when its log is gone. Blocking I/O.
+    pub(crate) fn session_summary(&self, id: &str) -> Option<SessionSummary> {
+        let found = self.0.store.summary(&SessionRef::Id(id.to_string())).ok()?;
+        Some(self.listed(&found, self.hub(id).as_ref()))
     }
 
     /// Moves the log of an unloaded session to `~/.her/trash/sessions/`. Blocking I/O.

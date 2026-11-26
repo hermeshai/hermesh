@@ -18,6 +18,7 @@ import (
 	herv1 "github.com/hermeshai/hermesh/gen/go/hermesh/her/v1"
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/herhost/hertest"
 	"github.com/hermeshai/hermesh/internal/paths"
 )
@@ -368,6 +369,17 @@ func TestHerInProcess(t *testing.T) {
 	}
 	if p, err := os.FindProcess(rec.PID); err == nil && p.Signal(syscall.Signal(0)) == nil {
 		t.Fatal("her outlived the machine")
+	}
+}
+
+func TestBasicSessionKeepsHerConversation(t *testing.T) {
+	herConv := BasicSession(&sessionv1.Session{Agent: "her", ProviderSessionRef: "ses_her1", Result: "done", Progress: &sessionv1.SessionProgress{LastMessageExcerpt: "done"}})
+	if herConv.ProviderSessionRef != "ses_her1" || herConv.Result != "" || herConv.GetProgress().GetLastMessageExcerpt() != "" {
+		t.Fatalf("Her conversation in list: %v", herConv)
+	}
+	coding := BasicSession(&sessionv1.Session{Agent: "claude", ProviderSessionRef: "cur_1", Result: "done"})
+	if coding.ProviderSessionRef != "" || coding.Result != "" {
+		t.Fatalf("coding session in list: %v", coding)
 	}
 }
 

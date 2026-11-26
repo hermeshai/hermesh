@@ -77,7 +77,11 @@
     "sentByYou": "Sent by You",
     "signedIn": "Signed in",
     "signedOut": "Not signed in",
-    "pinDrop": "Drop here to pin"
+    "pinDrop": "Drop here to pin",
+    "sentToHer": "You → Her",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "herSection": "Her"
   },
   "accountMenu": {
     "settings": "Settings…",
@@ -102,7 +106,9 @@
     "deleteMessageNoBranch": "Its record and conversation will be permanently deleted.",
     "deleteRunning": "The current turn will be interrupted first.",
     "deleteButton": "Delete",
-    "deleted": "Deleted “{{title}}”"
+    "deleted": "Deleted “{{title}}”",
+    "stillRunning": "Tasks are still running",
+    "deleteKeepsChildren": "The tasks it sent are kept."
   },
   "filter": {
     "grant": "Agent",
@@ -128,7 +134,10 @@
     "oldestFirst": "Oldest First",
     "metadata": "Metadata",
     "titleOnly": "Title Only",
-    "bySender": "By Sender"
+    "bySender": "By Sender",
+    "nest": "Nest Subtasks",
+    "metadataNested": "Metadata, Nested",
+    "nestedOnly": "Nested"
   },
   "search": {
     "openSettings": "Open Settings",

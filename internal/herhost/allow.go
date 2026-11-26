@@ -20,6 +20,8 @@ func init() {
 		"bots/subscribe", "bots/unsubscribe", "bots/open", "bots/read", "bots/unread", "bots/create", "bots/update",
 		"bots/avatar", "bots/clear", "bots/delete", "bots/memory", "bots/memory_clear", "bots/routine", "bots/routine_delete", "bots/routine_run",
 		"bots/routine_run_now", "bots/routine_runs", "bots/routine_set_enabled", "bots/routine_stop",
+		// An assistant's other conversations, beside her main one.
+		"bots/conversation_new", "bots/conversations", "bots/conversation_delete",
 		"session/op", "session/history", "session/detach", "models/list", "files/list", "files/read",
 		// The files an assistant sent, in a list of their own (docs/her-deliverables.md §4.3).
 		"deliveries/list", "deliveries/seen", "deliveries/sources",

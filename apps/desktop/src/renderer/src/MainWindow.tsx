@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { parseAppLink } from "@hermesh/core";
+import { isHerConversation, parseAppLink } from "@hermesh/core";
 import { agentName } from "@hermesh/ui";
 import { local } from "./api";
 import { Overview } from "./Overview";
@@ -19,6 +19,7 @@ import { errorText, useStore } from "./store";
 
 // Her's page and its client load when it is first shown.
 const HerPage = lazy(() => import("./her/HerPage"));
+const HerConversationPage = lazy(() => import("./her/HerPage").then((m) => ({ default: m.HerConversationPage })));
 
 export function MainWindow() {
   const st = useStore();
@@ -75,12 +76,18 @@ export function MainWindow() {
     return () => document.removeEventListener("keydown", onKey);
   }, [set]);
   const { sidebar } = layoutOf(st);
+  // A conversation with Her opens her chat (docs/her-conversations.md §3.2).
+  const herTask = st.selection.kind === "session" ? st.sessions.find((x) => st.selection.kind === "session" && x.sessionId === st.selection.id && isHerConversation(x)) : undefined;
   const search = useLeaving(st.searching ? JSON.stringify(st.searchFor) : null);
   return (
     <div className={`mainwrap ${sidebar === "docked" ? "" : "noside"} ${sidebar === "over" ? "peek" : ""}`}>
       {sidebar === "docked" && <Sidebar />}
       <section className="content">
-        {st.selection.kind === "newSession" || st.selection.kind === "session" ? (
+        {herTask && !st.status?.machineOnly ? (
+          <Suspense fallback={<div className="ctool drag" />}>
+            <HerConversationPage session={herTask} />
+          </Suspense>
+        ) : st.selection.kind === "newSession" || st.selection.kind === "session" ? (
           <SessionPage />
         ) : (st.selection.kind === "her" || st.selection.kind === "progress") && !st.status?.machineOnly ? (
           <Suspense fallback={<div className="ctool drag" />}>

@@ -222,9 +222,11 @@ pub(crate) enum HubCmd {
 pub(crate) enum Listing {
     /// The session list (`sessions/changed`).
     Sessions(Arc<ListFeed>),
-    /// A bot's conversation: its bot's row instead (bot-design §5.1).
+    /// A bot's conversation: its bot's row instead (bot-design §5.1), when it is the main one.
     Bot {
         id: String,
+        /// The bot's main conversation, which its row shows and its routines report to.
+        main: bool,
         bots: Arc<crate::bots::Registry>,
         routines: Arc<crate::routines::Routines>,
         deliveries: Arc<crate::deliveries::Deliveries>,
@@ -505,9 +507,11 @@ impl Hub {
 
     fn dispatch(&mut self, event: Event) {
         self.mirror.apply(&event);
-        if let Listing::Bot { id, bots, routines, deliveries, .. } = &self.listing {
-            bots.on_event(id, &event, &self.mirror);
-            routines.on_event(id, &event);
+        if let Listing::Bot { id, main, bots, routines, deliveries, .. } = &self.listing {
+            if *main {
+                bots.on_event(id, &event, &self.mirror);
+                routines.on_event(id, &event);
+            }
             deliveries.on_event(id, &event, &self.mirror);
         }
         // The session's approvals, and a sub-agent's as its `agent_event` carries them.

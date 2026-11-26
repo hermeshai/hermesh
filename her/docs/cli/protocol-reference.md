@@ -97,6 +97,9 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 |---|---|---|---|
 | `bots/avatar` | `BotIdParams` | `BotAvatarResult` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear`, `bots/delete`, `bots/memory` and `bots/memory_clear`. |
 | `bots/clear` | `BotIdParams` | `Empty` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear`, `bots/delete`, `bots/memory` and `bots/memory_clear`. |
+| `bots/conversation_delete` | `BotConversationParams` | `Empty` | One of a bot's conversations besides its main one. |
+| `bots/conversation_new` | `BotConversationNewParams` | `BotConversationNewResult` | Parameters of `bots/conversation_new`: the bot, and the model and thinking this conversation runs with; none: those of the bot's main conversation. |
+| `bots/conversations` | `BotIdParams` | `BotConversationsResult` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear`, `bots/delete`, `bots/memory` and `bots/memory_clear`. |
 | `bots/create` | `BotCreateParams` | `BotResult` |  |
 | `bots/delete` | `BotIdParams` | `Empty` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear`, `bots/delete`, `bots/memory` and `bots/memory_clear`. |
 | `bots/memory` | `BotIdParams` | `BotMemoryResult` | Parameters of `bots/avatar`, `bots/read`, `bots/unread`, `bots/clear`, `bots/delete`, `bots/memory` and `bots/memory_clear`. |

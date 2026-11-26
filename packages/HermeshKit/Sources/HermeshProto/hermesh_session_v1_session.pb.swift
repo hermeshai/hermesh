@@ -3791,6 +3791,13 @@ public nonisolated struct Hermesh_Session_V1_StartSessionRequest: @unchecked Sen
     set {_uniqueStorage()._locale = newValue}
   }
 
+  /// How the session relates to parent_session_id: empty, a sub-agent of it; "her", work that Her
+  /// sent from that conversation of hers (docs/her-conversations.md), which may be on another machine.
+  public var parentRelationship: String {
+    get {_storage._parentRelationship}
+    set {_uniqueStorage()._parentRelationship = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -9392,7 +9399,7 @@ nonisolated extension Hermesh_Session_V1_RemoveProviderInstanceResponse: SwiftPr
 
 nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".StartSessionRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}command_id\0\u{3}machine_id\0\u{3}project_id\0\u{1}title\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}interaction_mode\0\u{1}workspace\0\u{3}initial_prompt\0\u{1}attachments\0\u{3}parent_session_id\0\u{3}question_timeout_seconds\0\u{1}conversation\0\u{1}locale\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}command_id\0\u{3}machine_id\0\u{3}project_id\0\u{1}title\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}interaction_mode\0\u{1}workspace\0\u{3}initial_prompt\0\u{1}attachments\0\u{3}parent_session_id\0\u{3}question_timeout_seconds\0\u{1}conversation\0\u{1}locale\0\u{3}parent_relationship\0")
 
   fileprivate class _StorageClass {
     var _commandID: String = String()
@@ -9409,6 +9416,7 @@ nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Mess
     var _questionTimeoutSeconds: UInt32? = nil
     var _conversation: String = String()
     var _locale: String = String()
+    var _parentRelationship: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -9433,6 +9441,7 @@ nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Mess
       _questionTimeoutSeconds = source._questionTimeoutSeconds
       _conversation = source._conversation
       _locale = source._locale
+      _parentRelationship = source._parentRelationship
     }
   }
 
@@ -9465,6 +9474,7 @@ nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Mess
         case 12: try { try decoder.decodeSingularUInt32Field(value: &_storage._questionTimeoutSeconds) }()
         case 13: try { try decoder.decodeSingularStringField(value: &_storage._conversation) }()
         case 14: try { try decoder.decodeSingularStringField(value: &_storage._locale) }()
+        case 15: try { try decoder.decodeSingularStringField(value: &_storage._parentRelationship) }()
         default: break
         }
       }
@@ -9519,6 +9529,9 @@ nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Mess
       if !_storage._locale.isEmpty {
         try visitor.visitSingularStringField(value: _storage._locale, fieldNumber: 14)
       }
+      if !_storage._parentRelationship.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._parentRelationship, fieldNumber: 15)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -9542,6 +9555,7 @@ nonisolated extension Hermesh_Session_V1_StartSessionRequest: SwiftProtobuf.Mess
         if _storage._questionTimeoutSeconds != rhs_storage._questionTimeoutSeconds {return false}
         if _storage._conversation != rhs_storage._conversation {return false}
         if _storage._locale != rhs_storage._locale {return false}
+        if _storage._parentRelationship != rhs_storage._parentRelationship {return false}
         return true
       }
       if !storagesAreEqual {return false}

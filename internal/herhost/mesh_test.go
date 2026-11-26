@@ -16,11 +16,11 @@ func (m fakeMesh) Group() *MeshGroup { return m.group }
 func (m fakeMesh) Describe(_ context.Context, bot, name string, args json.RawMessage) (string, []string) {
 	return "Start " + name + " for " + bot, []string{"mesh", "mini/app"}
 }
-func (m fakeMesh) Call(_ context.Context, bot, callID, name string, args json.RawMessage) (string, any, bool) {
+func (m fakeMesh) Call(_ context.Context, bot, conversation, callID, name string, args json.RawMessage) (string, any, bool) {
 	if name == "fails" {
 		return "failed", nil, true
 	}
-	return fmt.Sprintf("%s %s %s %s", bot, callID, name, args), map[string]any{"session": map[string]any{"session_id": "s_1"}}, false
+	return fmt.Sprintf("%s %s %s %s %s", bot, conversation, callID, name, args), map[string]any{"session": map[string]any{"session_id": "s_1"}}, false
 }
 
 // The mesh host: her is offered the group (none: an empty one), her
@@ -35,7 +35,7 @@ func TestMeshHost(t *testing.T) {
 			offered <- req["params"].(map[string]any)
 			fmt.Fprintf(c, `{"jsonrpc":"2.0","id":%v,"result":{}}`+"\n", req["id"])
 			fmt.Fprintln(c, `{"jsonrpc":"2.0","id":"r1","method":"mesh/describe","params":{"bot":"b1","name":"session_start","arguments":{"project":"mini/app"}}}`)
-			fmt.Fprintln(c, `{"jsonrpc":"2.0","id":"r2","method":"mesh/call","params":{"bot":"b1","call_id":"c9","name":"session_get","arguments":{"session_id":"s_1"}}}`)
+			fmt.Fprintln(c, `{"jsonrpc":"2.0","id":"r2","method":"mesh/call","params":{"bot":"b1","conversation":"s_her2","call_id":"c9","name":"session_get","arguments":{"session_id":"s_1"}}}`)
 			fmt.Fprintln(c, `{"jsonrpc":"2.0","id":"r3","method":"mesh/call","params":{"bot":"b1","call_id":"c10","name":"fails","arguments":{}}}`)
 		case "mesh/news":
 			news <- req["params"].(map[string]any)
@@ -85,7 +85,7 @@ func TestMeshHost(t *testing.T) {
 	if r := got["r1"]; r["summary"] != "Start session_start for b1" || fmt.Sprint(r["rule"]) != "[mesh mini/app]" {
 		t.Errorf("describe: %v", r)
 	}
-	if r := got["r2"]; r["output"] != `b1 c9 session_get {"session_id":"s_1"}` || r["is_error"] != false || fmt.Sprint(r["details"]) != "map[session:map[session_id:s_1]]" {
+	if r := got["r2"]; r["output"] != `b1 s_her2 c9 session_get {"session_id":"s_1"}` || r["is_error"] != false || fmt.Sprint(r["details"]) != "map[session:map[session_id:s_1]]" {
 		t.Errorf("call: %v", r)
 	}
 	if r := got["r3"]; r["is_error"] != true || r["details"] != nil {
@@ -94,14 +94,21 @@ func TestMeshHost(t *testing.T) {
 
 	// News: her's refusal is final, a lost connection is not.
 	h.mon = c
-	if err := h.News(ctx, "b1", "msg_1", "s_1", "Codex in mini/app", "text"); err == nil || !errors.Is(err, ErrRefused) {
+	if err := h.News(ctx, "b1", "s_her2", "msg_1", "s_1", "Codex in mini/app", "text"); err == nil || !errors.Is(err, ErrRefused) {
 		t.Fatalf("news her refused: %v", err)
 	}
-	if n := <-news; n["bot"] != "b1" || n["id"] != "msg_1" || n["text"] != "text" || n["from"].(map[string]any)["name"] != "Codex in mini/app" {
+	if n := <-news; n["bot"] != "b1" || n["conversation"] != "s_her2" || n["id"] != "msg_1" || n["text"] != "text" || n["from"].(map[string]any)["name"] != "Codex in mini/app" {
 		t.Errorf("news: %v", n)
 	}
+	// For her main conversation it names none.
+	if err := h.News(ctx, "b1", "", "msg_2", "s_1", "Codex in mini/app", "text"); err == nil {
+		t.Fatal("news her refused was taken")
+	}
+	if n := <-news; n["conversation"] != nil {
+		t.Errorf("news for the main conversation: %v", n)
+	}
 	c.Close()
-	if err := h.News(ctx, "b1", "msg_1", "s_1", "x", "text"); err == nil || errors.Is(err, ErrRefused) {
+	if err := h.News(ctx, "b1", "", "msg_1", "s_1", "x", "text"); err == nil || errors.Is(err, ErrRefused) {
 		t.Fatalf("news on a closed connection: %v", err)
 	}
 }

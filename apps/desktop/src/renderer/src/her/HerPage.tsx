@@ -3,6 +3,7 @@ import { runningAgents } from "@hermesh/her-client";
 import { useTranslation } from "react-i18next";
 import type { Methods, Op } from "@hermesh/her-protocol";
 import type { Machine } from "@hermesh/proto/local";
+import type { Session } from "@hermesh/proto/session";
 import { agoText } from "@hermesh/core";
 import { Mark } from "@hermesh/ui";
 import { errorText, useNow, useStore } from "../store";
@@ -18,7 +19,7 @@ import { RoutinesPanel } from "./RoutinesPanel";
 import { BrowserPage, EnvironmentPage, ModelPage, ProviderPage, SearchPage, SkillPage, SkillsPage, StoragePage } from "./HerPages";
 import { FirstRun, Setup } from "./Setup";
 import { AccessSheet, HerDialog } from "./sheets";
-import { TopBar } from "./TopBar";
+import { ConversationBar, TopBar } from "./TopBar";
 import "./her.css";
 
 // The Her entry (docs/her-server.md §9): a conversation with Her, the
@@ -60,28 +61,46 @@ export default function HerPage() {
   return <Environment key={machine.machineId} machine={machine} envs={envs} choose={choose} />;
 }
 
-function Environment({ machine, envs, choose }: { machine: Machine; envs: Machine[]; choose: (machineId: string) => void }) {
+/**
+ * A conversation of the owner's with Her besides her main one, opened from the task list (docs/her-conversations.md
+ * §3.2): her page's chat, on that conversation, under the task's title.
+ */
+export function HerConversationPage({ session }: { session: Session }) {
+  const st = useStore();
+  const envs = useMemo(() => environments(st.machines), [st.machines]);
+  const machine = st.machines.find((m) => m.machineId === session.machineId);
+  const { set } = st;
+  const choose = useCallback((machineId: string) => set({ selection: { kind: "her", machine: machineId } }), [set]);
+  if (!machine) return <div className="ctool drag" />;
+  return <Environment key={`${machine.machineId}/${session.sessionId}`} machine={machine} envs={envs} choose={choose} task={session} />;
+}
+
+function Environment({ machine, envs, choose, task }: { machine: Machine; envs: Machine[]; choose: (machineId: string) => void; task?: Session }) {
   const { t } = useTranslation("her");
   const st = useStore();
   const { show, set } = st;
   const env = useEnvironment(machine);
   const kept = useKept(machine.machineId);
-  const waiting = useWaiting(machine);
+  const allWaiting = useWaiting(machine);
+  // A task's conversation is Her's once she has made it: until then nothing opens, and never her main one.
+  const conversation = task ? task.providerSessionRef || "" : undefined;
+  const mine = conversation ?? "";
+  const waiting = useMemo(() => ({ ...allWaiting, list: allWaiting.list.filter((w) => w.conversation === mine) }), [allWaiting, mine]);
   const [panel, setPanel] = useState<Panel>(null);
   const [sheet, setSheet] = useState<HerSheet>(null);
   const id = machine.machineId;
   // Until her answers, and while the machine is offline: Her and the conversation as this Mac keeps them.
-  const bot = env.bots.find((b) => b.default) ?? kept?.bot;
-  const live = useConversation(machine, bot, show);
-  const conv = live.view || !kept?.view ? live : { ...live, view: kept.view, session: kept.session };
+  const bot = env.bots.find((b) => b.default) ?? (task ? undefined : kept?.bot);
+  const live = useConversation(machine, conversation === "" ? undefined : bot, show, conversation);
+  const conv = live.view || !kept?.view || task ? live : { ...live, view: kept.view, session: kept.session };
   // Her's sub-agents that wait and that work, for the Progress button on her page, while her conversation is followed here.
-  const followed = live.rpc ? live.view : null;
+  const followed = live.rpc && !task ? live.view : null;
   const agentsWaiting = followed ? runningAgents(followed).filter((a) => (a.view.live?.approvals.length ?? 0) > 0).length : -1;
   const agentsRunning = followed ? runningAgents(followed).length - agentsWaiting : -1;
   useEffect(() => {
-    set({ herAgents: agentsWaiting < 0 ? null : { waits: agentsWaiting, running: agentsRunning } });
+    if (!task) set({ herAgents: agentsWaiting < 0 ? null : { waits: agentsWaiting, running: agentsRunning } });
   }, [agentsWaiting, agentsRunning, set]);
-  useEffect(() => () => set({ herAgents: null }), [set]);
+  useEffect(() => () => void (!task && set({ herAgents: null })), [set]);
   // Delivered meanwhile: what waits is asked for again as Her changes.
   const refreshWaiting = waiting.refresh;
   const anyWaiting = waiting.list.length > 0;
@@ -127,15 +146,16 @@ function Environment({ machine, envs, choose }: { machine: Machine; envs: Machin
     },
     [conv.rpc, conv.session, machine.machineName, show],
   );
+  const key = conversation ? `${id}#${conversation}` : id;
   const her = useMemo<Her>(
-    () => ({ machine, envs, choose, env, bot, panel, setPanel, sheet, setSheet, call, run, openConsole }),
-    [machine, envs, choose, env, bot, panel, sheet, call, run, openConsole],
+    () => ({ machine, conversation: conversation || undefined, key, envs, choose, env, bot, panel, setPanel, sheet, setSheet, call, run, openConsole }),
+    [machine, conversation, key, envs, choose, env, bot, panel, sheet, call, run, openConsole],
   );
   // Progress (docs/her-team.md §15) is this page too: the same connections, so going from one to the other reads nothing again.
   const sel = st.selection;
-  const progress = sel.kind === "progress" && !!bot;
+  const progress = sel.kind === "progress" && !!bot && !task;
   const shown = bot && !progress ? panel : null;
-  const visibleBot = !progress && !sheet && !st.sheet && !st.searching && conv.view ? bot?.id : undefined;
+  const visibleBot = !task && !progress && !sheet && !st.sheet && !st.searching && conv.view ? bot?.id : undefined;
   useLayoutEffect(() => {
     if (!visibleBot) return;
     window.hermesh?.setVisibleHer(id, visibleBot);
@@ -151,8 +171,8 @@ function Environment({ machine, envs, choose }: { machine: Machine; envs: Machin
             <Progress bot={bot} conv={conv} op={op} task={sel.kind === "progress" ? sel.task : undefined} />
           ) : (
             <>
-              <TopBar view={conv.view} />
-              {bot ? <Conversation bot={bot} conv={conv} op={op} waiting={waiting.list} onWaiting={refreshWaiting} /> : <EnvStatus machine={machine} />}
+              {task ? <ConversationBar task={task} view={conv.view} /> : <TopBar view={conv.view} />}
+              {bot && conversation !== "" ? <Conversation bot={bot} conv={conv} op={op} waiting={waiting.list} onWaiting={refreshWaiting} /> : <EnvStatus machine={machine} />}
             </>
           )}
         </div>
@@ -166,9 +186,9 @@ function Environment({ machine, envs, choose }: { machine: Machine; envs: Machin
             route={shown.route}
             onDraft={(text) => {
               setPanel(null);
-              putInComposer(id, text);
+              putInComposer(key, text);
             }}
-            onShowBubble={(runId) => showRun(id, runId)}
+            onShowBubble={(runId) => showRun(key, runId)}
             onBack={home}
             onClose={() => setPanel(null)}
           />

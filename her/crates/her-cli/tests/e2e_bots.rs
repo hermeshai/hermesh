@@ -1032,3 +1032,121 @@ async fn files_and_questions_show_in_the_bots_row_and_count_as_unread() {
     let row = list["bots"].as_array().unwrap().iter().find(|b| b["id"] == bot.as_str()).unwrap().clone();
     assert_eq!(row["unread"], 2);
 }
+
+/// Another conversation of a bot (`bots/conversation_new`) is the same assistant: its memory,
+/// what it can do, its prompt. The bot's row and its unread count stay the main conversation's,
+/// it is not in the session list, and it outlives a restart until it is deleted.
+#[tokio::test]
+async fn another_conversation_is_the_same_bot_and_leaves_its_row_alone() {
+    let env = TestEnv::new("manual", "").await;
+    let schema = SchemaCheck::new(&["BotConversationNewResult", "BotConversationsResult", "SessionNewResult"]);
+    const LINE: &str = "- 回复一律用中文。(2026-11-26)";
+    const MORE: &str = "- 计划先列步骤。(2026-11-26)";
+    let memory = |bot: &str| env.home.path().join("bots").join(bot).join("memory").join("MEMORY.md");
+    let (bot, other);
+    {
+        let (mut child, client, incoming) = env.spawn_rpc(&["serve", "--stdio"]);
+        native_init(&client).await;
+        let mut wire = route(incoming);
+        let listed = client.request("bots/subscribe", Value::Null).await.unwrap();
+        bot = listed["bots"][0]["id"].as_str().unwrap().to_string();
+
+        // The main conversation notes something.
+        let main = open(&client, &bot).await;
+        say(&client, &main, &format!("[[mock:remember:{LINE}]] 以后都用中文")).await;
+        assert_eq!(sent(&until_event(&mut wire, ended).await), ["记下了。"]);
+        until_row(&mut wire, &bot, |b| b["unread"] == 1).await;
+        client.request("bots/read", json!({"bot_id": bot})).await.unwrap();
+        until_row(&mut wire, &bot, |b| b.get("unread").is_none()).await;
+
+        // Another conversation: it knows what the main one noted, and notes more, unasked.
+        let started = client.request("bots/conversation_new", json!({"bot_id": bot})).await.unwrap();
+        schema.check("BotConversationNewResult", &started);
+        other = started["session_id"].as_str().unwrap().to_string();
+        assert_ne!(other, main);
+        let opened = client
+            .request("bots/open", json!({"bot_id": bot, "conversation": other, "events": {"exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]}}))
+            .await
+            .unwrap();
+        schema.check("SessionNewResult", &opened);
+        assert_eq!(opened["session_id"], other.as_str());
+        say(&client, &other, &format!("[[mock:remember:{MORE}]] 计划先列步骤")).await;
+        let events = until_event(&mut wire, ended).await;
+        assert_eq!(sent(&events), ["记下了。"]);
+        assert!(events.iter().all(|e| e["type"] != "approval_requested"), "it asked: {events:?}");
+        assert_eq!(std::fs::read_to_string(memory(&bot)).unwrap(), format!("{LINE}\n{MORE}\n"));
+        // Its copy of the memory is the one it started with.
+        say(&client, &other, "[[mock:recall]] 你记得什么").await;
+        assert_eq!(sent(&until_event(&mut wire, ended).await), [format!("记得：{LINE}")]);
+
+        // The bot's row is still its main conversation's: what it said last, nothing unread.
+        let row = client.request("bots/subscribe", Value::Null).await.unwrap()["bots"][0].clone();
+        assert_eq!((row["session_id"].as_str(), row["last"]["text"].as_str(), row.get("unread")), (Some(main.as_str()), Some("记下了。"), None), "{row}");
+        assert!(row.get("typing").is_none(), "{row}");
+
+        // Not in the session list, but in the bot's own; its prompt is the bot's.
+        let list = client.request("session/list", json!({})).await.unwrap();
+        assert!(list["sessions"].as_array().unwrap().iter().all(|s| s["session_id"] != other.as_str()));
+        let listed = client.request("bots/conversations", json!({"bot_id": bot})).await.unwrap();
+        schema.check("BotConversationsResult", &listed);
+        let ids: Vec<_> = listed["conversations"].as_array().unwrap().iter().map(|c| c["session_id"].clone()).collect();
+        assert_eq!(ids, [json!(other)]);
+        let (_, log) = logs(env.home.path()).into_iter().find(|(_, text)| text.contains(&other)).expect("the log");
+        assert!(log.contains("You are Her, the user's assistant."));
+
+        // One that is not the bot's does not open.
+        let err = client.request("bots/open", json!({"bot_id": bot, "conversation": "s_nope"})).await.unwrap_err();
+        assert_eq!(err.kind(), Some("session_not_found"), "{err:?}");
+        client.request("server/shutdown", json!({})).await.unwrap();
+        common::exit_code(&mut child).await;
+    }
+
+    // After a restart it is still there and still the bot's.
+    let (_child, client, incoming) = env.spawn_rpc(&["serve", "--stdio"]);
+    native_init(&client).await;
+    let mut wire = route(incoming);
+    let listed = client.request("bots/conversations", json!({"bot_id": bot})).await.unwrap();
+    assert_eq!(listed["conversations"][0]["session_id"], other.as_str());
+    let opened = client
+        .request("bots/open", json!({"bot_id": bot, "conversation": other, "events": {"exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]}}))
+        .await
+        .unwrap();
+    assert!(opened["snapshot"]["transcript"].to_string().contains("记得："));
+    say(&client, &other, "[[mock:send:还在。]] 在吗").await;
+    assert_eq!(sent(&until_event(&mut wire, ended).await), ["还在。"]);
+    // Clearing the memory: this conversation forgets at once too.
+    client.request("bots/memory_clear", json!({"bot_id": bot})).await.unwrap();
+    say(&client, &other, "[[mock:recall]] 你记得什么").await;
+    assert_eq!(sent(&until_event(&mut wire, ended).await), ["什么都不记得。"]);
+
+    // Deleted, it leaves the list and its log goes to the trash; the main conversation stays.
+    client.request("bots/conversation_delete", json!({"bot_id": bot, "session_id": other})).await.unwrap();
+    let listed = client.request("bots/conversations", json!({"bot_id": bot})).await.unwrap();
+    assert_eq!(listed["conversations"], json!([]));
+    assert!(logs(env.home.path()).iter().all(|(_, text)| !text.contains(&other)));
+    let err = client.request("bots/conversation_delete", json!({"bot_id": bot, "session_id": other})).await.unwrap_err();
+    assert_eq!(err.kind(), Some("session_not_found"), "{err:?}");
+    let row = client.request("bots/subscribe", Value::Null).await.unwrap()["bots"][0].clone();
+    assert!(row["session_id"].is_string(), "{row}");
+}
+
+/// Another conversation can run on a model and thinking of its own; without them it takes the
+/// main conversation's.
+#[tokio::test]
+async fn another_conversation_runs_on_the_model_it_was_asked_for() {
+    let env = TestEnv::new("manual", "").await;
+    let (_child, client, _incoming) = env.spawn_rpc(&["serve", "--stdio"]);
+    native_init(&client).await;
+    let listed = client.request("bots/subscribe", Value::Null).await.unwrap();
+    let bot = listed["bots"][0]["id"].as_str().unwrap().to_string();
+    let schema = SchemaCheck::new(&["BotConversationNewParams"]);
+    let params = json!({"bot_id": bot, "model": "deepseek/deepseek-flash", "thinking": "low"});
+    schema.check("BotConversationNewParams", &params);
+    let chosen = client.request("bots/conversation_new", params).await.unwrap()["session_id"].as_str().unwrap().to_string();
+    let opened = client.request("bots/open", json!({"bot_id": bot, "conversation": chosen})).await.unwrap();
+    assert_eq!(opened["snapshot"]["session"]["model"], "deepseek/deepseek-flash");
+    assert_eq!(opened["snapshot"]["session"]["thinking"], "low");
+    let plain = client.request("bots/conversation_new", json!({"bot_id": bot})).await.unwrap()["session_id"].as_str().unwrap().to_string();
+    let opened = client.request("bots/open", json!({"bot_id": bot, "conversation": plain})).await.unwrap();
+    assert_eq!(opened["snapshot"]["session"]["model"], "mock/mock-1", "without a choice, the main conversation's");
+}

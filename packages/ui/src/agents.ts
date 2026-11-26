@@ -35,6 +35,8 @@ const titles = new Map([
   ["deepseek", "DeepSeek Harness"],
   ["codebuddy", "CodeBuddy Code"],
   ["grok", "Grok"],
+  // Her, a provider of her own conversations (docs/her-conversations.md).
+  ["her", "Her"],
 ]);
 
 const shortTitles = new Map([
