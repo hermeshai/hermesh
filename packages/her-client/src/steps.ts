@@ -649,6 +649,11 @@ export function approvalPreview(name: string, args: Record<string, unknown>, sum
   return { kind: "args", text: summary || JSON.stringify(args, null, 2) };
 }
 
+/** A tool's input arguments as formatted JSON, or empty when it took none. */
+export function toolInput(t: Pick<ToolView, "args">): string {
+  return Object.keys(t.args).length > 0 ? JSON.stringify(t.args, null, 2) : "";
+}
+
 /** A tool's output as text: its result's text, or what it printed so far. */
 export function toolOutput(t: ToolView): string {
   if (t.result) return t.result.content.flatMap((c) => (c.type === "text" ? [c.text] : [])).join("\n");

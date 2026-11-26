@@ -21,7 +21,7 @@ import { Code } from "./Code";
 import { Markdown } from "./Markdown";
 import { TerminalOutput } from "./TerminalOutput";
 import { FilesRunContext, sizeText } from "./files/files";
-import { partialOutput, useToolOutput } from "./output";
+import { partialInput, partialOutput, useToolInput, useToolOutput } from "./output";
 import { useRowKept, useRowState } from "./useRowState";
 import { useVirtualRows, type VirtualRow } from "./useVirtualRows";
 
@@ -787,6 +787,7 @@ function StepsCard<T>({ kept, items, keyOf, row, running }: {
   };
   // Drawn again after its row was not: back where it was left (its rows above are as high as they were guessed).
   const restored = useRef(false);
+  const revealing = useRef(false);
   useLayoutEffect(() => {
     if (!scroller) return;
     if (kept.follow) scroller.scrollTop = scroller.scrollHeight;
@@ -798,7 +799,8 @@ function StepsCard<T>({ kept, items, keyOf, row, running }: {
     const el = scroller;
     if (!el) return;
     const below = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (below < 8) kept.follow = true;
+    if (revealing.current) revealing.current = false;
+    else if (below < 8) kept.follow = true;
     else if (performance.now() - touched.current < 1000) kept.follow = false;
     kept.top = el.scrollTop;
     mark();
@@ -817,7 +819,17 @@ function StepsCard<T>({ kept, items, keyOf, row, running }: {
     kept.follow = false;
     const opening = head.getAttribute("aria-expanded") === "false";
     requestAnimationFrame(() => {
-      if (opening) head.parentElement?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      const el = scroller;
+      const rowEl = head.parentElement;
+      if (opening && el && rowEl) {
+        const er = el.getBoundingClientRect();
+        const rr = rowEl.getBoundingClientRect();
+        const delta = rr.bottom > er.bottom ? Math.max(0, Math.min(rr.bottom - er.bottom, rr.top - er.top)) : rr.top < er.top ? rr.top - er.top : 0;
+        if (delta !== 0) {
+          revealing.current = true;
+          el.scrollTop += delta;
+        }
+      }
       mark();
     });
   };
@@ -846,16 +858,19 @@ function StepsCard<T>({ kept, items, keyOf, row, running }: {
 }
 
 /**
- * One tool call: what it did, and its output when opened, read whole then
- * when the conversation holds only its start. Folded until opened, failed
- * ones too; the one running shimmers.
+ * One tool call: what it did, and its input and output when opened, read whole
+ * then when the conversation holds only their start. Folded until opened,
+ * failed ones too; the one running shimmers.
  */
 function ToolRow({ id, call, result, resultSeq, running, sessionId }: { id: string; call: ToolCall; result: ToolResult | undefined; resultSeq?: bigint; running: boolean; sessionId: string }) {
   const { t } = useTranslation("session");
   const denied = call.decision === "deny";
   const failed = denied || result?.isError === true;
   const [open, setOpen] = useRowState(`tool:${id}`, false);
+  const wholeIn = useToolInput(sessionId, call, open);
   const whole = useToolOutput(sessionId, result, resultSeq, open);
+  const inNote = wholeIn.failed ? t("chat.outputUnreadable") : !partialInput(call) && call.inputTruncated ? t("chat.truncated") : "";
+  const input = wholeIn.text !== "" ? wholeIn.text + (inNote ? `\n${inNote}` : "") : "";
   // A machine from before whole outputs kept only their start.
   const note = whole.failed ? t("chat.outputUnreadable") : result && !partialOutput(result) && result.truncated ? t("chat.truncated") : "";
   const output = denied ? call.reason : whole.text !== "" ? whole.text + (note ? `\n${note}` : "") : "";
@@ -865,9 +880,10 @@ function ToolRow({ id, call, result, resultSeq, running, sessionId }: { id: stri
       object={toolSummary(toolObject(call), sessionId)}
       title={call.summary}
       shell={call.kind === "shell"}
-      running={running || whole.reading}
+      running={running || wholeIn.reading || whole.reading}
       failed={failed}
       denied={denied}
+      input={input}
       output={output}
       open={open}
       onToggle={() => setOpen(!open)}
@@ -876,11 +892,11 @@ function ToolRow({ id, call, result, resultSeq, running, sessionId }: { id: stri
 }
 
 /**
- * A step on its line: its verb, what it acted on (a command as code; `title`, all of it), and what it gave when
- * opened (`output`; nothing to open without one). The one at work shimmers; a failed one is red. prose: its output is
- * words, not a program's (a thought).
+ * A step on its line: its verb, what it acted on (a command as code; `title`, all of it), and what it took and gave
+ * when opened (`input` and `output`; nothing to open without either). The one at work shimmers; a failed one is red.
+ * prose: its output is words, not a program's (a thought).
  */
-export function ToolLine({ verb, object, title, shell, running, failed, denied = false, output, open, onToggle, prose = false }: {
+export function ToolLine({ verb, object, title, shell, running, failed, denied = false, input = "", output, open, onToggle, prose = false }: {
   verb: string;
   object: string;
   title: string;
@@ -888,14 +904,17 @@ export function ToolLine({ verb, object, title, shell, running, failed, denied =
   running: boolean;
   failed: boolean;
   denied?: boolean;
+  input?: string;
   output: string;
   open: boolean;
   onToggle: () => void;
   prose?: boolean;
 }) {
+  const { t } = useTranslation("session");
+  const expandable = input !== "" || output !== "";
   return (
-    <div className={`tool ${denied ? "denied" : failed ? "err" : ""} ${prose ? "thought" : ""} ${open && output ? "open" : ""}`}>
-      <button className={`th ${running ? "shimmer" : ""}`} onClick={() => output && onToggle()} aria-expanded={output ? open : undefined} aria-busy={running || undefined}>
+    <div className={`tool ${denied ? "denied" : failed ? "err" : ""} ${prose ? "thought" : ""} ${open && expandable ? "open" : ""}`}>
+      <button className={`th ${running ? "shimmer" : ""}`} onClick={() => expandable && onToggle()} aria-expanded={expandable ? open : undefined} aria-busy={running || undefined}>
         <span className="vb">{verb}</span>
         {shell ? (
           <code className="sm2 cmd" title={title}>
@@ -904,9 +923,20 @@ export function ToolLine({ verb, object, title, shell, running, failed, denied =
         ) : (
           <span className="sm2" title={title}>{object}</span>
         )}
-        {output && <Icon name="caret" className="chev" />}
+        {expandable && <Icon name="caret" className="chev" />}
       </button>
-      {output && (prose ? <div className="out sel-text">{output}</div> : <TerminalOutput text={output} follow={running} />)}
+      {open && expandable && (prose ? (
+        <div className="out sel-text">{output}</div>
+      ) : (
+        <TerminalOutput
+          text={output}
+          input={input}
+          inputLabel={t("chat.toolInput")}
+          outputLabel={t("chat.toolOutput")}
+          emptyOutput={running ? t("content.waitingOutput") : t("content.noOutput")}
+          follow={running}
+        />
+      ))}
     </div>
   );
 }

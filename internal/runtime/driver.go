@@ -4,7 +4,9 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -96,6 +98,7 @@ type Event struct {
 	Text                string
 	ToolName            string
 	Command             string
+	Input               string
 	ExitCode            int32
 	HasExitCode         bool
 	Output              string
@@ -445,4 +448,95 @@ func (s *Supervisor) Close() error {
 		_ = e.Session.ForceStop()
 	}
 	return nil
+}
+
+// FormatToolJSON formats a raw JSON value (object, array, or primitive) with
+// 2-space indentation for tool input/output display, returning "" when empty
+// or a trivial null/{}/[].
+func FormatToolJSON(raw json.RawMessage) string {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return ""
+	}
+	switch string(trimmed) {
+	case "null", "{}", "[]", `""`:
+		return ""
+	}
+	if trimmed[0] == '"' {
+		var s string
+		if json.Unmarshal(trimmed, &s) == nil {
+			if inner := strings.TrimSpace(s); len(inner) > 1 && ((inner[0] == '{' && inner[len(inner)-1] == '}') || (inner[0] == '[' && inner[len(inner)-1] == ']')) {
+				var buf bytes.Buffer
+				if json.Indent(&buf, []byte(inner), "", "  ") == nil {
+					kept, _ := KeepOutput(unescapeJSONHTML(buf.String()))
+					return kept
+				}
+			}
+			kept, _ := KeepOutput(s)
+			return kept
+		}
+	}
+	var buf bytes.Buffer
+	if json.Indent(&buf, trimmed, "", "  ") == nil {
+		kept, _ := KeepOutput(unescapeJSONHTML(buf.String()))
+		return kept
+	}
+	kept, _ := KeepOutput(string(trimmed))
+	return kept
+}
+
+// unescapeJSONHTML restores <, >, & that Go's json.Marshal escapes as \u003c,
+// \u003e, \u0026 while preserving exact object key order and \\ escapes.
+func unescapeJSONHTML(s string) string {
+	if !strings.Contains(s, `\u00`) && !strings.Contains(s, `\U00`) {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			if s[i+1] == '\\' {
+				b.WriteString(`\\`)
+				i++
+				continue
+			}
+			if i+5 < len(s) && s[i+1] == 'u' && s[i+2] == '0' && s[i+3] == '0' {
+				switch strings.ToLower(s[i+4 : i+6]) {
+				case "3c":
+					b.WriteByte('<')
+					i += 5
+					continue
+				case "3e":
+					b.WriteByte('>')
+					i += 5
+					continue
+				case "26":
+					b.WriteByte('&')
+					i += 5
+					continue
+				}
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// MarshalToolInput serializes a non-empty Go map/struct as pretty-printed JSON
+// without HTML-escaping (<, >, & stay readable).
+func MarshalToolInput(v any) string {
+	if v == nil {
+		return ""
+	}
+	if m, ok := v.(map[string]any); ok && len(m) == 0 {
+		return ""
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if enc.Encode(v) != nil {
+		return ""
+	}
+	return FormatToolJSON(bytes.TrimSpace(buf.Bytes()))
 }

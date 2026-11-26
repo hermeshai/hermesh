@@ -304,10 +304,12 @@ final class DemoService {
         let runID = world.sessions[i].activeRunID.isEmpty ? "r1" : world.sessions[i].activeRunID
         appendItem(id, runID: runID, kind: .fileChange) {
             $0.filePath = "src/welcome.ts"
+            $0.input = "{\n  \"path\": \"src/welcome.ts\"\n}"
             $0.diff = String(localized: "Updated the sample welcome page.")
         }
         appendItem(id, runID: runID, kind: .commandExecution) {
             $0.command = "npm test"
+            $0.input = "{\n  \"command\": \"npm test\"\n}"
             $0.output = "PASS  welcome.test.ts\n2 tests passed (simulated)"
         }
         let reply = String(localized: "The sample page now says “\(greeting)”. Both example tests passed. Open Session Info to inspect the changes. This is a simulated result; no code was run.")
@@ -962,11 +964,14 @@ final class DemoService {
                 $0.toolName = name
                 if kind == "shell" {
                     $0.command = summary
+                    $0.input = "{\n  \"command\": \"\(summary)\"\n}"
                     $0.exitCode = isError ? 1 : 0
                 } else if kind == "search" {
                     $0.text = summary
+                    $0.input = "{\n  \"pattern\": \"\(summary)\"\n}"
                 } else {
                     $0.filePath = summary
+                    $0.input = "{\n  \"path\": \"\(summary)\"\n}"
                 }
                 $0.status = result ? (isError ? "failed" : "completed") : "running"
                 $0.output = output

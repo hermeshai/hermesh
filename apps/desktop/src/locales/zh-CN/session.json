@@ -24,6 +24,8 @@
     "sentByAt": "{{name}} 派的活 ·",
     "turnFailed": "第 {{turn}} 轮出错：{{title}}",
     "copy": "拷贝",
+    "toolInput": "输入",
+    "toolOutput": "输出",
     "inProgress": "进行中",
     "truncated": "…（已截断）",
     "outputUnreadable": "…（其余部分现在读不到）",

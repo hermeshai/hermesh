@@ -3128,6 +3128,26 @@ public nonisolated struct Hermesh_Session_V1_TurnItem: @unchecked Sendable {
   /// Clears the value of `workspace`. Subsequent reads from it will return its default value.
   public mutating func clearWorkspace() {_uniqueStorage()._workspace = nil}
 
+  public var input: String {
+    get {_storage._input}
+    set {_uniqueStorage()._input = newValue}
+  }
+
+  public var inputTruncated: Bool {
+    get {_storage._inputTruncated}
+    set {_uniqueStorage()._inputTruncated = newValue}
+  }
+
+  public var inputBlobSha256: String {
+    get {_storage._inputBlobSha256}
+    set {_uniqueStorage()._inputBlobSha256 = newValue}
+  }
+
+  public var inputSize: UInt64 {
+    get {_storage._inputSize}
+    set {_uniqueStorage()._inputSize = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -3182,6 +3202,14 @@ public nonisolated struct Hermesh_Session_V1_ToolCall: Sendable {
   public var decision: String = String()
 
   public var reason: String = String()
+
+  public var input: String = String()
+
+  public var inputTruncated: Bool = false
+
+  public var inputBlobSha256: String = String()
+
+  public var inputSize: UInt64 = 0
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -8019,7 +8047,7 @@ nonisolated extension Hermesh_Session_V1_TodoStep: SwiftProtobuf.Message, SwiftP
 
 nonisolated extension Hermesh_Session_V1_TurnItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".TurnItem"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}item_id\0\u{3}session_id\0\u{3}run_id\0\u{1}seq\0\u{1}kind\0\u{1}status\0\u{1}actor\0\u{1}text\0\u{1}streaming\0\u{1}attachments\0\u{3}tool_name\0\u{1}command\0\u{3}exit_code\0\u{1}output\0\u{3}output_truncated\0\u{3}output_blob_sha256\0\u{3}output_size\0\u{3}file_path\0\u{1}diff\0\u{1}additions\0\u{1}deletions\0\u{3}plan_title\0\u{3}todo_steps\0\u{3}request_id\0\u{3}checkpoint_id\0\u{3}from_selection\0\u{3}to_selection\0\u{3}handoff_strategy\0\u{3}mail_message_id\0\u{3}mail_address\0\u{3}mail_name\0\u{3}mail_delivered\0\u{3}mail_in_reply_to\0\u{1}failure\0\u{3}created_at\0\u{3}updated_at\0\u{1}workspace\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}item_id\0\u{3}session_id\0\u{3}run_id\0\u{1}seq\0\u{1}kind\0\u{1}status\0\u{1}actor\0\u{1}text\0\u{1}streaming\0\u{1}attachments\0\u{3}tool_name\0\u{1}command\0\u{3}exit_code\0\u{1}output\0\u{3}output_truncated\0\u{3}output_blob_sha256\0\u{3}output_size\0\u{3}file_path\0\u{1}diff\0\u{1}additions\0\u{1}deletions\0\u{3}plan_title\0\u{3}todo_steps\0\u{3}request_id\0\u{3}checkpoint_id\0\u{3}from_selection\0\u{3}to_selection\0\u{3}handoff_strategy\0\u{3}mail_message_id\0\u{3}mail_address\0\u{3}mail_name\0\u{3}mail_delivered\0\u{3}mail_in_reply_to\0\u{1}failure\0\u{3}created_at\0\u{3}updated_at\0\u{1}workspace\0\u{1}input\0\u{3}input_truncated\0\u{3}input_blob_sha256\0\u{3}input_size\0")
 
   fileprivate class _StorageClass {
     var _itemID: String = String()
@@ -8059,6 +8087,10 @@ nonisolated extension Hermesh_Session_V1_TurnItem: SwiftProtobuf.Message, SwiftP
     var _createdAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
     var _updatedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
     var _workspace: Hermesh_Session_V1_WorkspaceStep? = nil
+    var _input: String = String()
+    var _inputTruncated: Bool = false
+    var _inputBlobSha256: String = String()
+    var _inputSize: UInt64 = 0
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -8106,6 +8138,10 @@ nonisolated extension Hermesh_Session_V1_TurnItem: SwiftProtobuf.Message, SwiftP
       _createdAt = source._createdAt
       _updatedAt = source._updatedAt
       _workspace = source._workspace
+      _input = source._input
+      _inputTruncated = source._inputTruncated
+      _inputBlobSha256 = source._inputBlobSha256
+      _inputSize = source._inputSize
     }
   }
 
@@ -8161,6 +8197,10 @@ nonisolated extension Hermesh_Session_V1_TurnItem: SwiftProtobuf.Message, SwiftP
         case 35: try { try decoder.decodeSingularMessageField(value: &_storage._createdAt) }()
         case 36: try { try decoder.decodeSingularMessageField(value: &_storage._updatedAt) }()
         case 37: try { try decoder.decodeSingularMessageField(value: &_storage._workspace) }()
+        case 38: try { try decoder.decodeSingularStringField(value: &_storage._input) }()
+        case 39: try { try decoder.decodeSingularBoolField(value: &_storage._inputTruncated) }()
+        case 40: try { try decoder.decodeSingularStringField(value: &_storage._inputBlobSha256) }()
+        case 41: try { try decoder.decodeSingularUInt64Field(value: &_storage._inputSize) }()
         default: break
         }
       }
@@ -8284,6 +8324,18 @@ nonisolated extension Hermesh_Session_V1_TurnItem: SwiftProtobuf.Message, SwiftP
       try { if let v = _storage._workspace {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 37)
       } }()
+      if !_storage._input.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._input, fieldNumber: 38)
+      }
+      if _storage._inputTruncated != false {
+        try visitor.visitSingularBoolField(value: _storage._inputTruncated, fieldNumber: 39)
+      }
+      if !_storage._inputBlobSha256.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._inputBlobSha256, fieldNumber: 40)
+      }
+      if _storage._inputSize != 0 {
+        try visitor.visitSingularUInt64Field(value: _storage._inputSize, fieldNumber: 41)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -8330,6 +8382,10 @@ nonisolated extension Hermesh_Session_V1_TurnItem: SwiftProtobuf.Message, SwiftP
         if _storage._createdAt != rhs_storage._createdAt {return false}
         if _storage._updatedAt != rhs_storage._updatedAt {return false}
         if _storage._workspace != rhs_storage._workspace {return false}
+        if _storage._input != rhs_storage._input {return false}
+        if _storage._inputTruncated != rhs_storage._inputTruncated {return false}
+        if _storage._inputBlobSha256 != rhs_storage._inputBlobSha256 {return false}
+        if _storage._inputSize != rhs_storage._inputSize {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -8396,7 +8452,7 @@ nonisolated extension Hermesh_Session_V1_WorkspaceStep: SwiftProtobuf.Message, S
 
 nonisolated extension Hermesh_Session_V1_ToolCall: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ToolCall"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}call_id\0\u{1}kind\0\u{1}name\0\u{1}summary\0\u{1}decision\0\u{1}reason\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}call_id\0\u{1}kind\0\u{1}name\0\u{1}summary\0\u{1}decision\0\u{1}reason\0\u{1}input\0\u{3}input_truncated\0\u{3}input_blob_sha256\0\u{3}input_size\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -8410,6 +8466,10 @@ nonisolated extension Hermesh_Session_V1_ToolCall: SwiftProtobuf.Message, SwiftP
       case 4: try { try decoder.decodeSingularStringField(value: &self.summary) }()
       case 5: try { try decoder.decodeSingularStringField(value: &self.decision) }()
       case 6: try { try decoder.decodeSingularStringField(value: &self.reason) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.input) }()
+      case 8: try { try decoder.decodeSingularBoolField(value: &self.inputTruncated) }()
+      case 9: try { try decoder.decodeSingularStringField(value: &self.inputBlobSha256) }()
+      case 10: try { try decoder.decodeSingularUInt64Field(value: &self.inputSize) }()
       default: break
       }
     }
@@ -8434,6 +8494,18 @@ nonisolated extension Hermesh_Session_V1_ToolCall: SwiftProtobuf.Message, SwiftP
     if !self.reason.isEmpty {
       try visitor.visitSingularStringField(value: self.reason, fieldNumber: 6)
     }
+    if !self.input.isEmpty {
+      try visitor.visitSingularStringField(value: self.input, fieldNumber: 7)
+    }
+    if self.inputTruncated != false {
+      try visitor.visitSingularBoolField(value: self.inputTruncated, fieldNumber: 8)
+    }
+    if !self.inputBlobSha256.isEmpty {
+      try visitor.visitSingularStringField(value: self.inputBlobSha256, fieldNumber: 9)
+    }
+    if self.inputSize != 0 {
+      try visitor.visitSingularUInt64Field(value: self.inputSize, fieldNumber: 10)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -8444,6 +8516,10 @@ nonisolated extension Hermesh_Session_V1_ToolCall: SwiftProtobuf.Message, SwiftP
     if lhs.summary != rhs.summary {return false}
     if lhs.decision != rhs.decision {return false}
     if lhs.reason != rhs.reason {return false}
+    if lhs.input != rhs.input {return false}
+    if lhs.inputTruncated != rhs.inputTruncated {return false}
+    if lhs.inputBlobSha256 != rhs.inputBlobSha256 {return false}
+    if lhs.inputSize != rhs.inputSize {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

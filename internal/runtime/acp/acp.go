@@ -2642,16 +2642,25 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			if name == "" {
 				name = "Terminal"
 			}
+			var inText string
+			if at.command != "" {
+				inText = runtime.MarshalToolInput(map[string]any{"command": at.command})
+			}
 			toolEv = &runtime.Event{
 				Kind:     runtime.EventToolStarted,
 				ItemID:   termID,
 				ToolName: name,
 				Command:  at.command,
+				Input:    inText,
 			}
 		} else if standalone && termDone && (at.command != "" || at.title != "") {
 			name := at.title
 			if name == "" {
 				name = "Terminal"
+			}
+			var inText string
+			if at.command != "" {
+				inText = runtime.MarshalToolInput(map[string]any{"command": at.command})
 			}
 			kept, _ := runtime.KeepOutput(outSnap)
 			toolEv = &runtime.Event{
@@ -2659,6 +2668,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 				ItemID:      termID,
 				ToolName:    name,
 				Command:     at.command,
+				Input:       inText,
 				ExitCode:    at.exitCode,
 				HasExitCode: true,
 				Output:      kept,
@@ -2767,6 +2777,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			}
 		}
 		toolName, cmd, filePath := mapACPToolFields(st, s.spec.Workdir)
+		inText := formatACPToolInput(st, cmd, filePath)
 		wasStarted := st.started
 		st.started = true
 		status := st.status
@@ -2952,13 +2963,14 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			}
 			return
 		}
-		if status != "completed" && status != "failed" && (!wasStarted || u.SessionUpdate == "tool_call" || isLaunchAck || toolName != "" || cmd != "" || filePath != "") {
+		if status != "completed" && status != "failed" && (!wasStarted || u.SessionUpdate == "tool_call" || isLaunchAck || toolName != "" || cmd != "" || filePath != "" || inText != "") {
 			s.emit(runtime.Event{
 				Kind:     runtime.EventToolStarted,
 				ItemID:   id,
 				Text:     stSnap.summary,
 				ToolName: toolName,
 				Command:  cmd,
+				Input:    inText,
 				FilePath: filePath,
 			})
 		}
@@ -2973,9 +2985,6 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			if status == "failed" {
 				exit = 1
 			}
-			if outText == "" {
-				outText = status
-			}
 			kept, _ := runtime.KeepOutput(outText)
 			s.emit(runtime.Event{
 				Kind:        runtime.EventToolCompleted,
@@ -2983,6 +2992,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 				Text:        stSnap.summary,
 				ToolName:    toolName,
 				Command:     cmd,
+				Input:       inText,
 				FilePath:    filePath,
 				ExitCode:    exit,
 				HasExitCode: true,
@@ -3217,10 +3227,11 @@ func (s *session) extractACPToolContent(raw json.RawMessage) (output string, dif
 		return "", "", "", ""
 	}
 	var items []struct {
-		Type       string `json:"type"`
-		Path       string `json:"path"`
-		NewText    string `json:"newText"`
-		TerminalID string `json:"terminalId"`
+		Type       string  `json:"type"`
+		Path       string  `json:"path"`
+		OldText    *string `json:"oldText"`
+		NewText    string  `json:"newText"`
+		TerminalID string  `json:"terminalId"`
 		Content    struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
@@ -3250,8 +3261,8 @@ func (s *session) extractACPToolContent(raw json.RawMessage) (output string, dif
 			if it.NewText != "" {
 				diffNewText = it.NewText
 			}
-			if it.Path != "" {
-				parts = append(parts, it.Path)
+			if diffOut := formatACPDiff(it.Path, s.spec.Workdir, it.OldText, it.NewText); diffOut != "" {
+				parts = append(parts, diffOut)
 			}
 		case "terminal":
 			if it.TerminalID != "" {
@@ -3302,7 +3313,93 @@ func extractACPRawOutput(raw json.RawMessage) string {
 			}
 		}
 	}
+	return runtime.FormatToolJSON(raw)
+}
+
+func formatACPToolInput(st *acpToolState, cmd, filePath string) string {
+	if s := runtime.FormatToolJSON(st.rawInput); s != "" {
+		return s
+	}
+	if cmd != "" {
+		return runtime.MarshalToolInput(map[string]any{"command": cmd})
+	}
+	if filePath != "" && filePath != st.title {
+		return runtime.MarshalToolInput(map[string]any{"path": filePath})
+	}
+	if st.filePath != "" {
+		return runtime.MarshalToolInput(map[string]any{"path": st.filePath})
+	}
 	return ""
+}
+
+func formatACPDiff(path, workdir string, oldPtr *string, newText string) string {
+	if oldPtr == nil && newText == "" {
+		return ""
+	}
+	oldText := ""
+	if oldPtr != nil {
+		oldText = *oldPtr
+	}
+	if oldPtr != nil && oldText == newText {
+		return ""
+	}
+	splitLines := func(t string) []string {
+		if t == "" {
+			return nil
+		}
+		return strings.Split(strings.TrimSuffix(t, "\n"), "\n")
+	}
+	oldLines := splitLines(oldText)
+	newLines := splitLines(newText)
+	pre := 0
+	for pre < len(oldLines) && pre < len(newLines) && oldLines[pre] == newLines[pre] {
+		pre++
+	}
+	suf := 0
+	for pre+suf < len(oldLines) && pre+suf < len(newLines) && oldLines[len(oldLines)-1-suf] == newLines[len(newLines)-1-suf] {
+		suf++
+	}
+	const ctxLines = 3
+	oldStart := max(0, pre-ctxLines)
+	oldEnd := min(len(oldLines), len(oldLines)-suf+ctxLines)
+	newStart := max(0, pre-ctxLines)
+	newEnd := min(len(newLines), len(newLines)-suf+ctxLines)
+	var b strings.Builder
+	rel := path
+	if workdir != "" && filepath.IsAbs(rel) {
+		if r, err := filepath.Rel(workdir, rel); err == nil && r != "." && !strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+			rel = filepath.ToSlash(r)
+		}
+	}
+	if rel != "" {
+		if oldPtr == nil || len(oldLines) == 0 {
+			fmt.Fprintf(&b, "--- /dev/null\n+++ b/%s\n", rel)
+		} else {
+			fmt.Fprintf(&b, "--- a/%s\n+++ b/%s\n", rel, rel)
+		}
+	}
+	oldPos := oldStart + 1
+	if len(oldLines) == 0 {
+		oldPos = 0
+	}
+	newPos := newStart + 1
+	if len(newLines) == 0 {
+		newPos = 0
+	}
+	fmt.Fprintf(&b, "@@ -%d,%d +%d,%d @@\n", oldPos, oldEnd-oldStart, newPos, newEnd-newStart)
+	for i := oldStart; i < pre; i++ {
+		fmt.Fprintf(&b, " %s\n", oldLines[i])
+	}
+	for i := pre; i < len(oldLines)-suf; i++ {
+		fmt.Fprintf(&b, "-%s\n", oldLines[i])
+	}
+	for i := pre; i < len(newLines)-suf; i++ {
+		fmt.Fprintf(&b, "+%s\n", newLines[i])
+	}
+	for i := len(newLines) - suf; i < newEnd; i++ {
+		fmt.Fprintf(&b, " %s\n", newLines[i])
+	}
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 func extractACPRawInput(raw json.RawMessage) (cmd, path, summary string) {
@@ -4004,7 +4101,12 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 		s.mu.Lock()
 		s.terminals[termID] = mt
 		s.mu.Unlock()
-		s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: termID, ToolName: "Terminal", Command: fullCmd})
+		termInMap := map[string]any{"command": fullCmd}
+		if p.Cwd != "" {
+			termInMap["cwd"] = p.Cwd
+		}
+		termInput := runtime.MarshalToolInput(termInMap)
+		s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: termID, ToolName: "Terminal", Command: fullCmd, Input: termInput})
 		go func() {
 			err := cmd.Wait()
 			if err != nil {
@@ -4049,7 +4151,7 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 			if bgEv != nil {
 				s.emit(*bgEv)
 			}
-			s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: termID, ToolName: "Terminal", Command: fullCmd, ExitCode: int32(mt.exit), HasExitCode: true, Output: kept})
+			s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: termID, ToolName: "Terminal", Command: fullCmd, Input: termInput, ExitCode: int32(mt.exit), HasExitCode: true, Output: kept})
 		}()
 		reply(map[string]any{"terminalId": termID})
 

@@ -713,6 +713,73 @@ func runMockACP() {
 				} `json:"prompt"`
 			}
 			_ = json.Unmarshal(m.Params, &p)
+			if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "tool_io_cases") {
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_read_silent",
+							"title":         "read_file",
+							"kind":          "read",
+							"status":        "completed",
+							"locations":     []any{map[string]any{"path": "internal/machine/her_test.go"}},
+							"rawInput": map[string]any{
+								"Path":      "internal/machine/her_test.go",
+								"StartLine": 1,
+								"EndLine":   80,
+							},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_diff",
+							"title":         "edit_file",
+							"kind":          "edit",
+							"status":        "completed",
+							"rawInput": map[string]any{
+								"Path":   "pkg/a.go",
+								"Target": "return 1",
+							},
+							"content": []any{
+								map[string]any{
+									"type":    "diff",
+									"path":    "pkg/a.go",
+									"oldText": "package a\nfunc f() int {\n\treturn 1\n}\n",
+									"newText": "package a\nfunc f() int {\n\treturn 2\n}\n",
+								},
+							},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_mcp_json",
+							"title":         "mcp__hermesh__message_send",
+							"kind":          "other",
+							"status":        "completed",
+							"rawInput":      map[string]any{"to": "worker", "message": "go"},
+							"rawOutput":     map[string]any{"id": "msg_99", "delivered": true},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      promptReqID,
+					"result":  map[string]any{"stopReason": "end_turn"},
+				})
+				continue
+			}
 			if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "antigravity_artifacts") {
 				brainDir := os.Getenv("MOCK_BRAIN_DIR")
 				planPath := filepath.Join(brainDir, "implementation_plan.md")
@@ -1863,8 +1930,8 @@ loop:
 	if len(msgTexts) != 2 || msgTexts[0] != "acp_preamble" || msgTexts[1] != "perm=opt_reject env=accept:staging" || msgIDs[0] == msgIDs[1] {
 		t.Fatalf("expected 2 distinct assistant messages (preamble + post-tool), got IDs=%v texts=%v", msgIDs, msgTexts)
 	}
-	if completedTool == nil || completedTool.Command != "pytest -q" || completedTool.Output != "3 passed" {
-		t.Fatalf("ACP tool_call_update array content not parsed/merged: %+v", completedTool)
+	if completedTool == nil || completedTool.Command != "pytest -q" || !strings.Contains(completedTool.Input, `"command": "pytest -q"`) || completedTool.Output != "3 passed" {
+		t.Fatalf("ACP tool_call_update array content/input not parsed/merged: %+v", completedTool)
 	}
 }
 
@@ -1893,7 +1960,7 @@ func TestClaudeMultiStepToolResultArrayAndSkipInteractiveTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	var msgIDs, msgTexts []string
-	var startedPath, completedOut string
+	var startedPath, startedInput, completedOut string
 	var completedToolIDs []string
 	timeout := time.After(8 * time.Second)
 loop:
@@ -1908,6 +1975,7 @@ loop:
 				msgTexts = append(msgTexts, ev.Text)
 			case runtime.EventToolStarted:
 				startedPath = ev.FilePath
+				startedInput = ev.Input
 			case runtime.EventToolCompleted:
 				completedToolIDs = append(completedToolIDs, ev.ItemID)
 				completedOut = ev.Output
@@ -1922,7 +1990,7 @@ loop:
 	if len(completedToolIDs) != 1 || completedToolIDs[0] != "tu_read" {
 		t.Fatalf("expected only tu_read completion (no orphan AskUserQuestion completion), got %v", completedToolIDs)
 	}
-	if startedPath != "pkg/foo.go" || completedOut != "package foo" {
+	if startedPath != "pkg/foo.go" || !strings.Contains(startedInput, `"pkg/foo.go"`) || completedOut != "package foo" {
 		t.Fatalf("Claude Read FilePath=%q Output=%q, want pkg/foo.go / package foo", startedPath, completedOut)
 	}
 }
@@ -2904,5 +2972,62 @@ func TestAntigravityACPScheduleLifecycleSettlesSessionStatus(t *testing.T) {
 		Archived:    true,
 	}); err != nil {
 		t.Fatalf("expected settled session to archive cleanly without active-background error: %v", err)
+	}
+}
+
+func TestACPToolInputOutputDiffAndNoCompletedPlaceholder(t *testing.T) {
+	ctx := context.Background()
+	exe, _ := os.Executable()
+	drv := acp.NewDriver("")
+	sess, err := drv.StartSession(ctx, runtime.StartSpec{
+		SessionID: "s_acp_io",
+		Workdir:   t.TempDir(),
+		Instance: &sessionv1.ProviderInstanceConfig{
+			InstanceId: "gemini",
+			Driver:     "acp",
+			AcpFlavor:  "gemini",
+			BinaryPath: exe,
+			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--"},
+			Env:        map[string]string{"HERMESH_MOCK_DRIVER": "acp"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	if err := sess.StartTurn(ctx, runtime.TurnInput{RunID: "r_io", Prompt: "tool_io_cases"}); err != nil {
+		t.Fatal(err)
+	}
+	done := map[string]runtime.Event{}
+	timeout := time.After(8 * time.Second)
+loop:
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timed out waiting for ACP tool_io_cases turn")
+		case ev := <-sess.Events():
+			if ev.Kind == runtime.EventToolCompleted {
+				done[ev.ItemID] = ev
+			}
+			if ev.Kind == runtime.EventTurnCompleted {
+				break loop
+			}
+		}
+	}
+	r := done["tc_read_silent"]
+	if r.Output != "" || !strings.Contains(r.Input, `"StartLine": 1`) {
+		t.Fatalf("silent ACP read must preserve JSON input and leave output empty (no 'completed' placeholder): %+v", r)
+	}
+	d := done["tc_diff"]
+	if !strings.Contains(d.Input, `"Target": "return 1"`) || !strings.Contains(d.Output, "-\treturn 1") || !strings.Contains(d.Output, "+\treturn 2") {
+		t.Fatalf("ACP diff content block must format unified diff: %+v", d)
+	}
+	m := done["tc_mcp_json"]
+	if !strings.Contains(m.Input, `"to": "worker"`) || !strings.Contains(m.Output, `"id": "msg_99"`) {
+		t.Fatalf("ACP structured JSON rawOutput not preserved: %+v", m)
+	}
+	if got := runtime.FormatToolJSON(json.RawMessage(`{"command":"echo ran \u003e ran.txt \u0026\u0026 cat \u003c ran.txt"}`)); !strings.Contains(got, `"echo ran > ran.txt && cat < ran.txt"`) {
+		t.Fatalf("FormatToolJSON did not unescape HTML angle/ampersand escapes: %s", got)
 	}
 }

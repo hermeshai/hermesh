@@ -158,7 +158,16 @@ function toolItem(it: TurnItem, run: Run | undefined, activeBgItems: ReadonlySet
     return {
       kind: "tool",
       seq,
-      call: create(ToolCallSchema, { callId, kind: "edit", name: "Edit", summary: it.filePath }),
+      call: create(ToolCallSchema, {
+        callId,
+        kind: "edit",
+        name: "Edit",
+        summary: it.filePath,
+        input: it.input,
+        inputTruncated: it.inputTruncated,
+        inputBlobSha256: it.inputBlobSha256,
+        inputSize: it.inputSize,
+      }),
       result: create(ToolResultSchema, { callId, summary: it.diff }),
       running: false,
     };
@@ -169,7 +178,16 @@ function toolItem(it: TurnItem, run: Run | undefined, activeBgItems: ReadonlySet
   return {
     kind: "tool",
     seq,
-    call: create(ToolCallSchema, { callId, kind: shell ? "shell" : toolKind(name), name, summary: shell ? it.command : it.filePath }),
+    call: create(ToolCallSchema, {
+      callId,
+      kind: shell ? "shell" : toolKind(name),
+      name,
+      summary: shell ? it.command : it.filePath,
+      input: it.input,
+      inputTruncated: it.inputTruncated,
+      inputBlobSha256: it.inputBlobSha256,
+      inputSize: it.inputSize,
+    }),
     result: running && it.output === ""
       ? undefined
       : create(ToolResultSchema, {
