@@ -320,3 +320,61 @@ private func kind(_ it: TranscriptItem) -> String {
     let row2 = WorkspaceRow(seq: 1, state: .done, step: sw)
     #expect(row2.title.code == "feat" && row2.details.map(\.value) == ["In place", "feat (was main)", "/wt/s"])
 }
+
+@Test func activeTodoStepsAndFocusTrackTurnChainAndAutoCollapse() {
+    var p = Hermesh_Session_V1_SessionProjection()
+    p.session = .with { $0.sessionID = "s_todo"; $0.status = .running; $0.activeRunID = "r1" }
+    p.runs = [
+        .with { $0.runID = "r1"; $0.ordinal = 1; $0.status = .running; $0.author = .with { $0.kind = .owner; $0.id = "dev" } },
+    ]
+    p.items = [
+        item(1, "r1", .userMessage) { $0.text = "optimize halo" },
+        item(2, "r1", .todoList) {
+            $0.itemID = "r1:todo:todo"
+            $0.text = "Inspecting motion constraints"
+            $0.todoSteps = [
+                .with { $0.text = "Check motion tests"; $0.status = "in_progress" },
+                .with { $0.text = "Rewrite CALayer sprite"; $0.status = "pending" },
+            ]
+        },
+    ]
+
+    #expect(activeTodoSteps(p) == [
+        TodoStepView(text: "Check motion tests", status: .inProgress),
+        TodoStepView(text: "Rewrite CALayer sprite", status: .pending),
+    ])
+    #expect(sessionFocusText(p) == "Inspecting motion constraints")
+
+    p.items.append(item(3, "r1", .reasoning) { $0.text = "thinking..."; $0.streaming = true })
+    #expect(sessionFocusText(p) == nil)
+    p.items[2].streaming = false
+
+    p.items[1].text = ""
+    p.items.append(item(4, "r1", .commandExecution) { $0.command = "pnpm bench"; $0.text = "Run GPU benchmark"; $0.status = "running" })
+    #expect(sessionFocusText(p) == "Run GPU benchmark")
+    p.items[3].status = "completed"
+    #expect(sessionFocusText(p) == "Check motion tests")
+
+    p.session.status = .idle
+    p.session.activeRunID = ""
+    p.session.activeBackgroundCount = 1
+    #expect(activeTodoSteps(p).count == 2)
+
+    p.runs.append(.with { $0.runID = "r2"; $0.ordinal = 2; $0.status = .running; $0.author = .with { $0.kind = .system }; $0.wakeReason = "Run GPU benchmark" })
+    p.session.status = .running
+    p.session.activeRunID = "r2"
+    #expect(activeTodoSteps(p).count == 2)
+
+    p.runs.append(.with { $0.runID = "r3"; $0.ordinal = 3; $0.status = .running; $0.author = .with { $0.kind = .owner } })
+    p.session.activeRunID = "r3"
+    #expect(activeTodoSteps(p).isEmpty)
+
+    p.items.append(item(5, "r3", .todoList) {
+        $0.itemID = "r3:todo:todo"
+        $0.todoSteps = [
+            .with { $0.text = "Step A"; $0.status = "done" },
+            .with { $0.text = "Step B"; $0.status = "skipped" },
+        ]
+    })
+    #expect(activeTodoSteps(p).isEmpty)
+}

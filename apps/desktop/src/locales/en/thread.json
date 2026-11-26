@@ -42,6 +42,9 @@
     "tool": "Running tools…",
     "working": "Working…"
   },
+  "todo": {
+    "label": "Steps"
+  },
   "mode": {
     "code": "Code",
     "plan": "Plan",

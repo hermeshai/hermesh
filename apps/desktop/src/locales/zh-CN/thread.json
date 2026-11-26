@@ -42,6 +42,9 @@
     "tool": "处理中",
     "working": "工作中"
   },
+  "todo": {
+    "label": "步骤进展"
+  },
   "mode": {
     "code": "编码",
     "plan": "规划",

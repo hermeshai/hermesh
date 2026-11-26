@@ -3523,6 +3523,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				toolName := ev.ToolName
 				cmd := ev.Command
 				filePath := ev.FilePath
+				text := strings.TrimSpace(ev.Text)
 				if prev != nil {
 					if prev.RunId != "" {
 						ownerRunID = prev.RunId
@@ -3535,6 +3536,9 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					}
 					if filePath == "" {
 						filePath = prev.FilePath
+					}
+					if text == "" {
+						text = prev.Text
 					}
 					if output == "" && prev.Output != "" {
 						output = prev.Output
@@ -3553,6 +3557,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					RunId:            ownerRunID,
 					Kind:             kind,
 					Status:           status,
+					Text:             text,
 					ToolName:         toolName,
 					Command:          cmd,
 					FilePath:         filePath,
@@ -3570,7 +3575,10 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 						sNow.Progress = &sessionv1.SessionProgress{}
 					}
 					if ev.Kind == runtime.EventToolStarted {
-						curTool := toolName
+						curTool := text
+						if curTool == "" {
+							curTool = toolName
+						}
 						if curTool == "" {
 							curTool = cmd
 						}
@@ -3782,18 +3790,80 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			if cur == nil {
 				continue
 			}
-			itemID := scopeRunItemID(cur.runID, ev.ItemID, "todo")
+			rawID := ev.ItemID
+			if rawID == "" {
+				rawID = "todo"
+			}
+			itemID := scopeRunItemID(cur.runID, rawID, "todo")
 			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				prev, _ := tx.GetTurnItem(sessionID, itemID)
+				focus := strings.TrimSpace(ev.Text)
+				if !ev.HasFocus && prev != nil {
+					focus = prev.Text
+				}
 				it := &sessionv1.TurnItem{
 					ItemId:    itemID,
 					SessionId: sessionID,
 					RunId:     cur.runID,
 					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_TODO_LIST,
 					Status:    "completed",
+					Text:      focus,
 					TodoSteps: ev.TodoSteps,
 				}
 				if err := tx.PutTurnItem(it); err != nil {
 					return err
+				}
+				if focus != "" {
+					if sNow, sErr := tx.GetSession(sessionID); sErr == nil {
+						if sNow.Progress == nil {
+							sNow.Progress = &sessionv1.SessionProgress{}
+						}
+						sNow.Progress.CurrentTool = focus
+						_ = putSessionSynced(tx, sNow)
+					}
+				}
+				return tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: sessionID,
+					Type:      "item.updated",
+					Item:      it,
+				})
+			})
+			e.publish(evs, nil)
+
+		case runtime.EventFocusUpdated:
+			cur := e.ensureContinuationTurn(pump)
+			if cur == nil {
+				continue
+			}
+			focus := strings.TrimSpace(ev.Text)
+			itemID := scopeRunItemID(cur.runID, "todo", "todo")
+			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				prev, _ := tx.GetTurnItem(sessionID, itemID)
+				if focus == "" && prev == nil {
+					return nil
+				}
+				var steps []*sessionv1.TodoStep
+				if prev != nil {
+					steps = prev.TodoSteps
+				}
+				it := &sessionv1.TurnItem{
+					ItemId:    itemID,
+					SessionId: sessionID,
+					RunId:     cur.runID,
+					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_TODO_LIST,
+					Status:    "completed",
+					Text:      focus,
+					TodoSteps: steps,
+				}
+				if err := tx.PutTurnItem(it); err != nil {
+					return err
+				}
+				if sNow, sErr := tx.GetSession(sessionID); sErr == nil {
+					if sNow.Progress == nil {
+						sNow.Progress = &sessionv1.SessionProgress{}
+					}
+					sNow.Progress.CurrentTool = focus
+					_ = putSessionSynced(tx, sNow)
 				}
 				return tx.AppendEvent(&sessionv1.SessionEvent{
 					SessionId: sessionID,
