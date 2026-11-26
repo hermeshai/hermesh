@@ -100,8 +100,6 @@ struct SessionActions: View {
 
     var body: some View {
         Button("Rename", systemImage: "pencil") { renaming = true }
-        Button("Regenerate Title", systemImage: "arrow.trianglehead.2.clockwise") { Task { await model.regenerateTitle(session) } }
-            .disabled(session.titleGenerating)
         if session.status == .archived {
             Button("Unarchive", systemImage: "tray.and.arrow.up") { Task { await model.setArchived(session, false) } }
         } else {
