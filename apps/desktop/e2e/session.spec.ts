@@ -211,6 +211,79 @@ test("the title is 14px medium, bright in front and grey while the window is beh
   await app.close();
 });
 
+test("double-clicking the top session title edits it in place without shifting the bar, and syncs with the sidebar", async () => {
+  const started = JSON.parse(await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "顶部改名", "--prompt", "say 好", "--wait", "-o", "json"));
+  const id = started.session.session_id as string;
+  const { app, page } = await launch();
+  try {
+    // On New Session there is no session yet, so the heading stays part of the window's drag bar.
+    await page.getByTestId("nav-new-thread").click();
+    expect(await page.getByTestId("thread-title").evaluate((el) => getComputedStyle(el).getPropertyValue("-webkit-app-region"))).not.toBe("no-drag");
+
+    const list = await sessionList(page);
+    await open(page, "顶部改名");
+    const heading = page.getByTestId("thread-title");
+    const whereTag = page.getByTestId("session-where");
+    expect(await page.locator(".ctool").evaluate((el) => getComputedStyle(el).getPropertyValue("-webkit-app-region"))).toBe("drag");
+    expect(await heading.evaluate((el) => getComputedStyle(el).getPropertyValue("-webkit-app-region"))).toBe("no-drag");
+
+    const hBox = (await heading.boundingBox())!;
+    const wBox = (await whereTag.boundingBox())!;
+
+    await heading.dblclick();
+    const input = page.getByTestId("thread-title-input");
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue("顶部改名");
+    expect(await input.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd])).toEqual([0, 4]);
+    // Only the header turns into an input; the sidebar row stays calm.
+    await expect(list.getByRole("textbox")).toHaveCount(0);
+
+    const iBox = (await input.boundingBox())!;
+    const wBoxEditing = (await whereTag.boundingBox())!;
+    expect((await page.locator(".ctool").boundingBox())!.height).toBe(44);
+    expect(Math.abs(iBox.x + 6 - hBox.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(wBoxEditing.x - wBox.x)).toBeLessThanOrEqual(2);
+    await snap(page, "header-rename");
+    await page.emulateMedia({ colorScheme: "dark" });
+    await snap(page, "header-rename-dark");
+    await page.emulateMedia({ colorScheme: "light" });
+
+    // Typing a longer title grows the field smoothly and slides the environment label right.
+    await input.fill("这是一个更长的会话标题用来验证自适应宽度");
+    expect((await input.boundingBox())!.width).toBeGreaterThan(iBox.width + 80);
+    expect((await whereTag.boundingBox())!.x).toBeGreaterThan(wBoxEditing.x + 80);
+
+    // Esc cancels and restores the original title.
+    await input.press("Escape");
+    await expect(input).toHaveCount(0);
+    await expect(heading).toHaveText("顶部改名");
+
+    // IME composition Enter does not prematurely commit; plain Enter saves and updates both header and sidebar.
+    await heading.dblclick();
+    await expect(input).toBeFocused();
+    await input.fill("回车保存的新标题");
+    await input.evaluate((el) => {
+      el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 229, isComposing: true, bubbles: true, cancelable: true }));
+    });
+    await expect(input).toBeFocused();
+    await input.press("Enter");
+    await expect(input).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "回车保存的新标题" })).toBeVisible();
+    await expect(list.getByRole("listitem").filter({ hasText: "回车保存的新标题" })).toBeVisible();
+    await expect.poll(async () => JSON.parse(await cli("session", "get", id, "-o", "json")).session.title).toBe("回车保存的新标题");
+
+    // Clicking outside commits the edited title as well.
+    await page.getByRole("heading", { name: "回车保存的新标题" }).dblclick();
+    await expect(input).toBeFocused();
+    await input.fill("失焦保存的标题");
+    await page.getByRole("log", { name: "对话" }).click();
+    await expect(page.getByRole("heading", { name: "失焦保存的标题" })).toBeVisible();
+    await expect(list.getByRole("listitem").filter({ hasText: "失焦保存的标题" })).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
 test("the session card floats over the conversation with what a glance needs, and the toolbar hides it", async () => {
   const { app, page } = await launch();
   // The card docks only when there is room beside the conversation, regardless of the runner's display size.
