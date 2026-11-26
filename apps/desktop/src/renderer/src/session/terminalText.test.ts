@@ -5,6 +5,7 @@ import {
   effectiveCodeLang,
   findSecretSpans,
   hiddenChars,
+  inspectRunnableShell,
   maskSecrets,
   parseTerminalLines,
   runnableShellCommand,
@@ -41,16 +42,36 @@ describe("terminalText", () => {
     assert.ok(masked.includes("••••••••"));
   });
 
-  it("enforces the 5-gate runnable shell block check", () => {
-    assert.equal(runnableShellCommand("bash", "$ go test ./..."), "go test ./...");
+  it("allows single-line and multi-line scripts with shebangs/comments, flags destructive commands, and blocks TUIs/bidi", () => {
+    assert.deepEqual(inspectRunnableShell("bash", "$ go test ./..."), {
+      command: "go test ./...",
+      destructive: false,
+    });
     assert.equal(runnableShellCommand("", "pnpm -r typecheck"), "pnpm -r typecheck");
-    // Multi-line scripts are not 1-click runnable
-    assert.equal(runnableShellCommand("bash", "cd foo\nrm -rf bar"), null);
-    // Interactive TUIs / bare REPLs are blocked
-    assert.equal(runnableShellCommand("bash", "vim Cargo.toml"), null);
+
+    // Multi-line bash scripts with shebang and conditionals are runnable!
+    const script = `#!/usr/bin/env bash\n\ndir="\${1:-.}"\nif [ ! -d "$dir" ]; then\n  exit 1\nfi\nls -la "$dir"`;
+    const plan = inspectRunnableShell("bash", script);
+    assert.ok(plan);
+    assert.equal(plan.destructive, false);
+    assert.ok(plan.command.includes('ls -la "$dir"'));
+
+    // Comment-only blocks are not runnable
+    assert.equal(inspectRunnableShell("bash", "#!/usr/bin/env bash\n# nothing here"), null);
+
+    // Destructive multi-line scripts are flagged for inline confirmation
+    const cleanScript = "# Clean build cache\nrm -rf dist apps/desktop/out\necho done";
+    assert.deepEqual(inspectRunnableShell("bash", cleanScript), {
+      command: cleanScript,
+      destructive: true,
+    });
+
+    // Interactive TUIs / bare REPLs are blocked even inside multi-line scripts
+    assert.equal(runnableShellCommand("bash", "cd foo\nvim Cargo.toml"), null);
     assert.equal(runnableShellCommand("bash", "htop"), null);
     assert.equal(runnableShellCommand("bash", "python3"), null);
     assert.equal(runnableShellCommand("bash", "python3 -m unittest"), "python3 -m unittest");
+
     // Trojan-source bidi/zero-width hidden characters are blocked
     assert.equal(hiddenChars("echo \u202Eevil"), true);
     assert.equal(runnableShellCommand("bash", "echo \u202Eevil"), null);

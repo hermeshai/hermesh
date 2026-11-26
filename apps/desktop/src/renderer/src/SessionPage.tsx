@@ -61,7 +61,8 @@ import { ComposerPlace, LaunchAsk, ModelButtons, ThreadComposer, type Branches, 
 import { Inspector } from "./session/Inspector";
 import { SessionRequest } from "./session/Request";
 import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, remember } from "./session/choices";
-import { ContentScope, SessionRunContext } from "./session/scope";
+import { ContentScope, SessionRunContext, type SessionCodeActions } from "./session/scope";
+import { stripTerminalEscapes } from "./session/terminalText";
 import { FilesHomeContext, type FilesHome } from "./session/files/files";
 import { FileViewHost } from "./session/files/FileView";
 import { ImageLightboxHost } from "./session/files/ImageLightbox";
@@ -517,25 +518,6 @@ export function SessionPage() {
     }
   };
 
-  const runShellShortcut = (rawCmd: string) => {
-    const cmd = rawCmd.trim();
-    if (!activeSessionId || !cmd || archived) return;
-    setSpoken((n) => n + 1);
-    const req = {
-      sessionId: activeSessionId,
-      text: `! ${cmd}`,
-      attachments: [],
-      intent: DispatchIntent.QUEUE,
-      modelSelection: modelSel.instanceId ? modelSel : undefined,
-      runtimeMode: clampedMode,
-      interactionMode,
-      locale: language(),
-    };
-    const job = sends.current.then(() => sessionApi.dispatchMessage(req));
-    sends.current = job.catch(() => {});
-    void job.catch((e) => st.show(errorText(e)));
-  };
-
   const handleAttachFiles = async (files: File[]) => {
     for (const f of files) {
       try {
@@ -751,6 +733,39 @@ export function SessionPage() {
     });
   };
   const archived = currentSession?.status === SessionStatus.ARCHIVED;
+  const sendOutputToChat = (command: string, exitCode: number, output: string, stopped = false) => {
+    if (!activeSessionId || archived) return;
+    const cleanOut = stripTerminalEscapes(output).trim();
+    const capped =
+      cleanOut.length > 12_000
+        ? `${cleanOut.slice(0, 6_000)}\n...[truncated]...\n${cleanOut.slice(-6_000)}`
+        : cleanOut;
+    const header = stopped
+      ? ts("content.sentStoppedHeader")
+      : ts("content.sentResultHeader", { code: exitCode });
+    const text = capped
+      ? `${header}\n\`\`\`bash\n${command}\n\`\`\`\n\`\`\`text\n${capped}\n\`\`\``
+      : `${header}\n\`\`\`bash\n${command}\n\`\`\`\n${ts("content.noOutput")}`;
+    setSpoken((n) => n + 1);
+    const req = {
+      sessionId: activeSessionId,
+      text,
+      attachments: [],
+      intent: DispatchIntent.QUEUE,
+      modelSelection: modelSel.instanceId ? modelSel : undefined,
+      runtimeMode: clampedMode,
+      interactionMode,
+      locale: language(),
+    };
+    const job = sends.current.then(() => sessionApi.dispatchMessage(req));
+    sends.current = job.catch(() => {});
+    void job.catch((e) => st.show(errorText(e)));
+  };
+  const codeActions = useMemo<SessionCodeActions | null>(
+    () => (activeSessionId && !archived ? { sessionId: activeSessionId, sendOutputToChat } : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeSessionId, archived, modelSel, clampedMode, interactionMode],
+  );
   const unread = steps.length === 0 && (currentSession?.progress?.lastEventSeq ?? 0n) > 0n && !currentSession?.offlineQueued;
   const behind = (activeProjection?.session?.progress?.lastEventSeq ?? 0n) < (listedSession?.progress?.lastEventSeq ?? 0n);
   const shownSessionTitle =
@@ -917,7 +932,7 @@ export function SessionPage() {
         <div className={`dwrap th ${dock ? "dock" : ""}`} data-testid="thread-page">
           <div className="dmain">
             <ContentScope value={activeSessionId}>
-              <SessionRunContext.Provider value={archived ? null : runShellShortcut}>
+              <SessionRunContext.Provider value={codeActions}>
               <FilesHomeContext.Provider value={filesHome}>
               <ChatFrame
                 key={activeSessionId}

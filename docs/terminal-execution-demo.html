@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="black">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>代码块原位运行与底部终端结果窗 · 精简版原型 v2</title>
+<style>
+:root {
+  --font-mac: "Google Sans Flex", "Google Sans", -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif;
+  --mono: "Google Sans Code", ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+[data-theme="light"] {
+  --page: #e8eaf0; --page-fg: #1b1c22; --page-fg2: #62646f; --page-card: #ffffff; --page-bd: rgba(0,0,0,.08);
+  --win: #ffffff; --win2: #f4f4f7; --side: #f4f4f7;
+  --code: #f6f7fa; --term: #eef0f5; --term-bar: #e7eaf1;
+  --l1: rgba(0,0,0,.86); --l2: rgba(0,0,0,.55); --l3: rgba(0,0,0,.34); --l4: rgba(0,0,0,.14);
+  --sep: rgba(0,0,0,.08); --fill: rgba(0,0,0,.045); --fill2: rgba(0,0,0,.08); --fill3: rgba(0,0,0,.13);
+  --accent: #3d5bff; --accent-t: #2a47e8; --accent-bg: rgba(61,91,255,.10);
+  --bub: #3d5bff; --bub-fg: #ffffff;
+  --ok: #158847; --ok-bg: rgba(21,136,71,.11);
+  --warn: #c96a08; --warn-bg: rgba(201,106,8,.12);
+  --danger: #d4323e; --danger-bg: rgba(212,50,62,.10);
+  --shadow-win: 0 0 0 .5px rgba(0,0,0,.18), 0 24px 70px rgba(10,20,50,.24), 0 8px 22px rgba(10,20,50,.10);
+  --sh-kw: #a626a4; --sh-fn: #4078f2; --sh-str: #50a14f; --sh-var: #e45649; --sh-cmt: #90939d;
+  --ansi-cyan: #0b7d9e; --ansi-dir: #2a5bd7;
+}
+
+[data-theme="dark"] {
+  --page: #0e1015; --page-fg: #ececf1; --page-fg2: #9a9ca8; --page-card: #181920; --page-bd: rgba(255,255,255,.08);
+  --win: #1e1e21; --win2: #29292d; --side: #25252a;
+  --code: #18181b; --term: #121215; --term-bar: #151519;
+  --l1: rgba(255,255,255,.90); --l2: rgba(255,255,255,.56); --l3: rgba(255,255,255,.34); --l4: rgba(255,255,255,.14);
+  --sep: rgba(255,255,255,.09); --fill: rgba(255,255,255,.05); --fill2: rgba(255,255,255,.09); --fill3: rgba(255,255,255,.14);
+  --accent: #4a66ff; --accent-t: #94a8ff; --accent-bg: rgba(91,121,255,.16);
+  --bub: #4a66ff; --bub-fg: #ffffff;
+  --ok: #3fcf86; --ok-bg: rgba(63,207,134,.14);
+  --warn: #f5a623; --warn-bg: rgba(245,166,35,.14);
+  --danger: #ff6670; --danger-bg: rgba(255,102,112,.14);
+  --shadow-win: 0 0 0 .5px rgba(255,255,255,.14), 0 24px 70px rgba(0,0,0,.62), 0 8px 22px rgba(0,0,0,.35);
+  --sh-kw: #c678dd; --sh-fn: #61afef; --sh-str: #98c379; --sh-var: #e06c75; --sh-cmt: #6c7080;
+  --ansi-cyan: #56b6c2; --ansi-dir: #7aa2f7;
+}
+
+[data-theme="black"] {
+  --page: #040406; --page-fg: #f5f5f7; --page-fg2: #87888f; --page-card: #101014; --page-bd: rgba(255,255,255,.075);
+  --win: #070709; --win2: #131317; --side: #111114;
+  --code: #0d0d11; --term: #060608; --term-bar: #0a0a0e;
+  --l1: #f5f5f7; --l2: #bcbdc6; --l3: #7c7d86; --l4: rgba(255,255,255,.15);
+  --sep: rgba(255,255,255,.07); --fill: rgba(255,255,255,.045); --fill2: rgba(255,255,255,.08); --fill3: rgba(255,255,255,.13);
+  --accent: #2f71e3; --accent-t: #8ab4f8; --accent-bg: rgba(47,113,227,.16);
+  --bub: #1f1f24; --bub-fg: #f5f5f7;
+  --ok: #7aae66; --ok-bg: rgba(122,174,102,.14);
+  --warn: #f3c949; --warn-bg: rgba(243,201,73,.13);
+  --danger: #e25c5c; --danger-bg: rgba(226,92,92,.14);
+  --shadow-win: 0 0 0 .5px rgba(255,255,255,.11), 0 24px 70px rgba(0,0,0,.78);
+  --sh-kw: #d291ff; --sh-fn: #79b8ff; --sh-str: #9ecbff; --sh-var: #ffab70; --sh-cmt: #6a737d;
+  --ansi-cyan: #56d4dd; --ansi-dir: #79b8ff;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--page);
+  color: var(--page-fg);
+  font: 13.5px/1.5 var(--font-mac);
+  min-height: 100vh;
+  padding-bottom: 92px;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+svg { display: block; flex: none; }
+
+/* Page Header & Layout */
+.top {
+  max-width: 1480px; margin: 0 auto; padding: 18px 24px 6px;
+  display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+}
+.top h1 { font-size: 18px; margin: 0; font-weight: 650; letter-spacing: -.01em; }
+.top span { color: var(--page-fg2); font-size: 13px; }
+
+.wrap {
+  max-width: 1480px; margin: 0 auto; padding: 10px 24px;
+  display: flex; gap: 22px; align-items: flex-start; justify-content: center; flex-wrap: wrap;
+}
+
+/* Spec Notes Card */
+.notes {
+  width: 340px; max-width: 100%; flex: none;
+  background: var(--page-card); border: 1px solid var(--page-bd);
+  border-radius: 14px; padding: 16px 18px; font-size: 12.8px; line-height: 1.62;
+}
+.notes h3 { margin: 0 0 6px; font-size: 14px; font-weight: 650; display: flex; align-items: center; gap: 6px; }
+.notes p { margin: 0; color: var(--page-fg2); }
+.notes ul { margin: 6px 0 0; padding-left: 18px; color: var(--page-fg2); }
+.notes li { margin: 5px 0; }
+.notes li b { color: var(--page-fg); font-weight: 600; }
+.notes .blk { margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--page-bd); }
+.badge-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; padding: 1px 8px; border-radius: 99px;
+  background: var(--ok-bg); color: var(--ok); font-weight: 600;
+}
+
+/* Simulated Hermesh Mac Window */
+.mac {
+  width: 980px; max-width: 100%; height: 760px;
+  border-radius: 12px; overflow: hidden; box-shadow: var(--shadow-win);
+  display: flex; background: var(--win); color: var(--l1);
+  font: 13px/1.45 var(--font-mac); position: relative;
+}
+.mside {
+  width: 210px; background: var(--side); border-right: .5px solid var(--sep);
+  padding: 44px 8px 10px; flex: none; position: relative; display: flex; flex-direction: column; gap: 2px;
+}
+.lights { position: absolute; top: 16px; left: 16px; display: flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 6px; background: #ff5f57; }
+.lights i:nth-child(2) { background: #febc2e; }
+.lights i:nth-child(3) { background: #28c840; }
+.mside .nav-i { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 9px; border-radius: 7px; color: var(--l2); font-size: 13px; }
+.mside .gh { font-size: 11.5px; color: var(--l3); padding: 12px 10px 4px; }
+.mside .srow { height: 30px; padding: 0 9px; border-radius: 7px; display: flex; align-items: center; gap: 8px; color: var(--l2); font-size: 13px; }
+.mside .srow.sel { background: var(--fill2); color: var(--l1); font-weight: 500; }
+.mside .srow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+
+.mmain { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--win); position: relative; }
+.ctool {
+  height: 44px; border-bottom: .5px solid var(--sep);
+  display: flex; align-items: center; padding: 0 16px; gap: 10px; flex: none;
+}
+.ctool h2 { margin: 0; font-size: 13.5px; font-weight: 600; }
+.ctool .where { font-size: 12px; color: var(--l3); font-family: var(--mono); }
+
+.cscroll {
+  flex: 1; overflow-y: auto; padding: 18px 28px 110px;
+}
+.ccol {
+  max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px;
+}
+
+/* Conversation Bubbles */
+.um { align-self: flex-end; max-width: 82%; }
+.um .bub {
+  background: var(--bub); color: var(--bub-fg);
+  border-radius: 12px; padding: 9px 14px; font-size: 14px; line-height: 1.55;
+  box-shadow: inset 0 0 0 .5px var(--sep);
+}
+.am { display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 1.6; color: var(--l1); }
+.am-caption { font-size: 12.5px; color: var(--l2); }
+
+/* ================= CODE BLOCK + ATTACHED TERMINAL DRAWER (v2 Simplified) ================= */
+.cblock {
+  background: var(--code);
+  border-radius: 9px;
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  overflow: hidden;
+  transition: box-shadow .18s var(--ease);
+}
+.cblock.is-running {
+  box-shadow: inset 0 0 0 1px rgba(47, 113, 227, .45);
+}
+.cb-h {
+  display: flex; align-items: center; gap: 8px;
+  height: 31px; padding: 0 6px 0 12px;
+  border-bottom: .5px solid var(--sep);
+  font-size: 12px; color: var(--l2);
+}
+.cb-lang {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--l2);
+}
+.cb-acts {
+  margin-left: auto; display: flex; align-items: center; gap: 3px;
+}
+.cb-b {
+  height: 22px; padding: 0 7px; border-radius: 6px;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; color: var(--l2); transition: background .12s, color .12s;
+}
+.cb-b:hover { background: var(--fill2); color: var(--l1); }
+.cb-b.run { color: var(--ok); }
+.cb-b.run:hover { background: var(--ok-bg); }
+.cb-b.warn { color: var(--warn); }
+.cb-b.warn:hover { background: var(--warn-bg); }
+
+/* Running Spinner -> Hover Stop Morph Button */
+.cb-b.running {
+  color: var(--accent-t); background: var(--accent-bg); font-weight: 500;
+  min-width: 68px; justify-content: center;
+}
+.cb-b.running .stop-view { display: none; align-items: center; gap: 4px; }
+.cb-b.running .spin-view { display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
+.cb-b.running:hover {
+  background: var(--danger-bg); color: var(--danger);
+}
+.cb-b.running:hover .spin-view { display: none; }
+.cb-b.running:hover .stop-view { display: inline-flex; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.ring {
+  width: 11px; height: 11px; border-radius: 50%;
+  border: 1.6px solid currentColor; border-right-color: transparent;
+  animation: spin .75s linear infinite;
+}
+
+.cblock pre.cb-src {
+  margin: 0; padding: 10px 13px 11px;
+  font: 12.5px/1.58 var(--mono); color: var(--l1);
+  overflow-x: auto; white-space: pre; user-select: text;
+}
+.sh-cmt { color: var(--sh-cmt); }
+.sh-kw  { color: var(--sh-kw); }
+.sh-fn  { color: var(--sh-fn); }
+.sh-str { color: var(--sh-str); }
+.sh-var { color: var(--sh-var); }
+
+/* Simplified Attached Bottom Terminal Result Window */
+.cb-term {
+  border-top: 1px solid var(--sep);
+  background: var(--term);
+  animation: drawerIn .16s var(--ease);
+}
+@keyframes drawerIn {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.cb-term-bar {
+  display: flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 6px 0 9px;
+  background: var(--term-bar);
+  border-bottom: .5px solid var(--sep);
+  font-size: 11.5px; color: var(--l2);
+}
+.cb-term.folded .cb-term-bar {
+  border-bottom: 0;
+}
+
+/* Entire left status area is one clean fold/unfold trigger (matching ToolLine .th) */
+.term-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 4px; border-radius: 5px;
+  color: var(--l2); min-width: 0;
+  transition: color .12s, background .12s;
+}
+.term-toggle:hover {
+  color: var(--l1); background: var(--fill);
+}
+.term-chev {
+  width: 12px; height: 12px; color: var(--l3);
+  transition: transform .15s var(--ease);
+}
+.cb-term.folded .term-chev {
+  transform: rotate(-90deg);
+}
+
+.status-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex: none;
+}
+.status-dot.running { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); animation: pulse 1.2s infinite; }
+.status-dot.ok { background: var(--ok); }
+.status-dot.err { background: var(--danger); }
+.status-dot.stop { background: var(--warn); }
+@keyframes pulse { 50% { opacity: .45; } }
+
+.term-exit { font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.term-exit.ok { color: var(--ok); }
+.term-exit.err { color: var(--danger); }
+.term-exit.stop { color: var(--warn); }
+
+.term-acts {
+  margin-left: auto; display: flex; align-items: center; gap: 4px;
+}
+.term-ask {
+  height: 21px; padding: 0 8px; border-radius: 5px;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11.5px; font-weight: 500;
+  color: var(--accent-t); background: var(--accent-bg);
+  transition: filter .12s;
+}
+.term-ask:hover { filter: brightness(1.1); }
+.term-ask.sent {
+  color: var(--ok); background: var(--ok-bg); pointer-events: none;
+}
+
+/* Icon-only Copy Output button */
+.term-icon-btn {
+  width: 22px; height: 22px; border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--l3); transition: background .12s, color .12s;
+}
+.term-icon-btn:hover { background: var(--fill2); color: var(--l1); }
+.term-icon-btn.copied { color: var(--ok); }
+
+.cb-term-body {
+  margin: 0; padding: 9px 13px 10px;
+  font: 12px/1.55 var(--mono); color: var(--l2);
+  max-height: 240px; overflow-y: auto; white-space: pre-wrap; user-select: text;
+}
+.cb-term.folded .cb-term-body {
+  display: none;
+}
+
+.ansi-ok { color: var(--ok); }
+.ansi-err { color: var(--danger); }
+.ansi-warn { color: var(--warn); }
+.ansi-dir { color: var(--ansi-dir); font-weight: 500; }
+.ansi-cyan { color: var(--ansi-cyan); }
+.ansi-dim { color: var(--l3); }
+
+/* Inline confirmation bar for destructive multi-line scripts */
+.cb-confirm {
+  border-top: 1px solid var(--sep);
+  background: var(--warn-bg);
+  padding: 7px 12px;
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; color: var(--warn);
+}
+.cb-confirm .push { margin-left: auto; display: flex; gap: 6px; }
+.cb-confirm button {
+  height: 22px; padding: 0 9px; border-radius: 5px; font-size: 12px; font-weight: 500;
+}
+.cb-confirm .btn-cancel { background: var(--fill2); color: var(--l1); }
+.cb-confirm .btn-go { background: var(--warn); color: #000; }
+
+/* Agent Continuation Reply when user clicks "交给 Agent" */
+.agent-followup {
+  border-left: 2px solid var(--accent);
+  padding: 4px 0 4px 12px;
+  font-size: 13.5px; color: var(--l1);
+  animation: drawerIn .2s var(--ease);
+}
+.agent-followup .tag {
+  font-size: 11.5px; color: var(--accent-t); font-weight: 500; margin-bottom: 3px;
+}
+
+/* Composer at bottom of Mac window */
+.cmp-zone {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 8px 24px 14px;
+  background: linear-gradient(transparent, var(--win) 28%);
+}
+.cmp {
+  max-width: 680px; margin: 0 auto;
+  background: var(--win2); border-radius: 12px;
+  box-shadow: inset 0 0 0 .5px var(--sep), 0 4px 16px rgba(0,0,0,.18);
+  padding: 9px 12px 7px;
+}
+.cmp-in { font-size: 13.5px; color: var(--l3); padding-bottom: 8px; }
+.cmp-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--l2); }
+.cmp-send {
+  margin-left: auto; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--fill2); color: var(--l3); display: flex; align-items: center; justify-content: center;
+}
+
+/* Toast inside window */
+.toast {
+  position: absolute; top: 54px; right: 16px; z-index: 50;
+  background: var(--win2); color: var(--l1);
+  box-shadow: 0 0 0 .5px var(--sep), 0 8px 24px rgba(0,0,0,.35);
+  border-radius: 8px; padding: 7px 12px; font-size: 12px;
+  opacity: 0; transform: translateY(-6px); pointer-events: none;
+  transition: opacity .16s, transform .16s;
+}
+.toast.on { opacity: 1; transform: none; }
+
+/* Bottom Prototype Switcher Bar */
+.ctl {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 200;
+  background: var(--page-card); border-top: 1px solid var(--page-bd);
+  padding: 9px 18px; display: flex; flex-wrap: wrap; gap: 8px 20px;
+  align-items: center; justify-content: center; font-size: 12px;
+}
+.ctl .g { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.ctl .g b { color: var(--page-fg2); font-weight: 500; margin-right: 2px; }
+.ctl button {
+  padding: 4px 10px; border-radius: 7px;
+  background: var(--fill2); color: var(--page-fg); transition: background .12s;
+}
+.ctl button:hover { background: var(--fill3); }
+.ctl button.on { background: var(--accent); color: #fff; font-weight: 500; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>代码块原位运行 + 底部终端窗 · 精简版 v2</h1>
+  <span>已按反馈精简：点击状态栏左侧直接折叠/展开 · 右侧仅保留「交给 Agent」与纯图标拷贝按钮</span>
+</header>
+
+<main class="wrap">
+  <!-- Simulated Hermesh Desktop Window -->
+  <section class="mac" aria-label="Hermesh 桌面窗口预览">
+    <aside class="mside">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="nav-i">概览</div>
+      <div class="nav-i">Her 助手</div>
+      <div class="gh">hermesh</div>
+      <div class="srow sel"><span class="dot"></span><span>输出查看目录文件脚本</span></div>
+      <div class="srow"><span class="dot" style="background:var(--l4)"></span><span>修复侧边栏折叠按钮</span></div>
+    </aside>
+
+    <div class="mmain">
+      <div class="ctool">
+        <h2>输出查看目录文件脚本</h2>
+        <span class="where">hermesh · main</span>
+      </div>
+      <div id="toast" class="toast"></div>
+
+      <div class="cscroll">
+        <div class="ccol">
+
+          <!-- Turn 1: Exact user session reproduction -->
+          <div class="um">
+            <div class="bub">随便输出一段脚本，比如查看某个目录存在什么文件。按我说的做，只输出</div>
+          </div>
+
+          <div class="am">
+            <div class="cblock" id="card-ls">
+              <div class="cb-h">
+                <span class="cb-lang">
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M4.6 6.3l2 1.7-2 1.7M8.2 10h3.2"/></svg>
+                  bash
+                </span>
+                <span class="cb-acts">
+                  <button class="cb-b run" id="btn-run-ls" onclick="runBlock('ls')">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.4v9.2L12.4 8z"/></svg>
+                    <span>运行</span>
+                  </button>
+                  <button class="cb-b" onclick="flashToast('已拷贝脚本')">
+                    <svg width="12.5" height="12.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5.2" y="5.2" width="8" height="8" rx="1.6"/><path d="M10.8 5.2V3.8c0-.6-.5-1.1-1.1-1.1H3.9c-.6 0-1.1.5-1.1 1.1v5.8c0 .6.5 1.1 1.1 1.1h1.3"/></svg>
+                    <span>拷贝</span>
+                  </button>
+                </span>
+              </div>
+              <pre class="cb-src"><span class="sh-cmt">#!/usr/bin/env bash</span>
+
+<span class="sh-var">dir</span>=<span class="sh-str">"${1:-.}"</span>
+
+<span class="sh-kw">if</span> [ ! -d <span class="sh-str">"$dir"</span> ]; <span class="sh-kw">then</span>
+  <span class="sh-fn">echo</span> <span class="sh-str">"Directory not found: $dir"</span> &gt;&amp;2
+  <span class="sh-kw">exit</span> 1
+<span class="sh-kw">fi</span>
+
+<span class="sh-fn">ls</span> -la <span class="sh-str">"$dir"</span></pre>
+              <div id="drawer-ls"></div>
+            </div>
+            <div id="followup-ls"></div>
+          </div>
+
+          <!-- Turn 2: Failing test command + Destructive script guardrail -->
+          <div class="um">
+            <div class="bub">再给我一条跑单元测试的命令，以及一段清理构建产物的脚本看看效果</div>
+          </div>
+
+          <div class="am">
+            <div class="am-caption">1. 报错命令（点运行看红字堆栈，右侧一键「交给 Agent 修复」）：</div>
+            <div class="cblock" id="card-test">
+              <div class="cb-h">
+                <span class="cb-lang">
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M4.6 6.3l2 1.7-2 1.7M8.2 10h3.2"/></svg>
+                  bash
+                </span>
+                <span class="cb-acts">
+                  <button class="cb-b run" id="btn-run-test" onclick="runBlock('test')">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.4v9.2L12.4 8z"/></svg>
+                    <span>运行</span>
+                  </button>
+                  <button class="cb-b" onclick="flashToast('已拷贝命令')">
+                    <svg width="12.5" height="12.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5.2" y="5.2" width="8" height="8" rx="1.6"/><path d="M10.8 5.2V3.8c0-.6-.5-1.1-1.1-1.1H3.9c-.6 0-1.1.5-1.1 1.1v5.8c0 .6.5 1.1 1.1 1.1h1.3"/></svg>
+                    <span>拷贝</span>
+                  </button>
+                </span>
+              </div>
+              <pre class="cb-src"><span class="sh-fn">go</span> test -v ./internal/kernel/ -run TestWorkspace</pre>
+              <div id="drawer-test"></div>
+            </div>
+            <div id="followup-test"></div>
+
+            <div class="am-caption" style="margin-top:4px">2. 含 <code>rm -rf</code> 的脚本（保留轻量确认护栏）：</div>
+            <div class="cblock" id="card-clean">
+              <div class="cb-h">
+                <span class="cb-lang">
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M4.6 6.3l2 1.7-2 1.7M8.2 10h3.2"/></svg>
+                  bash
+                </span>
+                <span class="cb-acts">
+                  <button class="cb-b warn" id="btn-run-clean" onclick="askConfirmClean()">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.4v9.2L12.4 8z"/></svg>
+                    <span>运行…</span>
+                  </button>
+                  <button class="cb-b" onclick="flashToast('已拷贝脚本')">
+                    <svg width="12.5" height="12.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5.2" y="5.2" width="8" height="8" rx="1.6"/><path d="M10.8 5.2V3.8c0-.6-.5-1.1-1.1-1.1H3.9c-.6 0-1.1.5-1.1 1.1v5.8c0 .6.5 1.1 1.1 1.1h1.3"/></svg>
+                    <span>拷贝</span>
+                  </button>
+                </span>
+              </div>
+              <pre class="cb-src"><span class="sh-cmt"># 清理本地构建缓存目录</span>
+<span class="sh-fn">rm</span> -rf dist apps/desktop/out
+<span class="sh-fn">echo</span> <span class="sh-str">"Cleaned build artifacts"</span></pre>
+              <div id="drawer-clean"></div>
+            </div>
+            <div id="followup-clean"></div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="cmp-zone">
+        <div class="cmp">
+          <div class="cmp-in">继续聊，或输入 ! 直接在工作区运行命令…</div>
+          <div class="cmp-bar">
+            <span>＋</span>
+            <span>智能自动 · Claude Opus 4.6</span>
+            <span class="cmp-send">↑</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Right Column: v2 Refinements Summary -->
+  <aside class="notes">
+    <h3>v2 精简调整点 <span class="badge-pill">已更新</span></h3>
+    <ul>
+      <li><b>去掉「终端打开」</b>：移除了低频干扰项，视觉大幅干净。</li>
+      <li><b>合并折叠交互（去掉多余的展开/箭头双按钮）</b>：跟 Hermesh 原生工具行一致——<b>直接点击终端栏左侧状态区（带小三角 ▾）即可折叠/展开输出区</b>，输出区内部默认 <code>max-height: 240px</code> 自然滚动。</li>
+      <li><b>拷贝输出改为纯图标按钮</b>：最右侧仅保留一个安静的 <code>copy</code> 小图标（点击变绿勾 <code>✓</code> 1.5s）。</li>
+      <li><b>默认原地运行不惊动模型</b>：0 Token 秒出结果；用户需要时再点右侧 <b>交给 Agent 分析 / 修复</b>。</li>
+    </ul>
+
+    <div class="blk">
+      <h3>终端栏现在的极简结构</h3>
+      <p>左侧：<code>[▾] [●] 退出码 0 · 0.14s</code>（整块可点折叠）<br>右侧：<code>[交给 Agent 分析] [📋]</code>（仅两项）</p>
+    </div>
+  </aside>
+</main>
+
+<nav class="ctl" aria-label="原型状态切换器">
+  <div class="g">
+    <b>主题外观：</b>
+    <button onclick="setTheme('black')" id="th-black" class="on">暗黑 Onyx</button>
+    <button onclick="setTheme('dark')" id="th-dark">深色 Dark</button>
+    <button onclick="setTheme('light')" id="th-light">浅色 Light</button>
+  </div>
+  <div class="g">
+    <b>快捷演示：</b>
+    <button onclick="runBlock('ls')">▶ 跑第 1 段多行脚本</button>
+    <button onclick="runBlock('test')">▶ 跑报错单测</button>
+    <button onclick="resetAll()">↺ 重置全部</button>
+  </div>
+</nav>
+
+<script>
+const timers = {};
+const folded = {};
+
+const COPY_SVG = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.45"><rect x="5.2" y="5.2" width="8" height="8" rx="1.6"/><path d="M10.8 5.2V3.8c0-.6-.5-1.1-1.1-1.1H3.9c-.6 0-1.1.5-1.1 1.1v5.8c0 .6.5 1.1 1.1 1.1h1.3"/></svg>`;
+const CHECK_SVG = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3.4 8.4l3 3 6.2-6.8"/></svg>`;
+const CARET_SVG = `<svg class="term-chev" viewBox="0 0 16 16"><path d="M4.8 6.4h6.4L8 10z" fill="currentColor"/></svg>`;
+
+const SCRIPTS = {
+  ls: {
+    exitCode: 0,
+    duration: '0.14s',
+    chunks: [
+      '<span class="ansi-dim">total 64</span>\n',
+      'drwxr-xr-x  18 yipengfei  staff    576 Nov 26 18:50 <span class="ansi-dir">.</span>\n' +
+      'drwxr-xr-x  24 yipengfei  staff    768 Nov 25 10:12 <span class="ansi-dir">..</span>\n' +
+      '-rw-r--r--   1 yipengfei  staff   2418 Nov 26 14:00 AGENTS.md\n' +
+      '-rw-r--r--   1 yipengfei  staff   1892 Nov 26 15:10 Makefile\n',
+      'drwxr-xr-x   6 yipengfei  staff    192 Nov 26 16:20 <span class="ansi-dir">apps</span>\n' +
+      'drwxr-xr-x  12 yipengfei  staff    384 Nov 26 19:02 <span class="ansi-dir">docs</span>\n' +
+      'drwxr-xr-x   9 yipengfei  staff    288 Nov 26 16:00 <span class="ansi-dir">her</span>\n' +
+      'drwxr-xr-x  21 yipengfei  staff    672 Nov 26 16:00 <span class="ansi-dir">internal</span>\n' +
+      'drwxr-xr-x   7 yipengfei  staff    224 Nov 26 16:12 <span class="ansi-dir">packages</span>'
+    ],
+    agentReply: '当前仓库根目录下包含 `apps`、`docs`、`her`、`internal`、`packages` 等核心模块以及 `Makefile` 和 `AGENTS.md`，需要进一步筛选某类文件吗？'
+  },
+  test: {
+    exitCode: 1,
+    duration: '0.62s',
+    chunks: [
+      '<span class="ansi-cyan">=== RUN   TestWorkspaceCleanup</span>\n',
+      '    workspace_test.go:84: checking dirty worktree retention...\n',
+      '<span class="ansi-err">--- FAIL: TestWorkspaceCleanup (0.41s)</span>\n' +
+      '    <span class="ansi-err">workspace_test.go:91: expected worktree status "kept", got "released"</span>\n' +
+      '<span class="ansi-err">FAIL</span>\tgithub.com/hermeshai/hermesh/internal/kernel\t0.618s'
+    ],
+    agentReply: '定位到 `workspace_test.go:91` 失败原因：未提交的新增文件在归档检查中漏判导致 Worktree 被提前回收，我现在帮你修复。'
+  },
+  clean: {
+    exitCode: 0,
+    duration: '0.09s',
+    chunks: [
+      '<span class="ansi-ok">Cleaned build artifacts</span>'
+    ],
+    agentReply: '已清理 `dist` 与 `apps/desktop/out` 构建产物目录。'
+  }
+};
+
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  ['black', 'dark', 'light'].forEach(k => {
+    document.getElementById('th-' + k).classList.toggle('on', k === t);
+  });
+}
+
+let toastTimer;
+function flashToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('on'), 1800);
+}
+
+function setHeaderRunning(id, secText) {
+  const btn = document.getElementById('btn-run-' + id);
+  btn.className = 'cb-b running';
+  btn.onclick = () => stopBlock(id);
+  btn.innerHTML = `
+    <span class="spin-view"><span class="ring"></span><span>${secText}</span></span>
+    <span class="stop-view">
+      <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><rect x="3.5" y="3.5" width="9" height="9" rx="1.6"/></svg>
+      <span>停止</span>
+    </span>
+  `;
+}
+
+function setHeaderIdle(id, rerun) {
+  const btn = document.getElementById('btn-run-' + id);
+  if (id === 'clean' && !rerun) {
+    btn.className = 'cb-b warn';
+    btn.onclick = () => askConfirmClean();
+    btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.4v9.2L12.4 8z"/></svg><span>运行…</span>`;
+    return;
+  }
+  btn.className = 'cb-b run';
+  btn.onclick = () => (id === 'clean' ? askConfirmClean() : runBlock(id));
+  btn.innerHTML = rerun
+    ? `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12.8 7.6a4.8 4.8 0 1 1-1.4-3.4"/><path d="M12 2.4v2.8H9.2"/></svg><span>重跑</span>`
+    : `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.4v9.2L12.4 8z"/></svg><span>运行</span>`;
+}
+
+function askConfirmClean() {
+  const drawer = document.getElementById('drawer-clean');
+  drawer.innerHTML = `
+    <div class="cb-confirm">
+      <span>⚠ 包含 <code>rm -rf</code> 删除操作，确认在当前工作区执行吗？</span>
+      <span class="push">
+        <button class="btn-cancel" onclick="document.getElementById('drawer-clean').innerHTML=''">取消</button>
+        <button class="btn-go" onclick="runBlock('clean')">确认运行</button>
+      </span>
+    </div>
+  `;
+}
+
+function copyOutput(id, btn) {
+  btn.classList.add('copied');
+  btn.innerHTML = CHECK_SVG;
+  flashToast('已拷贝输出');
+  setTimeout(() => {
+    btn.classList.remove('copied');
+    btn.innerHTML = COPY_SVG;
+  }, 1500);
+}
+
+function renderDrawer(id, state, htmlOut, elapsed) {
+  const spec = SCRIPTS[id];
+  const drawer = document.getElementById('drawer-' + id);
+  const isFold = !!folded[id];
+
+  let statusHtml = '';
+  if (state === 'running') {
+    statusHtml = `<span class="status-dot running"></span><span class="term-exit">正在运行 · ${elapsed}</span>`;
+  } else if (state === 'stopped') {
+    statusHtml = `<span class="status-dot stop"></span><span class="term-exit stop">已停止 · ${elapsed}</span>`;
+  } else if (spec.exitCode === 0) {
+    statusHtml = `<span class="status-dot ok"></span><span class="term-exit ok">退出码 0 · ${spec.duration}</span>`;
+  } else {
+    statusHtml = `<span class="status-dot err"></span><span class="term-exit err">退出码 ${spec.exitCode} · ${spec.duration}</span>`;
+  }
+
+  let askBtn = '';
+  if (state === 'done' || state === 'stopped') {
+    askBtn = `<button class="term-ask" id="ask-${id}" onclick="sendToAgent('${id}')">↑ 发入对话</button>`;
+  }
+
+  drawer.innerHTML = `
+    <div class="cb-term ${isFold ? 'folded' : ''}">
+      <div class="cb-term-bar">
+        <button class="term-toggle" onclick="toggleFold('${id}')" aria-expanded="${!isFold}" title="点击折叠或展开输出">
+          ${CARET_SVG}
+          ${statusHtml}
+        </button>
+        <span class="term-acts">
+          ${askBtn}
+          <button class="term-icon-btn" onclick="copyOutput('${id}', this)" title="拷贝输出" aria-label="拷贝输出">
+            ${COPY_SVG}
+          </button>
+        </span>
+      </div>
+      <pre class="cb-term-body" id="tbody-${id}">${htmlOut || '<span class="ansi-dim">等待输出…</span>'}</pre>
+    </div>
+  `;
+  const body = document.getElementById('tbody-' + id);
+  if (body) body.scrollTop = body.scrollHeight;
+}
+
+function runBlock(id) {
+  stopTimers(id);
+  folded[id] = false;
+  document.getElementById('followup-' + id).innerHTML = '';
+  const card = document.getElementById('card-' + id);
+  card.classList.add('is-running');
+
+  const spec = SCRIPTS[id];
+  let step = 0;
+  let acc = '';
+  let tenths = 0;
+
+  setHeaderRunning(id, '0.0s');
+  renderDrawer(id, 'running', '', '0.0s');
+
+  const clock = setInterval(() => {
+    tenths++;
+    const s = (tenths / 10).toFixed(1) + 's';
+    const spinSpan = document.querySelector(`#btn-run-${id} .spin-view span:last-child`);
+    if (spinSpan) spinSpan.textContent = s;
+  }, 100);
+
+  const streamer = setInterval(() => {
+    if (step < spec.chunks.length) {
+      acc += spec.chunks[step];
+      step++;
+      renderDrawer(id, 'running', acc, (tenths / 10).toFixed(1) + 's');
+    } else {
+      stopTimers(id);
+      card.classList.remove('is-running');
+      setHeaderIdle(id, true);
+      renderDrawer(id, 'done', acc, spec.duration);
+    }
+  }, 360);
+
+  timers[id] = { clock, streamer, getAcc: () => acc, getElapsed: () => (tenths / 10).toFixed(1) + 's' };
+}
+
+function stopBlock(id) {
+  const t = timers[id];
+  if (!t) return;
+  const acc = t.getAcc();
+  const el = t.getElapsed();
+  stopTimers(id);
+  document.getElementById('card-' + id).classList.remove('is-running');
+  setHeaderIdle(id, true);
+  renderDrawer(id, 'stopped', acc + (acc ? '\n' : '') + '<span class="ansi-warn">^C 已终止运行</span>', el);
+  flashToast('已终止运行');
+}
+
+function stopTimers(id) {
+  if (timers[id]) {
+    clearInterval(timers[id].clock);
+    clearInterval(timers[id].streamer);
+    delete timers[id];
+  }
+}
+
+function sendToAgent(id) {
+  const spec = SCRIPTS[id];
+  const ask = document.getElementById('ask-' + id);
+  if (ask) {
+    ask.classList.add('sent');
+    ask.textContent = '✓ 已发入对话';
+  }
+  document.getElementById('followup-' + id).innerHTML = `
+    <div class="agent-followup">
+      <div class="tag">已附带运行结果发送给 Agent</div>
+      <div>${spec.agentReply}</div>
+    </div>
+  `;
+}
+
+function toggleFold(id) {
+  folded[id] = !folded[id];
+  const term = document.querySelector(`#drawer-${id} .cb-term`);
+  if (term) {
+    term.classList.toggle('folded', folded[id]);
+    const btn = term.querySelector('.term-toggle');
+    if (btn) btn.setAttribute('aria-expanded', String(!folded[id]));
+  }
+}
+
+function resetAll() {
+  ['ls', 'test', 'clean'].forEach(id => {
+    stopTimers(id);
+    folded[id] = false;
+    document.getElementById('card-' + id).classList.remove('is-running');
+    document.getElementById('drawer-' + id).innerHTML = '';
+    document.getElementById('followup-' + id).innerHTML = '';
+    setHeaderIdle(id, false);
+  });
+}
+
+setTimeout(() => runBlock('ls'), 300);
+</script>
+</body>
+</html>

@@ -3,6 +3,7 @@ package kernel
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,8 +12,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
 
+	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/kernel/store"
 	"github.com/hermeshai/hermesh/internal/runtime"
@@ -22,7 +25,9 @@ import (
 const (
 	defaultOwnerShellTimeout = 10 * time.Minute
 	maxPromptShellOutput     = 16384
+	maxStreamCommandOutput   = 256 << 10
 	shellStreamInterval      = 120 * time.Millisecond
+	inlineCommandFlushTick   = 50 * time.Millisecond
 )
 
 // ParseShellShortcut extracts an owner's "! <command>" direct shell shortcut.
@@ -264,4 +269,188 @@ func (e *Engine) execOwnerShellCommand(runCtx context.Context, sess *sessionv1.S
 	}
 	publishItem(status, int32(exitCode), preview, trunc, blobSha, uint64(len(raw)), true)
 	return formatShellContinuationPrompt(cmd, exitCode, timedOut, dur, raw), false
+}
+
+func (e *Engine) resolveCommandWorkdir(sess *sessionv1.Session) (string, error) {
+	var base string
+	if sess.ProjectId == ScratchProjectID {
+		base = e.scratchDir
+	} else {
+		ws, err := e.st.Workspace(sess.ProjectId)
+		if err != nil {
+			return "", connect.NewError(connect.CodeFailedPrecondition, errors.New("the session's project is gone"))
+		}
+		base = filepath.Clean(ws.Path)
+	}
+	if sess.GetWorkspaceStrategy().GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE {
+		wt := sess.GetWorkspaceStrategy().GetWorktreePath()
+		if wt == "" {
+			wt = filepath.Join(e.vcs.WorktreesRoot(), sess.SessionId)
+		}
+		wt = filepath.Clean(wt)
+		if st, err := os.Stat(wt); err == nil && st.IsDir() {
+			return wt, nil
+		}
+	}
+	if st, err := os.Stat(base); err == nil && st.IsDir() {
+		return base, nil
+	}
+	return "", connect.NewError(connect.CodeFailedPrecondition, errors.New("the session's workspace folder is unavailable"))
+}
+
+// takeCompleteUTF8 splits b into a valid UTF-8 prefix and any trailing incomplete rune bytes (<= 3 bytes).
+func takeCompleteUTF8(b []byte, final bool) (emit string, rest []byte) {
+	if len(b) == 0 {
+		return "", nil
+	}
+	if final {
+		return strings.ToValidUTF8(string(b), "\uFFFD"), nil
+	}
+	cut := len(b)
+	for i := 1; i <= 3 && i <= len(b); i++ {
+		idx := len(b) - i
+		if utf8.RuneStart(b[idx]) {
+			if !utf8.FullRune(b[idx:]) {
+				cut = idx
+			}
+			break
+		}
+	}
+	if cut == 0 {
+		return "", b
+	}
+	return strings.ToValidUTF8(string(b[:cut]), "\uFFFD"), append([]byte(nil), b[cut:]...)
+}
+
+// RunCommand executes an owner-initiated shell command/script in the session's workspace
+// and streams output chunks directly to the caller without mutating conversation turns.
+func (e *Engine) RunCommand(ctx context.Context, p *Principal, req *sessionv1.RunCommandRequest, send func(*sessionv1.RunCommandEvent) error) error {
+	if p == nil {
+		return connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
+	}
+	if p.Actor.GetKind() != sessionv1.ActorKind_ACTOR_KIND_OWNER {
+		return connect.NewError(connect.CodePermissionDenied, errors.New("only the owner may run direct workspace commands"))
+	}
+	cmd := strings.TrimSpace(req.GetCommand())
+	if cmd == "" {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("command is empty"))
+	}
+	sess, err := e.st.Session(req.GetSessionId())
+	if errors.Is(err, store.ErrNotFound) {
+		return connect.NewError(connect.CodeNotFound, errors.New("session not found"))
+	}
+	if err != nil {
+		return err
+	}
+	if sess.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("archived session is read-only"))
+	}
+	if e.cfg.IsPaused != nil && e.cfg.IsPaused() {
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("machine is paused"))
+	}
+	workdir, err := e.resolveCommandWorkdir(sess)
+	if err != nil {
+		return err
+	}
+
+	cmdCtx, cancel := context.WithTimeout(ctx, defaultOwnerShellTimeout)
+	defer cancel()
+
+	var (
+		mu        sync.Mutex
+		pending   []byte
+		totalSeen int
+		truncated bool
+		stopFlush = make(chan struct{})
+		flushDone = make(chan struct{})
+		sendErr   error
+	)
+
+	flush := func(final bool) bool {
+		mu.Lock()
+		emit, rem := takeCompleteUTF8(pending, final)
+		pending = rem
+		mu.Unlock()
+		if emit == "" {
+			return true
+		}
+		if err := send(&sessionv1.RunCommandEvent{OutputDelta: emit}); err != nil {
+			mu.Lock()
+			if sendErr == nil {
+				sendErr = err
+			}
+			mu.Unlock()
+			cancel()
+			return false
+		}
+		return true
+	}
+
+	go func() {
+		defer close(flushDone)
+		ticker := time.NewTicker(inlineCommandFlushTick)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopFlush:
+				return
+			case <-ticker.C:
+				if !flush(false) {
+					return
+				}
+			}
+		}
+	}()
+
+	start := time.Now()
+	exitCode, runErr := runtime.RunShellStreaming(cmdCtx, cmd, workdir, e.buildShellEnv(sess.SessionId), func(chunk []byte) {
+		mu.Lock()
+		defer mu.Unlock()
+		if totalSeen >= maxStreamCommandOutput {
+			truncated = true
+			return
+		}
+		room := maxStreamCommandOutput - totalSeen
+		if len(chunk) > room {
+			chunk = chunk[:room]
+			truncated = true
+		}
+		totalSeen += len(chunk)
+		pending = append(pending, chunk...)
+	})
+	timedOut := cmdCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil
+	close(stopFlush)
+	<-flushDone
+	dur := time.Since(start)
+
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	mu.Lock()
+	sErr := sendErr
+	mu.Unlock()
+	if sErr != nil {
+		return sErr
+	}
+
+	if runErr != nil && totalSeen == 0 && !timedOut {
+		mu.Lock()
+		pending = append(pending, []byte(runErr.Error())...)
+		mu.Unlock()
+	}
+	if !flush(true) {
+		mu.Lock()
+		defer mu.Unlock()
+		return sendErr
+	}
+	if (timedOut || runErr != nil) && exitCode == 0 {
+		exitCode = -1
+	}
+	return send(&sessionv1.RunCommandEvent{
+		Done:       true,
+		ExitCode:   int32(exitCode),
+		DurationMs: uint64(dur.Milliseconds()),
+		TimedOut:   timedOut,
+		Truncated:  truncated,
+	})
 }

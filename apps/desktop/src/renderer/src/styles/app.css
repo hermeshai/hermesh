@@ -573,7 +573,50 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .cb-acts{margin-left:auto;display:flex;gap:2px}
 .cb-b{height:22px;padding:0 7px;border:0;border-radius:var(--r-sm);background:none;display:inline-flex;align-items:center;gap:4px;font:inherit;font-size:12px;color:var(--l2);cursor:pointer}
 .cb-b:hover{background:var(--fill2);color:var(--l1)}
+.cb-b.run{color:var(--green)}
 .cb-b.run:hover{background:var(--green-bg);color:var(--green)}
+.cb-b.warn{color:var(--orange)}
+.cb-b.warn:hover{background:var(--orange-bg);color:var(--orange)}
+.cb-b.running{color:var(--accent-t);background:var(--accent-bg);font-weight:500;min-width:66px;justify-content:center}
+.cb-b.running .spin-view{display:inline-flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums}
+.cb-b.running .stop-view{display:none;align-items:center;gap:4px}
+.cb-b.running:hover,.cb-b.running:focus-visible{background:var(--red-bg);color:var(--red)}
+.cb-b.running:hover .spin-view,.cb-b.running:focus-visible .spin-view{display:none}
+.cb-b.running:hover .stop-view,.cb-b.running:focus-visible .stop-view{display:inline-flex}
+.cb-ring{width:11px;height:11px;border-radius:50%;border:1.5px solid currentColor;border-right-color:transparent;animation:spin .75s linear infinite}
+.md .cblock.is-running{box-shadow:inset 0 0 0 1px var(--accent-bg),inset 0 0 0 .5px var(--accent-t)}
+.cb-confirm{border-top:.5px solid var(--sep);background:var(--orange-bg);padding:7px 12px;display:flex;align-items:center;gap:10px;font-size:12px;color:var(--orange)}
+.cb-confirm-acts{margin-left:auto;display:flex;gap:6px;flex:none}
+.cb-confirm-cancel,.cb-confirm-go{height:22px;padding:0 9px;border:0;border-radius:var(--r-xs);font:inherit;font-size:12px;font-weight:500;cursor:pointer}
+.cb-confirm-cancel{background:var(--fill2);color:var(--l1)}
+.cb-confirm-cancel:hover{background:var(--fill3)}
+.cb-confirm-go{background:var(--orange);color:#000}
+.cb-term{border-top:.5px solid var(--sep);background:light-dark(rgba(0,0,0,.03),rgba(0,0,0,.28))}
+.cb-term-bar{display:flex;align-items:center;gap:6px;height:28px;padding:0 6px 0 8px;border-bottom:.5px solid var(--sep);font-size:11.5px;color:var(--l2);background:light-dark(rgba(0,0,0,.025),rgba(255,255,255,.02))}
+.cb-term.folded .cb-term-bar{border-bottom:0}
+.term-toggle{height:22px;padding:0 5px;border:0;border-radius:var(--r-xs);background:none;display:inline-flex;align-items:center;gap:6px;font:inherit;color:var(--l2);cursor:pointer;min-width:0}
+.term-toggle:hover{background:var(--fill);color:var(--l1)}
+.term-chev{width:12px;height:12px;color:var(--l3);transition:transform .15s}
+.cb-term.folded .term-chev{transform:rotate(-90deg)}
+.status-dot{width:6px;height:6px;border-radius:50%;flex:none}
+.status-dot.running{background:var(--accent-t);box-shadow:0 0 0 2.5px var(--accent-bg)}
+.status-dot.ok{background:var(--green)}
+.status-dot.err{background:var(--red)}
+.status-dot.stop{background:var(--orange)}
+.term-exit{font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.term-exit.ok{color:var(--green)}
+.term-exit.err{color:var(--red)}
+.term-exit.stop{color:var(--orange)}
+.term-acts{margin-left:auto;display:flex;align-items:center;gap:4px}
+.term-ask{height:21px;padding:0 8px;border:0;border-radius:var(--r-xs);background:var(--accent-bg);color:var(--accent-t);display:inline-flex;align-items:center;gap:4px;font:inherit;font-size:11.5px;font-weight:500;cursor:pointer}
+.term-ask:hover:not(:disabled){filter:brightness(1.08)}
+.term-ask.sent{background:var(--green-bg);color:var(--green);cursor:default}
+.term-ask .ic{width:11.5px;height:11.5px}
+.term-icon-btn{width:22px;height:22px;padding:0;border:0;border-radius:var(--r-xs);background:none;color:var(--l3);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.term-icon-btn:hover{background:var(--fill2);color:var(--l1)}
+.term-icon-btn.copied{color:var(--green)}
+.term-icon-btn .ic{width:12.5px;height:12.5px}
+.md .cblock pre.cb-term-body{margin:0;padding:8px 12px 10px;background:none;box-shadow:none;border-radius:0;font-family:var(--mono);font-size:11.5px;line-height:1.55;color:var(--l2);max-height:240px;overflow-y:auto;white-space:pre-wrap;overflow-wrap:anywhere}
 .cb-b .ic{width:13px;height:13px}
 /* Terminal / diff output colouring inside .out and background task drawers (no WASM / xterm). */
 .term-out{position:relative}
