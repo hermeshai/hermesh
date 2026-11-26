@@ -8,7 +8,7 @@ import { opensActivityMonitor, problemBody, problemsOf, problemTitle, severe } f
 import { Icon } from "../icons";
 import { senderLine } from "../Sidebar";
 import { useStore, type Store } from "../store";
-import { QuickAnswer, useTeam } from "../team";
+import { QuickAnswer, questionWords, useTeam } from "../team";
 
 const day = 86_400_000;
 
@@ -31,6 +31,7 @@ export function expiringClients(st: Store, now: Date): Client[] {
  */
 export function Attention({ now }: { now: Date }) {
   const { t } = useTranslation("overview");
+  const { t: tc } = useTranslation("common");
   const st = useStore();
   const owner = !st.status?.machineOnly;
   const expiring = owner ? expiringClients(st, now) : [];
@@ -57,10 +58,9 @@ export function Attention({ now }: { now: Date }) {
           </Row>
         ))}
         {team.waiting.map((s) => {
-          const q = pendingQuestion(s);
-          const words = q?.items.map((i) => i.text || i.header).filter(Boolean).join(" ");
+          const words = questionWords(pendingQuestion(s), tc);
           return (
-            <Row key={s.sessionId} icon="q" tint="y" title={displayTitle(s)} detail={words ? `${senderLine(st, s)} · ${words}` : senderLine(st, s)} wrap>
+            <Row key={s.sessionId} icon="q" tint="y" title={displayTitle(s)} detail={words ? `${senderLine(st, s)} · ${words}` : senderLine(st, s)}>
               <QuickAnswer s={s} />
               <button className="btn" onClick={() => st.select(s.sessionId)}>{t("attention.open")}</button>
             </Row>
@@ -138,7 +138,7 @@ function Row({ icon, tint, title, detail, wrap, children }: { icon: string; tint
       <span className={`ai ${tint}`}><Icon name={icon} /></span>
       <div className="at">
         <b>{title}</b>
-        <span className={wrap ? "wrap" : undefined}>{detail}</span>
+        <span className={wrap ? "wrap" : undefined} title={!wrap && typeof detail === "string" ? detail : undefined}>{detail}</span>
       </div>
       {children}
     </div>

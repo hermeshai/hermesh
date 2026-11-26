@@ -20,7 +20,7 @@
 .tm-ok{color:var(--green);width:18px;height:18px;stroke-width:1.6}
 .tm-need{display:flex;flex-direction:column;gap:6px;margin:2px 0;padding:4px 0 10px;border-radius:12px;background:var(--fill)}
 .tm-need>.tm-row:hover{background:none}
-.tm-q{padding:0 12px;font-size:var(--fs-text-l)}
+.tm-q{padding:0 12px;font-size:var(--fs-text-l);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .qa{display:flex;flex-wrap:wrap;gap:8px;padding:2px 12px 0}
 .qa .btn{height:30px}
 .wk-list{padding:4px}

@@ -219,6 +219,8 @@
     "changed_other": "{{count}} 个文件 · +{{add}} −{{del}}",
     "noChanges": "没有改动",
     "waitingForAnswer": "在等回答",
+    "questionSummary_other": "共 {{count}} 个问题 · {{text}}",
+    "questionCount_other": "共 {{count}} 个问题",
     "done": "完成",
     "sessionsToday": "个任务（今天）",
     "sessionsInDays": "个任务（{{count}} 天内）",
