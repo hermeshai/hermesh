@@ -425,3 +425,66 @@ Verified: `apps/desktop/e2e/session-files.spec.ts` on the built app with the ses
 page tab, max and back, the version bar; code at its line with the tree hidden, then shown; the tree
 opening files in its tab and a page in its page tab; ＋ 项目文件 with sizes; put away and back; every tab
 closed and the panel back with 项目文件; the page's view hidden under the Lightbox; the other Mac stopped).
+
+## 15. The iPhone, narrow and wide (2026-11-27)
+
+Prototype: [side-panel-iphone-demo.html](side-panel-iphone-demo.html). The same ideas as the Mac's side panel (§14),
+in the iPhone's ways, by the screen it has (as the menu is, docs/iphone-app.md), not by the device.
+
+**A narrow screen** (an iPhone; iPhone Duo upright or closed): pages are pushed.
+
+- The session's bar gets no new button: 项目文件 is the first item of ⋯, a folder a page, as before.
+- A reply's file pushes its page; a `.html` pushes a page that runs (no network, its own folder).
+- A file's page (`SessionFilePage`): its name only at the top (where it is, is on the drawer's bar); ⋯ with Share…
+  and Copy Path; 源码 for Markdown and SVG. A page's page has its folder under its name instead, as it has no tree.
+- The tree's drawer: a glass bar at the page's foot (项目文件, the project and folder), pulled up into a sheet
+  (medium and large detents) with the tree, folders opening in place, the file marked and its folders open. A file
+  picked there opens in this page, as the Mac's tab goes to it, and the sheet goes down; a `.html` is pushed; a
+  picture opens in the Lightbox. A page's page has no drawer.
+- The version bar (§6.2) sits above the drawer's bar.
+
+**A wide screen** (regular width, on its side: iPhone Duo open, a Pro Max turned): the session's side panel
+(`SessionSidePanel`), beside the conversation, as on the Mac.
+
+- The bar's 侧边面板 button (`sidebar.right`) beside ⋯ shows and puts it away; opening it shrinks the menu to its rail
+  (`menuRail`, as `WidenPageButton` does) to give it room. Opened empty, it starts with 项目文件.
+- A strip of glass tabs that scrolls sideways (the one in front has its close button), ＋ (a system menu of kinds:
+  today 项目文件), and 放大 / 缩小: enlarged, the panel takes the page and the conversation steps aside.
+- Under the strip the tab's own bar: a file's path, 源码, the tree's button and ⋯; a page's address and ⋯; 项目文件's
+  folder. A files tab's tree is a column on its right, hidden at first; a file picked there opens in the tab.
+- A reply's file, ⋯ › 项目文件, and a folder tag open tabs here instead of pushing pages. The tabs and the tree are
+  the session's (`SessionFilesModel`), kept while its page is away.
+
+**The owner's own files**: a `.html`, `.svg`, Markdown, code or text sent with a prompt opens as a reply's would: its
+page (`SessionAttachmentPage`, named with 附件 · its size) on a narrow screen, a tab on a wide one. A page runs on its
+own (`AttachmentWeb`): only the one file was sent, so nothing beside it can be read. Anything else stays in Quick Look,
+and pictures in the Lightbox.
+
+Verified: `HermeshUITests/SessionFilesUITests.swift` (`testSessionFiles`) on an iPhone 17 Pro and a 17 Pro Max on its
+side, iOS 26 Simulator, the session on another Mac through the relay: the drawer, the tree opening a file in place, ⋯;
+the side panel's tabs, the tree in a tab, enlarge and shrink. Not checked on the iOS 27 device (iPhone Duo). The
+attachment page has no UI test yet: the test world sends no non-picture attachment.
+
+## 16. The owner's own files, on both apps (2026-11-27)
+
+A file sent with a prompt opens as a reply's would, on the Mac too (it did nothing there before):
+
+| The file | The Mac | The iPhone |
+|---|---|---|
+| A picture | The Lightbox, no menu (session-images.md §5) | The same |
+| A page, SVG, Markdown, code, text | A tab of the side panel (`attachment` kind): 附件 · its size in its bar; a page with 在浏览器中打开; ⋯ › 存储到“下载” | Its page (narrow) or a tab (wide); ⋯ › 分享… |
+| Anything else | Quick Look | Quick Look |
+
+- The bytes come from the blob the machine keeps (`DownloadBlob`). On the Mac a `SessionFileRef` may name one
+  (`blob: { machine, sha }`, `path` its name), so Quick Look, Save, the page's view and Open in Browser take an
+  attachment as they take a file; a page is served at `hermesh-file://blob/<session>/<machine>/<sha>/<name>`, itself
+  only.
+- An attached page refers to files beside it (a script, a style sheet, a picture by a relative address:
+  `refersToOwnFiles` on both apps, the same rule): only the page was sent, so a bar under it says
+  「只发送了这一个文件，页面引用的其他文件不在这里」.
+- On the iPhone a picture or file in the box, before it is sent, opens too: a picture in the Lightbox, a page,
+  Markdown or code on its page (its bytes are on the iPhone already).
+
+Verified: `apps/desktop/e2e/session.spec.ts` (a dropped `notes.md` and `page.html`, read back after a reload: the
+tabs, the page running, the bar), `HermeshUITests/SessionAttachmentsUITests.swift` (the page, Markdown, the picture;
+the panel's tab on a Pro Max on its side), `ThreadComposerUITests` (the photo in the box).

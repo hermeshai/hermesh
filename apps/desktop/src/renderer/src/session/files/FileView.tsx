@@ -7,7 +7,9 @@ import { FileContentKind, FileNow, type ReadFileResponse } from "@hermesh/proto/
 import { PdfView } from "../../her/preview/PdfView";
 import { Icon } from "../../icons";
 import { useStore } from "../../store";
+import { sessions } from "../../api";
 import { Markdown } from "../Markdown";
+import { refersToOwnFiles } from "../attachments";
 import { readAll, sizeText, type SessionFile } from "./files";
 import "../../her/preview/preview.css";
 import "./files.css";
@@ -128,6 +130,63 @@ export function PdfBody({ file, name }: { file: SessionFile; name: string }) {
   if (!bytes) return <Loading />;
   if ("error" in bytes) return <Card name={name} text={bytes.error} />;
   return <PdfView bytes={bytes} name={name} />;
+}
+
+/**
+ * A file the owner sent with a prompt, read from its blob: a page running (on its own: the files beside it were not
+ * sent, and the bar under it says so when it refers to some), SVG as it looks, Markdown as it reads, code and text in
+ * numbered lines.
+ */
+export function AttachmentBody({ file }: { file: SessionFile }) {
+  const { t } = useTranslation("session");
+  const [got, setGot] = useState<{ text: string; url: string | null } | { error: unknown } | null>(null);
+  const view = fileView(file.path);
+  useEffect(() => {
+    let live = true;
+    let url: string | null = null;
+    setGot(null);
+    sessions.downloadBlob({ sessionId: file.session, machineId: file.blob?.machine ?? "", blobSha256: file.blob?.sha ?? "" }).then(
+      (r) => {
+        if (!live) return;
+        if (view === "svg") url = URL.createObjectURL(new Blob([r.data as BlobPart], { type: "image/svg+xml" }));
+        setGot({ text: new TextDecoder().decode(r.data), url });
+      },
+      (error: unknown) => live && setGot({ error }),
+    );
+    return () => {
+      live = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [file.blob?.sha]);
+  if (!got) return <Loading />;
+  if ("error" in got) return <Card name={file.path} text={fileError(got.error, "")} />;
+  if (view === "page") {
+    return (
+      <div className="sfv-att">
+        <PageBody file={file} />
+        {refersToOwnFiles(got.text) && (
+          <div className="sfv-bar" data-testid="attachment-alone">
+            <span>{t("files.attachmentAlone")}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (view === "svg" && got.url) return <div className="sfv-pic"><img src={got.url} alt={file.path} draggable={false} /></div>;
+  if (view === "markdown") {
+    return (
+      <div className="fpv-read" data-testid="file-markdown">
+        <div className="fpv-col">
+          <Markdown text={got.text} mode="document" />
+        </div>
+      </div>
+    );
+  }
+  return (
+    <Suspense fallback={<Loading />}>
+      <CodeView text={got.text} name={file.path} wrap={view === "text"} />
+    </Suspense>
+  );
 }
 
 /** Something of the app's over the window (a dialog, the Lightbox, a sheet): the page's view, drawn over the app, steps out of its way. */

@@ -37,3 +37,17 @@ test("kept attachment blobs show immediately and missing ones load once by sha25
   });
   assert.equal(attachmentSnapshot()[sha3], null);
 });
+
+test("an attached page that refers to files beside it is told apart from one that stands alone", async () => {
+  const { refersToOwnFiles, opensInApp } = await import("./attachments.ts");
+  assert.equal(refersToOwnFiles('<html><body><p>hi</p><a href="https://example.com/">x</a><img src="data:image/png;base64,AA"></body></html>'), false);
+  assert.equal(refersToOwnFiles('<a href="#top">top</a><a href="mailto:a@b.c">m</a><script src="//cdn.example.com/x.js"></script>'), false);
+  assert.equal(refersToOwnFiles('<script src="demo.js"></script>'), true);
+  assert.equal(refersToOwnFiles("<link rel=stylesheet href='css/site.css'>"), true);
+  assert.equal(refersToOwnFiles('<div style="background:url(img/bg.png)"></div>'), true);
+  assert.equal(opensInApp("page.html"), true);
+  assert.equal(opensInApp("notes.md"), true);
+  assert.equal(opensInApp("main.go"), true);
+  assert.equal(opensInApp("report.pdf"), false);
+  assert.equal(opensInApp("deck.key"), false);
+});

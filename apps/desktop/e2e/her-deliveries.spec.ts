@@ -163,4 +163,24 @@ test("Her: the files she sent, listed apart, each version as sent, and the way b
   await menu.getByRole("menuitemradio", { name: /^对话里要的/ }).click();
   await expect(rows).toHaveCount(2, { timeout: 10_000 });
   await expect(rows.filter({ hasText: "早报" })).toHaveCount(0);
+
+  // A picture Her sends opens in the app's one picture viewer (the session's Lightbox), its ⋯ keeping a copy.
+  await panel.getByRole("button", { name: "关闭" }).click();
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOwjf4PRAwQCgApigZdCqHXxgAAAABJRU5ErkJggg==", "base64");
+  fs.writeFileSync(path.join(folder, "chart.png"), png);
+  await send("[[mock:attach:chart.png]] 发我图表");
+  const picture = log.locator(".bim").last();
+  await expect(picture.locator("img")).toBeVisible({ timeout: 60_000 });
+  await expect(picture).toHaveCSS("cursor", "pointer");
+  await expect(log.getByRole("button", { name: "查看 季度报告.md" }).first()).toHaveCSS("cursor", "pointer");
+  await picture.click();
+  const lb = page.getByTestId("image-lightbox");
+  await expect(lb).toHaveAttribute("data-source", "pictures");
+  await expect(lb.getByTestId("lightbox-title")).toHaveText("chart.png");
+  await expect(lb.getByTestId("lightbox-meta")).toContainText("2 × 2");
+  await expect(lb.getByTestId("lightbox-more")).toBeVisible();
+  await expect(page.locator(".lightbox")).toHaveCount(0);
+  await snap(page, "her-picture-lightbox");
+  await page.keyboard.press("Escape");
+  await expect(lb).toHaveCount(0);
 });

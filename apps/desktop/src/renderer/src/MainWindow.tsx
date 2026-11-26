@@ -7,6 +7,7 @@ import { Overview } from "./Overview";
 import { RequestCards } from "./RequestCards";
 import { SearchPalette } from "./Search";
 import { SessionPage } from "./SessionPage";
+import { ImageLightboxHost } from "./session/files/ImageLightbox";
 import { SheetHost } from "./Sheets";
 import { Sidebar } from "./Sidebar";
 import { useCommands } from "./commands";
@@ -100,6 +101,8 @@ export function MainWindow() {
       )}
       {search.shown !== null && <SearchPalette key={search.shown} leaving={search.leaving} />}
       <SheetHost />
+      {/* Every picture of the app, a session's or Her's, opens here. */}
+      <ImageLightboxHost />
       <ToastView />
     </div>
   );

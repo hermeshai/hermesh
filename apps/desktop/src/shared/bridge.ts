@@ -48,7 +48,13 @@ export type TerminalCommand = "codexLogin" | "claudeLogin" | "antigravityLogin";
 export type ComputerPermission = "accessibility" | "screen";
 
 /** A file of a coding session at a turn ("" for as it is now), within the session's folder (docs/session-files.md). */
-export type SessionFileRef = { session: string; run: string; path: string };
+export type SessionFileRef = {
+  session: string;
+  run: string;
+  path: string;
+  /** A file the owner sent with a prompt, read from its blob on the machine; `path` is its name. */
+  blob?: { machine: string; sha: string };
+};
 /** Where a page's view goes over the window, in the page's coordinates. */
 export type PageRect = { x: number; y: number; width: number; height: number };
 /** What a page shown asks of the app: to open a web address. */

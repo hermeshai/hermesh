@@ -194,7 +194,10 @@
     "restore": "还原",
     "resize": "调整侧边面板宽度",
     "treeGone": "工作区已回收，这是第 {{turn}} 轮结束时的文件",
-    "treeFailed": "没能读取这个文件夹"
+    "treeFailed": "没能读取这个文件夹",
+    "attachment": "附件 · {{size}}",
+    "attachmentAlone": "只发送了这一个文件，页面引用的其他文件不在这里",
+    "retry": "重试"
   },
   "panel": {
     "title": "侧边面板",

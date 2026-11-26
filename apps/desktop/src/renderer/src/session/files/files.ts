@@ -13,7 +13,13 @@ export const FilesHomeContext = createContext<FilesHome | null>(null);
 export const FilesRunContext = createContext("");
 
 /** A file of a session, at a turn ("" for as it is now). */
-export type SessionFile = { session: string; run: string; path: string };
+export type SessionFile = {
+  session: string;
+  run: string;
+  path: string;
+  /** A file the owner sent with a prompt, read from its blob on the machine; `path` is its name. */
+  blob?: { machine: string; sha: string };
+};
 
 /** What the machine said a path is; null while it is asked. */
 export type FileInfo = { kind: FileRefKind; path: string; size: bigint; turn: number; folder: string };

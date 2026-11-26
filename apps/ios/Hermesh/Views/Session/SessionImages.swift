@@ -25,6 +25,23 @@ extension EnvironmentValues {
 enum LightboxItem: Hashable {
     case file(ReplyImageItem)
     case attachment(Hermesh_Session_V1_AttachmentRef)
+    /// A picture already on this iPhone (Her's conversation): its name, and whether it can be kept (one Her sent can;
+    /// the owner's own has no menu).
+    case picture(String, UIImage, keep: Bool)
+
+    /// A picture already here, as the Lightbox reads it.
+    var picture: UIImage? {
+        if case .picture(_, let image, _) = self { return image }
+        return nil
+    }
+}
+
+extension SessionImageStore.Loaded {
+    /// A picture already on this iPhone, as it is: its size in pixels, its name.
+    init(picture: UIImage, name: String) {
+        self.init(thumbnail: picture, data: Data(), mimeType: "image/png", pixelWidth: Int(picture.size.width * picture.scale),
+                  pixelHeight: Int(picture.size.height * picture.scale), sizeBytes: 0, turn: 0, folder: "", resolvedPath: name)
+    }
 }
 
 struct SessionLightboxPresentation: Identifiable, Equatable {
@@ -236,6 +253,12 @@ nonisolated private enum SessionImageDecoder {
         }
     }
 
+    /// A prompt's picture that could not be read, asked for again.
+    func retry(api: AppAPI?, sessionID: String, machineID: String, attachment: Hermesh_Session_V1_AttachmentRef) {
+        entries.removeValue(forKey: "blob\u{0}\(attachment.blobSha256)")
+        request(api: api, sessionID: sessionID, machineID: machineID, attachment: attachment)
+    }
+
     private func loadAttachment(_ job: Job, _ att: Hermesh_Session_V1_AttachmentRef) async {
         do {
             let raw = try await SessionAttachmentStore.shared.data(api: job.api, sessionID: job.sessionID, machineID: job.machineID, ref: att)
@@ -243,6 +266,8 @@ nonisolated private enum SessionImageDecoder {
                 SessionImageDecoder.decode(data: raw, maxPixelSize: 960)
             }.value
             guard let decoded else { return store(job.key, .missing) }
+            // Read at last: the bubble's thumbnail too, where it could not be before.
+            SessionAttachmentStore.shared.keep(sha256: att.blobSha256, name: att.name, data: raw, picture: decoded.thumbnail)
             store(job.key, .ready(Loaded(
                 thumbnail: decoded.thumbnail,
                 data: raw,
@@ -518,8 +543,10 @@ struct SessionImageLightbox: View {
 
     /// The owner's own pictures: nothing to save, share or find, so no menu.
     private var ownPictures: Bool {
-        if case .attachment = currentItem { return true }
-        return false
+        switch currentItem {
+        case .attachment, .picture(_, _, keep: false): true
+        default: false
+        }
     }
 
     private var online: Bool {
@@ -555,6 +582,7 @@ struct SessionImageLightbox: View {
                         run: presentation.run,
                         path: askPath,
                         attachment: { if case .attachment(let a) = item { a } else { nil } }(),
+                        picture: item.picture,
                         online: online,
                         isCurrent: idx == index,
                         zoomed: $zoomed
@@ -616,7 +644,19 @@ struct SessionImageLightbox: View {
                     Color.clear.frame(width: 38, height: 38)
                 } else {
                     Menu {
-                        if let loaded = loadedOf(curState) {
+                        if case .picture(_, let image, _) = currentItem {
+                            // One Her sent: kept to Photos or shared, as it is here.
+                            Button("Save to Photos", systemImage: "square.and.arrow.down") {
+                                Task {
+                                    let ok = await SessionImageStore.saveToPhotos(image.pngData() ?? Data())
+                                    model.show(ok ? String(localized: "Saved to Photos") : String(localized: "Couldn’t save to Photos"))
+                                }
+                            }
+                            Button("Share…", systemImage: "square.and.arrow.up") {
+                                sharing = SessionImageStore.shared.shareURL(for: .init(thumbnail: image, data: image.pngData() ?? Data(), mimeType: "image/png",
+                                                                                     pixelWidth: 0, pixelHeight: 0, sizeBytes: 0, turn: 0, folder: "", resolvedPath: name))
+                            }
+                        } else if let loaded = loadedOf(curState) {
                             Button("Save to Photos", systemImage: "square.and.arrow.down") {
                                 Task {
                                     let ok = await SessionImageStore.saveToPhotos(loaded.data)
@@ -664,6 +704,7 @@ struct SessionImageLightbox: View {
     private func resolvedAskPath(files: SessionFilesModel, item: LightboxItem) -> String {
         guard case .file(let item) = item else {
             if case .attachment(let a) = item { return a.name }
+            if case .picture(let name, _, _) = item { return name }
             return ""
         }
         if let info = files.info(run: presentation.run, path: item.path),
@@ -675,6 +716,7 @@ struct SessionImageLightbox: View {
 
     private func state(of item: LightboxItem, path: String) -> SessionImageStore.State? {
         if case .attachment(let a) = item { return SessionImageStore.shared.state(attachment: a) }
+        if let picture = item.picture { return .ready(.init(picture: picture, name: path)) }
         return SessionImageStore.shared.state(sessionID: presentation.sessionID, run: presentation.run, path: path)
     }
 
@@ -707,6 +749,8 @@ private struct LightboxPage: View {
     let path: String
     /// A prompt's picture, read by its blob in place of `path` (then its name).
     let attachment: Hermesh_Session_V1_AttachmentRef?
+    /// A picture already on this iPhone, shown as it is.
+    var picture: UIImage?
     let online: Bool
     let isCurrent: Bool
     @Binding var zoomed: Bool
@@ -715,7 +759,9 @@ private struct LightboxPage: View {
     @State private var fullImage: UIImage?
 
     var body: some View {
-        let state = attachment.map { SessionImageStore.shared.state(attachment: $0) } ?? SessionImageStore.shared.state(sessionID: sessionID, run: run, path: path)
+        let state: SessionImageStore.State? = if let picture { .ready(.init(picture: picture, name: path)) } else {
+            attachment.map { SessionImageStore.shared.state(attachment: $0) } ?? SessionImageStore.shared.state(sessionID: sessionID, run: run, path: path)
+        }
         ZStack {
             switch state {
             case nil, .loading?:
@@ -739,6 +785,7 @@ private struct LightboxPage: View {
                     Text(verbatim: fileBaseName(path)).font(.subheadline.weight(.medium)).foregroundStyle(.white)
                     Text(verbatim: String(localized: "\(model.machineName(machineID)) is offline · Shows automatically when back"))
                         .font(.footnote).foregroundStyle(.white.opacity(0.7)).multilineTextAlignment(.center)
+                    retryButton
                 }
                 .padding(24)
             case .tooLarge(let bytes)?:
@@ -754,18 +801,33 @@ private struct LightboxPage: View {
                     Image(systemName: "doc").font(.title2).foregroundStyle(.white.opacity(0.6))
                     Text(verbatim: fileBaseName(path)).font(.subheadline.weight(.medium)).foregroundStyle(.white)
                     Text("File not found").font(.footnote).foregroundStyle(.white.opacity(0.7))
+                    retryButton
                 }
                 .padding(24)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: "\(sessionID)\u{0}\(run)\u{0}\(path)\u{0}\(online)") {
+            guard picture == nil else { return }
             let isOff: Bool = if case .offline? = state { true } else { false }
             if let attachment {
                 SessionImageStore.shared.request(api: model.api, sessionID: sessionID, machineID: machineID, attachment: attachment, retryOffline: isOff && online)
             } else {
                 SessionImageStore.shared.request(api: model.api, sessionID: sessionID, run: run, path: path, retryOffline: isOff && online)
             }
+        }
+    }
+}
+
+extension LightboxPage {
+    /// A prompt's picture that could not be read: asked for again (a reply's file comes back by itself).
+    @ViewBuilder var retryButton: some View {
+        if let attachment {
+            Button("Retry") { SessionImageStore.shared.retry(api: model.api, sessionID: sessionID, machineID: machineID, attachment: attachment) }
+                .buttonStyle(.glass)
+                .tint(.white)
+                .padding(.top, 4)
+                .accessibilityIdentifier("lightbox-retry")
         }
     }
 }

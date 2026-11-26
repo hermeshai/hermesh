@@ -62,6 +62,7 @@ enum Route: Hashable {
     case herFiles // the files Her sent (docs/her-deliverables.md §3.3), from her page's top
     case sessionFile(String, String, String, Int, Int) // a session's file (docs/session-files.md §4): session, turn, path, line, last line
     case sessionFolder(String, String) // a folder of a session's, as it is now: session, folder ("" for its own)
+    case sessionAttachment(String, String, Hermesh_Session_V1_AttachmentRef) // a file the owner sent with a prompt: session, machine, the file
     case routine(String) // one of them, by id
     case routineRun(String, String) // a run of one: routine id, run id
     case herMemory // what Her remembers (docs/her-memory.md)

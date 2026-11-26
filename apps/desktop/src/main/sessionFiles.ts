@@ -27,20 +27,27 @@ function sessionService() {
   return createClient(SessionService, createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } }));
 }
 
-/** A reference the page sent, checked: strings, a path within the session's folder. */
+/** A reference the page sent, checked: strings, a path within the session's folder, or an attachment's blob. */
 export function refOf(v: unknown): SessionFileRef | null {
   if (!v || typeof v !== "object") return null;
-  const { session: s, run, path: p } = v as Record<string, unknown>;
+  const { session: s, run, path: p, blob } = v as Record<string, unknown>;
   if (typeof s !== "string" || !/^[\w-]{1,128}$/.test(s) || typeof run !== "string" || !/^[\w-]{0,128}$/.test(run)) return null;
   if (typeof p !== "string" || p === "" || p.length > 4096 || p.includes("\0")) return null;
-  return { session: s, run, path: p };
+  if (blob === undefined) return { session: s, run, path: p };
+  const { machine, sha } = (blob ?? {}) as Record<string, unknown>;
+  if (typeof machine !== "string" || !/^[\w-]{0,128}$/.test(machine) || typeof sha !== "string" || !/^[0-9a-f]{64}$/.test(sha)) return null;
+  return { session: s, run: "", path: p, blob: { machine, sha } };
 }
 
 const readPart = (ref: SessionFileRef, offset: number, length = CHUNK) =>
   sessionService().readFileBytes({ sessionId: ref.session, runId: ref.run, path: ref.path, offset: BigInt(offset), length });
 
-/** A whole file, a part at a time. */
+/** A whole file, a part at a time; an attachment, its blob. */
 async function readAll(ref: SessionFileRef): Promise<{ data: Buffer; mime: string }> {
+  if (ref.blob) {
+    const r = await sessionService().downloadBlob({ sessionId: ref.session, machineId: ref.blob.machine, blobSha256: ref.blob.sha });
+    return { data: Buffer.from(r.data), mime: r.mimeType };
+  }
   const parts: Buffer[] = [];
   let offset = 0;
   let size = -1;
@@ -79,6 +86,7 @@ export async function saveSessionFile(ref: SessionFileRef, name: string) {
 
 /** Finder, for a session on this Mac: the file as it is now, where the machine says the session's folder is (or at its absolute path for external session images). */
 export async function revealSessionFile(ref: SessionFileRef): Promise<boolean> {
+  if (ref.blob) return false;
   const res = await sessionService().resolveFiles({ sessionId: ref.session, paths: [ref.path] });
   const f = res.files[0];
   const abs = Boolean(f && path.isAbsolute(f.path));
@@ -156,13 +164,22 @@ const dirOf = (p: string) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/") + 
  */
 const folders = new Set<string>();
 const folderKey = (s: string, run: string, dir: string) => `${s}\0${run}\0${dir}`;
+/** An attached page: only itself, as nothing was sent beside it; kept as folders are. */
+const attached = new Set<string>();
+const BLOB_HOST = "blob";
 
 export const pageURL = (ref: SessionFileRef) =>
-  `${FILE_SCHEME}://${HOST}/${encodeURIComponent(ref.session)}/${encodeURIComponent(ref.run || "-")}/${ref.path.split("/").map(encodeURIComponent).join("/")}`;
+  ref.blob
+    ? `${FILE_SCHEME}://${BLOB_HOST}/${encodeURIComponent(ref.session)}/${encodeURIComponent(ref.blob.machine || "-")}/${ref.blob.sha}/${encodeURIComponent(ref.path)}`
+    : `${FILE_SCHEME}://${HOST}/${encodeURIComponent(ref.session)}/${encodeURIComponent(ref.run || "-")}/${ref.path.split("/").map(encodeURIComponent).join("/")}`;
 
 function refOfURL(url: string): SessionFileRef | null {
   try {
     const u = new URL(url);
+    if (u.protocol === `${FILE_SCHEME}:` && u.host === BLOB_HOST) {
+      const [s, machine, sha, name] = u.pathname.slice(1).split("/").map(decodeURIComponent);
+      return refOf({ session: s, run: "", path: name, blob: { machine: machine === "-" ? "" : machine, sha } });
+    }
     if (u.protocol !== `${FILE_SCHEME}:` || u.host !== HOST) return null;
     const [s, run, ...rest] = u.pathname.slice(1).split("/").map(decodeURIComponent);
     const p = rest.join("/");
@@ -174,6 +191,7 @@ function refOfURL(url: string): SessionFileRef | null {
 
 /** Whether the page in that folder may read this. */
 function mayRead(ref: SessionFileRef): boolean {
+  if (ref.blob) return attached.has(ref.blob.sha);
   const parts = ref.path.split("/");
   if (parts.some((x) => x === "" || x === "." || x === ".." || x.startsWith("."))) return false;
   if (!webKinds.test(ref.path)) return false;
@@ -193,6 +211,12 @@ async function serve(req: Request): Promise<Response> {
   const headers: Record<string, string> = { "content-security-policy": CSP, "cache-control": "no-store", "x-content-type-options": "nosniff", "accept-ranges": "bytes", "access-control-allow-origin": "*" };
   const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.get("range") ?? "");
   try {
+    if (ref.blob) {
+      const { data, mime } = await readAll(ref);
+      headers["content-type"] = isPage(ref.path) ? "text/html; charset=utf-8" : mime || "application/octet-stream";
+      headers["content-length"] = String(data.length);
+      return new Response(new Uint8Array(data), { status: 200, headers });
+    }
     const start = range ? Number(range[1]) : 0;
     const first = await readPart(ref, start);
     const size = Number(first.size);
@@ -275,7 +299,8 @@ export async function openSessionPage(owner: WebContents, ref: SessionFileRef, r
   if (!win) return false;
   watch(owner);
   pageSession();
-  folders.add(folderKey(ref.session, ref.run, dirOf(ref.path)));
+  if (ref.blob) attached.add(ref.blob.sha);
+  else folders.add(folderKey(ref.session, ref.run, dirOf(ref.path)));
   const view = new WebContentsView({ webPreferences: { partition, sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false, disableDialogs: true } });
   view.setBackgroundColor("#ffffff");
   const wc = view.webContents;
@@ -286,7 +311,8 @@ export async function openSessionPage(owner: WebContents, ref: SessionFileRef, r
   });
   wc.on("will-navigate", (e, to) => {
     const next = refOfURL(to);
-    if (next && next.session === ref.session && next.run === ref.run && isPage(next.path) && mayRead(next)) return;
+    if (next && !next.blob && !ref.blob && next.session === ref.session && next.run === ref.run && isPage(next.path) && mayRead(next)) return;
+    if (next?.blob && next.blob.sha === ref.blob?.sha) return;
     e.preventDefault();
     if (webAddress(to)) tell({ kind: "link", url: to });
   });
@@ -313,6 +339,12 @@ export function closeSessionPage(owner: WebContents) {
 /** The page and the web files of its folder (to three levels, 300 files, 64 MB), in the default browser. */
 export async function openSessionPageInBrowser(ref: SessionFileRef) {
   if (!isPage(ref.path)) throw new Error("not a page");
+  // An attached page is the one file: it alone.
+  if (ref.blob) {
+    const err = await shell.openPath(await fetchTo(ref, ref.path));
+    if (err) throw new Error(err);
+    return;
+  }
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "hermesh-page-"));
   const base = dirOf(ref.path);
   let files = 0;

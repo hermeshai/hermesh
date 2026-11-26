@@ -520,16 +520,24 @@ struct HerBubble: View {
     var open: ((String) -> Void)?
     /// What it replies to.
     var quote: HerQuote?
+    @State private var lightbox: SessionLightboxPresentation?
 
     var body: some View {
+        // The owner's own pictures: large in the app's one picture viewer, stepping together, with no menu.
+        let pictures = images.compactMap { Data(base64Encoded: $0.data).flatMap(UIImage.init(data:)) }
         VStack(alignment: .trailing, spacing: 6) {
             if !images.isEmpty || !files.isEmpty {
                 HerWrap(spacing: 6) {
-                    ForEach(Array(images.enumerated()), id: \.offset) { _, im in
-                        if let picture = Data(base64Encoded: im.data).flatMap(UIImage.init(data:)) {
+                    ForEach(Array(pictures.enumerated()), id: \.offset) { i, picture in
+                        Button {
+                            lightbox = SessionLightboxPresentation(sessionID: "", machineID: "", run: "",
+                                                                   items: pictures.map { .picture(String(localized: "Picture"), $0, keep: false) }, initialIndex: i)
+                        } label: {
                             Image(uiImage: picture).resizable().scaledToFill().frame(width: 72, height: 72)
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("her-own-picture")
                     }
                     ForEach(files, id: \.self) { f in
                         if let open {
@@ -556,6 +564,7 @@ struct HerBubble: View {
         }
         .padding(.leading, 48)
         .frame(maxWidth: .infinity, alignment: .trailing)
+        .fullScreenCover(item: $lightbox) { SessionImageLightbox(presentation: $0) }
     }
 }
 
@@ -767,6 +776,7 @@ private struct HerFiles: View {
     @Binding var preview: URL?
     @Binding var page: HerFileText?
     @State private var opening: String?
+    @State private var lightbox: SessionLightboxPresentation?
 
     var body: some View {
         let pictures = files.filter { $0.image && !chat.unreadable($0) }
@@ -815,9 +825,18 @@ private struct HerFiles: View {
                 .herSide()
             }
         }
+        .fullScreenCover(item: $lightbox) { SessionImageLightbox(presentation: $0) }
     }
 
     private func open(_ f: HerFile) {
+        // A picture she sent, read here already: large in the app's one picture viewer, with the message's other
+        // pictures, Save to Photos and Share… in its menu.
+        if f.image, (chat.pictures[f.source] ?? nil) != nil {
+            let shown = files.filter { $0.image }.compactMap { g in (chat.pictures[g.source] ?? nil).map { (g, $0) } }
+            lightbox = SessionLightboxPresentation(sessionID: "", machineID: "", run: "", items: shown.map { .picture($0.0.name, $0.1, keep: true) },
+                                                   initialIndex: shown.firstIndex { $0.0.path == f.path } ?? 0)
+            return
+        }
         guard opening == nil else { return }
         opening = f.path
         Task {

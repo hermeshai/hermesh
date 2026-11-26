@@ -4,8 +4,8 @@ import { fileView } from "@hermesh/her-client";
 import { Icon } from "../../icons";
 import { machineName } from "../../Sidebar";
 import { useStore } from "../../store";
-import type { FilesHome } from "./files";
-import { Card, fileError, Loading, PageBody, PdfBody, TextBody, VersionBar } from "./FileView";
+import { sizeText, type FilesHome } from "./files";
+import { AttachmentBody, Card, fileError, Loading, PageBody, PdfBody, TextBody, VersionBar } from "./FileView";
 import { fileMenu } from "./open";
 import { activate, closeTab, openProject, refreshTree, setMax, setPreview, setTree, switchRun, usePanel, type Panel, type Tab } from "./panel";
 import { usePanelWidth } from "./panelWidth";
@@ -64,7 +64,7 @@ export function SidePanel({ home, running }: { home: FilesHome; running: boolean
               data-kind={x.kind}
               onClick={() => activate(p, x.key)}
             >
-              <Icon name={x.kind === "page" ? "web" : x.file.path ? "doc" : "tree"} />
+              <Icon name={x.kind === "page" || (x.kind === "attachment" && fileView(x.file.path) === "page") ? "web" : x.file.path ? "doc" : "tree"} />
               <span className="sfp-tab-t">{x.file.path ? x.name : t("files.tree")}</span>
               <button
                 className="sfp-tab-x"
@@ -90,7 +90,7 @@ export function SidePanel({ home, running }: { home: FilesHome; running: boolean
       </div>
       {tab && <Bar home={home} p={p} tab={tab} />}
       <div className="sfp-body">{tab && <Body home={home} p={p} tab={tab} />}</div>
-      {tab?.file.path && tab.read && "res" in tab.read && <VersionBar res={tab.read.res} run={tab.file.run} turnRun={tab.replyRun} onRun={(run) => switchRun(p, tab, run)} />}
+      {tab?.file.path && tab.kind !== "attachment" && tab.read && "res" in tab.read && <VersionBar res={tab.read.res} run={tab.file.run} turnRun={tab.replyRun} onRun={(run) => switchRun(p, tab, run)} />}
       {!p.max && <div className="sfp-grip" role="separator" aria-orientation="vertical" aria-label={t("files.resize")} tabIndex={0} {...grip} />}
     </aside>
   );
@@ -104,6 +104,31 @@ function Bar({ home, p, tab }: { home: FilesHome; p: Panel; tab: Tab }) {
   const folder = p.dirs.get("")?.list?.folder ?? "";
   if (!path) return <div className="sfp-bar"><span className="sfp-path" title={folder}><span dir="ltr">{folder}</span></span></div>;
   const view = fileView(path);
+  if (tab.kind === "attachment") {
+    return (
+      <div className="sfp-bar">
+        <span className="sfp-path" data-testid="attachment-bar">
+          <span dir="ltr">{t("files.attachment", { size: sizeText(tab.size ?? 0n) })}</span>
+        </span>
+        {view === "page" && (
+          <button className="tb" aria-label={t("files.openBrowser")} title={t("files.openBrowser")} onClick={() => void window.hermesh?.openSessionPageInBrowser(tab.file)}>
+            <Icon name="web" />
+          </button>
+        )}
+        <button
+          className="tb"
+          aria-label={t("files.more")}
+          title={t("files.more")}
+          onClick={async () => {
+            const id = await window.hermesh?.popupMenu([{ id: "save", label: t("files.save") }]);
+            if (id === "save") void window.hermesh?.saveSessionFile(tab.file, tab.name).then(() => st.show(t("files.saved")));
+          }}
+        >
+          <Icon name="more" />
+        </button>
+      </div>
+    );
+  }
   // Cut at the start when it is long: the file's name is what matters.
   const where = (
     <span dir="ltr">
@@ -146,6 +171,7 @@ function Bar({ home, p, tab }: { home: FilesHome; p: Panel; tab: Tab }) {
 /** The tab: 项目文件's tree; a file, the tree beside it if shown; a page running. */
 function Body({ home, p, tab }: { home: FilesHome; p: Panel; tab: Tab }) {
   if (!tab.file.path) return <Tree p={p} activePath={null} wide />;
+  if (tab.kind === "attachment") return <AttachmentBody key={tab.key} file={tab.file} />;
   if (tab.kind === "page") return <FileBody home={home} tab={tab} />;
   return (
     <>

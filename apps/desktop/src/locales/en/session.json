@@ -194,7 +194,10 @@
     "restore": "Restore",
     "resize": "Resize the Side Panel",
     "treeGone": "The workspace was released; these are the files as turn {{turn}} left them",
-    "treeFailed": "Couldn’t read this folder"
+    "treeFailed": "Couldn’t read this folder",
+    "attachment": "Attachment · {{size}}",
+    "attachmentAlone": "Only this file was sent; the files the page refers to aren't here",
+    "retry": "Try Again"
   },
   "panel": {
     "title": "Side Panel",

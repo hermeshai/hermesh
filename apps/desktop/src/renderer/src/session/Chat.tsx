@@ -15,8 +15,9 @@ import { Icon } from "../icons";
 import { HEAVY_ROWS, releaseAfterLeaving } from "../memory";
 import { archive, machineName, senderName } from "../Sidebar";
 import { useNow, useStore } from "../store";
-import { attachmentSnapshot, isImageAttachment, loadAttachmentBlob, subscribeAttachments } from "./attachments";
+import { attachmentSnapshot, isImageAttachment, loadAttachmentBlob, opensInApp, subscribeAttachments } from "./attachments";
 import { openAttachmentLightbox } from "./files/ImageLightbox";
+import { openAttachment } from "./files/panel";
 import { Code } from "./Code";
 import { Markdown } from "./Markdown";
 import { TerminalOutput } from "./TerminalOutput";
@@ -461,6 +462,14 @@ function UserAttachments({ attachments, sessionId, machineId }: { attachments: A
     }
   }, [attachments.map((a) => a.blobSha256).join("\0"), sessionId, machineId]);
   const pictures = attachments.filter(isImageAttachment);
+  // A picture, the Lightbox (one that could not be read too: it says why there, and tries again); a page, Markdown,
+  // code or text, a tab of the side panel; the rest, Quick Look.
+  const open = (a: AttachmentRef) => {
+    if (isImageAttachment(a)) return openAttachmentLightbox(sessionId ?? "", machineId ?? "", pictures, pictures.indexOf(a));
+    const file = { session: sessionId ?? "", run: "", path: a.name, blob: { machine: machineId ?? "", sha: a.blobSha256 } };
+    if (opensInApp(a.name) && sessionId) return openAttachment(file, a.sizeBytes);
+    void window.hermesh?.quickLookSessionFile(file, a.name);
+  };
   return (
     <div className="um-att" data-testid="user-attachments">
       {attachments.map((a) => {
@@ -479,7 +488,8 @@ function UserAttachments({ attachments, sessionId, machineId }: { attachments: A
             name={a.name}
             src={url ?? undefined}
             meta={!url && a.sizeBytes > 0n ? sizeText(a.sizeBytes) : undefined}
-            onOpen={url ? () => openAttachmentLightbox(sessionId ?? "", machineId ?? "", pictures, pictures.indexOf(a)) : undefined}
+            views
+            onOpen={() => open(a)}
           />
         );
       })}

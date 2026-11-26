@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { openPictureLightbox } from "../session/files/ImageLightbox";
 import { Icon } from "../icons";
 import { addAttachments, fromFiles, pastedAttachments, pickFiles, type Attachment } from "./attachments";
 
@@ -228,12 +228,11 @@ export function Tile({ name, src, meta, views, onOpen, onRemove, onContextMenu }
   onContextMenu?: (e: MouseEvent) => void;
 }) {
   const { t } = useTranslation("her");
-  const [large, setLarge] = useState(false);
   const dot = name.lastIndexOf(".");
   const ext = /\.([A-Za-z0-9]{1,6})$/.exec(name)?.[1]?.toUpperCase() ?? "";
   return (
     <div className={`tile ${src ? "img" : "file"}`} title={name} onContextMenu={onContextMenu}>
-      <button className="tile-open" onClick={() => (src && !onOpen ? setLarge(true) : onOpen?.())} aria-label={src || views ? t("composer.view", { name }) : (onOpen ? t("files.save", { name }) : name)}>
+      <button className={`tile-open ${src || onOpen ? "" : "inert"}`} onClick={() => (src && !onOpen ? openPictureLightbox([{ src, name }], 0) : onOpen?.())} aria-label={src || views ? t("composer.view", { name }) : (onOpen ? t("files.save", { name }) : name)}>
         {src ? (
           <img src={src} alt="" />
         ) : (
@@ -254,48 +253,7 @@ export function Tile({ name, src, meta, views, onOpen, onRemove, onContextMenu }
           <Icon name="x" />
         </button>
       )}
-      {large && src && <Lightbox src={src} onClose={() => setLarge(false)} />}
     </div>
   );
 }
 
-/**
- * A picture over the whole window; a click anywhere or Esc closes it. With onStep, one of several:
- * arrows and the ← → keys go through them. caption: what it is, under it.
- */
-export function Lightbox({ src, caption, onStep, onClose }: { src: string; caption?: string; onStep?: (by: 1 | -1) => void; onClose: () => void }) {
-  const { t } = useTranslation("her");
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      else if (onStep && e.key === "ArrowLeft") onStep(-1);
-      else if (onStep && e.key === "ArrowRight") onStep(1);
-      else return;
-      e.preventDefault();
-      e.stopPropagation();
-    };
-    window.addEventListener("keydown", key, true);
-    return () => window.removeEventListener("keydown", key, true);
-  }, [onClose, onStep]);
-  const step = (by: 1 | -1) => (e: MouseEvent) => {
-    e.stopPropagation();
-    onStep?.(by);
-  };
-  return createPortal(
-    <div className={`lightbox ${onStep ? "many" : ""}`} role="dialog" aria-modal="true" onClick={onClose}>
-      <img src={src} alt="" />
-      {caption && <div className="lb-cap">{caption}</div>}
-      {onStep && (
-        <>
-          <button className="lb-go prev" aria-label={t("composer.prevImage")} title={t("composer.prevImage")} onClick={step(-1)}>
-            <Icon name="chevL" />
-          </button>
-          <button className="lb-go next" aria-label={t("composer.nextImage")} title={t("composer.nextImage")} onClick={step(1)}>
-            <Icon name="chevR" />
-          </button>
-        </>
-      )}
-    </div>,
-    document.body,
-  );
-}

@@ -117,6 +117,14 @@ extension HermeshUITests {
 
         // The box's plus, as Her's but without Connectors: a photo goes with the first message.
         attachPhoto()
+        // In the box, before it is sent, the photo opens large in the session's Lightbox, with no menu.
+        let boxed = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'thread-attached-照片'")).firstMatch
+        XCTAssertTrue(boxed.waitForExistence(timeout: 10), "the photo in the box, a button")
+        boxed.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["session-image-lightbox"].firstMatch.waitForExistence(timeout: 10), "large, before it is sent")
+        XCTAssertFalse(app.buttons["lightbox-more"].exists, "the owner's own photo: no menu")
+        app.buttons["lightbox-close"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["session-image-lightbox"].firstMatch.waitForNonExistence(timeout: 10))
 
         // Start it: the session's own page, on work-mac in the project. The agent got the photo.
         send("say hello_from_work_mac\ninspect")

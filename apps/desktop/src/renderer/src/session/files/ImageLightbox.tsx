@@ -8,17 +8,22 @@ import { Icon } from "../../icons";
 import { machineName } from "../../Sidebar";
 import { useStore, type Store } from "../../store";
 import { sessions } from "../../api";
-import { attachmentSnapshot, loadAttachmentBlob, subscribeAttachments } from "../attachments";
+import { attachmentFailure, attachmentSnapshot, loadAttachmentBlob, retryAttachment, subscribeAttachments } from "../attachments";
 import { baseName, sizeText, type FilesHome, type SessionFile } from "./files";
 import { decodeDimensions, requestSessionImage, useSessionImage, type ImageState, type ReplyImageItem } from "./images";
 
+/** A picture already in the app (Her's conversation): where it is, its name, and how to keep a copy if it can be. */
+export type PictureItem = { src: string; name: string; save?: () => void };
+
 /**
- * What the Lightbox shows: a reply's pictures (session files, with their menu), or the pictures the owner sent with
- * a prompt (attachments, kept by the machine as blobs; nothing to save or find, so no menu).
+ * What the Lightbox shows, every picture of the app: a reply's pictures (session files, with their menu); the
+ * pictures the owner sent with a prompt (attachments, kept by the machine as blobs; nothing to save or find, so no
+ * menu); pictures already in the app (Her's conversation; a menu with Save when it can).
  */
 export type ShownLightbox =
   | { kind: "files"; home: FilesHome; run: string; items: ReplyImageItem[]; index: number; seq: number }
-  | { kind: "attachments"; session: string; machine: string; items: AttachmentRef[]; index: number; seq: number };
+  | { kind: "attachments"; session: string; machine: string; items: AttachmentRef[]; index: number; seq: number }
+  | { kind: "pictures"; items: PictureItem[]; index: number; seq: number };
 
 let current: ShownLightbox | null = null;
 let seq = 0;
@@ -52,17 +57,44 @@ export function openAttachmentLightbox(session: string, machine: string, items: 
   emit();
 }
 
+/** Pictures already in the app, from the one clicked. */
+export function openPictureLightbox(items: PictureItem[], index: number) {
+  if (items.length === 0) return;
+  current = { kind: "pictures", items, index: Math.max(0, Math.min(items.length - 1, index)), seq: ++seq };
+  emit();
+}
+
+/** A picture already in the app, as the Lightbox reads it: its size worked out. */
+function usePicture(p: PictureItem | null): ImageState | undefined {
+  const [dims, setDims] = useState<{ src: string; width: number; height: number } | null>(null);
+  useEffect(() => {
+    if (!p) return;
+    let live = true;
+    void decodeDimensions(p.src).then((d) => live && setDims({ src: p.src, ...d }));
+    return () => {
+      live = false;
+    };
+  }, [p?.src]);
+  if (!p) return undefined;
+  const d = dims?.src === p.src ? dims : { width: 0, height: 0 };
+  return { status: "ready", url: p.src, width: d.width, height: d.height, size: 0n, turn: 0, folder: "", resolvedPath: p.name };
+}
+
 const download = (session: string, machine: string) => (sha256: string) =>
   sessions.downloadBlob({ sessionId: session, machineId: machine, blobSha256: sha256 });
 
 /** A prompt's picture as the Lightbox reads it: the bubble's own blob URL, its size as sent. */
-function useAttachmentImage(att: AttachmentRef | null, session: string, machine: string): ImageState | undefined {
+function useAttachmentImage(att: AttachmentRef | null, session: string, machine: string, online: boolean): ImageState | undefined {
   const urls = useSyncExternalStore(subscribeAttachments, attachmentSnapshot);
   const url = att ? urls[att.blobSha256] : undefined;
   const [dims, setDims] = useState<{ url: string; width: number; height: number } | null>(null);
   useEffect(() => {
     if (att && url === undefined) void loadAttachmentBlob(att, download(session, machine));
   }, [att?.blobSha256, url === undefined]);
+  // Its machine back: asked again, as a reply's picture is.
+  useEffect(() => {
+    if (att && url === null && online && attachmentFailure(att.blobSha256) === "offline") retryAttachment(att.blobSha256);
+  }, [att?.blobSha256, url === null, online]);
   useEffect(() => {
     if (!url) return;
     let live = true;
@@ -73,7 +105,7 @@ function useAttachmentImage(att: AttachmentRef | null, session: string, machine:
   }, [url]);
   if (!att) return undefined;
   if (url === undefined) return { status: "loading" };
-  if (url === null) return { status: "missing" };
+  if (url === null) return attachmentFailure(att.blobSha256) === "offline" ? { status: "offline" } : { status: "missing" };
   const d = dims?.url === url ? dims : { width: 0, height: 0 };
   return { status: "ready", url, width: d.width, height: d.height, size: att.sizeBytes, turn: 0, folder: "", resolvedPath: att.name };
 }
@@ -139,17 +171,20 @@ function ImageLightbox({ shown, onClose }: { shown: ShownLightbox; onClose: () =
 
   const files = shown.kind === "files" ? shown : null;
   const atts = shown.kind === "attachments" ? shown : null;
+  const pics = shown.kind === "pictures" ? shown : null;
+  const pic = pics ? (pics.items[index] ?? pics.items[0]!) : null;
   const item = files ? (files.items[index] ?? files.items[0]!) : null;
   const att = atts ? (atts.items[index] ?? atts.items[0]!) : null;
   const file: SessionFile | null = files && item ? { session: files.home.session, run: files.run, path: item.path } : null;
-  const machineId = files ? files.home.machine : atts!.machine;
+  const machineId = files ? files.home.machine : (atts?.machine ?? "");
   const machine = st.machines.find((m) => m.machineId === machineId);
   const online = (files?.home.local ?? false) || (st.status?.relayConnected !== false && (machine?.online ?? false));
   const fileState = useSessionImage(file, true, online);
-  const attState = useAttachmentImage(att, atts?.session ?? "", machineId);
-  const state = files ? fileState : attState;
+  const attState = useAttachmentImage(att, atts?.session ?? "", machineId, online);
+  const picState = usePicture(pic);
+  const state = files ? fileState : atts ? attState : picState;
   const caption = item?.caption ?? "";
-  const askedPath = item?.path ?? att?.name ?? "";
+  const askedPath = item?.path ?? att?.name ?? pic?.name ?? "";
 
   // Prefetch adjacent images for instant stepping.
   useEffect(() => {
@@ -200,11 +235,11 @@ function ImageLightbox({ shown, onClose }: { shown: ShownLightbox; onClose: () =
 
   const clampZoom = (next: number) => Math.max(1, Math.min(4, next));
 
-  const openMore = () => {
-    if (!files || !file) return;
-    const rect = moreRef.current?.getBoundingClientRect();
+  const openMore = (from?: HTMLElement | null) => {
+    const rect = from?.getBoundingClientRect();
     const at = rect ? { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) } : undefined;
-    void sessionImageMenu(st, files.home, { ...file, path: resolvedPath }, folder, { at });
+    if (files && file) void sessionImageMenu(st, files.home, { ...file, path: resolvedPath }, folder, { at });
+    else if (pic?.save) void window.hermesh?.popupMenu([{ id: "save", label: t("files.save") }], at).then((id) => id === "save" && pic.save?.());
   };
 
   return createPortal(
@@ -222,14 +257,14 @@ function ImageLightbox({ shown, onClose }: { shown: ShownLightbox; onClose: () =
           )}
         </div>
         <div className="slb-actions">
-          {files && (
+          {(files || pic?.save) && (
             <button
               ref={moreRef}
               className="slb-btn"
               aria-label={t("files.more")}
               title={t("files.more")}
               data-testid="lightbox-more"
-              onClick={openMore}
+              onClick={() => openMore(moreRef.current)}
             >
               <Icon name="more" />
             </button>
@@ -322,7 +357,7 @@ function ImageLightbox({ shown, onClose }: { shown: ShownLightbox; onClose: () =
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              if (files && file) void sessionImageMenu(st, files.home, { ...file, path: resolvedPath }, folder);
+              openMore();
             }}
           />
         ) : (
@@ -338,6 +373,11 @@ function ImageLightbox({ shown, onClose }: { shown: ShownLightbox; onClose: () =
                     ? t("files.notFound")
                     : state.message}
             </span>
+            {att && state.status !== "tooLarge" && (
+              <button className="slb-retry" data-testid="lightbox-retry" onClick={() => retryAttachment(att.blobSha256)}>
+                {t("files.retry")}
+              </button>
+            )}
           </div>
         )}
 

@@ -315,9 +315,7 @@
     "dropTitle": "松手添加到对话",
     "dropHint": "文件或图片",
     "remove": "移除 {{name}}",
-    "view": "查看 {{name}}",
-    "prevImage": "上一张",
-    "nextImage": "下一张"
+    "view": "查看 {{name}}"
   },
   "model": {
     "model": "模型",
