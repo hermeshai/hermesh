@@ -700,8 +700,8 @@ extension View {
     /// The menu button on a root page, and the sync line in the middle of
     /// its bar: once the title is small, in its place; while it is large,
     /// the bar shows nothing there (UIKit hides a title view then), so the
-    /// line is laid over the bar (PageView). A page with a box (`sync` false) says its connection above the box
-    /// instead (ConnectionCapsule).
+    /// line is laid over the bar (PageView). A page with a box (`sync` false) says its connection in its own inline
+    /// status slot instead (`ConnectionLine` / `HerConnectionBubble`).
     @ViewBuilder func rootToolbar(enabled: Bool = true, sync: Bool = true) -> some View {
         if enabled { modifier(RootToolbar(sync: sync)) } else { self.syncSubtitle() }
     }

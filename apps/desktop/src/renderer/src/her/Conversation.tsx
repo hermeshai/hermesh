@@ -12,11 +12,12 @@ import { ContentScope } from "../session/scope";
 import { useVirtualRows, type VirtualRow } from "../session/useVirtualRows";
 import { errorText, useNow, useStore } from "../store";
 import { Approval, type SendOp } from "./Approval";
-import { BusyBubble } from "./Busy";
+import { BusyBubble, ConnectionBubble } from "./Busy";
 import { addAttachments, type Attachment } from "./attachments";
 import { cardOf } from "./cards";
 import { ChromeWait, useWaitsForChrome } from "./ChromeWait";
-import { ConnectionCapsule } from "../ConnectionCapsule";
+import { ConnectionGlyph, ConnectionWords, useConnectionNotice } from "../ConnectionCapsule";
+import { retrying, type ConnectionNotice } from "../connection";
 import { Composer, Tile } from "./Composer";
 import type { Conversation as Conv } from "./connection";
 import { useHer } from "./context";
@@ -271,6 +272,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
   const fromEnd = useRef<number | null>(null);
   const lastFirst = useRef(firstKey);
   if (firstKey !== lastFirst.current && scroll.current) fromEnd.current = scroll.current.scrollHeight - scroll.current.scrollTop;
+  const notice = useConnectionNotice(her.machine, herLinkUp(conv, state));
   useLayoutEffect(() => {
     const el = scroll.current;
     lastFirst.current = firstKey;
@@ -278,7 +280,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
     else if (el && fromEnd.current !== null) el.scrollTop = el.scrollHeight - fromEnd.current;
     fromEnd.current = null;
     if (el && el.scrollTop < el.clientHeight * 1.5) earlier();
-  }, [items, !!busy, dock]);
+  }, [items, !!busy, !!notice, dock]);
   const lastTop = useRef(0);
   const onScroll = () => {
     const el = scroll.current;
@@ -500,7 +502,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
           )}
           {empty ? (
             // Without a model, Her waits for her's word before it greets (the onboarding).
-            <EmptyPage bot={bot} state={state} loading={(!view && state.kind === "ready" && !conv.noModel) || noModel} />
+            <EmptyPage bot={bot} state={state} notice={notice} loading={(!view && state.kind === "ready" && !conv.noModel) || noModel} />
           ) : (
             <div className="tr bots" role="log" aria-label={t("chat.log")} ref={setList} data-rows={rows.length}>
               {virtual.parts.flatMap((part) =>
@@ -512,7 +514,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
                       </div>
                     )),
               )}
-              {busy && <BusyBubble busy={busy} />}
+              {notice ? <ConnectionBubble notice={notice} machine={her.machine} /> : busy ? <BusyBubble busy={busy} /> : null}
             </div>
           )}
         </div>
@@ -527,7 +529,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
 }
 
 /** A new assistant's page, or one whose conversation can't be read now: a line, under its avatar and name at the page's top. Her greets. */
-function EmptyPage({ bot, state, loading }: { bot: BotSummary; state: EnvState; loading: boolean }) {
+function EmptyPage({ bot, state, notice, loading }: { bot: BotSummary; state: EnvState; notice: ConnectionNotice | null; loading: boolean }) {
   const { t } = useTranslation("her");
   const her = useHer();
   const name = useMachineTitle(her.machine);
@@ -536,6 +538,14 @@ function EmptyPage({ bot, state, loading }: { bot: BotSummary; state: EnvState; 
   return (
     <div className="bempty">
       <p>{line}</p>
+      {notice && (
+        <div className="th-work" data-testid="connection-line" role="status">
+          <ConnectionGlyph notice={notice} markSize={16} />
+          <span className={`conn-t ${retrying(notice) ? "shimmer" : ""}`}>
+            <ConnectionWords notice={notice} machine={her.machine} />
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -925,16 +935,9 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight, onSpoken }: {
   ) : state.kind === "failed" ? (
     <StateNote icon="alert" title={t("env.failed", { name })} body={state.error} />
   ) : null;
-  // Over all of it, the line that says the conversation's connection is down (herLinkUp).
-  const above = (
-    <>
-      <ConnectionCapsule machine={her.machine} linkUp={herLinkUp(conv, state)} />
-      {what}
-    </>
-  );
   return (
     <Composer
-      above={above}
+      above={what}
       onHeight={onHeight}
       value={draft.text}
       onChange={(text) => change({ ...draft, text })}

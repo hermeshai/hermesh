@@ -377,15 +377,30 @@ test("a new session aimed at a machine gone offline: its projects and models as 
     await expect(page.getByTestId("picker-provider-scripted")).toBeVisible();
     await page.keyboard.press("Escape");
 
-    // Aimed at work-mac while it answers: nothing above the box.
-    const capsule = page.getByTestId("connection-capsule");
-    await expect(capsule).toHaveCount(0);
+    // Aimed at work-mac while it answers: no connection notice under the environment.
+    const conn = page.getByTestId("connection-line");
+    await expect(conn).toHaveCount(0);
+
+    // Start a running turn on work-mac, then stop work-mac: the single WorkLine merges the connection state in place
+    // instead of stacking a second bar above the composer.
+    await page.getByTestId("thread-composer-input").fill("sleep 30s\nsay done");
+    await page.getByTestId("thread-composer-input").press("Enter");
+    const working = page.getByTestId("thread-working");
+    await expect(working).toContainText("工作中", { timeout: 30_000 });
+    await expect(conn).toHaveCount(0);
     process.kill(-fixture.otherMac, "SIGTERM");
+    await expect(working.getByTestId("connection-line")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".th-work")).toHaveCount(1);
+    await expect(page.locator(".cmp-col").getByTestId("connection-line")).toHaveCount(0);
+    await expect(conn).toHaveText("work-mac 离线 · 消息会排队到它上线", { timeout: 60_000 });
+
+    // Back on New Session aimed at work-mac: the notice sits under the environment picker, not over the composer.
+    await page.getByTestId("nav-new-thread").click();
     await page.getByRole("button", { name: "环境" }).click();
     await expect(page.getByTestId("machine-item-work-mac")).toContainText("离线 · 消息会排队到它上线", { timeout: 60_000 });
     await page.getByTestId("machine-item-work-mac").click();
-    // The line above the box says it is offline, and what sending does.
-    await expect(capsule).toHaveText("work-mac 离线 · 消息会排队到它上线", { timeout: 15_000 });
+    await expect(page.locator(".th-ask-after").getByTestId("connection-line")).toHaveText("work-mac 离线 · 消息会排队到它上线", { timeout: 15_000 });
+    await expect(page.locator(".cmp-col").getByTestId("connection-line")).toHaveCount(0);
 
     // Its projects and models are still there to choose, marked as what was last read.
     await page.getByRole("button", { name: "项目" }).click();
@@ -403,13 +418,12 @@ test("a new session aimed at a machine gone offline: its projects and models as 
     // Sent anyway: the session opens, waiting for work-mac.
     await page.getByTestId("thread-composer-input").fill("say queued_while_offline");
     await page.getByTestId("thread-composer-input").press("Enter");
-    // Said under the message, faded, with Discard; nothing at work at the end.
+    // Said under the message, faded, with Discard; nothing at work, and the inline connection line at the conversation's end.
     const waiting = page.getByRole("log").locator(".um.waiting").filter({ hasText: "say queued_while_offline" });
     await expect(waiting.getByTestId("prompt-note")).toContainText("等 work-mac 在线后送达", { timeout: 15_000 });
     await expect(waiting.getByTestId("prompt-discard")).toBeVisible();
     await expect(page.getByTestId("thread-working")).toHaveCount(0);
-    // The session it opened says the same above its box, not a wait for good.
-    await expect(capsule).toHaveText("work-mac 离线 · 消息会排队到它上线", { timeout: 15_000 });
+    await expect(page.locator(".dbody").getByTestId("connection-line")).toHaveText("work-mac 离线 · 消息会排队到它上线", { timeout: 15_000 });
     await snap(page, "session-offline-capsule");
   } finally {
     await app.close();

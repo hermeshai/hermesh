@@ -1,6 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { BusyAgent } from "@hermesh/her-client";
+import type { Machine } from "@hermesh/proto/local";
+import { ConnectionGlyph, ConnectionWords } from "../ConnectionCapsule";
+import { retrying, type ConnectionNotice } from "../connection";
 import { Icon } from "../icons";
 import { useStore } from "../store";
 import { useHer } from "./context";
@@ -108,6 +111,43 @@ export function BusyBubble({ busy }: { busy: { her: boolean; agents: BusyAgent[]
         <div className="bline">
           <div className="bbub wbub" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
             {line}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The `···` bubble at the foot of Her's conversation while Her's connection is down: swept while retrying, still while offline or without network. */
+export function ConnectionBubble({ notice, machine }: { notice: ConnectionNotice; machine: Machine }) {
+  return (
+    <div className="bm working">
+      <div className="bm-b">
+        <div className="bline">
+          <div className="bbub wbub">
+            <div className="wb-h" role="status" data-testid="connection-line">
+              {retrying(notice) ? (
+                <span className="wb-sweep">
+                  <span className="dots" aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span className="wb-w">
+                    <span className="wb-t">
+                      <ConnectionWords notice={notice} machine={machine} />
+                    </span>
+                  </span>
+                </span>
+              ) : (
+                <span className="wb-static">
+                  <ConnectionGlyph notice={notice} markSize={16} />
+                  <span className="wb-t">
+                    <ConnectionWords notice={notice} machine={machine} />
+                  </span>
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>

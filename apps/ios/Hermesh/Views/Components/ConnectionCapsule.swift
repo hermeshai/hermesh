@@ -2,11 +2,10 @@ import HermeshHer
 import HermeshKit
 import SwiftUI
 
-/// The line above a page's box while the connection that page uses is down (docs/connection-status-demo.html): a
-/// glass capsule, as the box is, saying why and what happens to what is sent meanwhile; gone once the connection is
-/// back. What it says is `connectionNotice`'s (HermeshKit), as on the Mac: a short wait never shows, and once shown it
-/// stays at least half a second. A tap opens the connection diagnostics, where Reconnect Now is.
-struct ConnectionCapsule: View {
+/// Follows the connection a page uses while it is down (docs/connection-status-v2-demo.html): a short wait never
+/// shows, and once shown it stays at least half a second (`ConnectionWaits.shownAtLeast`). Gives the current notice
+/// and an action that opens `ConnectionDiagnosticsSheet` to whichever inline status slot the page already has.
+struct FollowingConnection<Content: View>: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var phase
     @Environment(\.accessibilityReduceMotion) private var still
@@ -17,14 +16,13 @@ struct ConnectionCapsule: View {
     /// Her's, on her page: the diagnostics show her connection too.
     var chat: HerChat? = nil
     var state: HerEnvState? = nil
+    @ViewBuilder let content: (ConnectionNotice?, @escaping () -> Void) -> Content
 
     @State private var downSince: Date?
     @State private var shown: ConnectionNotice?
     @State private var shownAt = Date.distantPast
     @State private var diagnosing = false
 
-    /// What the task that follows the connection reads of this view: it starts again when any of it changes (the
-    /// view it began with is the one it sees).
     private struct Following: Equatable {
         var linkUp: Bool
         var active: Bool
@@ -34,15 +32,13 @@ struct ConnectionCapsule: View {
 
     var body: some View {
         ZStack {
-            if let shown { capsule(shown) }
+            content(shown, { diagnosing = true })
         }
-        .frame(maxWidth: .infinity)
-        .animation(still ? .easeOut(duration: 0.15) : .snappy(duration: 0.32, extraBounce: 0.08), value: shown)
+        .animation(still ? .easeOut(duration: 0.15) : .easeOut(duration: 0.2), value: shown)
         .task(id: Following(linkUp: linkUp, active: phase == .active, machineOnline: machine?.online, machineUnreachable: machine.map { !$0.unreachable.isEmpty })) { await follow() }
         .sheet(isPresented: $diagnosing) { ConnectionDiagnosticsSheet(machine: machine, chat: chat, state: state) }
     }
 
-    /// Follows the connection while it is down, or while the line still shows.
     private func follow() async {
         if linkUp { downSince = nil } else if downSince == nil { downSince = .now }
         while !Task.isCancelled {
@@ -75,71 +71,170 @@ struct ConnectionCapsule: View {
             linkDownFor: downSince.map { now.timeIntervalSince($0) } ?? 0
         )
     }
+}
 
-    private func capsule(_ notice: ConnectionNotice) -> some View {
-        Button { diagnosing = true } label: {
-            HStack(spacing: 7) {
-                glyph(notice)
-                words(notice)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .shimmer(notice.retrying, paused: phase != .active)
+/// Active work on a session turn, merged in place with any connection notice at the end of the conversation.
+struct SessionWorkStatus: Equatable {
+    var text: String
+    var since: Date?
+}
+
+/// The inline status line at the end of a session's conversation (or under the environment picker on a new session):
+/// what the agent is doing while the connection is up, the connection state while idle and disconnected, or both in
+/// one line while a running session reconnects. A tap on a connection notice opens `ConnectionDiagnosticsSheet`.
+struct ConnectionLine: View {
+    @Environment(\.scenePhase) private var phase
+    let machine: Machine?
+    let linkUp: Bool
+    var work: SessionWorkStatus? = nil
+    var centered = false
+
+    var body: some View {
+        FollowingConnection(machine: machine, linkUp: linkUp) { notice, openDiagnostics in
+            if let notice {
+                if let work {
+                    HStack(spacing: 0) {
+                        noticeButton(notice, workText: work.text, openDiagnostics: openDiagnostics)
+                    }
+                    .frame(maxWidth: centered ? nil : .infinity, alignment: centered ? .center : .leading)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("thread-working")
+                } else {
+                    noticeButton(notice, workText: nil, openDiagnostics: openDiagnostics)
+                        .frame(maxWidth: centered ? nil : .infinity, alignment: centered ? .center : .leading)
+                }
+            } else if let work {
+                HStack(spacing: 8) {
+                    MovingMark(size: 18, motion: .seq)
+                    Text(verbatim: work.text).foregroundStyle(.secondary)
+                    if let since = work.since { Text(since, style: .timer).monospacedDigit().foregroundStyle(.tertiary) }
+                }
+                .font(.footnote).lineLimit(1)
+                .frame(maxWidth: centered ? nil : .infinity, alignment: centered ? .center : .leading)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("thread-working")
+            }
+        }
+    }
+
+    private func noticeButton(_ notice: ConnectionNotice, workText: String?, openDiagnostics: @escaping () -> Void) -> some View {
+        Button(action: openDiagnostics) {
+            HStack(spacing: 8) {
+                connectionGlyph(notice, markSize: 18)
+                Group {
+                    if let workText, notice.retrying {
+                        Text("\(stripTrailingEllipsis(workText)) · \(connectionNoticeWords(notice, machine: machine))")
+                            .shimmer(true, paused: phase != .active)
+                    } else {
+                        connectionNoticeWords(notice, machine: machine)
+                            .shimmer(notice.retrying, paused: phase != .active)
+                    }
+                }
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
                 Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
             }
-            .font(.subheadline.weight(.medium))
-            .padding(.leading, 12).padding(.trailing, 13)
-            .frame(height: 34)
-            .contentShape(.capsule)
-            .glassEffect(.regular.interactive(), in: .capsule)
+            .font(.footnote)
+            .padding(.vertical, 3)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityHint(Text("Opens connection diagnostics"))
-        .accessibilityIdentifier("connection-capsule")
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
-        .transition(still ? .opacity : .opacity.combined(with: .scale(scale: 0.9, anchor: .bottom)).combined(with: .offset(y: 6)))
-    }
-
-    @ViewBuilder private func glyph(_ notice: ConnectionNotice) -> some View {
-        switch notice {
-        case .noNetwork: Image(systemName: "wifi.slash").foregroundStyle(.orange)
-        case .cantReachHermesh: Image(systemName: "icloud.slash").foregroundStyle(.orange)
-        // Offline as the machine lists mark it: a ring.
-        case .offline: Circle().strokeBorder(.secondary, lineWidth: 1.5).frame(width: 8, height: 8)
-        case .connecting, .notResponding: BreathingDot(paused: phase != .active)
-        }
-    }
-
-    private func words(_ notice: ConnectionNotice) -> Text {
-        let name = machine.map { $0.machineName.isEmpty ? $0.machineID : $0.machineName }
-        switch notice {
-        case .noNetwork: return Text("No network connection")
-        case .connecting: return name.map { Text("Connecting to \($0)…") } ?? Text("Connecting to Hermesh…")
-        case .cantReachHermesh: return Text("Can’t reach Hermesh · Retrying")
-        case .offline: return Text("**\(name ?? "")** is offline · messages wait until it’s back")
-        case .notResponding: return Text("**\(name ?? "")** isn’t responding · Retrying")
-        }
+        .accessibilityIdentifier("connection-line")
+        .transition(.opacity)
     }
 }
 
-/// An orange dot that breathes: something is being tried again. Still with Reduce Motion.
-private struct BreathingDot: View {
-    let paused: Bool
+/// The `···` bubble at the foot of Her's conversation while Her's connection is down: swept by the same 2.4 s light
+/// while retrying, still while offline or without network. A tap opens `ConnectionDiagnosticsSheet`.
+struct HerConnectionBubble: View {
+    @Environment(\.scenePhase) private var phase
     @Environment(\.accessibilityReduceMotion) private var still
+    let notice: ConnectionNotice
+    let machine: Machine?
+    let openDiagnostics: () -> Void
+
+    private static let sweep = 2.4
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 20, paused: paused || still)) { timeline in
-            let t = paused || still ? 0.0 : timeline.date.timeIntervalSinceReferenceDate
-            Circle()
-                .fill(.orange.opacity(paused || still ? 1 : 0.35 + 0.65 * (0.5 + 0.5 * sin(t * 3.8))))
-                .frame(width: 7, height: 7)
+        Button(action: openDiagnostics) {
+            HStack(spacing: 10) {
+                if notice.retrying {
+                    TimelineView(.animation(paused: phase != .active || still)) { t in
+                        let swept = t.date.timeIntervalSinceReferenceDate / Self.sweep
+                        let sweepPhase = swept - swept.rounded(.down)
+                        HStack(spacing: 8) {
+                            HStack(spacing: 3) {
+                                ForEach(0 ..< 3, id: \.self) { _ in Circle().fill(.secondary).frame(width: 5, height: 5) }
+                            }
+                            connectionNoticeWords(notice, machine: machine)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .mask { if phase != .active || still { Rectangle() } else { sweepLight(at: sweepPhase) } }
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        connectionGlyph(notice, markSize: 16)
+                        connectionNoticeWords(notice, machine: machine)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 15)
+            .frame(minHeight: 44)
+            .background(Palette.reply, in: .capsule)
+            .overlay(Capsule().strokeBorder(Palette.separator, lineWidth: 0.5))
+            .contentShape(.capsule)
         }
-        .accessibilityHidden(true)
+        .buttonStyle(.plain)
+        .accessibilityHint(Text("Opens connection diagnostics"))
+        .accessibilityIdentifier("connection-line")
+        .transition(.opacity)
+    }
+
+    private func sweepLight(at phase: Double) -> some View {
+        GeometryReader { g in
+            let w = g.size.width
+            LinearGradient(stops: [.init(color: .black, location: 0.38), .init(color: .black.opacity(0.28), location: 0.5), .init(color: .black, location: 0.62)],
+                           startPoint: .leading, endPoint: .trailing)
+                .frame(width: w * 3)
+                .offset(x: -2 * w + 2 * w * phase)
+        }
     }
 }
 
-/// The connection diagnostics, from the line above a page's box: the page's machine first, and Her's connection on
-/// her page.
+@ViewBuilder func connectionGlyph(_ notice: ConnectionNotice, markSize: CGFloat) -> some View {
+    switch notice {
+    case .noNetwork: Image(systemName: "wifi.slash").font(.footnote.weight(.medium)).foregroundStyle(.orange)
+    case .cantReachHermesh: Image(systemName: "icloud.slash").font(.footnote.weight(.medium)).foregroundStyle(.orange)
+    case .offline: Circle().strokeBorder(.secondary, lineWidth: 1.5).frame(width: 8, height: 8)
+    case .connecting, .notResponding: MovingMark(size: markSize, motion: .wait)
+    }
+}
+
+func connectionNoticeWords(_ notice: ConnectionNotice, machine: Machine?) -> Text {
+    let name = machine.map { $0.machineName.isEmpty ? $0.machineID : $0.machineName }
+    switch notice {
+    case .noNetwork: return Text("No network connection")
+    case .connecting: return name.map { Text("Connecting to \($0)…") } ?? Text("Connecting to Hermesh…")
+    case .cantReachHermesh: return Text("Can’t reach Hermesh · Retrying")
+    case .offline: return Text("**\(name ?? "")** is offline · messages wait until it’s back")
+    case .notResponding: return Text("**\(name ?? "")** isn’t responding · Retrying")
+    }
+}
+
+private func stripTrailingEllipsis(_ text: String) -> String {
+    if text.hasSuffix("…") { return String(text.dropLast()) }
+    if text.hasSuffix("...") { return String(text.dropLast(3)) }
+    return text
+}
+
+/// The connection diagnostics sheet: the page's machine first, and Her's connection on her page.
 struct ConnectionDiagnosticsSheet: View {
     @Environment(\.dismiss) private var dismiss
     let machine: Machine?
