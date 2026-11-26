@@ -386,13 +386,14 @@ struct SessionPage: View {
         let activeProj = activeProjection
         let grant = model.grantLabel(s)
         let steps = groupSteps(sessionTranscript(activeProj))
+        let writing = sessionLiveReplies(activeProj)
         let files = model.sessionFiles.model(s.sessionID, api: model.api)
         let codeActions = codeActions(for: s)
         return ScrollView {
             VStack(alignment: .leading, spacing: 13) {
                 if s.status == .archived { ArchivedNote(session: s) }
                 ForEach(Array(steps.enumerated()), id: \.element.id) { i, step in
-                    StepView(step: step, session: s, previousTurn: previousTurn(steps, before: i))
+                    StepView(step: step, session: s, previousTurn: previousTurn(steps, before: i), live: writing.contains(step.id))
                 }
                 .environment(\.sessionFiles, files)
                 .environment(\.sessionCodeActions, codeActions)

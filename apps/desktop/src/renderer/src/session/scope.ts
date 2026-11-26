@@ -14,3 +14,6 @@ export type SessionCodeActions = {
   sendOutputToChat: (command: string, exitCode: number, output: string, stopped?: boolean) => void;
 };
 export const SessionRunContext = createContext<SessionCodeActions | null>(null);
+
+/** Inside a reply that is streaming or finishing its final row wipe. */
+export const StreamContext = createContext(false);

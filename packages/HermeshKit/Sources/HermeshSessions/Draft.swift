@@ -95,3 +95,109 @@ public func closingOpenMarks(_ block: String) -> String {
     if tildes % 2 == 1 { s += "~~" }
     return s
 }
+
+private let breakPunct: Set<Character> = Set("，。、；：！？）》」』】,.!?;:)")
+
+private func isWide(_ scalar: Unicode.Scalar) -> Bool {
+    let v = scalar.value
+    return (0x2E80 ... 0x9FFF).contains(v) || (0xAC00 ... 0xD7AF).contains(v)
+        || (0xF900 ... 0xFAFF).contains(v) || (0xFE30 ... 0xFE6F).contains(v)
+        || (0xFF01 ... 0xFF60).contains(v) || v >= 0x20000
+}
+
+/// Finds the end index in `text` of the next full visual row starting at `from` (~28 CJK or ~56 ASCII units on iPhone),
+/// or `nil` until a newline or full row arrives unless `flushTail` is true.
+public func nextStreamRowEnd(_ text: String, from: String.Index, flushTail: Bool, rowUnits: Int = 56) -> String.Index? {
+    guard from < text.endIndex else { return nil }
+    var lead = from
+    while lead < text.endIndex, text[lead] == "\n" || text[lead] == "\r" {
+        lead = text.index(after: lead)
+    }
+    if lead >= text.endIndex { return flushTail ? text.endIndex : nil }
+
+    if let nl = text[lead...].firstIndex(of: "\n") {
+        return text.index(after: nl)
+    }
+
+    var units = 0
+    var inCode = false
+    var inLinkURL = false
+    var lastGood: String.Index?
+    var reached: String.Index?
+    var i = lead
+
+    while i < text.endIndex {
+        let ch = text[i]
+        let next = text.index(after: i)
+        if ch == "`" {
+            inCode.toggle()
+            i = next
+            if !inCode, units >= rowUnits - 14 { lastGood = i }
+            continue
+        }
+        if !inCode {
+            if inLinkURL {
+                i = next
+                if ch == ")" {
+                    inLinkURL = false
+                    if units >= rowUnits - 14 { lastGood = i }
+                }
+                continue
+            }
+            if ch == "]", next < text.endIndex, text[next] == "(" {
+                inLinkURL = true
+                i = text.index(after: next)
+                continue
+            }
+            if ch == "*" || ch == "~" || ch == "[" {
+                i = next
+                continue
+            }
+        }
+
+        let wide = ch.unicodeScalars.contains(where: isWide)
+        units += wide ? 2 : 1
+        i = next
+
+        if !inCode, !inLinkURL {
+            if ch == " " || ch == "\t" || breakPunct.contains(ch) {
+                lastGood = i
+            } else if wide, units >= rowUnits - 14, i == text.endIndex || !breakPunct.contains(text[i]) {
+                lastGood = i
+            }
+        }
+
+        if units >= rowUnits, !inCode, !inLinkURL, reached == nil {
+            if ch == "*", i < text.endIndex, text[i] == "*" { continue }
+            let prevASCII = ch.isASCII && (ch.isLetter || ch.isNumber || ch == "_")
+            let nextASCII = i < text.endIndex && text[i].isASCII && (text[i].isLetter || text[i].isNumber || text[i] == "_")
+            if !(prevASCII && nextASCII) {
+                if let good = lastGood, text.distance(from: lead, to: good) >= 6, text.distance(from: good, to: i) <= 12 {
+                    reached = good
+                } else {
+                    reached = i
+                }
+                break
+            } else if let good = lastGood, text.distance(from: lead, to: good) >= 6 {
+                reached = good
+                break
+            }
+        }
+    }
+
+    if var cut = reached {
+        while cut < text.endIndex, text[cut] == "*" { cut = text.index(after: cut) }
+        if cut < text.endIndex, breakPunct.contains(text[cut]) { cut = text.index(after: cut) }
+        return cut
+    }
+
+    guard flushTail else { return nil }
+    let trimmed = text[lead...].trimmingCharacters(in: .whitespaces)
+    if trimmed.isEmpty || trimmed.wholeMatch(of: #/([*`~|#>-]+|\|[^|\n]*)/#) != nil { return nil }
+    var end = text.endIndex
+    let beforeEnd = text.index(before: end)
+    if beforeEnd > lead, text[beforeEnd] == "*", text[text.index(before: beforeEnd)] != "*" {
+        end = beforeEnd
+    }
+    return end > lead ? end : nil
+}

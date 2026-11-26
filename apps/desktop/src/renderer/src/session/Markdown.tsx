@@ -10,13 +10,14 @@ import type { Root as HtmlRoot, Element as HtmlElement, RootContent as HtmlConte
 import { sameImagePath, sessionImageRef } from "@hermesh/her-client";
 import { createMarkdownSlices, pendingText } from "./markdown/parse";
 import { anchors, contentExtensions } from "./markdown/plugins";
+import { silkWipe, useStreamText, type SilkWipeState } from "./markdown/stream";
 import { texMath } from "./markdown/tex";
 import { MarkdownTable } from "./markdown/Table";
 import { CodeBlock, InlineCode, Link } from "./content";
 import { FilesHomeContext } from "./files/files";
 import { ReplyImagesContext, scanReplyImages, type ReplyImageItem } from "./files/images";
 import { SessionImageSlot } from "./files/InlineImages";
-import { DraftContext } from "./scope";
+import { DraftContext, StreamContext } from "./scope";
 
 const MermaidBlock = lazy(() => import("./markdown/Mermaid"));
 const SourceContext = createContext("");
@@ -32,9 +33,10 @@ export function Markdown({ text, streaming = false, mode = "chat" }: { text: str
   const prefix = useId();
   const home = useContext(FilesHomeContext);
   const inSession = Boolean(home) && mode === "chat";
+  const { shown, animate } = useStreamText(text, streaming);
   const split = useRef(createMarkdownSlices());
-  const blocks = useMemo(() => split.current(text, streaming), [text, streaming]);
-  const replyImages = useMemo(() => (inSession ? scanReplyImages(text) : null), [text, inSession]);
+  const blocks = useMemo(() => split.current(shown, streaming), [shown, streaming]);
+  const replyImages = useMemo(() => (inSession ? scanReplyImages(shown) : null), [shown, inSession]);
   const explicitKey = replyImages ? replyImages.explicit.join("\0") : "";
   // Pre-compute per-block claimed link paths so `[shot.png](p)` repeated across two blocks in one reply only expands once.
   const blockAllowedLinks = useMemo(() => {
@@ -55,23 +57,26 @@ export function Markdown({ text, streaming = false, mode = "chat" }: { text: str
   }, [blocks, inSession, replyImages]);
 
   return (
-    <ReplyImagesContext.Provider value={replyImages}>
-      <div className="md sel-text" data-mode={mode}>
-        {blocks.map((block, idx) => (
-          <Block
-            key={block.id}
-            text={block.text}
-            pending={block.pending}
-            prefix={prefix}
-            offset={block.id}
-            mode={mode}
-            inSession={inSession}
-            explicitKey={explicitKey}
-            allowedLinksKey={blockAllowedLinks[idx] ?? ""}
-          />
-        ))}
-      </div>
-    </ReplyImagesContext.Provider>
+    <StreamContext.Provider value={animate}>
+      <ReplyImagesContext.Provider value={replyImages}>
+        <div className="md sel-text" data-mode={mode}>
+          {blocks.map((block, idx) => (
+            <Block
+              key={block.id}
+              text={block.text}
+              pending={block.pending}
+              animate={animate}
+              prefix={prefix}
+              offset={block.id}
+              mode={mode}
+              inSession={inSession}
+              explicitKey={explicitKey}
+              allowedLinksKey={blockAllowedLinks[idx] ?? ""}
+            />
+          ))}
+        </div>
+      </ReplyImagesContext.Provider>
+    </StreamContext.Provider>
   );
 }
 
@@ -82,6 +87,7 @@ export function DraftMarkdown({ text }: { text: string }) {
 const Block = memo(function Block({
   text,
   pending,
+  animate,
   prefix,
   offset,
   mode,
@@ -91,6 +97,7 @@ const Block = memo(function Block({
 }: {
   text: string;
   pending: boolean;
+  animate: boolean;
   prefix: string;
   offset: number;
   mode: string;
@@ -100,6 +107,11 @@ const Block = memo(function Block({
 }) {
   const { t } = useTranslation("session");
   const [mathPlugin, setMathPlugin] = useState<PluggableList>([]);
+  const [, setSettled] = useState(0);
+  const wipeState = useRef<SilkWipeState>({ seen: animate ? 0 : Infinity, waves: [] });
+  if (!animate && wipeState.current.waves.length === 0) {
+    wipeState.current.seen = Infinity;
+  }
   const hasMath = /\$\$|```math|~~~math|\\[([]/.test(text);
   useEffect(() => {
     if (!hasMath) return;
@@ -113,12 +125,21 @@ const Block = memo(function Block({
       live = false;
     };
   }, [hasMath]);
-  const rehypePlugins = useMemo<PluggableList>(() => {
-    const list: PluggableList = [...mathPlugin, [anchors, { prefix, block: offset }]];
-    if (inSession) list.push([rehypeSessionImages, { pending, explicitKey, allowedLinksKey }]);
-    return list;
-  }, [mathPlugin, prefix, offset, inSession, pending, explicitKey, allowedLinksKey]);
   const shown = pending ? remend(pendingText(text), { linkMode: "text-only", katex: true }) : text;
+  const rehypePlugins: PluggableList = [...mathPlugin, [anchors, { prefix, block: offset }]];
+  if (inSession) rehypePlugins.push([rehypeSessionImages, { pending, explicitKey, allowedLinksKey }]);
+  if (animate || wipeState.current.waves.length > 0) rehypePlugins.push([silkWipe, { state: wipeState.current }]);
+  useEffect(() => {
+    const waves = wipeState.current.waves;
+    if (waves.length === 0) return;
+    const latest = waves[waves.length - 1]!.until;
+    const wait = Math.max(16, latest - performance.now() + 24);
+    const timer = setTimeout(() => {
+      wipeState.current.waves = [];
+      setSettled((n) => n + 1);
+    }, wait);
+    return () => clearTimeout(timer);
+  }, [shown, animate]);
   return (
     <DraftContext.Provider value={pending}>
       <SourceContext.Provider value={text}>

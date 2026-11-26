@@ -1127,13 +1127,15 @@ test("a reply shows as the agent writes it, never as raw Markdown, and stays whe
   // Every state of the agent's words while the reply grows (the prompt shows it raw), checked for Markdown that shows raw,
   // and whether one showed part of it only.
   await page.evaluate(() => {
-    const w = window as unknown as { __raw: string[]; __part: boolean };
+    const w = window as unknown as { __raw: string[]; __part: boolean; __wiped: boolean };
     w.__raw = [];
     w.__part = false;
+    w.__wiped = false;
     new MutationObserver(() => {
       const text = [...document.querySelectorAll("[role=log] .am")].map((el) => (el as HTMLElement).innerText).join("\n");
       if (/\||\*\*|```/.test(text)) w.__raw.push(text);
       if (text.includes("计划") && !text.includes("最后一段说明")) w.__part = true;
+      if (document.querySelector("[role=log] .am .md-wipe")) w.__wiped = true;
     }).observe(document.body, { subtree: true, childList: true, characterData: true });
   });
   await open(page, "流式");
@@ -1142,17 +1144,19 @@ test("a reply shows as the agent writes it, never as raw Markdown, and stays whe
   const stop = page.getByTestId("composer-stop-btn");
   await expect(agent.locator(".md")).toHaveText("准备好了");
   await cli("session", "send", streaming.session.session_id, "--message", `stream ${reply}\nsleep 4s`);
-  // Part of the reply shows while the turn runs, then all of it, still running.
+  // Part of the reply shows while the turn runs, swept in row by row, then all of it, still running.
   await expect(agent.last()).toContainText("最后一段说明");
   expect(await page.evaluate(() => (window as unknown as { __part: boolean }).__part)).toBe(true);
+  expect(await page.evaluate(() => (window as unknown as { __wiped: boolean }).__wiped)).toBe(true);
   await expect(stop).toBeVisible();
   await expect(log.getByRole("table")).toBeVisible();
   await expect(log.locator("pre code")).toHaveText("func main() {}");
   await log.locator(".cblock").evaluate((el) => ((el as unknown as { __kept: boolean }).__kept = true));
   await snap(page, "session-streaming");
-  // The stored message replaces it when the turn ends: the same, not a second one, and its code block not drawn anew.
+  // The stored message replaces it when the turn ends: the same, not a second one, its code block not drawn anew, and all wipe masks unwrapped.
   await expect(stop).toHaveCount(0);
   await expect(agent).toHaveCount(2);
+  await expect(agent.last().locator(".md-wipe")).toHaveCount(0);
   expect(await log.locator(".cblock").evaluate((el) => (el as unknown as { __kept?: boolean }).__kept === true)).toBe(true);
   await expect(agent.last().locator("strong")).toHaveText("这一段很长很长的加粗文字会跨过好几次刷新");
   expect(await page.evaluate(() => (window as unknown as { __raw: string[] }).__raw)).toEqual([]);
