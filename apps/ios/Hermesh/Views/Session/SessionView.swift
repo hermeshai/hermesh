@@ -564,31 +564,46 @@ private struct BarIcon: View {
 private struct SidePanelButton: View {
     @Environment(AppModel.self) private var model
     let sessionID: String
+    var inBar = false
 
     var body: some View {
         let files = model.sessionFiles.model(sessionID, api: model.api)
-        Button {
-            withAnimation(.snappy) {
-                if files.panelOpen {
-                    files.panelOpen = false
-                    files.panelMax = false
-                } else if files.tabs.isEmpty {
-                    files.openProject()
-                } else {
-                    files.panelOpen = true
+        Group {
+            if inBar {
+                Button(action: { toggle(files) }) {
+                    (files.panelOpen ? sidePanelHideImage() : Image(systemName: "sidebar.right"))
+                        .foregroundStyle(files.panelOpen ? Color.accentColor : .primary)
                 }
+            } else {
+                Button(action: { toggle(files) }) {
+                    (files.panelOpen ? sidePanelHideImage() : Image(systemName: "sidebar.right"))
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(files.panelOpen ? Color.accentColor : .primary)
+                        .frame(width: 44, height: 44)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
             }
-            if files.panelOpen { model.menuRail = true }
-        } label: {
-            Image(systemName: "sidebar.right").font(.body.weight(.medium)).foregroundStyle(files.panelOpen ? Color.accentColor : .primary)
-                .frame(width: 44, height: 44)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .contentShape(.circle)
         }
-        .buttonStyle(.plain)
         .accessibilityLabel(files.panelOpen ? String(localized: "Hide Side Panel") : String(localized: "Show Side Panel"))
         .accessibilityAddTraits(files.panelOpen ? .isSelected : [])
         .accessibilityIdentifier("session-side-panel")
+    }
+
+    private func toggle(_ files: SessionFilesModel) {
+        withAnimation(.snappy) {
+            if files.panelOpen {
+                files.panelOpen = false
+                files.panelMax = false
+                files.panelDrawer = false
+            } else if files.tabs.isEmpty {
+                files.openProject()
+            } else {
+                files.panelOpen = true
+            }
+        }
+        if files.panelOpen { model.menuRail = true }
     }
 }
 
@@ -602,10 +617,10 @@ private struct SessionMore: View {
 
     var body: some View {
         // The session's folder (docs/session-files.md §4, §15): a level at a time on a narrow screen; on a wide one,
-        // 项目文件 in the side panel.
+        // pulls up the bottom tree drawer over an open file tab or starts 项目文件 in the side panel.
         Button("Project Files", systemImage: "folder") {
             if model.wide != nil {
-                model.sessionFiles.model(session.sessionID, api: model.api).openProject()
+                model.sessionFiles.model(session.sessionID, api: model.api).showProjectFiles()
                 model.menuRail = true
             } else {
                 model.path.append(.sessionFolder(session.sessionID, ""))
@@ -624,7 +639,9 @@ private struct SessionMore: View {
     }
 }
 
-/// With the system's bars on the side (iPhone Duo): a session's buttons there, as every page's are.
+/// With the system's bars on the side (iPhone Duo): a session's buttons there, as every page's are. When unfolded
+/// on its side (`model.wide != nil`), window and contextual side-panel tools group into vertical Liquid Glass capsules
+/// along the trailing bar, keeping Hide Side Panel pinned and merging file actions into a single sectioned `⋯` menu.
 private struct SessionSideItems: ToolbarContent {
     @Environment(AppModel.self) private var model
     let session: Session?
@@ -635,22 +652,128 @@ private struct SessionSideItems: ToolbarContent {
     var body: some ToolbarContent {
         if model.path.isEmpty { MenuToolbarItem() }
         if let session {
-            if let tasks = backgroundTasks, tasks.running {
+            if #available(iOS 27.1, *), model.wide != nil {
+                SessionDuoWideItems(session: session, files: model.sessionFiles.model(session.sessionID, api: model.api),
+                                    renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
+            } else {
+                if let tasks = backgroundTasks, tasks.running {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Background Tasks", systemImage: "terminal", action: tasks.open)
+                            .accessibilityIdentifier("thread-background-tasks")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Background Tasks", systemImage: "terminal", action: tasks.open)
-                        .accessibilityIdentifier("thread-background-tasks")
+                    Menu {
+                        SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                    .accessibilityLabel("More")
+                    .accessibilityIdentifier("session-more")
                 }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
-                } label: {
-                    Image(systemName: "ellipsis")
-                }
-                .accessibilityLabel("More")
-                .accessibilityIdentifier("session-more")
             }
         }
+    }
+}
+
+@available(iOS 27.1, *)
+private struct SessionDuoWideItems: ToolbarContent {
+    @Environment(AppModel.self) private var model
+    let session: Session
+    @Bindable var files: SessionFilesModel
+    @Binding var renaming: Bool
+    @Binding var deleting: Bool
+    let backgroundTasks: SessionBar.BackgroundTasks?
+
+    private var activeIndex: Int? { files.tabs.firstIndex { $0.id == files.activeTab } }
+    private var activeTab: PanelTab? { activeIndex.map { files.tabs[$0] } }
+    private var sourceable: Bool {
+        guard let t = activeTab, t.kind == .files, !t.path.isEmpty else { return false }
+        let v = fileView(t.path)
+        return v == .markdown || v == .svg
+    }
+
+    var body: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarPinnedTrailing) {
+            SidePanelButton(sessionID: session.sessionID, inBar: true)
+            if files.panelOpen {
+                Button {
+                    withAnimation(.snappy) { files.panelMax.toggle() }
+                } label: {
+                    Image(systemName: files.panelMax ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                }
+                .accessibilityLabel(files.panelMax ? String(localized: "Shrink") : String(localized: "Enlarge"))
+                .accessibilityIdentifier("side-panel-max")
+            }
+        }
+        .axisBehavior(.verticalPreferred)
+        if files.panelOpen {
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Menu {
+                    Button("Project Files", systemImage: "list.bullet.indent") { files.openProject() }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel(String(localized: "New Tab"))
+                .accessibilityIdentifier("side-panel-new")
+                if let i = activeIndex, sourceable {
+                    Button {
+                        files.tabs[i].source.toggle()
+                    } label: {
+                        Image(systemName: files.tabs[i].source ? "eye" : "chevron.left.forwardslash.chevron.right")
+                    }
+                    .accessibilityLabel(files.tabs[i].source ? String(localized: "Preview") : String(localized: "Source"))
+                    .accessibilityIdentifier("file-source")
+                }
+            }
+            .axisBehavior(.verticalPreferred)
+        }
+        ToolbarSpacer(.fixed, placement: .topBarTrailing)
+        if let tasks = backgroundTasks, tasks.running {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Background Tasks", systemImage: "terminal", action: tasks.open)
+                    .accessibilityIdentifier("thread-background-tasks")
+            }
+            .axisBehavior(.verticalPreferred)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                if files.panelOpen, let tab = activeTab {
+                    if let a = tab.attachment {
+                        Section(fileBaseName(a.name)) {
+                            Button("Share…", systemImage: "square.and.arrow.up") {
+                                Task {
+                                    files.sharing = await SessionAttachmentStore.shared.previewURL(api: model.api, sessionID: files.sessionID,
+                                                                                                   machineID: session.machineID, ref: a)
+                                }
+                            }
+                            .accessibilityIdentifier("file-share")
+                        }
+                        Section(String(localized: "Current Session")) {
+                            SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
+                        }
+                    } else if !tab.path.isEmpty {
+                        Section(fileBaseName(tab.path)) {
+                            SessionFileMenu(sessionID: files.sessionID, run: tab.run, path: tab.path,
+                                            folder: files.folders[tab.id] ?? "", sharing: $files.sharing)
+                        }
+                        Section(String(localized: "Current Session")) {
+                            SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
+                        }
+                    } else {
+                        SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
+                    }
+                } else {
+                    SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .accessibilityLabel("More")
+            .accessibilityIdentifier("session-more")
+        }
+        .axisBehavior(.verticalPreferred)
     }
 }
 

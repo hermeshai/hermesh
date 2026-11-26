@@ -74,18 +74,18 @@ struct SessionTree: View {
         return Button {
             if r.dir { files.toggleDir(r.path) } else { pick(r.path) }
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "chevron.forward").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                    .rotationEffect(.degrees(open ? 90 : 0)).opacity(r.dir ? 1 : 0).frame(width: 14)
-                Image(systemName: r.dir ? "folder" : "doc").foregroundStyle(r.dir ? Color.accentColor : on ? Color.accentColor : .secondary).frame(width: 22)
+            HStack(spacing: 7) {
+                Image(systemName: "chevron.forward").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(open ? 90 : 0)).opacity(r.dir ? 1 : 0).frame(width: 13)
+                Image(systemName: r.dir ? "folder" : "doc").foregroundStyle(r.dir ? Color.accentColor : on ? Color.accentColor : .secondary).frame(width: 20)
                 Text(verbatim: r.name).foregroundStyle(on ? Color.accentColor : .primary).lineLimit(1).truncationMode(.middle)
-                Spacer(minLength: 8)
+                Spacer(minLength: 6)
                 if sizes, !r.dir {
                     Text(ByteCountFormatter.string(fromByteCount: Int64(r.size), countStyle: .file)).font(.footnote).foregroundStyle(.secondary)
                 }
             }
-            .padding(.leading, 6 + CGFloat(r.depth) * 18).padding(.trailing, 10)
-            .frame(minHeight: 42)
+            .padding(.leading, 8 + CGFloat(r.depth) * 13).padding(.trailing, 10)
+            .frame(minHeight: 40)
             .background(on ? Color.accentColor.opacity(0.13) : .clear, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
             .contentShape(.rect)
         }
@@ -103,19 +103,28 @@ struct SessionTreeSheet: View {
     let activePath: String
     let pick: (String) -> Void
 
+    private var dir: String { activePath.contains("/") ? String(activePath[..<activePath.lastIndex(of: "/")!]) : "" }
+
     var body: some View {
         let files = model.sessionFiles.model(sessionID, api: model.api)
+        let project = model.session(sessionID)?.projectID ?? ""
+        let place = [project, dir].filter { !$0.isEmpty }.joined(separator: "/")
         VStack(spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Project Files").font(.headline)
-                Text(verbatim: model.session(sessionID)?.projectID ?? "").font(.subheadline).foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Project Files").font(.headline)
+                    if !place.isEmpty {
+                        Text(verbatim: place).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+                    }
+                }
                 Spacer()
                 Button { dismiss() } label: { Image(systemName: "chevron.down").font(.subheadline.weight(.semibold)).frame(width: 34, height: 34) }
                     .buttonStyle(.glass)
                     .buttonBorderShape(.circle)
                     .accessibilityLabel(String(localized: "Close"))
             }
-            .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 6)
+            .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 8)
+            Divider()
             SessionTree(files: files, activePath: activePath, sizes: true, pick: pick)
         }
         .accessibilityElement(children: .contain)
@@ -123,36 +132,141 @@ struct SessionTreeSheet: View {
     }
 }
 
-// MARK: The side panel
+/// The unified bottom directory-tree drawer inside `SessionSidePanel` (wide / iPhone Duo): rises only within the side
+/// panel column so the left-hand conversation stays unobstructed, with native grabber drag between medium and large detents.
+private struct SessionPanelDrawer: View {
+    let files: SessionFilesModel
+    let project: String
+    let activePath: String
+    @Binding var isPresented: Bool
+    let pick: (String) -> Void
+    @State private var large = false
+    @GestureState private var dragY: CGFloat = 0
 
-/// Beside a session's conversation on a wide screen, as the Mac's side panel: its tabs (a file, the tree beside it or
-/// not; 项目文件; a page; an attachment), ＋ for a new one, and Enlarge, the panel taking the page; under the strip the
-/// tab's own bar, then the tab.
-struct SessionSidePanel: View {
-    @Environment(AppModel.self) private var model
-    @Bindable var files: SessionFilesModel
-    @State private var sharing: URL?
-    @State private var folders: [UUID: String] = [:]
+    private var dir: String { activePath.contains("/") ? String(activePath[..<activePath.lastIndex(of: "/")!]) : "" }
 
     var body: some View {
+        let place = [project, dir].filter { !$0.isEmpty }.joined(separator: "/")
+        GeometryReader { geo in
+            let baseH = geo.size.height * (large ? 0.88 : 0.60)
+            let curH = min(geo.size.height * 0.92, max(96, baseH - dragY))
+            ZStack(alignment: .bottom) {
+                Color.black.opacity(0.22)
+                    .ignoresSafeArea()
+                    .onTapGesture { close() }
+                    .accessibilityHidden(true)
+                VStack(spacing: 0) {
+                    Capsule()
+                        .fill(.tertiary)
+                        .frame(width: 38, height: 5)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 22)
+                        .contentShape(.rect)
+                        .onTapGesture { withAnimation(.snappy(duration: 0.24)) { large.toggle() } }
+                        .gesture(
+                            DragGesture(minimumDistance: 4)
+                                .updating($dragY) { v, s, _ in s = v.translation.height }
+                                .onEnded { v in
+                                    let endH = baseH - v.predictedEndTranslation.height
+                                    let ratio = endH / max(geo.size.height, 1)
+                                    if ratio < 0.36 || v.translation.height > 110 {
+                                        close()
+                                    } else {
+                                        withAnimation(.snappy(duration: 0.24)) { large = ratio > 0.72 || v.translation.height < -45 }
+                                    }
+                                }
+                        )
+                    HStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Project Files").font(.subheadline.weight(.semibold))
+                            if !place.isEmpty {
+                                Text(verbatim: place).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+                            }
+                        }
+                        Spacer()
+                        Button { close() } label: {
+                            Image(systemName: "chevron.down").font(.footnote.weight(.semibold)).frame(width: 32, height: 32)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.circle)
+                        .accessibilityLabel(String(localized: "Close"))
+                    }
+                    .padding(.leading, 18).padding(.trailing, 12).padding(.bottom, 8)
+                    Divider()
+                    SessionTree(files: files, activePath: activePath, sizes: true) { picked in
+                        close()
+                        pick(picked)
+                    }
+                }
+                .frame(height: curH)
+                .frame(maxWidth: .infinity)
+                .background(.regularMaterial, in: UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26, style: .continuous))
+                .shadow(color: .black.opacity(0.22), radius: 20, y: -6)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("file-tree-sheet")
+            }
+        }
+        .transition(.opacity)
+    }
+
+    private func close() {
+        withAnimation(.snappy(duration: 0.24)) {
+            isPresented = false
+            large = false
+        }
+    }
+}
+
+/// Template symbol for hiding the trailing side panel (`panel` outline + right sidebar divider + right chevron `›`).
+func sidePanelHideImage() -> Image {
+    Image(size: CGSize(width: 22, height: 22)) { ctx in
+        let stroke = StrokeStyle(lineWidth: 1.65, lineCap: .round, lineJoin: .round)
+        let rect = Path(roundedRect: CGRect(x: 2.5, y: 4, width: 17, height: 14), cornerRadius: 2.6)
+        ctx.stroke(rect, with: .foreground, style: stroke)
+        var line = Path()
+        line.move(to: CGPoint(x: 14, y: 4.3))
+        line.addLine(to: CGPoint(x: 14, y: 17.7))
+        ctx.stroke(line, with: .foreground, style: stroke)
+        var chev = Path()
+        chev.move(to: CGPoint(x: 8.2, y: 8.7))
+        chev.addLine(to: CGPoint(x: 11, y: 11))
+        chev.addLine(to: CGPoint(x: 8.2, y: 13.3))
+        ctx.stroke(chev, with: .foreground, style: stroke)
+    }
+}
+
+// MARK: The side panel
+
+/// Beside a session's conversation on a wide screen, as the Mac's side panel: a single slim strip of tabs (with iPhone
+/// Duo's bars on the side, window and contextual tools move into the system's vertical bar; elsewhere a compact glass
+/// capsule on the strip holds ＋, Enlarge/Shrink and Hide), and at a file tab's foot the unified bottom tree drawer.
+struct SessionSidePanel: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.barsOnTheSide) private var sideBars
+    @Bindable var files: SessionFilesModel
+
+    private var machineID: String { model.session(files.sessionID)?.machineID ?? "" }
+    private var projectID: String { model.session(files.sessionID)?.projectID ?? "" }
+
+    var body: some View {
+        let activeIndex = files.tabs.firstIndex { $0.id == files.activeTab }
         VStack(spacing: 0) {
-            strip
-            if let i = files.tabs.firstIndex(where: { $0.id == files.activeTab }) {
-                bar($files.tabs[i])
-                Divider()
+            strip(activeIndex: activeIndex)
+            Divider()
+            if let i = activeIndex {
+                subBar($files.tabs[i])
                 tabBody($files.tabs[i]).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Spacer()
             }
         }
         .background(Color(UIColor.systemBackground))
-        .sheet(item: $sharing) { HerShareSheet(url: $0).presentationDetents([.medium, .large]) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("side-panel")
     }
 
-    private var strip: some View {
-        HStack(spacing: 8) {
+    private func strip(activeIndex: Int?) -> some View {
+        HStack(spacing: 6) {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal) {
                     HStack(spacing: 6) {
@@ -164,26 +278,87 @@ struct SessionSidePanel: View {
                 .onChange(of: files.activeTab) { _, id in withAnimation { proxy.scrollTo(id) } }
             }
             .fixedSize(horizontal: false, vertical: true)
-            Menu {
-                Button("Project Files", systemImage: "list.bullet.indent") { files.openProject() }
-            } label: {
-                Image(systemName: "plus").font(.body.weight(.medium)).frame(width: 40, height: 40)
-                    .glassEffect(.regular.interactive(), in: .circle)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(String(localized: "New Tab"))
-            .accessibilityIdentifier("side-panel-new")
             Spacer(minLength: 0)
-            Button { withAnimation(.snappy) { files.panelMax.toggle() } } label: {
-                Image(systemName: files.panelMax ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-                    .font(.body.weight(.medium)).frame(width: 40, height: 40)
-                    .glassEffect(.regular.interactive(), in: .circle)
+            // On iPhone Duo (`sideBars`), window and file tools sit in the system's right vertical bar. On other wide
+            // screens (e.g. Pro Max on its side), they sit in a compact glass capsule at the trailing end of the strip.
+            if !sideBars {
+                if let i = activeIndex {
+                    inlineTabTools($files.tabs[i])
+                }
+                HStack(spacing: 2) {
+                    Menu {
+                        Button("Project Files", systemImage: "list.bullet.indent") { files.openProject() }
+                    } label: {
+                        Image(systemName: "plus").font(.subheadline.weight(.medium)).frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "New Tab"))
+                    .accessibilityIdentifier("side-panel-new")
+                    Button { withAnimation(.snappy) { files.panelMax.toggle() } } label: {
+                        Image(systemName: files.panelMax ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                            .font(.subheadline.weight(.medium)).frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(files.panelMax ? String(localized: "Shrink") : String(localized: "Enlarge"))
+                    .accessibilityIdentifier("side-panel-max")
+                    Button {
+                        withAnimation(.snappy) {
+                            files.panelOpen = false
+                            files.panelMax = false
+                            files.panelDrawer = false
+                        }
+                    } label: {
+                        sidePanelHideImage().foregroundStyle(Color.accentColor).frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "Hide Side Panel"))
+                    .accessibilityIdentifier("side-panel-hide")
+                }
+                .padding(.horizontal, 2).frame(height: 38)
+                .glassEffect(.regular, in: .capsule)
+            }
+        }
+        .tint(.primary)
+        .padding(.horizontal, 10).padding(.vertical, 6)
+    }
+
+    @ViewBuilder private func inlineTabTools(_ t: Binding<PanelTab>) -> some View {
+        let tab = t.wrappedValue
+        if tab.kind == .files, !tab.path.isEmpty {
+            let view = fileView(tab.path)
+            if view == .markdown || view == .svg {
+                Button { t.wrappedValue.source.toggle() } label: {
+                    Image(systemName: tab.source ? "eye" : "chevron.left.forwardslash.chevron.right")
+                        .font(.subheadline.weight(.medium)).frame(width: 34, height: 34)
+                        .background(tab.source ? Color.secondary.opacity(0.16) : .clear, in: .circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tab.source ? String(localized: "Preview") : String(localized: "Source"))
+                .accessibilityIdentifier("file-source")
+            }
+        }
+        if let a = tab.attachment {
+            Menu {
+                Button("Share…", systemImage: "square.and.arrow.up") {
+                    Task { files.sharing = await SessionAttachmentStore.shared.previewURL(api: model.api, sessionID: files.sessionID, machineID: machineID, ref: a) }
+                }
+                .accessibilityIdentifier("file-share")
+            } label: {
+                Image(systemName: "ellipsis").font(.subheadline.weight(.medium)).frame(width: 34, height: 34)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(files.panelMax ? String(localized: "Shrink") : String(localized: "Enlarge"))
-            .accessibilityIdentifier("side-panel-max")
+            .accessibilityLabel(String(localized: "More"))
+            .accessibilityIdentifier("file-more")
+        } else if !tab.path.isEmpty {
+            Menu {
+                SessionFileMenu(sessionID: files.sessionID, run: tab.run, path: tab.path, folder: files.folders[tab.id] ?? "", sharing: $files.sharing)
+            } label: {
+                Image(systemName: "ellipsis").font(.subheadline.weight(.medium)).frame(width: 34, height: 34)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "More"))
+            .accessibilityIdentifier("file-more")
         }
-        .padding(.horizontal, 10).padding(.vertical, 8)
     }
 
     private func title(_ t: PanelTab) -> String {
@@ -199,7 +374,7 @@ struct SessionSidePanel: View {
             Text(verbatim: title(t)).font(.subheadline).lineLimit(1).truncationMode(.middle)
             if on {
                 Button { withAnimation(.snappy) { files.closeTab(t.id) } } label: {
-                    Image(systemName: "xmark").font(.caption2.weight(.bold)).foregroundStyle(.secondary).frame(width: 24, height: 24)
+                    Image(systemName: "xmark").font(.caption2.weight(.bold)).foregroundStyle(.secondary).frame(width: 22, height: 22)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(String(localized: "Close \(title(t))"))
@@ -207,99 +382,86 @@ struct SessionSidePanel: View {
             }
         }
         .foregroundStyle(on ? .primary : .secondary)
-        .padding(.leading, 12).padding(.trailing, on ? 6 : 14)
-        .frame(height: 38)
-        .frame(maxWidth: 190)
+        .padding(.leading, 11).padding(.trailing, on ? 6 : 13)
+        .frame(height: 34)
+        .frame(maxWidth: 184)
         .background {
             if on { Capsule().fill(.clear).glassEffect(.regular, in: .capsule) } else { Capsule().fill(Color.secondary.opacity(0.12)) }
         }
         .contentShape(.capsule)
-        .onTapGesture { files.activeTab = t.id; if !t.path.isEmpty, t.attachment == nil { files.reveal(t.path) } }
+        .onTapGesture {
+            files.activeTab = t.id
+            files.panelDrawer = false
+            if !t.path.isEmpty, t.attachment == nil { files.reveal(t.path) }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(on ? [.isSelected, .isButton] : .isButton)
         .accessibilityLabel(Text(verbatim: title(t)))
         .accessibilityIdentifier("side-panel-tab")
     }
 
-    /// The tab's own bar: what it is (the folder for 项目文件, a path, a page's address), and its tools.
-    @ViewBuilder private func bar(_ t: Binding<PanelTab>) -> some View {
+    /// Subtle subtitle bar only for tabs that have no bottom directory-tree drawer (attachments, standalone 项目文件,
+    /// and `.html` pages). File tabs carry their folder path on the bottom drawer bar instead, saving vertical room.
+    @ViewBuilder private func subBar(_ t: Binding<PanelTab>) -> some View {
         let tab = t.wrappedValue
-        HStack(spacing: 4) {
-            if let a = tab.attachment {
+        if let a = tab.attachment {
+            VStack(spacing: 0) {
                 Text(verbatim: String(localized: "Attachment · \(ByteCountFormatter.string(fromByteCount: Int64(a.sizeBytes), countStyle: .file))"))
                     .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                Menu {
-                    Button("Share…", systemImage: "square.and.arrow.up") {
-                        Task {
-                            sharing = await SessionAttachmentStore.shared.previewURL(api: model.api, sessionID: files.sessionID,
-                                                                                    machineID: model.session(files.sessionID)?.machineID ?? "", ref: a)
-                        }
-                    }
-                    .accessibilityIdentifier("file-share")
-                } label: {
-                    Image(systemName: "ellipsis").frame(width: 34, height: 34)
-                }
-                .accessibilityLabel(String(localized: "More"))
-                .accessibilityIdentifier("file-more")
-            } else if tab.path.isEmpty {
+                    .padding(.horizontal, 14).frame(height: 36)
+                Divider()
+            }
+        } else if tab.path.isEmpty {
+            VStack(spacing: 0) {
                 Text(verbatim: rootFolder).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
                     .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Text(verbatim: tab.path).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
-                    .padding(.horizontal, tab.kind == .page ? 12 : 0).frame(height: 30)
-                    .background { if tab.kind == .page { Capsule().fill(Color.secondary.opacity(0.12)) } }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("side-panel-path")
-                if tab.kind == .files {
-                    let view = fileView(tab.path)
-                    if view == .markdown || view == .svg {
-                        Button { t.wrappedValue.source.toggle() } label: {
-                            Image(systemName: tab.source ? "eye" : "chevron.left.forwardslash.chevron.right").frame(width: 34, height: 34)
-                        }
-                        .accessibilityLabel(tab.source ? String(localized: "Preview") : String(localized: "Source"))
-                        .accessibilityIdentifier("file-source")
-                    }
-                    Button { withAnimation(.snappy) { t.wrappedValue.tree.toggle() } } label: {
-                        Image(systemName: "list.bullet.indent").frame(width: 34, height: 34)
-                            .background(tab.tree ? Color.secondary.opacity(0.16) : .clear, in: .circle)
-                    }
-                    .accessibilityLabel(String(localized: "Show or Hide the Tree"))
-                    .accessibilityAddTraits(tab.tree ? .isSelected : [])
-                    .accessibilityIdentifier("file-tree-toggle")
+                    .padding(.horizontal, 14).frame(height: 36)
+                Divider()
+            }
+        } else if tab.kind == .page {
+            VStack(spacing: 0) {
+                HStack {
+                    Text(verbatim: tab.path).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+                        .padding(.horizontal, 10).frame(height: 26)
+                        .background(Capsule().fill(Color.secondary.opacity(0.12)))
+                        .accessibilityIdentifier("side-panel-path")
+                    Spacer(minLength: 0)
                 }
-                Menu {
-                    SessionFileMenu(sessionID: files.sessionID, run: tab.run, path: tab.path, folder: folders[tab.id] ?? "", sharing: $sharing)
-                } label: {
-                    Image(systemName: "ellipsis").frame(width: 34, height: 34)
-                }
-                .accessibilityLabel(String(localized: "More"))
-                .accessibilityIdentifier("file-more")
+                .padding(.horizontal, 12).frame(height: 38)
+                Divider()
             }
         }
-        .tint(.primary)
-        .padding(.leading, 16).padding(.trailing, 8)
-        .frame(height: 42)
     }
 
     private var rootFolder: String {
         if case .success(let res)? = files.dirs[""] { return res.folder }
-        return model.session(files.sessionID)?.projectID ?? ""
+        return projectID
     }
 
     @ViewBuilder private func tabBody(_ t: Binding<PanelTab>) -> some View {
         let tab = t.wrappedValue
         if let a = tab.attachment {
-            SessionAttachmentContent(sessionID: files.sessionID, machineID: model.session(files.sessionID)?.machineID ?? "", ref: a)
+            SessionAttachmentContent(sessionID: files.sessionID, machineID: machineID, ref: a)
         } else if tab.path.isEmpty {
-            SessionTree(files: files, activePath: nil, sizes: true) { files.openFromTree($0) }
+            SessionTree(files: files, activePath: nil, sizes: true) { files.openFromTree($0, machineID: machineID) }
         } else {
-            HStack(spacing: 0) {
+            let dir = tab.path.contains("/") ? String(tab.path[..<tab.path.lastIndex(of: "/")!]) : ""
+            ZStack {
                 SessionFileContent(sessionID: files.sessionID, path: tab.path, line: tab.line, endLine: tab.endLine, turnRun: tab.replyRun,
-                                   run: t.run, source: tab.source) { folders[tab.id] = $0 }
+                                   run: t.run, source: tab.source) { files.folders[tab.id] = $0 }
                     .id("\(tab.id)\u{0}\(tab.path)")
-                if tab.kind == .files, tab.tree {
-                    Divider()
-                    SessionTree(files: files, activePath: tab.path) { files.openFromTree($0) }.frame(width: 200)
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        if tab.kind == .files {
+                            SessionFileDrawerBar(project: projectID, dir: dir) {
+                                files.reveal(tab.path)
+                                withAnimation(.snappy(duration: 0.24)) { files.panelDrawer = true }
+                            }
+                        }
+                    }
+                if tab.kind == .files, files.panelDrawer {
+                    SessionPanelDrawer(files: files, project: projectID, activePath: tab.path, isPresented: $files.panelDrawer) { picked in
+                        files.openFromTree(picked, machineID: machineID)
+                    }
                 }
             }
         }

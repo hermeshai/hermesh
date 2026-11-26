@@ -139,8 +139,14 @@ extension EnvironmentValues {
     /// Shown beside the conversation; taking the page whole.
     var panelOpen = false
     var panelMax = false
+    /// Whether the unified bottom directory-tree drawer is up over the active file tab.
+    var panelDrawer = false
     var tabs: [PanelTab] = []
     var activeTab: UUID?
+    /// Shared file URL being presented from either the side panel or iPhone Duo's vertical bar.
+    var sharing: URL?
+    /// Resolved workspace folder per tab, for Copy Path.
+    var folders: [UUID: String] = [:]
 
     /// Opens a file a reply names, or an attachment, in a tab of its own; the tab it already has comes forward.
     func openTab(run: String, path: String, line: Int? = nil, endLine: Int? = nil, attachment: Hermesh_Session_V1_AttachmentRef? = nil) {
@@ -152,18 +158,34 @@ extension EnvironmentValues {
             add(PanelTab(kind: kind, run: run, path: path, line: line, endLine: endLine, replyRun: run, attachment: attachment))
         }
         if attachment == nil, !path.isEmpty { reveal(path) }
+        panelDrawer = false
         panelOpen = true
     }
 
     /// 项目文件: the tree alone, a files tab with no file yet.
     func openProject() {
-        if let t = tabs.first(where: { $0.kind == .files && $0.path.isEmpty }) { activeTab = t.id } else { add(PanelTab(kind: .files, tree: true)) }
+        if let t = tabs.first(where: { $0.kind == .files && $0.path.isEmpty }) { activeTab = t.id } else { add(PanelTab(kind: .files)) }
+        panelDrawer = false
         reveal("")
         panelOpen = true
     }
 
-    /// A file picked in the tree: in the tab the tree is in, as a browser goes to a page; a .html is a page, its own tab.
-    func openFromTree(_ path: String) {
+    /// From ⋯ › 项目文件 on a wide screen: pulls up the bottom tree drawer when a file tab is already in front, else opens 项目文件.
+    func showProjectFiles() {
+        if panelOpen, let t = tabs.first(where: { $0.id == activeTab }), t.kind == .files, !t.path.isEmpty {
+            reveal(t.path)
+            panelDrawer = true
+        } else {
+            openProject()
+        }
+    }
+
+    /// A file picked in the tree: in the tab the tree is in, as a browser goes to a page; a .html is a page, its own tab; a picture, the Lightbox.
+    func openFromTree(_ path: String, machineID: String = "") {
+        if isSessionImage(path) {
+            openLightbox(run: "", path: path, machineID: machineID)
+            return
+        }
         guard fileView(path) != .page, let i = tabs.firstIndex(where: { $0.id == activeTab }), tabs[i].kind == .files else {
             return openTab(run: "", path: path)
         }
@@ -173,14 +195,19 @@ extension EnvironmentValues {
         tabs[i].line = nil
         tabs[i].endLine = nil
         tabs[i].source = false
+        reveal(path)
     }
 
     func closeTab(_ id: UUID) {
         guard let i = tabs.firstIndex(where: { $0.id == id }) else { return }
         tabs.remove(at: i)
-        if activeTab == id { activeTab = tabs.indices.contains(i) ? tabs[i].id : tabs.last?.id }
+        folders[id] = nil
+        if activeTab == id {
+            activeTab = tabs.indices.contains(i) ? tabs[i].id : tabs.last?.id
+            panelDrawer = false
+        }
         // The last one closed, the panel goes.
-        if tabs.isEmpty { panelOpen = false; panelMax = false }
+        if tabs.isEmpty { panelOpen = false; panelMax = false; panelDrawer = false }
     }
 
     private func add(_ tab: PanelTab) {
@@ -274,8 +301,8 @@ func fileRefPaths(_ blocks: [MarkdownBlock]) -> [String] {
     return out
 }
 
-/// A tab of the side panel: a file at a turn ("" for as it is now), the tree beside it or not (with no path, the tree
-/// alone: 项目文件); a .html running; a file the owner sent with a prompt.
+/// A tab of the side panel: a file at a turn ("" for as it is now; with no path, the tree alone: 项目文件); a .html
+/// running; a file the owner sent with a prompt.
 struct PanelTab: Identifiable, Equatable {
     enum Kind { case files, page, attachment }
     let id = UUID()
@@ -286,7 +313,6 @@ struct PanelTab: Identifiable, Equatable {
     var endLine: Int?
     /// The turn of the reply it was opened from: where "Show Version at Reply" goes back to.
     var replyRun = ""
-    var tree = false
     var source = false
     var attachment: Hermesh_Session_V1_AttachmentRef?
 }
@@ -517,7 +543,9 @@ struct SessionFilePage: View {
         SessionFileContent(sessionID: sessionID, path: path, line: line, endLine: endLine, turnRun: turnRun, run: $run, source: source) { folder = $0 }
             .id(path)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if view != .page { drawerBar }
+                if view != .page {
+                    SessionFileDrawerBar(project: model.session(sessionID)?.projectID ?? "", dir: dir) { drawer = true }
+                }
             }
             .navigationTitle(name)
             .navigationBarTitleDisplayMode(.inline)
@@ -568,30 +596,6 @@ struct SessionFilePage: View {
             .accessibilityIdentifier("session-file-page")
     }
 
-    /// The folder's tree, a pull away: the bar at the page's foot says where the file is.
-    private var drawerBar: some View {
-        let project = model.session(sessionID)?.projectID ?? ""
-        let place = [project, dir].filter { !$0.isEmpty }.joined(separator: "/")
-        return Button { drawer = true } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "list.bullet.indent").foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Project Files").font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
-                    if !place.isEmpty { Text(verbatim: place).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head) }
-                }
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.up").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 18)
-            .frame(height: 54)
-            .glassEffect(.regular.interactive(), in: .capsule)
-            .contentShape(.capsule)
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 4)
-        .accessibilityIdentifier("file-drawer")
-    }
-
     /// A file picked in the tree: in place, the folder as it is now; a page is pushed; a picture, the Lightbox.
     private func open(_ picked: String) {
         if isSessionImage(picked) {
@@ -607,6 +611,37 @@ struct SessionFilePage: View {
             endLine = nil
             source = false
         }
+    }
+}
+
+/// The folder's tree, a pull away: the glass bar at the foot of a file's page or side-panel tab says where the file is.
+struct SessionFileDrawerBar: View {
+    let project: String
+    let dir: String
+    let action: () -> Void
+
+    var body: some View {
+        let place = [project, dir].filter { !$0.isEmpty }.joined(separator: "/")
+        Button(action: action) {
+            HStack(spacing: 11) {
+                Image(systemName: "list.bullet.indent").foregroundStyle(Color.accentColor)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Project Files").font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                    if !place.isEmpty {
+                        Text(verbatim: place).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+                    }
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.up").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 50)
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 6)
+        .accessibilityIdentifier("file-drawer")
     }
 }
 
