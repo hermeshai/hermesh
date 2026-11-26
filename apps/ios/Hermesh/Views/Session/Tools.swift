@@ -411,11 +411,18 @@ struct Caret: View {
     }
 }
 
-/// A tool's output: the code face, grey, wrapping, selectable, at most 320
-/// high and scrolling inside (UITextView, which lays out a long output fast).
+/// A tool's output: the code face, grey (with ANSI SGR & unified diff colours when present),
+/// wrapping, selectable, at most 320 high and scrolling inside (UITextView, which lays out a long output fast).
 struct OutputText: UIViewRepresentable {
     let text: String
     var maxHeight: CGFloat = 320
+
+    final class Coordinator {
+        var lastText = ""
+        var lastDark: Bool?
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> UITextView {
         let v = UITextView()
@@ -424,14 +431,17 @@ struct OutputText: UIViewRepresentable {
         v.backgroundColor = .clear
         v.textContainerInset = .zero
         v.textContainer.lineFragmentPadding = 0
-        v.font = UIFontMetrics(forTextStyle: .caption1).scaledFont(for: .monospacedSystemFont(ofSize: 12, weight: .regular))
         v.adjustsFontForContentSizeCategory = true
-        v.textColor = .secondaryLabel
         return v
     }
 
     func updateUIView(_ v: UITextView, context: Context) {
-        if v.text != text { v.text = text }
+        let dark = v.traitCollection.userInterfaceStyle == .dark
+        let c = context.coordinator
+        guard c.lastText != text || c.lastDark != dark else { return }
+        c.lastText = text
+        c.lastDark = dark
+        v.attributedText = TerminalRendering.nsAttributedString(text, dark: dark)
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
