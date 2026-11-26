@@ -77,8 +77,7 @@ export function MainWindow() {
   const search = useLeaving(st.searching ? JSON.stringify(st.searchFor) : null);
   return (
     <div className={`mainwrap ${sidebar === "docked" ? "" : "noside"} ${sidebar === "over" ? "peek" : ""}`}>
-      {sidebar === "hidden" ? <SidebarToggle /> : <Sidebar />}
-      {sidebar === "over" && <div className="peek-scrim" onClick={() => setSidebar(st, false)} />}
+      {sidebar === "docked" && <Sidebar />}
       <section className="content">
         {st.selection.kind === "newSession" || st.selection.kind === "session" ? (
           <SessionPage />
@@ -91,6 +90,14 @@ export function MainWindow() {
         )}
         <RequestCards />
       </section>
+      {/* Overlays come after .content in the DOM: Chromium evaluates -webkit-app-region in DOM order, not z-index, so their no-drag controls must follow .ctool.drag. */}
+      {sidebar === "hidden" && <SidebarToggle />}
+      {sidebar === "over" && (
+        <>
+          <div className="peek-scrim" onClick={() => setSidebar(st, false)} />
+          <Sidebar />
+        </>
+      )}
       {search.shown !== null && <SearchPalette key={search.shown} leaving={search.leaving} />}
       <SheetHost />
       <ToastView />
