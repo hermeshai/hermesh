@@ -249,13 +249,13 @@ extension AppAPI {
         try await call("\(sessionSvc)/UpdateSession", r, timeout: 15)
     }
 
-    func archive(_ sessionID: String, _ archived: Bool) async throws -> Hermesh_Session_V1_Session {
+    func archive(_ sessionID: String, _ archived: Bool) async throws -> Hermesh_Session_V1_UpdateSessionResponse {
         var r = Hermesh_Session_V1_UpdateSessionRequest()
         r.commandID = UUID().uuidString
         r.sessionID = sessionID
         r.hasArchived_p = true
         r.archived = archived
-        return try await updateSession(r).session
+        return try await call("\(sessionSvc)/UpdateSession", r, timeout: 60)
     }
 
     func delete(_ sessionID: String) async throws {

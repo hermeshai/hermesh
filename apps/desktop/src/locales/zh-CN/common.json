@@ -61,6 +61,7 @@
     "account": "账号与设置",
     "disconnectedGrant": "已断开的 Agent",
     "archived": "已归档「{{title}}」",
+    "archivedKept": "已归档「{{title}}」（含本地文件，工作目录已保留）",
     "unarchived": "已取消归档「{{title}}」",
     "her": "Her",
     "overview": "概览",
@@ -240,5 +241,9 @@
     "body": "没有签名：这台电脑的签名器（{{version}}）比 Hermesh 旧，看不懂这次的请求。更新签名器后再试一次。Windows 会请你允许一次。",
     "button": "更新签名器",
     "updated": "签名器已更新，请再试一次"
+  },
+  "workspaceKept": {
+    "text": "该环境保留了任务的工作目录以保护本地改动或文件。在对应环境上更新 Hermesh 后，即可在保留工作目录的同时归档任务。",
+    "textPath": "该环境保留了任务的工作目录以保护本地文件（{{path}}）。在对应环境上更新 Hermesh 后，即可在保留工作目录的同时归档任务。"
   }
 }

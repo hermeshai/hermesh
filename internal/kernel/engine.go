@@ -166,7 +166,7 @@ type Config struct {
 	ReadDirs         func(projectID string) []string
 	ExtraEnv         func(sessionID string) map[string]string
 	ResolveSelection func(instanceID string, sel *sessionv1.ModelSelection) (*sessionv1.ModelSelection, error)
-	CheckRelease     func(ctx context.Context, sess *sessionv1.Session) error
+	ReleaseOnArchive func(ctx context.Context, sess *sessionv1.Session) (kept bool)
 	OnNotice         NoticeHook
 	OnWork           func(sess *sessionv1.Session, run *sessionv1.Run, ev *sessionv1.SessionEvent)
 	OnSessionChanged func(sess *sessionv1.Session)
@@ -651,6 +651,14 @@ func (e *Engine) lockSession(sessionID string) func() {
 	e.mu.Unlock()
 	lk.Lock()
 	return lk.Unlock
+}
+
+// WithSessionLock serializes external workspace maintenance (e.g. ReleaseWorkspaces)
+// with session mutations, run dispatch, and archive/unarchive transitions.
+func (e *Engine) WithSessionLock(sessionID string, fn func() error) error {
+	unlock := e.lockSession(sessionID)
+	defer unlock()
+	return fn()
 }
 
 type refLock struct {
@@ -2073,6 +2081,10 @@ func (e *Engine) RecordSentMail(sessionID, msgID, toAddr, toName, inReplyTo, bod
 // Core Run Execution Loop (TransitionPolicy + Checkpoints + RuntimeRequest Gate + Queue Drain)
 
 func (e *Engine) resolveWorkdir(sess *sessionv1.Session) (string, error) {
+	return e.resolveWorkdirCtx(e.bgCtx, sess)
+}
+
+func (e *Engine) resolveWorkdirCtx(ctx context.Context, sess *sessionv1.Session) (string, error) {
 	ws, err := e.st.Workspace(sess.ProjectId)
 	if err != nil {
 		return "", err
@@ -2080,22 +2092,22 @@ func (e *Engine) resolveWorkdir(sess *sessionv1.Session) (string, error) {
 	if sess.GetWorkspaceStrategy().GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE {
 		wtPath := sess.GetWorkspaceStrategy().GetWorktreePath()
 		if wtPath != "" {
-			if st, err := os.Stat(wtPath); err == nil && st.IsDir() {
+			if st, err := os.Stat(wtPath); err == nil && st.IsDir() && vcs.IsGitRepo(ctx, wtPath) {
 				return wtPath, nil
 			}
 		}
 		targetWTDir := filepath.Join(e.vcs.WorktreesRoot(), sess.SessionId)
 		_, statErr := os.Stat(targetWTDir)
-		wasMissing := os.IsNotExist(statErr)
+		needsRestore := os.IsNotExist(statErr) || !vcs.IsGitRepo(ctx, targetWTDir)
 
 		baseRef := sess.GetWorkspaceStrategy().GetBaseRef()
-		restored, branch, err := e.vcs.PrepareWorktree(e.bgCtx, ws.Path, sess.SessionId, baseRef, sess.GetWorkspaceStrategy().GetBranch())
+		restored, branch, err := e.vcs.PrepareWorktree(ctx, ws.Path, sess.SessionId, baseRef, sess.GetWorkspaceStrategy().GetBranch())
 		var baseErr *vcs.BaseRefError
 		if errors.As(err, &baseErr) && !sess.GetWorkspaceStrategy().GetFromRemote() {
 			fetchStart := time.Now()
-			if localRef, remote, fErr := e.vcs.FetchRef(e.bgCtx, ws.Path, baseRef); fErr == nil {
+			if localRef, remote, fErr := e.vcs.FetchRef(ctx, ws.Path, baseRef); fErr == nil {
 				e.log.Info("fetched the base ref", "session", sess.SessionId, "ref", baseRef, "remote", remote, "took", time.Since(fetchStart).Round(time.Millisecond))
-				restored, branch, err = e.vcs.PrepareWorktree(e.bgCtx, ws.Path, sess.SessionId, localRef, sess.GetWorkspaceStrategy().GetBranch())
+				restored, branch, err = e.vcs.PrepareWorktree(ctx, ws.Path, sess.SessionId, localRef, sess.GetWorkspaceStrategy().GetBranch())
 			} else {
 				err = fErr
 			}
@@ -2107,10 +2119,10 @@ func (e *Engine) resolveWorkdir(sess *sessionv1.Session) (string, error) {
 			}
 			return "", err
 		}
-		if wasMissing {
+		if needsRestore {
 			if ckpts, cErr := e.st.Checkpoints(sess.SessionId); cErr == nil && len(ckpts) > 0 {
 				if latest := ckpts[len(ckpts)-1]; latest.GitTreeOid != "" {
-					_ = e.vcs.RestoreTree(e.bgCtx, restored, latest.GitTreeOid)
+					_ = e.vcs.RestoreTree(ctx, restored, latest.GitTreeOid)
 				}
 			}
 		}
@@ -3014,6 +3026,8 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 		}
 	}
 
+	pumpSess := pump.lease.Session
+	eventsCh := pumpSess.Events()
 	for {
 		var ev runtime.Event
 		var ok bool
@@ -3023,7 +3037,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			return
 		case <-pump.stopCh:
 			return
-		case ev, ok = <-pump.lease.Session.Events():
+		case ev, ok = <-eventsCh:
 		}
 		if !ok {
 			settleReasoning("")
@@ -3035,7 +3049,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			if e.bgCtx.Err() != nil {
 				return
 			}
-			e.sup.DetachSession(psID, pump.lease.Session, false)
+			e.sup.DetachSession(psID, pumpSess, false)
 
 			// Settle any background tasks tied to this closed process.
 			bgEvs, _ := e.st.Mutate(func(tx *store.Tx) error {
@@ -5378,14 +5392,16 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 
 	archivingNow := req.HasArchived && req.Archived && sess.Status != sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED
 	unarchivingNow := req.HasArchived && !req.Archived && sess.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED
-	if archivingNow && sess.ActiveRunId != "" {
+	if archivingNow && (sess.ActiveRunId != "" || sess.PendingRequestId != "" || sess.ActiveBackgroundCount > 0 ||
+		sess.Status == sessionv1.SessionStatus_SESSION_STATUS_QUEUED ||
+		sess.Status == sessionv1.SessionStatus_SESSION_STATUS_PREPARING ||
+		sess.Status == sessionv1.SessionStatus_SESSION_STATUS_RUNNING ||
+		sess.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT) {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("cannot archive a session while a run is active; interrupt it first"))
 	}
-	if archivingNow && e.cfg.CheckRelease != nil &&
-		sess.GetWorkspaceStrategy().GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE &&
-		sess.GetWorkspaceStrategy().GetWorktreePath() != "" {
-		if err := e.cfg.CheckRelease(ctx, sess); err != nil {
-			return nil, err
+	if archivingNow && sess.ActiveDaemonCount > 0 && lease != nil {
+		if bc, ok := lease.Session.(runtime.BackgroundController); ok {
+			_ = bc.StopBackgroundTask(ctx, "")
 		}
 	}
 
@@ -5433,10 +5449,21 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 		if req.HasPinned {
 			sNow.Pinned = req.Pinned
 		}
+		var stoppedBg []*sessionv1.BackgroundTask
+		var stoppedItems []*sessionv1.TurnItem
+		if archivingNow && sNow.ActiveDaemonCount > 0 {
+			stoppedBg, stoppedItems, err = tx.StopRunningBackgroundTasks(req.SessionId, "", "session archived")
+			if err != nil {
+				return err
+			}
+			_, _, _ = tx.RefreshSessionBackgroundCounts(sNow)
+		}
 		if req.HasArchived {
 			if req.Archived {
-				sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED
-				sNow.ArchivedAt = timestamppb.Now()
+				if sNow.Status != sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+					sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED
+					sNow.ArchivedAt = timestamppb.Now()
+				}
 			} else if sNow.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
 				sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
 				sNow.ArchivedAt = nil
@@ -5444,6 +5471,26 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 		}
 		if err := putSessionSynced(tx, sNow); err != nil {
 			return err
+		}
+		for _, it := range stoppedItems {
+			if err := tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: req.SessionId,
+				Type:      "item.updated",
+				Session:   sNow,
+				Item:      it,
+			}); err != nil {
+				return err
+			}
+		}
+		for _, bt := range stoppedBg {
+			if err := tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId:      req.SessionId,
+				Type:           "background_task.updated",
+				Session:        sNow,
+				BackgroundTask: bt,
+			}); err != nil {
+				return err
+			}
 		}
 		if err := tx.AppendEvent(&sessionv1.SessionEvent{
 			SessionId: req.SessionId,
@@ -5475,7 +5522,16 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 			}
 		}
 		if sess.GetWorkspaceStrategy().GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE && sess.GetWorkspaceStrategy().GetWorktreePath() != "" {
-			if ws, wErr := e.st.Workspace(sess.ProjectId); wErr == nil {
+			if e.cfg.ReleaseOnArchive != nil {
+				if e.cfg.ReleaseOnArchive(ctx, res.Session) {
+					res.TransitionApplied = "workspace_kept"
+					if req.CommandId != "" {
+						_, _ = e.st.Mutate(func(tx *store.Tx) error {
+							return tx.PutReceipt(req.CommandId, "UpdateSession", res)
+						})
+					}
+				}
+			} else if ws, wErr := e.st.Workspace(sess.ProjectId); wErr == nil {
 				_ = e.vcs.RemoveWorktree(ctx, ws.Path, sess.GetWorkspaceStrategy().GetWorktreePath())
 			}
 		}
@@ -5490,7 +5546,7 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 			}
 		}
 		if res != nil && res.Session != nil {
-			_, _ = e.resolveWorkdir(res.Session)
+			_, _ = e.resolveWorkdirCtx(ctx, res.Session)
 		}
 	}
 	e.publish(events, nil)

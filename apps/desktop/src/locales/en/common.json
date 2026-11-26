@@ -62,6 +62,7 @@
     "account": "Account & Settings",
     "disconnectedGrant": "Disconnected agent",
     "archived": "Archived “{{title}}”",
+    "archivedKept": "Archived “{{title}}” (worktree kept for local files)",
     "unarchived": "Unarchived “{{title}}”",
     "her": "Her",
     "overview": "Overview",
@@ -249,5 +250,9 @@
     "body": "Nothing was signed: this PC’s signer ({{version}}) is older than Hermesh and can’t show this request. Update it, then try again. Windows will ask for permission once.",
     "button": "Update Signer",
     "updated": "Signer updated. Try again."
+  },
+  "workspaceKept": {
+    "text": "The environment kept this task’s worktree to protect local changes or files. Update Hermesh on that environment to archive without releasing the worktree.",
+    "textPath": "The environment kept this task’s worktree to protect local files ({{path}}). Update Hermesh on that environment to archive without releasing the worktree."
   }
 }

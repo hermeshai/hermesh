@@ -966,7 +966,22 @@ final class AppModel {
     }
 
     func report(_ error: Error) {
-        problem = (error as? APIError)?.message ?? error.localizedDescription
+        let raw = (error as? APIError)?.message ?? error.localizedDescription
+        problem = Self.friendlyErrorText(raw)
+    }
+
+    static func friendlyErrorText(_ raw: String) -> String {
+        guard raw.hasPrefix("workspace kept:") else { return raw }
+        if let open = raw.lastIndex(of: "("), let close = raw.lastIndex(of: ")"), open < close {
+            var path = String(raw[raw.index(after: open)..<close]).trimmingCharacters(in: .whitespaces)
+            for prefix in ["!! ", "?? "] where path.hasPrefix(prefix) {
+                path.removeFirst(prefix.count)
+            }
+            if !path.isEmpty {
+                return String(localized: "The environment kept this task’s worktree to protect local files (\(path)). Update Hermesh on that environment to archive without releasing the worktree.")
+            }
+        }
+        return String(localized: "The environment kept this task’s worktree to protect local changes or files. Update Hermesh on that environment to archive without releasing the worktree.")
     }
 
     /// The owner changed which notifications they want: tell the machines
@@ -977,7 +992,10 @@ final class AppModel {
 
     // MARK: Actions
 
-    private func replace(_ s: Session) { heldSessions = mergeSessions(heldSessions, [s]) }
+    private func replace(_ s: Session) {
+        heldSessions = mergeSessions(heldSessions, [s])
+        conversations.updateSession(s)
+    }
 
     func answer(_ s: Session, answers: [Answer], decline: Bool) async -> Bool {
         guard let api, let q = s.pendingQuestion else { return false }
@@ -1003,8 +1021,15 @@ final class AppModel {
     func setArchived(_ s: Session, _ archived: Bool, undoable: Bool = true) async {
         guard let api else { return }
         do {
-            replace(try await api.archive(s.sessionID, archived))
-            let text = archived ? String(localized: "Archived “\(s.displayTitle)”") : String(localized: "Unarchived “\(s.displayTitle)”")
+            let res = try await api.archive(s.sessionID, archived)
+            if res.hasSession { replace(res.session) }
+            let text = if archived {
+                res.transitionApplied == "workspace_kept"
+                    ? String(localized: "Archived “\(s.displayTitle)” (worktree kept for local files)")
+                    : String(localized: "Archived “\(s.displayTitle)”")
+            } else {
+                String(localized: "Unarchived “\(s.displayTitle)”")
+            }
             var undo: (@MainActor () -> Void)?
             if undoable {
                 undo = { [weak self] in

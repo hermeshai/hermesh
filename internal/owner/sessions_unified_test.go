@@ -2,8 +2,11 @@ package owner
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
+
+	"connectrpc.com/connect"
 
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 )
@@ -120,5 +123,67 @@ func TestSessionOnlyCacheFallbackZeroesLastEventSeq(t *testing.T) {
 	}
 	if got := res.Projection.GetSession().GetProgress().GetLastEventSeq(); got != 0 {
 		t.Fatalf("session-only fallback must report LastEventSeq=0 (not %d) so SubscribeSession does not skip seq 1..3", got)
+	}
+}
+
+func TestOfflineUpdateSessionArchivesAndPreservesSeq(t *testing.T) {
+	ctx := context.Background()
+	d, err := Open(Config{DataDir: filepath.Join(t.TempDir(), "owner"), NoLocalMachine: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+
+	sid := "s_remote_archive_offline"
+	d.owner().cacheSession(&sessionv1.Session{
+		SessionId: sid,
+		MachineId: "m_remote_unreachable",
+		ProjectId: "hermesh",
+		Title:     "iOS archive fix",
+		Status:    sessionv1.SessionStatus_SESSION_STATUS_IDLE,
+		Progress:  &sessionv1.SessionProgress{LastEventSeq: 12},
+	}, nil)
+
+	svc := &ownerSessionService{d: d}
+	archRes, err := svc.UpdateSession(ctx, &sessionv1.UpdateSessionRequest{
+		SessionId:   sid,
+		HasArchived: true,
+		Archived:    true,
+	})
+	if err != nil {
+		t.Fatalf("offline archive UpdateSession: %v", err)
+	}
+	if archRes.TransitionApplied != "queued_offline" || archRes.GetSession().GetStatus() != sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+		t.Fatalf("expected optimistic archived session, got %+v", archRes)
+	}
+	if got := archRes.GetSession().GetProgress().GetLastEventSeq(); got != 12 {
+		t.Fatalf("expected LastEventSeq=12 preserved for mergeSessions, got %d", got)
+	}
+	if activeOnly := d.owner().cachedSessions(false); len(activeOnly) != 0 {
+		t.Fatalf("expected archived session hidden from unarchived cache query, got %+v", activeOnly)
+	}
+	if all := d.owner().cachedSessions(true); len(all) != 1 || all[0].Status != sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+		t.Fatalf("expected archived session in includeArchived cache query, got %+v", all)
+	}
+
+	// Rapid offline Undo (Unarchive) -> Rename -> Archive flapping preserves LastEventSeq and exact status.
+	unarchRes, err := svc.UpdateSession(ctx, &sessionv1.UpdateSessionRequest{
+		SessionId: sid, HasArchived: true, Archived: false,
+	})
+	if err != nil || unarchRes.GetSession().GetStatus() != sessionv1.SessionStatus_SESSION_STATUS_IDLE || unarchRes.GetSession().GetProgress().GetLastEventSeq() != 12 {
+		t.Fatalf("offline unarchive: %v %+v", err, unarchRes)
+	}
+	renRes, err := svc.UpdateSession(ctx, &sessionv1.UpdateSessionRequest{
+		SessionId: sid, Title: "  Renamed Offline  ", HasPinned: true, Pinned: true,
+	})
+	if err != nil || renRes.GetSession().GetTitle() != "Renamed Offline" || !renRes.GetSession().GetPinned() {
+		t.Fatalf("offline rename+pin: %v %+v", err, renRes)
+	}
+
+	// Simulate outbox replay failure when GetSession is unavailable: LastEventSeq must NOT be zeroed!
+	d.owner().recordOutboxFailure(ctx, nil, outboxRow{sessionID: sid, method: "UpdateSession"}, connect.NewError(connect.CodeFailedPrecondition, errors.New("cannot archive while running")))
+	afterFail := d.owner().cachedSession(sid)
+	if afterFail == nil || afterFail.GetProgress().GetLastEventSeq() != 12 {
+		t.Fatalf("recordOutboxFailure clobbered LastEventSeq: %+v", afterFail)
 	}
 }

@@ -48,8 +48,12 @@ export function machineName(st: Store, id: string): string {
 const setSessionArchived = (id: string, archived: boolean) => sessionApi.updateSession({ sessionId: id, hasArchived: true, archived });
 
 export function archive(st: Store, s: Session) {
-  st.run(() => setSessionArchived(s.sessionId, true)).then((ok) => {
-    if (ok) st.show(i18n.t("common:sidebar.archived", { title: displayTitle(s) }), () => unarchive(st, s));
+  let kept = false;
+  st.run(async () => {
+    const res = await setSessionArchived(s.sessionId, true);
+    kept = res.transitionApplied === "workspace_kept";
+  }).then((ok) => {
+    if (ok) st.show(i18n.t(kept ? "common:sidebar.archivedKept" : "common:sidebar.archived", { title: displayTitle(s) }), () => unarchive(st, s));
   });
 }
 

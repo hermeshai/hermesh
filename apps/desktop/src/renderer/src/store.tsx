@@ -8,7 +8,7 @@ import { useFirstRunDone, useProgress } from "./firstrun/progress";
 import { notNow, setNotNow, startPage } from "./start";
 import { useWorld } from "./useWorld";
 import { i18n } from "../../shared/i18n";
-import { needsUpdate } from "./skew";
+import { needsUpdate, workspaceKeptError } from "./skew";
 import { noteRelay } from "./connection";
 
 // What the window knows: the owner's world as hermeshd pushes it
@@ -107,8 +107,10 @@ export function errorText(e: unknown): string {
   if (needsUpdate(e)) return i18n.t("common:needsUpdate.text");
   if (declinedToSign(e)) return i18n.t("common:signing.declined");
   if (signerUnavailable(e)) return i18n.t("common:signing.unavailable");
-  if (e instanceof ConnectError) return e.rawMessage;
-  return e instanceof Error ? e.message : String(e);
+  const raw = e instanceof ConnectError ? e.rawMessage : e instanceof Error ? e.message : String(e);
+  const kept = workspaceKeptError(raw);
+  if (kept) return kept.path ? i18n.t("common:workspaceKept.textPath", { path: kept.path }) : i18n.t("common:workspaceKept.text");
+  return raw;
 }
 
 function declinedToSign(e: unknown): boolean {

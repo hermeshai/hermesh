@@ -163,7 +163,7 @@ func (n *Machine) openSessions() error {
 		MCPServers:       n.mcpServers,
 		AgentModels:      n.agentModelList,
 		ResolveSelection: n.resolveModelSelection,
-		CheckRelease:     n.checkReleaseSession,
+		ReleaseOnArchive: n.releaseOnArchive,
 		OnDeliverMessage: n.deliverMessageRPC,
 		OnNotice: func(sess *sessionv1.Session, ev *sessionv1.SessionEvent) {
 			n.sessionNotice(sess, ev)
@@ -179,6 +179,7 @@ func (n *Machine) openSessions() error {
 			n.changes().session(sess.SessionId)
 		},
 		OnSessionDeleted: func(sessionID string) {
+			n.forgetWorkspace(sessionID)
 			n.changes().session(sessionID)
 		},
 		OnLimits: func(sess *sessionv1.Session, l rt.Limits) {

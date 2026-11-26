@@ -31,3 +31,13 @@ export function machineAnswers(m: Machine, method: string): boolean | undefined 
   const methods = m.status?.methods ?? [];
   return methods.length ? methods.includes(method) : undefined;
 }
+
+/**
+ * Older hermeshd versions rejected archiving a session with `workspace kept: … (!! path)`.
+ * Returns `{ path }` when matched (path is "" when none was named), or undefined otherwise.
+ */
+export function workspaceKeptError(raw: string): { path: string } | undefined {
+  if (!raw.startsWith("workspace kept:")) return undefined;
+  const m = raw.match(/\((?:!!\s+|\?\?\s+)?([^()]+)\)\s*$/);
+  return { path: m?.[1]?.trim() ?? "" };
+}

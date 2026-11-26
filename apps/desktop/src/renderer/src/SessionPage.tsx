@@ -47,6 +47,7 @@ import {
   sessionWork,
   sessionTranscript,
   statusTitle,
+  updatedDate,
 } from "@hermesh/core";
 import { Mark } from "@hermesh/ui";
 import { local, sessions as sessionApi } from "./api";
@@ -200,7 +201,14 @@ export function SessionPage() {
     pickProject(mid, projectOnMachine(projectsOn(mid).list, mid, projectId, remembered().byMachine[mid]?.projectId));
   };
 
-  const currentSession = activeSessionId && projection?.session?.sessionId === activeSessionId ? projection.session : listedSession;
+  const projSession = activeSessionId && projection?.session?.sessionId === activeSessionId ? projection.session : undefined;
+  const listedAhead =
+    projSession &&
+    listedSession &&
+    ((listedSession.progress?.lastEventSeq ?? 0n) > (projSession.progress?.lastEventSeq ?? 0n) ||
+      ((listedSession.progress?.lastEventSeq ?? 0n) === (projSession.progress?.lastEventSeq ?? 0n) &&
+        updatedDate(listedSession) > updatedDate(projSession)));
+  const currentSession = projSession ? (listedAhead ? listedSession : projSession) : listedSession;
   const effectiveMachineId = activeSessionId ? currentSession?.machineId ?? machineId : machineId;
   const effectiveProjectId = activeSessionId ? currentSession?.projectId ?? projectId : projectId;
   const targetMachine = st.machines.find((m) => m.machineId === effectiveMachineId);

@@ -3684,6 +3684,36 @@
         }
       }
     },
+    "Archived “%@” (worktree kept for local files)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已归档「%@」（含本地文件，工作目录已保留）"
+          }
+        }
+      }
+    },
+    "The environment kept this task’s worktree to protect local changes or files. Update Hermesh on that environment to archive without releasing the worktree.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该环境保留了任务的工作目录以保护本地改动或文件。在对应环境上更新 Hermesh 后，即可在保留工作目录的同时归档任务。"
+          }
+        }
+      }
+    },
+    "The environment kept this task’s worktree to protect local files (%@). Update Hermesh on that environment to archive without releasing the worktree.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该环境保留了任务的工作目录以保护本地文件（%@）。在对应环境上更新 Hermesh 后，即可在保留工作目录的同时归档任务。"
+          }
+        }
+      }
+    },
     "Archived: read-only; the worktree is released and the changes stay on the branch.": {
       "localizations": {
         "zh-Hans": {

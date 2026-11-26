@@ -92,11 +92,27 @@ func TestReleaseWorkspaceProtectsFiles(t *testing.T) {
 			if err := h.release(id); connect.CodeOf(err) != connect.CodeAborted {
 				t.Fatalf("release: %v", err)
 			}
-			if _, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: id, HasArchived: true, Archived: true}); connect.CodeOf(err) != connect.CodeAborted {
-				t.Fatalf("archive: %v", err)
+			archRes, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: id, HasArchived: true, Archived: true})
+			if err != nil {
+				t.Fatalf("archive should succeed while keeping workspace: %v", err)
+			}
+			if archRes.TransitionApplied != "workspace_kept" || archRes.GetSession().GetStatus() != archived {
+				t.Fatalf("archive response: %+v", archRes)
 			}
 			if got, err := os.ReadFile(filepath.Join(dir, file)); err != nil || string(got) != "keep this" {
 				t.Fatalf("local file changed: %q, %v", got, err)
+			}
+			if w := h.listed(id); w == nil || w.Block != blocks[kind] {
+				t.Fatalf("archived kept workspace not listed in storage: %v", w)
+			}
+			if r := h.n.ReleaseWorkspaces(ctx, []string{id}).Results[0]; r.Released || r.Block != blocks[kind] {
+				t.Fatalf("archived kept workspace released despite local changes: %v", r)
+			}
+			if _, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: id, HasArchived: true, Archived: false}); err != nil {
+				t.Fatalf("unarchive: %v", err)
+			}
+			if got, err := os.ReadFile(filepath.Join(dir, file)); err != nil || string(got) != "keep this" {
+				t.Fatalf("local file changed after unarchive: %q, %v", got, err)
 			}
 			if proj, err := h.e.GetSession(ctx, h.kp(), id); err != nil || proj.GetSession().GetStatus() != idle {
 				t.Fatalf("session no longer idle: %v, %v", proj.GetSession(), err)
@@ -208,11 +224,126 @@ func TestReleaseWorkspaceRegenerable(t *testing.T) {
 func TestRegenerablePath(t *testing.T) {
 	for path, want := range map[string]bool{
 		"node_modules/": true, "web/node_modules/": true, ".venv/": true, "a/__pycache__/": true, "m.pyc": true, ".DS_Store": true,
-		".env": false, "dist/": false, "build/": false, "secrets/key.pem": false, "node_modules": true, "pyc/": false, "notes.pyc/": false,
+		"packages/HermeshKit/.swiftpm/": true, "apps/ios/Hermesh.xcodeproj/xcuserdata/": true,
+		".env": false, "dist/": false, "build/": false, "apps/ios/build/": false, "secrets/key.pem": false, "node_modules": true, "pyc/": false, "notes.pyc/": false,
 	} {
 		if regenerablePath(path) != want {
 			t.Errorf("%s: want %t", path, want)
 		}
+	}
+}
+
+func TestArchiveSessionWorktreeLifecycle(t *testing.T) {
+	h := newHarness(t, DefaultLimits())
+	ctx := context.Background()
+	h.exclude("/apps/ios/build/\n.swiftpm/\nxcuserdata/\n")
+
+	// 1. A session with only regenerable caches (.swiftpm, xcuserdata) releases its worktree and updates cached storage on archive.
+	cleanID := h.start("say ready")
+	h.wait(cleanID, idle)
+	cleanDir := h.worktreePath(cleanID)
+	for _, rel := range []string{"packages/HermeshKit/.swiftpm/xcode/state.json", "apps/ios/xcuserdata/user.plist"} {
+		full := filepath.Join(cleanDir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("cache"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if w := h.listed(cleanID); w == nil || w.Block != machinev1.WorkspaceBlock_WORKSPACE_BLOCK_UNSPECIFIED {
+		t.Fatalf("clean listed: %v", w)
+	}
+	resClean, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{
+		CommandId: "cmd_arch_clean", SessionId: cleanID, HasArchived: true, Archived: true,
+	})
+	if err != nil || resClean.GetSession().GetStatus() != archived || resClean.TransitionApplied == "workspace_kept" {
+		t.Fatalf("archive clean: %v %+v", err, resClean)
+	}
+	if h.worktreeExists(cleanID) {
+		t.Fatal("expected clean worktree removed on archive")
+	}
+	if cached, cErr := h.n.ListWorkspaces(ctx, true); cErr != nil || slices.ContainsFunc(cached.Workspaces, func(w *machinev1.Workspace) bool { return w.SessionId == cleanID }) {
+		t.Fatalf("archived released session still in cached storage: %v %v", cached, cErr)
+	}
+
+	// 2. A session with ignored non-regenerable build artifacts (apps/ios/build/) archives cleanly, keeps the files,
+	// stays visible in Storage, and can be released once cleaned up.
+	buildID := h.start("say ready")
+	h.wait(buildID, idle)
+	buildDir := h.worktreePath(buildID)
+	xcf := filepath.Join(buildDir, "apps/ios/build/HermeshCore.xcframework/Info.plist")
+	if err := os.MkdirAll(filepath.Dir(xcf), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(xcf, []byte("<plist/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resKept, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{
+		CommandId: "cmd_arch_kept", SessionId: buildID, HasArchived: true, Archived: true,
+	})
+	if err != nil {
+		t.Fatalf("archive with apps/ios/build failed: %v", err)
+	}
+	if resKept.GetSession().GetStatus() != archived || resKept.TransitionApplied != "workspace_kept" {
+		t.Fatalf("expected archived with workspace_kept, got %+v", resKept)
+	}
+	// Idempotent retry with same CommandId returns cached workspace_kept receipt.
+	retryKept, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{
+		CommandId: "cmd_arch_kept", SessionId: buildID, HasArchived: true, Archived: true,
+	})
+	if err != nil || retryKept.TransitionApplied != "workspace_kept" {
+		t.Fatalf("idempotent archive receipt: %v %+v", err, retryKept)
+	}
+	if b, err := os.ReadFile(xcf); err != nil || string(b) != "<plist/>" {
+		t.Fatalf("apps/ios/build file lost: %q %v", b, err)
+	}
+	if w := h.listed(buildID); w == nil || w.Block != machinev1.WorkspaceBlock_WORKSPACE_BLOCK_LOCAL_FILES || w.BlockPath != "apps/ios/build/" {
+		t.Fatalf("expected kept archived worktree listed with apps/ios/build/, got %v", w)
+	}
+	if err := os.RemoveAll(filepath.Join(buildDir, "apps/ios/build")); err != nil {
+		t.Fatal(err)
+	}
+	rel := h.n.ReleaseWorkspaces(ctx, []string{buildID})
+	if len(rel.Results) != 1 || !rel.Results[0].Released || h.worktreeExists(buildID) {
+		t.Fatalf("releasing cleaned archived worktree failed: %+v", rel)
+	}
+
+	// 3. A file flushed by the live provider process during shutdown on Archive is preserved (not deleted).
+	flushID := h.start("say ready")
+	flushSess := h.wait(flushID, idle)
+	lease := h.e.Supervisor().Get(flushSess.ActiveProviderSessionId)
+	if lease == nil {
+		t.Fatal("expected live provider lease")
+	}
+	flushedPath := filepath.Join(h.worktreePath(flushID), "shutdown-flush.txt")
+	ps := &workspaceClosingAgent{Session: lease.Session, started: make(chan struct{}), finish: make(chan struct{})}
+	lease.Session = ps
+	doneArch := make(chan *sessionv1.UpdateSessionResponse, 1)
+	errArch := make(chan error, 1)
+	go func() {
+		r, aErr := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: flushID, HasArchived: true, Archived: true})
+		if aErr != nil {
+			errArch <- aErr
+			return
+		}
+		doneArch <- r
+	}()
+	<-ps.started
+	if err := os.WriteFile(flushedPath, []byte("flushed on close"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	close(ps.finish)
+	select {
+	case aErr := <-errArch:
+		t.Fatalf("archive with shutdown flush failed: %v", aErr)
+	case r := <-doneArch:
+		if r.GetSession().GetStatus() != archived || r.TransitionApplied != "workspace_kept" {
+			t.Fatalf("expected workspace_kept after shutdown flush, got %+v", r)
+		}
+	}
+	if b, err := os.ReadFile(flushedPath); err != nil || string(b) != "flushed on close" {
+		t.Fatalf("shutdown-flushed file lost on archive: %q %v", b, err)
 	}
 }
 
@@ -364,5 +495,211 @@ func TestReleaseRechecksAfterStoppingAgent(t *testing.T) {
 	}
 	if b, err := os.ReadFile(note); err != nil || string(b) != "not snapshotted" {
 		t.Fatalf("file written at shutdown: %q, %v", b, err)
+	}
+}
+
+func TestArchiveExtremeFaultsAndRaces(t *testing.T) {
+	h := newHarness(t, DefaultLimits())
+	ctx := context.Background()
+	h.exclude("node_modules/\nbuild/\n")
+
+	// 1. Read-only (0o555 / 0o444) subdirectories inside regenerable caches (like Go modcache):
+	// git worktree remove --force fails mid-delete on 0o555 dirs; verify archive & release still
+	// remove the entire worktree cleanly without leaving a half-deleted directory, and resume heals.
+	roID := h.start("write kept-in-ckpt.txt checkpointed")
+	h.wait(roID, idle)
+	roDir := h.worktreePath(roID)
+	roSub := filepath.Join(roDir, "node_modules", "ro-mod", "v1.0.0")
+	if err := os.MkdirAll(roSub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	roFile := filepath.Join(roSub, "mod.go")
+	if err := os.WriteFile(roFile, []byte("package mod"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(roSub, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(roSub, 0o755) })
+
+	archRO, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: roID, HasArchived: true, Archived: true})
+	if err != nil || archRO.GetSession().GetStatus() != archived || archRO.TransitionApplied == "workspace_kept" {
+		t.Fatalf("archive with 0o555 cache dir: %v %+v", err, archRO)
+	}
+	if h.worktreeExists(roID) {
+		t.Fatal("0o555 cache dir left a half-deleted worktree behind")
+	}
+	// Duplicate archive preserves original ArchivedAt and is an idempotent no-op.
+	firstArchivedAt := archRO.GetSession().GetArchivedAt().AsTime()
+	time.Sleep(5 * time.Millisecond)
+	dupArch, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: roID, HasArchived: true, Archived: true})
+	if err != nil || !dupArch.GetSession().GetArchivedAt().AsTime().Equal(firstArchivedAt) {
+		t.Fatalf("duplicate archive mutated ArchivedAt: %v %v vs %v", err, dupArch.GetSession().GetArchivedAt().AsTime(), firstArchivedAt)
+	}
+	// Unarchive restores the worktree and checkpointed file intact.
+	if _, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: roID, HasArchived: true, Archived: false}); err != nil {
+		t.Fatalf("unarchive after 0o555 removal: %v", err)
+	}
+	if b, err := os.ReadFile(filepath.Join(roDir, "kept-in-ckpt.txt")); err != nil || !strings.Contains(string(b), "checkpointed") {
+		t.Fatalf("checkpointed file missing after unarchive: %q %v", b, err)
+	}
+
+	// 2. Corrupted worktree (.git deleted leaving a broken non-git directory) & Symlink escape guard:
+	// First: if .git is missing, Archive safely keeps the directory without deleting unknown contents;
+	// if the directory is emptied/broken and the user sends a follow-up, resolveWorkdir self-heals from checkpoint!
+	corruptID := h.start("write heal-me.txt intact")
+	h.wait(corruptID, idle)
+	corruptDir := h.worktreePath(corruptID)
+	if err := os.Remove(filepath.Join(corruptDir, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	archCorrupt, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: corruptID, HasArchived: true, Archived: true})
+	if err != nil || archCorrupt.TransitionApplied != "workspace_kept" {
+		t.Fatalf("archive with missing .git should keep directory safely: %v %+v", err, archCorrupt)
+	}
+	// Simulate partial wipe leaving an empty non-git folder at corruptDir; unarchiving must self-heal and restore heal-me.txt!
+	if err := os.Remove(filepath.Join(corruptDir, "heal-me.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: corruptID, HasArchived: true, Archived: false}); err != nil {
+		t.Fatalf("unarchive broken dir: %v", err)
+	}
+	if b, err := os.ReadFile(filepath.Join(corruptDir, "heal-me.txt")); err != nil || !strings.Contains(string(b), "intact") {
+		t.Fatalf("resolveWorkdir failed to self-heal broken non-git worktree: %q %v", b, err)
+	}
+
+	// Symlink escape guard: replacing worktree with a symlink to an external victim dir never deletes the victim!
+	symID := h.start("say ready")
+	h.wait(symID, idle)
+	symDir := h.worktreePath(symID)
+	victim := t.TempDir()
+	victimFile := filepath.Join(victim, "precious.txt")
+	if err := os.WriteFile(victimFile, []byte("never delete"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(symDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, symDir); err != nil {
+		t.Fatal(err)
+	}
+	archSym, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: symID, HasArchived: true, Archived: true})
+	if err != nil || archSym.TransitionApplied != "workspace_kept" {
+		t.Fatalf("archive symlink worktree: %v %+v", err, archSym)
+	}
+	if r := h.n.ReleaseWorkspaces(ctx, []string{symID}).Results[0]; r.Released {
+		t.Fatalf("ReleaseWorkspaces followed symlink: %+v", r)
+	}
+	if b, err := os.ReadFile(victimFile); err != nil || string(b) != "never delete" {
+		t.Fatalf("symlink victim file damaged: %q %v", b, err)
+	}
+
+	// 3. Crashed session with uncheckpointed edits, special Unicode/quote filenames, and background task/daemon guards:
+	specialID := h.start("say ready")
+	h.wait(specialID, idle)
+	specialRel := "build/报告 (v1) 'draft'.bin"
+	specialFull := filepath.Join(h.worktreePath(specialID), specialRel)
+	if err := os.MkdirAll(filepath.Dir(specialFull), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(specialFull, []byte("bin"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if w := h.listed(specialID); w == nil || w.Block != machinev1.WorkspaceBlock_WORKSPACE_BLOCK_LOCAL_FILES {
+		t.Fatalf("special filename listed: %+v", w)
+	}
+	// Simulate crashed session + active awaited background task vs daemon task:
+	if _, err := h.e.Store().Mutate(func(tx *store.Tx) error {
+		s, err := tx.GetSession(specialID)
+		if err != nil {
+			return err
+		}
+		s.ActiveBackgroundCount = 1
+		return tx.PutSession(s)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: specialID, HasArchived: true, Archived: true}); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("expected FailedPrecondition when ActiveBackgroundCount > 0, got %v", err)
+	}
+	if r := h.n.ReleaseWorkspaces(ctx, []string{specialID}).Results[0]; r.Released || r.Block != machinev1.WorkspaceBlock_WORKSPACE_BLOCK_BUSY {
+		t.Fatalf("expected BUSY when ActiveBackgroundCount > 0, got %+v", r)
+	}
+	// Switch to CRASHED with ActiveBackgroundCount=0 and an uncheckpointed edit: Archive must succeed and keep edits!
+	crashedEdit := filepath.Join(h.worktreePath(specialID), "partial-crash.txt")
+	if err := os.WriteFile(crashedEdit, []byte("half written before crash"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.e.Store().Mutate(func(tx *store.Tx) error {
+		s, err := tx.GetSession(specialID)
+		if err != nil {
+			return err
+		}
+		s.Status = sessionv1.SessionStatus_SESSION_STATUS_CRASHED
+		s.ActiveBackgroundCount = 0
+		return tx.PutSession(s)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	archCrashed, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: specialID, HasArchived: true, Archived: true})
+	if err != nil || archCrashed.GetSession().GetStatus() != archived || archCrashed.TransitionApplied != "workspace_kept" {
+		t.Fatalf("archive crashed session failed: %v %+v", err, archCrashed)
+	}
+	if b, err := os.ReadFile(crashedEdit); err != nil || string(b) != "half written before crash" {
+		t.Fatalf("crashed session partial edit lost: %q %v", b, err)
+	}
+
+	// 4. High-concurrency Race Storm: hammer Archive, Unarchive, ReleaseWorkspaces, ListWorkspaces, and DispatchMessage concurrently!
+	stormID := h.start("write storm.txt v1")
+	h.wait(stormID, idle)
+	var wg sync.WaitGroup
+	for g := range 16 {
+		wg.Add(1)
+		go func(worker int) {
+			defer wg.Done()
+			for iter := range 6 {
+				switch (worker + iter) % 5 {
+				case 0:
+					_, _ = h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: stormID, HasArchived: true, Archived: true})
+				case 1:
+					_, _ = h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: stormID, HasArchived: true, Archived: false})
+				case 2:
+					_ = h.n.ReleaseWorkspaces(ctx, []string{stormID})
+				case 3:
+					_, _ = h.n.ListWorkspaces(ctx, iter%2 == 0)
+				case 4:
+					_, _ = h.e.DispatchMessage(ctx, h.kp(), &sessionv1.DispatchMessageRequest{SessionId: stormID, Text: "say step"})
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+
+	// Settle any in-flight run from the storm, ensure unarchived, send a final turn, and verify storm.txt survived!
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
+		proj, gErr := h.e.GetSession(ctx, h.kp(), stormID)
+		if gErr != nil {
+			t.Fatal(gErr)
+		}
+		st := proj.GetSession().GetStatus()
+		if st == idle || st == archived || st == sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if _, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: stormID, HasArchived: true, Archived: false}); err != nil {
+		t.Fatalf("final unarchive after storm: %v", err)
+	}
+	evs, _ := h.e.Store().EventsAfter(stormID, 0)
+	if len(evs) > 0 {
+		h.mark[stormID] = evs[len(evs)-1].Seq
+	}
+	h.send(stormID, "write after-storm.txt ok")
+	h.wait(stormID, idle)
+	if b, err := os.ReadFile(filepath.Join(h.worktreePath(stormID), "storm.txt")); err != nil || !strings.Contains(string(b), "v1") {
+		t.Fatalf("storm corrupted initial checkpointed file: %q %v", b, err)
+	}
+	if b, err := os.ReadFile(filepath.Join(h.worktreePath(stormID), "after-storm.txt")); err != nil || !strings.Contains(string(b), "ok") {
+		t.Fatalf("storm broke final turn execution: %q %v", b, err)
 	}
 }

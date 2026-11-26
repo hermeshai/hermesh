@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Code, ConnectError } from "@connectrpc/connect";
 import type { Machine } from "@hermesh/proto/local";
-import { herAnswers, machineAnswers, needsUpdate } from "./skew.ts";
+import { herAnswers, machineAnswers, needsUpdate, workspaceKeptError } from "./skew.ts";
 
 // A machine older than this app (docs/version-skew.md §6.1, §6.3).
 
@@ -30,4 +30,11 @@ test("hermeshd's own methods: what its status lists, unknown for one from before
   assert.equal(machineAnswers(m([]), "ListWorkspaces"), undefined);
   assert.equal(machineAnswers(m(["TestAgent", "ListWorkspaces"]), "ListWorkspaces"), true);
   assert.equal(machineAnswers(m(["TestAgent"]), "ListWorkspaces"), false);
+});
+
+test("older hermeshd workspace kept errors extract clean relative paths without git status markers", () => {
+  assert.deepEqual(workspaceKeptError("workspace kept: save or move local files before releasing it (!! apps/ios/build/)"), { path: "apps/ios/build/" });
+  assert.deepEqual(workspaceKeptError("workspace kept: save or move local changes before releasing it (src/app.ts)"), { path: "src/app.ts" });
+  assert.deepEqual(workspaceKeptError("workspace kept: cannot verify this session's checkout"), { path: "" });
+  assert.equal(workspaceKeptError("permission denied"), undefined);
 });
