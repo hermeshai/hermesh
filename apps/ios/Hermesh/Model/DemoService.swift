@@ -57,14 +57,41 @@ final class DemoService {
             $0.grantVersion = 1; $0.expiresAt = .init(date: .now.addingTimeInterval(30 * 86400))
             $0.spec = .with { $0.label = "ChatGPT"; $0.machineIds = ["*"]; $0.projectIds = ["*"]; $0.agents = ["*"]; $0.ttlDays = 30 }
         }]
+        let multiDemo = ProcessInfo.processInfo.arguments.contains("-HermeshDemoMultiQuestion")
         let question = Question.with {
             $0.questionID = "demo-question"; $0.turn = 1; $0.askedAt = now
-            $0.items = [.with {
-                $0.id = "greeting"; $0.header = String(localized: "Greeting")
-                $0.text = String(localized: "Which greeting should the sample app show?")
-                $0.options = [.with { $0.label = "Hello, world!" }, .with { $0.label = "Welcome aboard!" }]
-                $0.allowOther = true
-            }]
+            if multiDemo {
+                $0.items = [
+                    .with {
+                        $0.id = "greeting"
+                        $0.text = String(localized: "Which greeting should the sample app show?")
+                        $0.options = [.with { $0.label = "(Recommended) Hello, world!" }, .with { $0.label = "Welcome aboard!" }]
+                        $0.allowOther = true
+                    },
+                    .with {
+                        $0.id = "style"
+                        $0.text = "Which layout style should it use?"
+                        $0.options = [
+                            .with { $0.label = "(Recommended) Compact card"; $0.description_p = "Fits above the composer" },
+                            .with { $0.label = "Full banner"; $0.description_p = "Spans the page width" },
+                        ]
+                        $0.allowOther = true
+                    },
+                    .with {
+                        $0.id = "checks"
+                        $0.text = "Run tests after updating?"
+                        $0.options = [.with { $0.label = "(Recommended) Run unit tests" }, .with { $0.label = "Skip tests" }]
+                        $0.allowOther = true
+                    },
+                ]
+            } else {
+                $0.items = [.with {
+                    $0.id = "greeting"; $0.header = String(localized: "Greeting")
+                    $0.text = String(localized: "Which greeting should the sample app show?")
+                    $0.options = [.with { $0.label = "Hello, world!" }, .with { $0.label = "Welcome aboard!" }]
+                    $0.allowOther = true
+                }]
+            }
         }
         sampleQuestion = question
         var qSession = session("demo-question-session", title: String(localized: "Choose a greeting"), machine: "demo-mac", status: .waitingInput)
@@ -498,9 +525,16 @@ final class DemoService {
                 projections[req.sessionID]?.requests[rIdx].questionResolution = declined ? .declined : .answered
                 projections[req.sessionID]?.requests[rIdx].resolvedBy = .with { $0.kind = .owner; $0.id = "owner" }
                 projections[req.sessionID]?.requests[rIdx].resolvedAnswers = req.answers
-                if let firstAns = req.answers.values.first {
+                if let firstAns = req.answers["greeting"] ?? req.answers.values.first {
                     let custom = firstAns.customText
                     greeting = firstAns.selectedOptions.first ?? (custom.isEmpty ? "Hello, world!" : custom)
+                    if req.answers.count > 1 {
+                        let summary = ["greeting", "style", "checks"].compactMap { key -> String? in
+                            guard let a = req.answers[key] else { return nil }
+                            return a.selectedOptions.first ?? (a.customText.isEmpty ? nil : a.customText)
+                        }.joined(separator: " / ")
+                        if !summary.isEmpty { greeting = summary }
+                    }
                 }
                 let updatedReq = projections[req.sessionID]!.requests[rIdx]
                 emitEvent(req.sessionID) { $0.type = "request.resolved"; $0.request = updatedReq }

@@ -484,6 +484,61 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 				text = fmt.Sprintf("answer: %v %v", res.Content["choice"], res.Content["note"])
 			}
 			update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": text}})
+		case "ask3":
+			if !canElicit {
+				update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": "no elicitation"}})
+				break
+			}
+			r := ask("elicitation/create", map[string]any{
+				"sessionId": sid,
+				"mode":      "form",
+				"message":   "The agent has 3 questions.",
+				"requestedSchema": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"q0": map[string]any{
+							"type":  "string",
+							"title": "推进节奏选哪种？",
+							"enum":  []string{"(Recommended) 一步到位", "分两阶段"},
+						},
+						"q0_other": map[string]any{
+							"type":        "string",
+							"description": "Optional free-form answer to: 推进节奏选哪种？",
+						},
+						"q1": map[string]any{
+							"type":  "string",
+							"title": "输出如何处理？",
+							"enum":  []string{"(Recommended) 写入会话流", "仅临时抽屉", "自动喂给模型"},
+						},
+						"q1_other": map[string]any{
+							"type":        "string",
+							"description": "Optional free-form answer to: 输出如何处理？",
+						},
+						"q2": map[string]any{
+							"type":  "string",
+							"title": "终端程序怎么选？",
+							"oneOf": []any{
+								map[string]any{"const": "auto", "title": "(Recommended) 自动探测运行中终端"},
+								map[string]any{"const": "pref", "title": "设置页下拉项"},
+							},
+						},
+						"q2_other": map[string]any{
+							"type":        "string",
+							"description": "Optional free-form answer to: 终端程序怎么选？",
+						},
+					},
+				},
+			})
+			var res struct {
+				Action  string         `json:"action"`
+				Content map[string]any `json:"content"`
+			}
+			json.Unmarshal(r.Result, &res)
+			text := "declined: " + res.Action
+			if res.Action == "accept" {
+				text = fmt.Sprintf("answers3: q0=%v|q0_other=%v|q1=%v|q2=%v", res.Content["q0"], res.Content["q0_other"], res.Content["q1"], res.Content["q2"])
+			}
+			update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": text}})
 		case "history":
 			update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": fmt.Sprintf("history: %d turns", len(h.Turns))}})
 		case "write":

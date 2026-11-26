@@ -72,6 +72,42 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(app.buttons["try-demo"].exists)
     }
 
+    func testMultiQuestionStepAndRevise() {
+        app.terminate()
+        app.launchArguments.append("-HermeshDemoMultiQuestion")
+        app.launch()
+        enterWorkDemo()
+        tap("run-demo-task")
+
+        XCTAssertTrue(app.staticTexts["1/3"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Which greeting should the sample app show?"].exists)
+        XCTAssertFalse(app.staticTexts["Which layout style should it use?"].exists, "only one question is presented at a time")
+        XCTAssertFalse(app.buttons["answer"].isEnabled)
+
+        // Pick Q1 -> auto-advances to 2/3.
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Welcome aboard!")).firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["2/3"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Which layout style should it use?"].exists)
+
+        // Pick Q2 -> auto-advances to 3/3.
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Compact card")).firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["3/3"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Run tests after updating?"].exists)
+
+        // Pick Q3 -> stays on 3/3 with Answer enabled so the owner can review/revise.
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Run unit tests")).firstMatch.tap()
+        XCTAssertTrue(app.buttons["answer"].wait(for: \.isEnabled, toEqual: true, timeout: 5))
+
+        // Step back to 2/3 and revise choice to Full banner, then submit Answer.
+        tap("question-previous")
+        XCTAssertTrue(app.staticTexts["2/3"].waitForExistence(timeout: 5))
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Full banner")).firstMatch.tap()
+        tap("answer")
+
+        let reply = contains("Welcome aboard! / Full banner / (Recommended) Run unit tests")
+        XCTAssertTrue(reply.waitForExistence(timeout: 15))
+    }
+
     func testApprovalsAndMachineControls() {
         enterWorkDemo()
         tap("verify-pairing")

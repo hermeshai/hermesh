@@ -427,6 +427,7 @@ test("a question waits in the control area; the owner picks an option by key and
   await expect(ctl).toContainText("Gemini CLI 问你");
   await expect(ctl).toContainText("选哪个颜色");
   await expect(ctl).toContainText("还剩");
+  await expect(ctl.getByTestId("question-step")).toHaveText("1 / 2");
   const answer = ctl.getByRole("button", { name: /^回答/ });
   await expect(answer).toBeDisabled();
   await snap(page, "session-question");
@@ -437,9 +438,13 @@ test("a question waits in the control area; the owner picks an option by key and
   await page.keyboard.press("2");
   await expect(ctl.getByRole("radio", { name: /蓝/ })).toHaveAttribute("aria-checked", "true");
   await page.keyboard.press("1");
-  // The form's second field (free text) is one the agent does not require.
-  await expect(ctl).toContainText("可选");
+  // The form's second field (free text) is optional and reachable via Right/Left without hijacking focus.
   await expect(answer).toBeEnabled();
+  await page.keyboard.press("ArrowRight");
+  await expect(ctl.getByTestId("question-step")).toHaveText("2 / 2");
+  await expect(ctl).toContainText("可选");
+  await page.keyboard.press("ArrowLeft");
+  await expect(ctl.getByTestId("question-step")).toHaveText("1 / 2");
   await snap(page, "session-question-chosen");
   await page.keyboard.press("Enter");
 
@@ -450,6 +455,52 @@ test("a question waits in the control area; the owner picks an option by key and
   await expect(log).toContainText("你回答：红");
   await expect(log).toContainText("answer: v-红");
   await app.close();
+});
+
+test("a multi-question decision presents one item at a time, auto-advances, and lets the owner revisit earlier answers", async () => {
+  const title = "多选拍板";
+  const started = JSON.parse(await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", title, "--prompt", "ask3", "-o", "json"));
+  const id = started.session.session_id as string;
+  await expect.poll(async () => JSON.parse(await cli("session", "get", id, "-o", "json")).session.status).toBe("waiting_input");
+
+  const { app, page } = await launch();
+  try {
+    await open(page, title);
+    const ctl = page.getByTestId("pending-question-banner");
+    await expect(ctl.getByTestId("question-step")).toHaveText("1 / 3");
+    await expect(ctl).toContainText("推进节奏选哪种？");
+    await expect(ctl).not.toContainText("The agent has 3 questions.");
+    await expect(ctl).not.toContainText("输出如何处理？");
+    await expect(ctl.locator(".qx-rec").first()).toHaveText("推荐");
+
+    // Pick item 1 -> auto-advances to 2 / 3.
+    await page.keyboard.press("1");
+    await expect(ctl.getByTestId("question-step")).toHaveText("2 / 3");
+    await expect(ctl).toContainText("输出如何处理？");
+
+    // Pick item 2 -> auto-advances to 3 / 3.
+    await page.keyboard.press("2");
+    await expect(ctl.getByTestId("question-step")).toHaveText("3 / 3");
+    await expect(ctl).toContainText("终端程序怎么选？");
+
+    // Pick item 3 -> stays on 3 / 3 with Answer enabled so the owner can review/revise.
+    await page.keyboard.press("1");
+    await expect(ctl.getByTestId("question-step")).toHaveText("3 / 3");
+    const answer = ctl.getByRole("button", { name: /^回答/ });
+    await expect(answer).toBeEnabled();
+
+    // Step back to 2 / 3 to revise the choice, then press Enter to submit all 3 answers.
+    await ctl.getByRole("button", { name: "上一个" }).click();
+    await expect(ctl.getByTestId("question-step")).toHaveText("2 / 3");
+    await ctl.getByRole("radio", { name: /自动喂给模型/ }).click();
+    await page.keyboard.press("Enter");
+
+    await expect.poll(async () => JSON.parse(await cli("session", "get", id, "-o", "json")).session.status).toBe("idle");
+    const log = page.getByRole("log", { name: "对话" });
+    await expect(log).toContainText("answers3: q0=(Recommended) 一步到位|q0_other=<nil>|q1=自动喂给模型|q2=auto");
+  } finally {
+    await app.close();
+  }
 });
 
 async function expectImageLoaded(img: Locator, timeout = 30_000): Promise<void> {

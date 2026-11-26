@@ -3,7 +3,7 @@
 .dwrap.dock .cmp-zone{padding-right:286px}
 .th-badge{display:inline-flex;align-items:center;height:18px;padding:0 8px;border-radius:999px;background:var(--fill2);color:var(--l2);font-size:11px;margin-left:8px;flex:none}
 /* A question asks in Her's card, as a session's panel (app.css .qx) lays it out. */
-.appr.th-ask{padding:0;gap:0}
+.appr.qx-card{padding:0;gap:0}
 /* What waits its turn: Her's note card, a row each. */
 .th-qrow{display:flex;align-items:center;gap:6px;min-width:0;margin-left:24px;font-size:12.5px;color:var(--l1)}
 .th-qtext{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

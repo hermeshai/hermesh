@@ -3893,98 +3893,309 @@ func pickPermissionOption(options []struct {
 	return ""
 }
 
+type elicitChoice struct {
+	Const string `json:"const"`
+	Title string `json:"title"`
+}
+
+type elicitPropSchema struct {
+	Type        string         `json:"type"`
+	Title       string         `json:"title"`
+	Description string         `json:"description"`
+	Enum        []string       `json:"enum"`
+	OneOf       []elicitChoice `json:"oneOf"`
+	AnyOf       []elicitChoice `json:"anyOf"`
+	Items       *struct {
+		Type  string         `json:"type"`
+		Enum  []string       `json:"enum"`
+		OneOf []elicitChoice `json:"oneOf"`
+		AnyOf []elicitChoice `json:"anyOf"`
+	} `json:"items"`
+}
+
+type elicitPropMeta struct {
+	key      string
+	otherKey string
+	typ      string
+	choiceID map[string]string
+}
+
+var genericElicitMsgRe = regexp.MustCompile(`(?i)^the agent has (?:a|\d+) questions?\.$`)
+
+const elicitFreeFormPrefix = "Optional free-form answer to:"
+
+func compareNaturalKeys(a, b string) int {
+	i := 0
+	for i < len(a) && i < len(b) && a[i] == b[i] {
+		i++
+	}
+	for i > 0 && a[i-1] >= '0' && a[i-1] <= '9' {
+		i--
+	}
+	numPrefix := func(s string) (int, int, bool) {
+		n, j := 0, 0
+		for j < len(s) && s[j] >= '0' && s[j] <= '9' {
+			n = n*10 + int(s[j]-'0')
+			j++
+		}
+		return n, j, j > 0
+	}
+	if na, la, oka := numPrefix(a[i:]); oka {
+		if nb, lb, okb := numPrefix(b[i:]); okb && na != nb {
+			if na < nb {
+				return -1
+			}
+			return 1
+		} else if okb && la != lb {
+			return la - lb
+		}
+	}
+	return strings.Compare(a, b)
+}
+
+func extractElicitOptions(prop elicitPropSchema) ([]*sessionv1.QuestionOption, map[string]string, bool) {
+	choiceID := map[string]string{}
+	addChoices := func(list []elicitChoice, enums []string) []*sessionv1.QuestionOption {
+		var opts []*sessionv1.QuestionOption
+		for _, o := range list {
+			if o.Const == "" && o.Title == "" {
+				continue
+			}
+			lbl := o.Title
+			if lbl == "" {
+				lbl = o.Const
+			}
+			id := o.Const
+			if id == "" {
+				id = lbl
+			}
+			opts = append(opts, &sessionv1.QuestionOption{Id: id, Label: lbl})
+			choiceID[lbl] = id
+		}
+		if len(opts) == 0 {
+			for _, e := range enums {
+				opts = append(opts, &sessionv1.QuestionOption{Id: e, Label: e})
+				choiceID[e] = e
+			}
+		}
+		return opts
+	}
+
+	if prop.Type == "boolean" {
+		choiceID["Yes"] = "true"
+		choiceID["No"] = "false"
+		return []*sessionv1.QuestionOption{
+			{Id: "true", Label: "Yes"},
+			{Id: "false", Label: "No"},
+		}, choiceID, false
+	}
+	if prop.Type == "array" && prop.Items != nil {
+		choices := prop.Items.OneOf
+		if len(choices) == 0 {
+			choices = prop.Items.AnyOf
+		}
+		return addChoices(choices, prop.Items.Enum), choiceID, true
+	}
+	choices := prop.OneOf
+	if len(choices) == 0 {
+		choices = prop.AnyOf
+	}
+	return addChoices(choices, prop.Enum), choiceID, false
+}
+
+func parseElicitationForm(params json.RawMessage) ([]*sessionv1.QuestionItem, []elicitPropMeta, bool) {
+	var p struct {
+		Mode            string `json:"mode"`
+		Message         string `json:"message"`
+		RequestedSchema struct {
+			Required   []string                    `json:"required"`
+			Properties map[string]elicitPropSchema `json:"properties"`
+		} `json:"requestedSchema"`
+	}
+	if json.Unmarshal(params, &p) != nil || (p.Mode != "" && p.Mode != "form") {
+		return nil, nil, false
+	}
+
+	var keys []string
+	for k := range p.RequestedSchema.Properties {
+		keys = append(keys, k)
+	}
+	slices.SortFunc(keys, compareNaturalKeys)
+
+	if len(keys) == 0 {
+		return []*sessionv1.QuestionItem{{
+			Id:         "response",
+			Text:       p.Message,
+			AllowOther: true,
+			Optional:   false,
+		}}, []elicitPropMeta{{key: "response", typ: "string"}}, true
+	}
+
+	// Pair companion "Optional free-form answer to: <question>" fields (emitted by
+	// Antigravity's ask_question) onto their choice question instead of showing
+	// duplicate free-form items.
+	pairedOther := map[string]string{} // choiceKey -> freeFormKey
+	absorbed := map[string]bool{}
+	for _, fk := range keys {
+		fprop := p.RequestedSchema.Properties[fk]
+		if slices.Contains(p.RequestedSchema.Required, fk) {
+			continue
+		}
+		opts, _, _ := extractElicitOptions(fprop)
+		if len(opts) > 0 || !strings.HasPrefix(fprop.Description, elicitFreeFormPrefix) {
+			continue
+		}
+		target := strings.TrimSpace(strings.TrimPrefix(fprop.Description, elicitFreeFormPrefix))
+		if target == "" {
+			continue
+		}
+		best := ""
+		for _, ck := range keys {
+			if ck == fk || pairedOther[ck] != "" {
+				continue
+			}
+			cprop := p.RequestedSchema.Properties[ck]
+			copts, _, _ := extractElicitOptions(cprop)
+			if len(copts) == 0 {
+				continue
+			}
+			if strings.TrimSpace(cprop.Title) == target || strings.TrimSpace(cprop.Description) == target {
+				best = ck
+				if strings.HasPrefix(fk, ck) {
+					break
+				}
+			}
+		}
+		if best != "" {
+			pairedOther[best] = fk
+			absorbed[fk] = true
+		}
+	}
+
+	genericMsg := genericElicitMsgRe.MatchString(strings.TrimSpace(p.Message))
+	var qItems []*sessionv1.QuestionItem
+	var metas []elicitPropMeta
+	for _, k := range keys {
+		if absorbed[k] {
+			continue
+		}
+		prop := p.RequestedSchema.Properties[k]
+		opts, choiceID, multiSelect := extractElicitOptions(prop)
+		otherKey := pairedOther[k]
+
+		header := prop.Title
+		qText := prop.Description
+		if qText == "" {
+			if (genericMsg || otherKey != "") && prop.Title != "" {
+				qText = prop.Title
+				header = ""
+			} else {
+				qText = p.Message
+			}
+		}
+		if qText == "" {
+			qText = prop.Title
+			header = ""
+		}
+		if qText == "" {
+			qText = k
+		}
+
+		optional := !slices.Contains(p.RequestedSchema.Required, k)
+		if otherKey != "" && len(p.RequestedSchema.Required) == 0 {
+			optional = false
+		}
+
+		qItems = append(qItems, &sessionv1.QuestionItem{
+			Id:          k,
+			Header:      header,
+			Text:        qText,
+			Options:     opts,
+			MultiSelect: multiSelect,
+			AllowOther:  len(opts) == 0 || otherKey != "",
+			Optional:    optional,
+		})
+		metas = append(metas, elicitPropMeta{
+			key:      k,
+			otherKey: otherKey,
+			typ:      prop.Type,
+			choiceID: choiceID,
+		})
+	}
+	return qItems, metas, true
+}
+
+func buildElicitationContent(metas []elicitPropMeta, answers map[string]*sessionv1.QuestionAnswer) map[string]any {
+	content := map[string]any{}
+	for _, m := range metas {
+		ans := answers[m.key]
+		if ans == nil {
+			continue
+		}
+		custom := strings.TrimSpace(ans.CustomText)
+		if m.otherKey != "" {
+			if custom != "" {
+				content[m.otherKey] = custom
+			}
+			if len(ans.SelectedOptions) == 0 {
+				continue
+			}
+		}
+		switch m.typ {
+		case "array":
+			var out []string
+			for _, sel := range ans.SelectedOptions {
+				if mapped, ok := m.choiceID[sel]; ok {
+					out = append(out, mapped)
+				} else {
+					out = append(out, sel)
+				}
+			}
+			if m.otherKey == "" && custom != "" {
+				out = append(out, custom)
+			}
+			if len(out) > 0 {
+				content[m.key] = out
+			}
+		case "boolean":
+			raw := custom
+			if raw == "" && len(ans.SelectedOptions) > 0 {
+				raw = ans.SelectedOptions[0]
+				if mapped, ok := m.choiceID[raw]; ok {
+					raw = mapped
+				}
+			}
+			if raw != "" {
+				content[m.key] = raw == "true" || strings.EqualFold(raw, "yes")
+			}
+		default:
+			raw := custom
+			if m.otherKey != "" {
+				raw = ""
+			}
+			if raw == "" && len(ans.SelectedOptions) > 0 {
+				raw = ans.SelectedOptions[0]
+				if mapped, ok := m.choiceID[raw]; ok {
+					raw = mapped
+				}
+			}
+			if raw != "" {
+				content[m.key] = raw
+			}
+		}
+	}
+	return content
+}
+
 func (s *session) handleElicitation(tctx context.Context, params json.RawMessage, reply func(any)) {
 	if s.spec.Gate == nil {
 		reply(map[string]any{"action": "decline"})
 		return
 	}
-	var p struct {
-		Mode            string `json:"mode"`
-		Message         string `json:"message"`
-		RequestedSchema struct {
-			Required   []string `json:"required"`
-			Properties map[string]struct {
-				Type        string   `json:"type"`
-				Title       string   `json:"title"`
-				Description string   `json:"description"`
-				Enum        []string `json:"enum"`
-				OneOf       []struct {
-					Const string `json:"const"`
-					Title string `json:"title"`
-				} `json:"oneOf"`
-			} `json:"properties"`
-		} `json:"requestedSchema"`
-	}
-	if json.Unmarshal(params, &p) != nil || (p.Mode != "" && p.Mode != "form") {
+	qItems, metas, ok := parseElicitationForm(params)
+	if !ok {
 		reply(map[string]any{"action": "decline"})
 		return
-	}
-
-	type propMeta struct {
-		key      string
-		typ      string
-		choiceID map[string]string
-	}
-	var keys []string
-	for k := range p.RequestedSchema.Properties {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-
-	var qItems []*sessionv1.QuestionItem
-	var metas []propMeta
-	if len(keys) == 0 {
-		qItems = append(qItems, &sessionv1.QuestionItem{
-			Id:         "response",
-			Text:       p.Message,
-			AllowOther: true,
-			Optional:   false,
-		})
-		metas = append(metas, propMeta{key: "response", typ: "string"})
-	} else {
-		for _, k := range keys {
-			prop := p.RequestedSchema.Properties[k]
-			meta := propMeta{key: k, typ: prop.Type, choiceID: map[string]string{}}
-			var opts []*sessionv1.QuestionOption
-			if prop.Type == "boolean" {
-				opts = []*sessionv1.QuestionOption{
-					{Id: "true", Label: "Yes"},
-					{Id: "false", Label: "No"},
-				}
-				meta.choiceID["Yes"] = "true"
-				meta.choiceID["No"] = "false"
-			} else if len(prop.OneOf) > 0 {
-				for _, o := range prop.OneOf {
-					lbl := o.Title
-					if lbl == "" {
-						lbl = o.Const
-					}
-					opts = append(opts, &sessionv1.QuestionOption{Id: o.Const, Label: lbl})
-					meta.choiceID[lbl] = o.Const
-				}
-			} else {
-				for _, e := range prop.Enum {
-					opts = append(opts, &sessionv1.QuestionOption{Id: e, Label: e})
-					meta.choiceID[e] = e
-				}
-			}
-			qText := prop.Description
-			if qText == "" {
-				qText = p.Message
-			}
-			if qText == "" {
-				qText = k
-			}
-			qItems = append(qItems, &sessionv1.QuestionItem{
-				Id:         k,
-				Header:     prop.Title,
-				Text:       qText,
-				Options:    opts,
-				AllowOther: len(opts) == 0,
-				Optional:   !slices.Contains(p.RequestedSchema.Required, k),
-			})
-			metas = append(metas, meta)
-		}
 	}
 
 	res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
@@ -3999,25 +4210,5 @@ func (s *session) handleElicitation(tctx context.Context, params json.RawMessage
 		}
 		return
 	}
-	content := map[string]any{}
-	for _, m := range metas {
-		ans := res.Answers[m.key]
-		if ans == nil {
-			continue
-		}
-		raw := ans.CustomText
-		if raw == "" && len(ans.SelectedOptions) > 0 {
-			raw = ans.SelectedOptions[0]
-			if mapped, ok := m.choiceID[raw]; ok {
-				raw = mapped
-			}
-		}
-		switch m.typ {
-		case "boolean":
-			content[m.key] = raw == "true" || strings.EqualFold(raw, "yes")
-		default:
-			content[m.key] = raw
-		}
-	}
-	reply(map[string]any{"action": "accept", "content": content})
+	reply(map[string]any{"action": "accept", "content": buildElicitationContent(metas, res.Answers)})
 }
