@@ -6,6 +6,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -75,6 +76,7 @@ const (
 	EventFileChanged
 	EventPlanProposed
 	EventTodoUpdated
+	EventFocusUpdated
 	EventUsage
 	EventNotice
 	EventBackgroundTask
@@ -104,6 +106,7 @@ type Event struct {
 	PlanTitle           string
 	RequestReview       bool
 	TodoSteps           []*sessionv1.TodoStep
+	HasFocus            bool
 	Usage               *sessionv1.ContextWindowUsage
 	Notice              *sessionv1.Notice
 	Failure             *Failure
@@ -113,6 +116,22 @@ type Event struct {
 	BackgroundAwaited   bool
 	ErrorCode           string
 	ErrorMessage        string
+}
+
+// NormalizeTodoStatus maps provider-specific checklist step states onto Hermesh's canonical set.
+func NormalizeTodoStatus(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "completed", "complete", "done":
+		return "completed"
+	case "in_progress", "inprogress", "active", "running":
+		return "in_progress"
+	case "skipped", "cancelled", "canceled":
+		return "skipped"
+	case "failed", "error":
+		return "failed"
+	default:
+		return "pending"
+	}
 }
 
 type StartSpec struct {

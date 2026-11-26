@@ -162,6 +162,9 @@ final class DemoService {
         if Self.codeBlockRunner {
             seedCodeBlockRunner()
         }
+        if Self.liveProgress {
+            seedLiveProgress()
+        }
         #endif
         _ = pairing(.client)
     }
@@ -421,6 +424,15 @@ final class DemoService {
     private static let codeBlockRunner: Bool = {
         #if targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("-DemoCodeBlockRunner")
+        #else
+        false
+        #endif
+    }()
+
+    // Simulator-only fixture for LiveProgressUITests.
+    private static let liveProgress: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-DemoLiveProgress")
         #else
         false
         #endif
@@ -852,6 +864,9 @@ final class DemoService {
                    streamSessionDetailRegression(request: request, token: token, continuation: c) {
                     return
                 }
+                if Self.liveProgress, request.sessionID == "demo-live-progress" {
+                    startLiveProgressCompletion()
+                }
                 #endif
                 do {
                     for e in events[request.sessionID, default: []] where e.seq > request.afterSeq { c.yield(try e.jsonUTF8Data()) }
@@ -1208,6 +1223,109 @@ final class DemoService {
             return true
         }
         return false
+    }
+
+    private func seedLiveProgress() {
+        let id = "demo-live-progress"
+        var s = session(id, title: "Live progress session", machine: "demo-mac", status: .running)
+        s.agent = "antigravity"
+        s.createdBy = "owner"
+        s.activeRunID = "r2"
+        s.updatedAt = .init(date: .now.addingTimeInterval(50))
+        s.progress.turnCount = 1
+        s.progress.turnStartedAt = .init(date: .now)
+        world.sessions.append(s)
+
+        beginRun(id, runID: "r1", ordinal: 1, asker: "owner", status: .completed, startedAt: .now.addingTimeInterval(-20))
+        appendItem(id, runID: "r1", kind: .userMessage) {
+            $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+            $0.text = "Optimize sidebar halo GPU usage"
+        }
+        appendItem(id, runID: "r1", kind: .todoList) {
+            $0.itemID = "r1:todo:todo"
+            $0.text = "Inspecting CALayer sprite benchmark"
+            $0.todoSteps = [
+                .with { $0.text = "Check motion constraints"; $0.status = "completed" },
+                .with { $0.text = "Rewrite CALayer halo"; $0.status = "in_progress" },
+                .with { $0.text = "Verify GPU usage"; $0.status = "pending" },
+            ]
+        }
+        appendItem(id, runID: "r1", kind: .assistantMessage) {
+            $0.text = "Running GPU benchmark in background."
+        }
+
+        let bt: Hermesh_Session_V1_BackgroundTask = .with {
+            $0.taskID = "bg-bench"
+            $0.sessionID = id
+            $0.runID = "r1"
+            $0.kind = .command
+            $0.status = .completed
+            $0.title = "Benchmark CALayer sprite orbit"
+            $0.command = "python3 bench.py"
+            $0.outputTail = "GPU dropped from 24.9% to 2.7%"
+            $0.awaited = true
+            $0.startedAt = .init(date: .now.addingTimeInterval(-15))
+            $0.completedAt = .init(date: .now.addingTimeInterval(-2))
+        }
+        projections[id, default: .init()].backgroundTasks.append(bt)
+
+        let contRun: Hermesh_Session_V1_Run = .with {
+            $0.runID = "r2"
+            $0.sessionID = id
+            $0.ordinal = 2
+            $0.status = .running
+            $0.author = .with { $0.kind = .system; $0.id = "background" }
+            $0.wakeReason = "Benchmark CALayer sprite orbit"
+            $0.createdAt = .init(date: .now)
+            $0.startedAt = .init(date: .now)
+        }
+        projections[id, default: .init()].runs.append(contRun)
+        emitEvent(id) { $0.type = "run.started"; $0.run = contRun }
+        appendItem(id, runID: "r2", kind: .commandExecution) {
+            $0.itemID = "r2:cmd:1"
+            $0.command = "swift test"
+            $0.status = "running"
+        }
+        syncSession(id)
+    }
+
+    private func startLiveProgressCompletion() {
+        let id = "demo-live-progress"
+        guard tasks[id] == nil else { return }
+        tasks[id] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(5500))
+            guard !Task.isCancelled, let self,
+                  let sIdx = self.world.sessions.firstIndex(where: { $0.sessionID == id }) else { return }
+            if let cmdIdx = self.projections[id]?.items.firstIndex(where: { $0.itemID == "r2:cmd:1" }) {
+                var doneCmd = self.projections[id]!.items[cmdIdx]
+                doneCmd.status = "completed"
+                doneCmd.output = "All tests passed"
+                self.projections[id]?.items[cmdIdx] = doneCmd
+                self.emitEvent(id) { $0.type = "item.updated"; $0.item = doneCmd }
+            }
+            self.appendItem(id, runID: "r2", kind: .todoList) {
+                $0.itemID = "r2:todo:todo"
+                $0.todoSteps = [
+                    .with { $0.text = "Check motion constraints"; $0.status = "completed" },
+                    .with { $0.text = "Rewrite CALayer halo"; $0.status = "completed" },
+                    .with { $0.text = "Verify GPU usage"; $0.status = "completed" },
+                ]
+            }
+            self.appendItem(id, runID: "r2", kind: .assistantMessage) {
+                $0.text = "GPU usage reduced to 2.7%."
+            }
+            self.world.sessions[sIdx].status = .idle
+            self.world.sessions[sIdx].activeRunID = ""
+            self.world.sessions[sIdx].progress.turnCount = 2
+            self.world.sessions[sIdx].updatedAt = .init(date: .now)
+            if let rIdx = self.projections[id]?.runs.firstIndex(where: { $0.runID == "r2" }) {
+                self.projections[id]?.runs[rIdx].status = .completed
+                self.projections[id]?.runs[rIdx].completedAt = .init(date: .now)
+                let doneRun = self.projections[id]!.runs[rIdx]
+                self.emitEvent(id) { $0.type = "run.completed"; $0.run = doneRun }
+            }
+            self.publish()
+        }
     }
     #endif
 }

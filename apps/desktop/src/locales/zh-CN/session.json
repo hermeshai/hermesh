@@ -33,6 +33,7 @@
     "messageFrom": "来自 {{name}} 的消息",
     "messageTo": "发给 {{name}} 的消息",
     "messageQueued": "将在下一轮处理",
+    "taskFinished": "{{title}} 已完成",
     "unread": {
       "offline": "{{name}} 离线了",
       "offlineDetail": "这个任务的内容保存在那个环境里，连上后会自动显示。",

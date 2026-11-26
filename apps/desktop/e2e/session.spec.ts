@@ -1184,6 +1184,56 @@ test("a message an agent writes to the session shows as a card that says who wro
   await app.close();
 });
 
+test("a live ACP session shows its floating step checklist and focus while running, animates only on the compositor, and auto-collapses when all steps finish", async () => {
+  const { app, page } = await launch();
+  try {
+    const prompt = [
+      "focus 检查现有动效与测试约束",
+      "steps 检查现有动效实现=in_progress|重写侧边栏光环=pending|运行桌面端基准验证=skipped",
+      "sleep 5s",
+      "steps 检查现有动效实现=done|重写侧边栏光环=done|运行桌面端基准验证=skipped",
+      "say 全部优化已完成",
+    ].join("\n");
+    await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "原生进展", "--prompt", prompt);
+    await open(page, "原生进展");
+
+    const log = page.getByRole("log", { name: "对话" });
+    const todoCard = page.getByTestId("thread-todo-card");
+    await expect(todoCard).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("thread-todo-step-0")).toHaveAttribute("data-status", "in_progress");
+    await expect(page.getByTestId("thread-todo-step-0")).toContainText("检查现有动效实现");
+    await expect(page.getByTestId("thread-todo-step-1")).toHaveAttribute("data-status", "pending");
+    await expect(page.getByTestId("thread-todo-step-2")).toHaveAttribute("data-status", "skipped");
+
+    // Floating above the composer box, never leaked as tool rows in the transcript:
+    const [cardBox, cmpBox] = [(await todoCard.boundingBox())!, (await page.locator(".th-cmp").boundingBox())!];
+    expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(cmpBox.y);
+    await expect(log).not.toContainText("update_steps");
+    await expect(log).not.toContainText("update_focus");
+    await expect(log).not.toContainText("使用了");
+
+    // Bottom working line displays native update_focus text:
+    await expect(page.getByTestId("thread-working")).toContainText("检查现有动效与测试约束");
+
+    // Every animation inside the checklist card runs strictly on the compositor (transform / opacity only):
+    const animProps = await todoCard.evaluate((el) =>
+      el.getAnimations({ subtree: true }).flatMap((a) =>
+        [...new Set((a.effect as KeyframeEffect).getKeyframes().flatMap((k) => Object.keys(k)))].filter(
+          (p) => !["offset", "computedOffset", "easing", "composite"].includes(p),
+        ),
+      ),
+    );
+    expect(animProps.length).toBeGreaterThan(0);
+    for (const p of animProps) expect(p === "transform" || p === "opacity", `unexpected animated prop: ${p}`).toBe(true);
+
+    // Once all steps complete/skip and the turn settles, the floating card auto-collapses:
+    await expect(log).toContainText("全部优化已完成", { timeout: 15_000 });
+    await expect(todoCard).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
 test("a conversation on a machine gone offline says why: one read before shows with a line under it, one never read says so instead of a blank page", async () => {
   test.skip(onWindows, "it stops the other machine by its process group");
   const { app, page } = await launch();

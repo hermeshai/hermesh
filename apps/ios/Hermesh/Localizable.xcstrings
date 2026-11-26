@@ -19376,6 +19376,16 @@
         }
       }
     },
+    "%@ finished" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已完成"
+          }
+        }
+      }
+    },
     "%@ is offline · Shows automatically when back" : {
       "localizations" : {
         "zh-Hans" : {

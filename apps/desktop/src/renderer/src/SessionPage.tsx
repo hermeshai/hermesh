@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { clone, create, type MessageInitShape } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
@@ -24,6 +24,7 @@ import {
 import {
   SCRATCH_PROJECT,
   activeBackgroundTasksOf,
+  activeTodoSteps,
   applySessionEvent,
   backgroundTasksOf,
   clampRuntimeMode,
@@ -41,11 +42,13 @@ import {
   queuedRunsOf,
   replyEnds,
   sessionFailure,
+  sessionFocusText,
   sessionLiveReplies,
   sessionWork,
   sessionTranscript,
   statusTitle,
   updatedDate,
+  type TodoStepStatus,
 } from "@hermesh/core";
 import { local, sessions as sessionApi } from "./api";
 import { ConnectionLine } from "./ConnectionCapsule";
@@ -705,14 +708,36 @@ export function SessionPage() {
 
   // The conversation, reduced from SessionProjection (core transcript.ts) and drawn with unified conversation rows.
   const steps = useMemo(() => groupSteps(sessionTranscript(activeProjection)), [activeProjection]);
+  const todoSteps = useMemo(() => activeTodoSteps(activeProjection), [activeProjection]);
   const ends = useMemo(() => replyEnds(steps, running), [steps, running]);
   const failure = sessionFailure(currentSession);
   const activeRun = activeProjection?.runs.find((r) => r.runId === currentSession?.activeRunId);
   const work =
     currentSession?.status === SessionStatus.PREPARING ? { text: t("work.starting") }
     : currentSession?.status === SessionStatus.QUEUED && !currentSession.offlineQueued ? { text: statusTitle(SessionStatus.QUEUED) }
-    : currentSession?.status === SessionStatus.RUNNING ? { text: t(`work.${sessionWork(activeProjection)}`), since: dateOf(activeRun?.startedAt) }
+    : currentSession?.status === SessionStatus.RUNNING
+      ? { text: sessionFocusText(activeProjection) ?? t(`work.${sessionWork(activeProjection)}`), since: dateOf(activeRun?.startedAt) }
     : undefined;
+  const handleOpenWakeTask = useCallback(
+    (reason: string) => {
+      const matched = allBgTasks.find((bt) => bt.title === reason || bt.command === reason);
+      if (filePanel.open) setPanelOpen(filePanel, false);
+      st.set({ background: true, bgTask: matched?.taskId ?? null });
+    },
+    [allBgTasks, filePanel, st],
+  );
+  const todoCard = activeSessionId && todoSteps.length > 0 && (
+    <div className="knote th-todo" role="region" aria-label={t("todo.label")} data-testid="thread-todo-card">
+      <div className="th-todo-list">
+        {todoSteps.map((step, idx) => (
+          <div key={`${idx}:${step.text}`} className={`th-todo-row ${step.status}`} data-status={step.status} data-testid={`thread-todo-step-${idx}`}>
+            <TodoStepGlyph status={step.status} />
+            <span className="th-todo-text">{step.text}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
   const writing = useMemo(() => sessionLiveReplies(activeProjection), [activeProjection]);
   // Whose files the replies' links are (docs/session-files.md §3): the session's machine, this Mac or another.
   const sessionMachine = currentSession?.machineId ?? "";
@@ -833,7 +858,7 @@ export function SessionPage() {
           aria-label={t("background.title")}
           aria-pressed={background}
           data-testid="toolbar-background-btn"
-          onClick={() => st.set({ background: !background })}
+          onClick={() => st.set({ background: !background, bgTask: null })}
         >
           <Icon name="layers" />
           {activeBgTasks.length > 0 && <span className="tb-badge" data-testid="toolbar-background-badge">{activeBgTasks.length}</span>}
@@ -979,7 +1004,7 @@ export function SessionPage() {
                         note={<PromptNote kind="waiting" machine={targetMachine?.machineName ?? currentSession.machineId} onDiscard={discardOffline} />}
                       />
                     ) : (
-                      <Row it={r.it} rowKey={r.key} end={r.end} live={r.live} sessionId={activeSessionId!} machineId={currentSession?.machineId} clients={st.clients} starter={session?.createdBy ?? "owner"} previous={r.previous} />
+                      <Row it={r.it} rowKey={r.key} end={r.end} live={r.live} sessionId={activeSessionId!} machineId={currentSession?.machineId} clients={st.clients} starter={session?.createdBy ?? "owner"} previous={r.previous} onOpenWakeTask={handleOpenWakeTask} />
                     )
                   }
                   head={
@@ -1005,6 +1030,7 @@ export function SessionPage() {
                     <ComposerZone onHeight={onHeight}>
                       {requestCard}
                       {queueCard}
+                      {todoCard}
                       {slashRow}
                       <ThreadComposer
                         {...composerProps}
@@ -1046,6 +1072,32 @@ export function SessionPage() {
 function startingRow(st: Starting): ChatRow {
   const it = { kind: "user" as const, seq: 1n, text: st.req.initialPrompt ?? "", attachments: st.files, at: st.at, asker: "owner" };
   return { key: "starting", kind: "user", it, end: false, live: false, previous: undefined };
+}
+
+function TodoStepGlyph({ status }: { status: TodoStepStatus }) {
+  switch (status) {
+    case "in_progress":
+      return (
+        <svg className="th-todo-ic th-todo-spin" viewBox="0 0 14 14" aria-hidden="true">
+          <circle cx="4.6" cy="4.6" r="1.35" fill="currentColor" />
+          <circle cx="9.4" cy="4.6" r="1.35" fill="currentColor" opacity="0.55" />
+          <circle cx="9.4" cy="9.4" r="1.35" fill="currentColor" />
+          <circle cx="4.6" cy="9.4" r="1.35" fill="currentColor" opacity="0.55" />
+        </svg>
+      );
+    case "completed":
+      return <Icon name="check" className="th-todo-ic" />;
+    case "skipped":
+      return <Icon name="minus" className="th-todo-ic" />;
+    case "failed":
+      return <Icon name="x" className="th-todo-ic" />;
+    default:
+      return (
+        <svg className="th-todo-ic" viewBox="0 0 14 14" aria-hidden="true">
+          <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+        </svg>
+      );
+  }
 }
 
 /** The box at the bottom of the conversation, as Her's (her.css .cmp-zone), telling the conversation how much of it it covers. */

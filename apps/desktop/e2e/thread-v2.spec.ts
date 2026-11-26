@@ -226,6 +226,8 @@ test("tracks post-turn background tasks without premature completion, streams au
     //    and updates the panel to "全部完成" while keeping the toolbar button so finished tasks can still be inspected.
     await expect(replies(page).last()).toContainText("All 12 background tests passed!", { timeout: 15_000 });
     await expect(page.getByText("后台唤醒", { exact: false })).toHaveCount(0);
+    const wakeLine = conversation(page).getByTestId("thread-wake-line");
+    await expect(wakeLine).toContainText("pytest -q 已完成");
     await expect(bgLine).toHaveCount(0);
     await expect(page.getByTestId("toolbar-background-badge")).toHaveCount(0);
     await expect(page.getByTestId("toolbar-background-btn")).toBeVisible();
@@ -233,10 +235,19 @@ test("tracks post-turn background tasks without premature completion, streams au
     await expect(bgPanel).toContainText("全部完成");
 
     // Clicking the finished task row opens its execution detail in-place; back returns to the list;
-    // clicking the info toolbar button switches back to the session's info cards.
+    // clicking the info toolbar button switches back to the session's info cards, and clicking the
+    // inline "<task> 已完成 ›" wake line reopens that task's execution detail directly.
     await bgPanel.locator(".srow", { hasText: "pytest -q" }).click();
     await expect(bgPanel).toContainText("12 passed in 3s");
     await expect(bgPanel).toContainText("完成");
+    await page.getByTestId("background-back").click();
+    await expect(bgPanel).toContainText("全部完成");
+    await page.getByRole("button", { name: "信息面板" }).click();
+    await expect(bgPanel).toHaveCount(0);
+    await expect(page.getByRole("complementary", { name: "任务信息" })).toBeVisible();
+    await wakeLine.click();
+    await expect(bgPanel).toBeVisible();
+    await expect(bgPanel).toContainText("12 passed in 3s");
     await page.getByTestId("background-back").click();
     await expect(bgPanel).toContainText("全部完成");
     await page.getByRole("button", { name: "信息面板" }).click();

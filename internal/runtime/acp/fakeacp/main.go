@@ -566,6 +566,47 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 				b, err := c.CombinedOutput()
 				return string(b), err
 			})
+		case "focus":
+			callN++
+			cid := fmt.Sprintf("call-%d", callN)
+			update(sid, map[string]any{"sessionUpdate": "tool_call", "toolCallId": cid, "title": "update_focus", "kind": "other", "status": "in_progress", "rawInput": map[string]any{"focus": arg}})
+			update(sid, map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": cid, "status": "completed",
+				"content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": "OK"}}}})
+		case "steps":
+			callN++
+			cid := fmt.Sprintf("call-%d", callN)
+			var steps []any
+			for _, part := range strings.Split(arg, "|") {
+				part = strings.TrimSpace(part)
+				if part == "" {
+					continue
+				}
+				title, status, ok := strings.Cut(part, "=")
+				if !ok {
+					status = "pending"
+				}
+				steps = append(steps, map[string]any{"title": strings.TrimSpace(title), "status": strings.TrimSpace(status)})
+			}
+			update(sid, map[string]any{"sessionUpdate": "tool_call", "toolCallId": cid, "title": "update_steps", "kind": "other", "status": "in_progress", "rawInput": map[string]any{"steps": steps}})
+			update(sid, map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": cid, "status": "completed",
+				"content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": "OK"}}}})
+		case "run-summary":
+			summary, cmdStr, _ := strings.Cut(arg, "|")
+			callN++
+			cid := fmt.Sprintf("call-%d", callN)
+			update(sid, map[string]any{"sessionUpdate": "tool_call", "toolCallId": cid, "title": cmdStr, "kind": "execute", "status": "in_progress",
+				"rawInput": map[string]any{"CommandLine": cmdStr, "toolSummary": strings.TrimSpace(summary)}})
+			c := shellCommand(cmdStr)
+			c.Dir = cwd
+			b, err := c.CombinedOutput()
+			st := "completed"
+			outTxt := string(b)
+			if err != nil {
+				st = "failed"
+				outTxt += err.Error()
+			}
+			update(sid, map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": cid, "status": st,
+				"content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": outTxt}}}})
 		case "sleep":
 			d, _ := time.ParseDuration(arg)
 			select {

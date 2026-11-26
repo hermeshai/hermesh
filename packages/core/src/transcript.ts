@@ -14,6 +14,7 @@ import {
   RunStatus,
   RuntimeRequestKind,
   RuntimeRequestStatus,
+  SessionStatus,
   ToolCallSchema,
   ToolResultSchema,
   TurnCompletedSchema,
@@ -37,7 +38,7 @@ import {
 } from "@hermesh/proto/session";
 import { t } from "./i18n";
 import { dateOf } from "./sessions";
-import { activeBackgroundItemIdsOf } from "./threads";
+import { activeBackgroundItemIdsOf, activeBackgroundTasksOf } from "./threads";
 
 // A unified session's conversation as the window shows it: its messages, tool
 // calls, settled questions, inter-agent mail, time lines before turns, and
@@ -338,6 +339,129 @@ export function sessionWork(proj: SessionProjection | null | undefined): Session
   if (now.some((it) => it.kind === TurnItemKind.REASONING && it.streaming)) return "thinking";
   if (now.some((it) => it.kind === TurnItemKind.ASSISTANT_MESSAGE && it.streaming)) return "replying";
   return "working";
+}
+
+export type TodoStepStatus = "pending" | "in_progress" | "completed" | "skipped" | "failed";
+
+export interface TodoStepView {
+  text: string;
+  status: TodoStepStatus;
+}
+
+export function normalizeTodoStepStatus(raw: string): TodoStepStatus {
+  switch (raw.trim().toLowerCase()) {
+    case "completed":
+    case "complete":
+    case "done":
+      return "completed";
+    case "in_progress":
+    case "inprogress":
+    case "active":
+    case "running":
+      return "in_progress";
+    case "skipped":
+    case "cancelled":
+    case "canceled":
+      return "skipped";
+    case "failed":
+    case "error":
+      return "failed";
+    default:
+      return "pending";
+  }
+}
+
+/** Run IDs belonging to the current turn and any consecutive system continuation wakes from background tasks. */
+function currentTurnChainRunIds(proj: SessionProjection): Set<string> {
+  const out = new Set<string>();
+  const activeId = proj.session?.activeRunId ?? "";
+  let idx = activeId !== "" ? proj.runs.findIndex((r) => r.runId === activeId) : -1;
+  if (idx < 0) {
+    for (let i = proj.runs.length - 1; i >= 0; i--) {
+      const st = proj.runs[i].status;
+      if (st !== RunStatus.QUEUED && st !== RunStatus.ROLLED_BACK) {
+        idx = i;
+        break;
+      }
+    }
+  }
+  if (idx < 0) {
+    if (activeId !== "") out.add(activeId);
+    return out;
+  }
+  while (idx >= 0) {
+    const r = proj.runs[idx];
+    out.add(r.runId);
+    if (r.author?.kind !== ActorKind.SYSTEM) break;
+    idx--;
+  }
+  return out;
+}
+
+function isSessionChecklistLive(proj: SessionProjection): boolean {
+  const s = proj.session;
+  if (!s) return false;
+  if (
+    s.status === SessionStatus.PREPARING ||
+    s.status === SessionStatus.RUNNING ||
+    s.status === SessionStatus.WAITING_INPUT
+  ) {
+    return true;
+  }
+  if (s.status === SessionStatus.IDLE) {
+    return s.activeBackgroundCount > 0 || activeBackgroundTasksOf(proj).some((t) => t.awaited);
+  }
+  return false;
+}
+
+/**
+ * Steps for the floating live checklist above the composer while the session is working.
+ * Automatically returns [] once the turn settles or all steps are completed/skipped.
+ */
+export function activeTodoSteps(proj: SessionProjection | null | undefined): TodoStepView[] {
+  if (!proj || !isSessionChecklistLive(proj)) return [];
+  const chain = currentTurnChainRunIds(proj);
+  if (chain.size === 0) return [];
+  const latest = proj.items.findLast((it) => it.kind === TurnItemKind.TODO_LIST && chain.has(it.runId));
+  if (!latest || latest.todoSteps.length === 0) return [];
+  const steps: TodoStepView[] = [];
+  for (const s of latest.todoSteps) {
+    const text = s.text.trim();
+    if (!text) continue;
+    steps.push({ text, status: normalizeTodoStepStatus(s.status) });
+  }
+  if (steps.length === 0 || steps.every((s) => s.status === "completed" || s.status === "skipped")) {
+    return [];
+  }
+  return steps;
+}
+
+/**
+ * Native live focus phrase for the bottom working line when the model is not actively streaming
+ * thoughts or reply prose; undefined falls back to the localized generic work label.
+ */
+export function sessionFocusText(proj: SessionProjection | null | undefined): string | undefined {
+  const s = proj?.session;
+  if (!proj || !s || s.status !== SessionStatus.RUNNING || !s.activeRunId) return undefined;
+  const work = sessionWork(proj);
+  if (work === "thinking" || work === "replying") return undefined;
+
+  const chain = currentTurnChainRunIds(proj);
+  const latestTodo = proj.items.findLast((it) => it.kind === TurnItemKind.TODO_LIST && chain.has(it.runId));
+  const explicitFocus = latestTodo?.text.trim();
+  if (explicitFocus) return explicitFocus;
+
+  const runningTool = proj.items.findLast(
+    (it) =>
+      it.runId === s.activeRunId &&
+      it.status === "running" &&
+      (it.kind === TurnItemKind.COMMAND_EXECUTION || it.kind === TurnItemKind.TOOL_CALL) &&
+      it.text.trim() !== "",
+  );
+  if (runningTool) return runningTool.text.trim();
+
+  const inProgressStep = activeTodoSteps(proj).find((st) => st.status === "in_progress");
+  return inProgressStep?.text;
 }
 
 export function sessionLiveReplies(proj: SessionProjection | null | undefined): Set<bigint> {

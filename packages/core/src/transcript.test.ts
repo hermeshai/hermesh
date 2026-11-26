@@ -30,9 +30,11 @@ import {
 import { Workspace } from "@hermesh/proto/identity";
 import { groupSteps, replyEnds, stepSummary } from "./steps";
 import {
+  activeTodoSteps,
   interrupter,
   isInterruption,
   resolutionTitle,
+  sessionFocusText,
   sessionFailure,
   sessionLiveReplies,
   sessionQuestion,
@@ -302,7 +304,7 @@ test("the workspace step is a row of its own", () => {
   expect(workspaceDetails(swRow).map((d) => d.value)).toEqual(["原地", "feat（原来在 main）", "/repo"]);
 });
 
-test("user messages preserve their attachments in the transcript, including attachment-only prompts", () => {
+  test("user messages preserve their attachments in the transcript, including attachment-only prompts", () => {
   const rows = sessionTranscript(
     create(SessionProjectionSchema, {
       runs: [{ runId: "r1", ordinal: 1 }],
@@ -316,4 +318,70 @@ test("user messages preserve their attachments in the transcript, including atta
   );
   const user = rows.find((r) => r.kind === "user");
   expect(user?.kind === "user" ? user.attachments?.map((a) => a.name) : []).toEqual(["shot.png"]);
+});
+
+test("activeTodoSteps and sessionFocusText track live turns, background continuations, and auto-collapse", () => {
+  const p = create(SessionProjectionSchema, {
+    session: create(SessionSchema, { sessionId: "s_todo", status: SessionStatus.RUNNING, activeRunId: "r1" }),
+    runs: [
+      create(RunSchema, { runId: "r1", ordinal: 1, status: RunStatus.RUNNING, author: create(ActorSchema, { kind: ActorKind.OWNER, id: "dev" }) }),
+    ],
+    items: [
+      item(1, "r1", TurnItemKind.USER_MESSAGE, { text: "optimize halo" }),
+      item(2, "r1", TurnItemKind.TODO_LIST, {
+        itemId: "r1:todo:todo",
+        text: "Inspecting motion constraints",
+        todoSteps: [
+          { text: "Check motion tests", status: "in_progress" },
+          { text: "Rewrite CALayer sprite", status: "pending" },
+        ],
+      }),
+    ],
+  });
+
+  // Explicit focus wins while working, but yields to thinking/replying:
+  expect(activeTodoSteps(p)).toEqual([
+    { text: "Check motion tests", status: "in_progress" },
+    { text: "Rewrite CALayer sprite", status: "pending" },
+  ]);
+  expect(sessionFocusText(p)).toBe("Inspecting motion constraints");
+
+  p.items.push(item(3, "r1", TurnItemKind.REASONING, { text: "weighing...", streaming: true }));
+  expect(sessionFocusText(p)).toBeUndefined();
+  p.items[2].streaming = false;
+
+  // Without explicit focus, running tool summary wins over in_progress step, and empty summary falls back:
+  p.items[1].text = "";
+  p.items.push(item(4, "r1", TurnItemKind.COMMAND_EXECUTION, { command: "pnpm bench", text: "Run GPU benchmark", status: "running" }));
+  expect(sessionFocusText(p)).toBe("Run GPU benchmark");
+  p.items[3].status = "completed";
+  expect(sessionFocusText(p)).toBe("Check motion tests");
+
+  // Stays visible while idle waiting on an awaited background task, and carries into SYSTEM continuation run r2:
+  p.session!.status = SessionStatus.IDLE;
+  p.session!.activeRunId = "";
+  p.session!.activeBackgroundCount = 1;
+  expect(activeTodoSteps(p)).toHaveLength(2);
+
+  p.runs.push(create(RunSchema, { runId: "r2", ordinal: 2, status: RunStatus.RUNNING, author: create(ActorSchema, { kind: ActorKind.SYSTEM, id: "bg" }), wakeReason: "Run GPU benchmark" }));
+  p.session!.status = SessionStatus.RUNNING;
+  p.session!.activeRunId = "r2";
+  expect(activeTodoSteps(p)).toHaveLength(2);
+
+  // New user turn r3 does not inherit stale incomplete steps from r1:
+  p.runs.push(create(RunSchema, { runId: "r3", ordinal: 3, status: RunStatus.RUNNING, author: create(ActorSchema, { kind: ActorKind.OWNER, id: "dev" }) }));
+  p.session!.activeRunId = "r3";
+  expect(activeTodoSteps(p)).toEqual([]);
+
+  // Auto-collapses when all steps in the active turn are completed/skipped:
+  p.items.push(
+    item(5, "r3", TurnItemKind.TODO_LIST, {
+      itemId: "r3:todo:todo",
+      todoSteps: [
+        { text: "Step A", status: "done" },
+        { text: "Step B", status: "skipped" },
+      ],
+    }),
+  );
+  expect(activeTodoSteps(p)).toEqual([]);
 });

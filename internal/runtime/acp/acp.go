@@ -696,6 +696,7 @@ type acpToolState struct {
 	status          string
 	command         string
 	filePath        string
+	summary         string
 	terminalID      string
 	output          string
 	diffNewText     string
@@ -1745,7 +1746,7 @@ func classifyACPBackgroundTool(st *acpToolState) (kind sessionv1.BackgroundTaskK
 	if promptText == "" {
 		promptText = strings.TrimSpace(in.PromptLower)
 	}
-	if !isGenericACPBackgroundTitle(rawTitle) {
+	if !isGenericACPBackgroundTitle(rawTitle) && rawTitle != cmd {
 		title = rawTitle
 	}
 	for _, cand := range []string{in.ToolSummary, in.Description, in.Role, in.SubagentType, promptText, cmd, rawTitle} {
@@ -2535,7 +2536,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		}
 		contentOut, diffPath, diffNewText, refTermID := s.extractACPToolContent(u.Content)
 		rawOut := extractACPRawOutput(u.RawOutput)
-		inCmd, inPath := extractACPRawInput(u.RawInput)
+		inCmd, inPath, inSummary := extractACPRawInput(u.RawInput)
 		candOut := contentOut
 		if candOut == "" {
 			candOut = rawOut
@@ -2566,6 +2567,9 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		}
 		if inCmd != "" {
 			st.command = inCmd
+		}
+		if inSummary != "" {
+			st.summary = inSummary
 		}
 		if refTermID != "" {
 			st.terminalID = refTermID
@@ -2775,10 +2779,22 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		if startPoller[0] != "" {
 			s.startTaskLogPoller(startPoller[0], startPoller[1])
 		}
+		if metaEv, sig, isMeta := parseACPProgressTool(stSnap.title, stSnap.rawInput); isMeta {
+			if metaEv != nil && sig != stSnap.lastArtifactSig {
+				s.mu.Lock()
+				if cur := s.tools[id]; cur != nil {
+					cur.lastArtifactSig = sig
+				}
+				s.mu.Unlock()
+				s.emit(*metaEv)
+			}
+			return
+		}
 		if status != "completed" && status != "failed" && (!wasStarted || u.SessionUpdate == "tool_call" || isLaunchAck || toolName != "" || cmd != "" || filePath != "") {
 			s.emit(runtime.Event{
 				Kind:     runtime.EventToolStarted,
 				ItemID:   id,
+				Text:     stSnap.summary,
 				ToolName: toolName,
 				Command:  cmd,
 				FilePath: filePath,
@@ -2802,6 +2818,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			s.emit(runtime.Event{
 				Kind:        runtime.EventToolCompleted,
 				ItemID:      id,
+				Text:        stSnap.summary,
 				ToolName:    toolName,
 				Command:     cmd,
 				FilePath:    filePath,
@@ -2825,9 +2842,14 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		s.mu.Unlock()
 		var steps []*sessionv1.TodoStep
 		for _, e := range u.Entries {
-			steps = append(steps, &sessionv1.TodoStep{Text: e.Content, Status: e.Status})
+			if txt := strings.TrimSpace(e.Content); txt != "" {
+				steps = append(steps, &sessionv1.TodoStep{
+					Text:   txt,
+					Status: runtime.NormalizeTodoStatus(e.Status),
+				})
+			}
 		}
-		s.emit(runtime.Event{Kind: runtime.EventTodoUpdated, TodoSteps: steps})
+		s.emit(runtime.Event{Kind: runtime.EventTodoUpdated, ItemID: "todo", TodoSteps: steps})
 	case "usage_update":
 		if u.Size > 0 || u.Used > 0 {
 			s.emit(runtime.Event{
@@ -3121,9 +3143,9 @@ func extractACPRawOutput(raw json.RawMessage) string {
 	return ""
 }
 
-func extractACPRawInput(raw json.RawMessage) (cmd, path string) {
+func extractACPRawInput(raw json.RawMessage) (cmd, path, summary string) {
 	if len(raw) == 0 {
-		return "", ""
+		return "", "", ""
 	}
 	var obj struct {
 		Command          string `json:"command"`
@@ -3135,6 +3157,8 @@ func extractACPRawInput(raw json.RawMessage) (cmd, path string) {
 		Pattern          string `json:"pattern"`
 		Query            string `json:"query"`
 		URL              string `json:"url"`
+		ToolSummary      string `json:"toolSummary"`
+		Description      string `json:"description"`
 	}
 	if json.Unmarshal(raw, &obj) == nil {
 		for _, p := range []string{obj.Path, obj.FilePath, obj.FilePathCamel, obj.Pattern, obj.Query, obj.URL} {
@@ -3149,8 +3173,106 @@ func extractACPRawInput(raw json.RawMessage) (cmd, path string) {
 				break
 			}
 		}
+		for _, s := range []string{obj.ToolSummary, obj.Description} {
+			if trimmed := strings.TrimSpace(s); trimmed != "" {
+				summary = trimmed
+				break
+			}
+		}
 	}
-	return cmd, path
+	return cmd, path, summary
+}
+
+func parseACPProgressTool(title string, rawInput json.RawMessage) (ev *runtime.Event, sig string, isMeta bool) {
+	norm := strings.ToLower(strings.TrimSpace(title))
+	switch norm {
+	case "update_focus":
+		if len(rawInput) == 0 {
+			return nil, "", true
+		}
+		var in struct {
+			Focus string `json:"focus"`
+		}
+		if json.Unmarshal(rawInput, &in) != nil {
+			return nil, "", true
+		}
+		focus := strings.TrimSpace(in.Focus)
+		if focus == "" {
+			return nil, "", true
+		}
+		return &runtime.Event{
+			Kind: runtime.EventFocusUpdated,
+			Text: focus,
+		}, "focus\x00" + focus, true
+
+	case "update_steps", "todowrite", "todo_write":
+		if len(rawInput) == 0 {
+			return nil, "", true
+		}
+		type rawStep struct {
+			Title      string `json:"title"`
+			Content    string `json:"content"`
+			Step       string `json:"step"`
+			Text       string `json:"text"`
+			Status     string `json:"status"`
+			ActiveForm string `json:"activeForm"`
+		}
+		var in struct {
+			Steps []rawStep `json:"steps"`
+			Todos []rawStep `json:"todos"`
+		}
+		if json.Unmarshal(rawInput, &in) != nil || (in.Steps == nil && in.Todos == nil) {
+			return nil, "", true
+		}
+		list := in.Steps
+		hasActiveForm := false
+		if list == nil {
+			list = in.Todos
+			hasActiveForm = true
+		}
+		var steps []*sessionv1.TodoStep
+		var focus string
+		var sigBuf strings.Builder
+		sigBuf.WriteString("steps")
+		for _, item := range list {
+			label := ""
+			for _, cand := range []string{item.Title, item.Content, item.Step, item.Text} {
+				if trimmed := strings.TrimSpace(cand); trimmed != "" {
+					label = trimmed
+					break
+				}
+			}
+			if label == "" {
+				continue
+			}
+			st := runtime.NormalizeTodoStatus(item.Status)
+			steps = append(steps, &sessionv1.TodoStep{Text: label, Status: st})
+			if af := strings.TrimSpace(item.ActiveForm); af != "" {
+				hasActiveForm = true
+				if st == "in_progress" && focus == "" {
+					focus = af
+				}
+			}
+			sigBuf.WriteByte(0)
+			sigBuf.WriteString(st)
+			sigBuf.WriteByte(':')
+			sigBuf.WriteString(label)
+		}
+		if hasActiveForm {
+			sigBuf.WriteByte(0)
+			sigBuf.WriteString(focus)
+		}
+		return &runtime.Event{
+			Kind:      runtime.EventTodoUpdated,
+			ItemID:    "todo",
+			Text:      focus,
+			HasFocus:  hasActiveForm,
+			TodoSteps: steps,
+		}, sigBuf.String(), true
+
+	default:
+		return nil, "", false
+	}
 }
 
 type acpArtifactMeta struct {

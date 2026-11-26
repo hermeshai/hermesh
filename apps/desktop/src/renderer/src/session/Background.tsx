@@ -108,7 +108,7 @@ export function BackgroundLine({ tasks }: { tasks: readonly BackgroundTask[] }) 
       className={`bgind ${on}`}
       aria-expanded={st.background}
       data-testid="chat-background-line"
-      onClick={() => st.set({ background: !st.background })}
+      onClick={() => st.set({ background: !st.background, bgTask: null })}
     >
       <span>{t("background.runningLine", { count: tasks.length })}</span>
       <Icon name="chevR" />

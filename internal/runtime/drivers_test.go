@@ -247,6 +247,44 @@ func runMockClaude() {
 						"usage": map[string]any{"input_tokens": 20, "output_tokens": 8},
 					})
 				}()
+			} else if strings.Contains(prompt, "claude_todo_and_desc") {
+				write(map[string]any{
+					"type": "assistant",
+					"message": map[string]any{"content": []any{
+						map[string]any{
+							"type": "tool_use",
+							"id":   "tu_todo_1",
+							"name": "TodoWrite",
+							"input": map[string]any{
+								"todos": []any{
+									map[string]any{"content": "Inspect auth module", "status": "in_progress", "activeForm": "Inspecting auth module"},
+									map[string]any{"content": "Run test suite", "status": "pending", "activeForm": "Running test suite"},
+								},
+							},
+						},
+						map[string]any{
+							"type":  "tool_use",
+							"id":    "tu_bash_desc",
+							"name":  "Bash",
+							"input": map[string]any{"command": "pytest -q", "description": "Execute unit tests"},
+						},
+					}},
+				})
+				write(map[string]any{
+					"type": "user",
+					"message": map[string]any{"content": []any{
+						map[string]any{"type": "tool_result", "tool_use_id": "tu_todo_1", "content": "Todos updated"},
+						map[string]any{"type": "tool_result", "tool_use_id": "tu_bash_desc", "content": "12 passed"},
+					}},
+				})
+				write(map[string]any{
+					"type":    "assistant",
+					"message": map[string]any{"content": []any{map[string]any{"type": "text", "text": "All green."}}},
+				})
+				write(map[string]any{
+					"type":  "result",
+					"usage": map[string]any{"input_tokens": 30, "output_tokens": 10},
+				})
 			} else if strings.Contains(prompt, "run_bash") {
 				pendingCtrl["perm_1"] = func(res map[string]any) {
 					beh, _ := res["behavior"].(string)
@@ -382,6 +420,29 @@ func runMockCodex() {
 				write(map[string]any{"method": "item/completed", "params": map[string]any{"item": map[string]any{"id": "it_rsn", "type": "reasoning"}}})
 				write(map[string]any{"method": "item/agentMessage/delta", "params": map[string]any{"itemId": "it_msg", "delta": "done thinking"}})
 				write(map[string]any{"method": "item/completed", "params": map[string]any{"item": map[string]any{"id": "it_msg", "type": "agentMessage", "text": "done thinking"}}})
+				write(map[string]any{"method": "turn/completed", "params": map[string]any{"turn": map[string]any{"status": "completed"}}})
+				continue
+			}
+			if len(p.Input) > 0 && strings.Contains(p.Input[0].Text, "codex_plan_updated") {
+				write(map[string]any{
+					"method": "turn/plan/updated",
+					"params": map[string]any{
+						"threadId":    "cx_th_99",
+						"turnId":      "turn_1",
+						"explanation": "Rewriting sidebar halo without dynamic masks",
+						"plan": []any{
+							map[string]any{"step": "Check motion constraints", "status": "completed"},
+							map[string]any{"step": "Rewrite CALayer halo", "status": "inProgress"},
+							map[string]any{"step": "Run GPU benchmark", "status": "pending"},
+						},
+					},
+				})
+				write(map[string]any{
+					"method": "item/completed",
+					"params": map[string]any{
+						"item": map[string]any{"id": "msg_plan_up", "type": "agentMessage", "text": "Updated plan."},
+					},
+				})
 				write(map[string]any{"method": "turn/completed", "params": map[string]any{"turn": map[string]any{"status": "completed"}}})
 				continue
 			}
@@ -2436,4 +2497,116 @@ func TestAntigravityACPAutoBackgroundLogStreamingAndChainedSettlement(t *testing
 		!strings.Contains(bgByID["tc_agy_2"].Output, "--- PASS: TestRaceSuiteFixed") {
 		t.Fatalf("expected tc_agy_2 to settle as COMPLETED (exitCode=0), got %+v", bgByID["tc_agy_2"])
 	}
+}
+
+func TestClaudeTodoWriteAndCodexTurnPlanUpdated(t *testing.T) {
+	ctx := context.Background()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("claude_todowrite_and_tool_description", func(t *testing.T) {
+		drv := claude.NewDriver("")
+		sess, err := drv.StartSession(ctx, runtime.StartSpec{
+			SessionID: "s_cl_todo",
+			Workdir:   t.TempDir(),
+			Instance: &sessionv1.ProviderInstanceConfig{
+				InstanceId: "claude",
+				Driver:     "claude",
+				BinaryPath: exe,
+				LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--"},
+				Env:        map[string]string{"HERMESH_MOCK_DRIVER": "claude"},
+			},
+			Selection: &sessionv1.ModelSelection{InstanceId: "claude", Model: "claude-sonnet-4-6"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sess.Close()
+		if err := sess.StartTurn(ctx, runtime.TurnInput{RunID: "r_todo", Prompt: "claude_todo_and_desc"}); err != nil {
+			t.Fatal(err)
+		}
+		var todos []runtime.Event
+		var toolStarts []runtime.Event
+		timeout := time.After(8 * time.Second)
+		for done := false; !done; {
+			select {
+			case <-timeout:
+				t.Fatal("timed out waiting for claude turn")
+			case ev := <-sess.Events():
+				switch ev.Kind {
+				case runtime.EventTodoUpdated:
+					todos = append(todos, ev)
+				case runtime.EventToolStarted:
+					if ev.ToolName == "TodoWrite" {
+						t.Fatalf("TodoWrite leaked as EventToolStarted: %+v", ev)
+					}
+					toolStarts = append(toolStarts, ev)
+				case runtime.EventToolCompleted:
+					if ev.ItemID == "tu_todo_1" {
+						t.Fatalf("TodoWrite tool_result leaked as EventToolCompleted: %+v", ev)
+					}
+				case runtime.EventTurnCompleted:
+					done = true
+				case runtime.EventTurnFailed:
+					t.Fatalf("turn failed: %s", ev.ErrorMessage)
+				}
+			}
+		}
+		if len(todos) != 1 || todos[0].ItemID != "todo" || !todos[0].HasFocus || todos[0].Text != "Inspecting auth module" || len(todos[0].TodoSteps) != 2 {
+			t.Fatalf("unexpected claude TodoUpdated events: %+v", todos)
+		}
+		if len(toolStarts) != 1 || toolStarts[0].Text != "Execute unit tests" || toolStarts[0].Command != "pytest -q" {
+			t.Fatalf("unexpected claude ToolStarted events: %+v", toolStarts)
+		}
+	})
+
+	t.Run("codex_turn_plan_updated", func(t *testing.T) {
+		drv := codex.NewDriver("")
+		sess, err := drv.StartSession(ctx, runtime.StartSpec{
+			SessionID: "s_cx_todo",
+			Workdir:   t.TempDir(),
+			Instance: &sessionv1.ProviderInstanceConfig{
+				InstanceId: "codex",
+				Driver:     "codex",
+				BinaryPath: exe,
+				LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--", "app-server"},
+				Env:        map[string]string{"HERMESH_MOCK_DRIVER": "codex"},
+			},
+			Selection: &sessionv1.ModelSelection{InstanceId: "codex", Model: "gpt-5.4"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sess.Close()
+		if err := sess.StartTurn(ctx, runtime.TurnInput{RunID: "r_cx_todo", Prompt: "codex_plan_updated"}); err != nil {
+			t.Fatal(err)
+		}
+		var todos []runtime.Event
+		timeout := time.After(8 * time.Second)
+		for done := false; !done; {
+			select {
+			case <-timeout:
+				t.Fatal("timed out waiting for codex turn")
+			case ev := <-sess.Events():
+				switch ev.Kind {
+				case runtime.EventTodoUpdated:
+					todos = append(todos, ev)
+				case runtime.EventTurnCompleted:
+					done = true
+				case runtime.EventTurnFailed:
+					t.Fatalf("turn failed: %s", ev.ErrorMessage)
+				}
+			}
+		}
+		if len(todos) != 1 || todos[0].ItemID != "todo" || !todos[0].HasFocus ||
+			todos[0].Text != "Rewriting sidebar halo without dynamic masks" ||
+			len(todos[0].TodoSteps) != 3 ||
+			todos[0].TodoSteps[0].Status != "completed" ||
+			todos[0].TodoSteps[1].Status != "in_progress" ||
+			todos[0].TodoSteps[2].Status != "pending" {
+			t.Fatalf("unexpected codex TodoUpdated events: %+v", todos)
+		}
+	})
 }

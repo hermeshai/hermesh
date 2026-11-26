@@ -33,6 +33,7 @@
     "messageFrom": "Message from {{name}}",
     "messageTo": "Message to {{name}}",
     "messageQueued": "queued for next turn",
+    "taskFinished": "{{title}} finished",
     "unread": {
       "offline": "{{name}} is offline",
       "offlineDetail": "This conversation is stored in that environment and will appear once it reconnects.",

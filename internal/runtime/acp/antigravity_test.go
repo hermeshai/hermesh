@@ -569,13 +569,69 @@ func TestAntigravityPermissionModeAndResume(t *testing.T) {
 
 func TestAntigravityToolFields(t *testing.T) {
 	for _, input := range []string{`{"CommandLine":"printf acp-shell-ok"}`, `{"command_line":"printf acp-shell-ok"}`} {
-		cmd, _ := extractACPRawInput(json.RawMessage(input))
+		cmd, _, _ := extractACPRawInput(json.RawMessage(input))
 		if cmd != "printf acp-shell-ok" {
 			t.Fatalf("cmd = %q", cmd)
 		}
 	}
+	cmd, _, summary := extractACPRawInput(json.RawMessage(`{"CommandLine":"go test ./...","toolSummary":"Unit test execution"}`))
+	if cmd != "go test ./..." || summary != "Unit test execution" {
+		t.Fatalf("cmd=%q summary=%q", cmd, summary)
+	}
 	if got := extractACPRawOutput(json.RawMessage(`{"combinedOutput":"acp-shell-ok","exitCode":0}`)); got != "acp-shell-ok" {
 		t.Fatal(got)
+	}
+}
+
+func TestAntigravityStepsFocusAndToolSummary(t *testing.T) {
+	t.Setenv("FAKE_ACP_STATE", t.TempDir())
+	p := &Provider{Agent: antigravityAgent("darwin"), Binary: fakeBin}
+	prompt := strings.Join([]string{
+		"focus Inspecting auth flow",
+		"steps Check existing motion=in_progress|Rewrite CSS=pending|Run benchmarks=skipped",
+		"run-summary Benchmark CALayer orbit|printf bench-ok",
+		"steps Check existing motion=done|Rewrite CSS=done|Run benchmarks=skipped",
+		"say All done.",
+	}, "\n")
+	evs, err := runRuntimeTurn(t, p, runtime.StartSpec{Workdir: t.TempDir()}, prompt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var focuses []string
+	var todoEvents []runtime.Event
+	var toolStarts []runtime.Event
+	for _, ev := range evs {
+		switch ev.Kind {
+		case runtime.EventFocusUpdated:
+			focuses = append(focuses, ev.Text)
+		case runtime.EventTodoUpdated:
+			todoEvents = append(todoEvents, ev)
+		case runtime.EventToolStarted:
+			if ev.ToolName == "update_steps" || ev.ToolName == "update_focus" {
+				t.Fatalf("meta progress tool leaked as EventToolStarted: %+v", ev)
+			}
+			toolStarts = append(toolStarts, ev)
+		case runtime.EventToolCompleted:
+			if ev.ToolName == "update_steps" || ev.ToolName == "update_focus" {
+				t.Fatalf("meta progress tool leaked as EventToolCompleted: %+v", ev)
+			}
+		}
+	}
+	if !slices.Equal(focuses, []string{"Inspecting auth flow"}) {
+		t.Fatalf("focuses = %v", focuses)
+	}
+	if len(todoEvents) != 2 {
+		t.Fatalf("expected 2 deduplicated EventTodoUpdated, got %d: %+v", len(todoEvents), todoEvents)
+	}
+	if todoEvents[0].ItemID != "todo" || todoEvents[0].HasFocus || len(todoEvents[0].TodoSteps) != 3 ||
+		todoEvents[0].TodoSteps[0].Status != "in_progress" || todoEvents[0].TodoSteps[2].Status != "skipped" {
+		t.Fatalf("unexpected first todo event: %+v", todoEvents[0])
+	}
+	if todoEvents[1].TodoSteps[0].Status != "completed" || todoEvents[1].TodoSteps[1].Status != "completed" {
+		t.Fatalf("expected done normalized to completed, got %+v", todoEvents[1].TodoSteps)
+	}
+	if len(toolStarts) != 1 || toolStarts[0].Text != "Benchmark CALayer orbit" || toolStarts[0].Command != "printf bench-ok" {
+		t.Fatalf("expected run-summary tool start with Text and Command, got %+v", toolStarts)
 	}
 }
 

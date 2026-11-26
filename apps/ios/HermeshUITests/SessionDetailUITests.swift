@@ -303,3 +303,61 @@ final class SessionDetailUITests: XCTestCase {
         return false
     }
 }
+
+final class LiveProgressUITests: XCTestCase {
+    let app = XCUIApplication()
+
+    override func setUp() {
+        continueAfterFailure = false
+        app.launchArguments = [
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
+            "-DemoLiveProgress",
+        ]
+        app.launch()
+        let tryDemo = app.buttons["try-demo"]
+        XCTAssertTrue(tryDemo.waitForExistence(timeout: 15), "try-demo")
+        tryDemo.tap()
+        let menu = app.descendants(matching: .any)["menu"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 15), "menu")
+        menu.tap()
+        let overview = app.descendants(matching: .any)["overview-place"].firstMatch
+        XCTAssertTrue(overview.waitForExistence(timeout: 15), "overview-place")
+        overview.tap()
+        XCTAssertTrue(app.navigationBars["Overview"].waitForExistence(timeout: 15), "Overview page")
+    }
+
+    func testFloatingChecklistFocusWakeLineAndAutoCollapse() {
+        let row = app.descendants(matching: .any)["session-Live progress session"].firstMatch
+        for _ in 0..<4 where !row.exists || !row.isHittable { app.swipeUp() }
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "overview row Live progress session")
+        row.tap()
+        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10), "session page")
+
+        // 1. Floating checklist sits above the composer while running:
+        let todoCard = app.descendants(matching: .any)["thread-todo-card"].firstMatch
+        let composer = app.descendants(matching: .any)["thread-composer"].firstMatch
+        XCTAssertTrue(todoCard.waitForExistence(timeout: 8), "floating checklist card")
+        XCTAssertTrue(composer.waitForExistence(timeout: 8), "composer")
+        XCTAssertLessThanOrEqual(todoCard.frame.maxY, composer.frame.minY + 4, "checklist sits above composer")
+        XCTAssertTrue(app.staticTexts["Rewrite CALayer halo"].exists)
+        XCTAssertTrue(app.staticTexts["Verify GPU usage"].exists)
+
+        // 2. Native focus phrase shows on the bottom working status line:
+        XCTAssertTrue(app.staticTexts["Inspecting CALayer sprite benchmark"].exists, "live focus text")
+
+        // 3. Background continuation wake line "<task> finished" is visible and tappable:
+        let wakeLine = app.buttons["thread-wake-line"].firstMatch
+        XCTAssertTrue(wakeLine.waitForExistence(timeout: 5), "wake line")
+        XCTAssertTrue(wakeLine.label.contains("Benchmark CALayer sprite orbit finished"), "wake label: \(wakeLine.label)")
+
+        // 4. Auto-collapses once all steps finish and the turn settles:
+        let finalReply = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "GPU usage reduced to 2.7%.")).firstMatch
+        XCTAssertTrue(finalReply.waitForExistence(timeout: 12), "final reply streamed")
+        XCTAssertTrue(todoCard.waitForNonExistence(timeout: 5), "floating checklist auto-collapsed")
+
+        // Tapping the wake line opens Background Tasks:
+        wakeLine.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Benchmark CALayer sprite orbit")).firstMatch.waitForExistence(timeout: 8))
+    }
+}

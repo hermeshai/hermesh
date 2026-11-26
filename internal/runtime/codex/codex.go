@@ -1117,6 +1117,34 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 			s.mu.Unlock()
 		}
 
+	case "turn/plan/updated":
+		var p struct {
+			Explanation string `json:"explanation"`
+			Plan        []struct {
+				Step   string `json:"step"`
+				Status string `json:"status"`
+			} `json:"plan"`
+		}
+		if json.Unmarshal(params, &p) == nil && p.Plan != nil {
+			var steps []*sessionv1.TodoStep
+			for _, item := range p.Plan {
+				if txt := strings.TrimSpace(item.Step); txt != "" {
+					steps = append(steps, &sessionv1.TodoStep{
+						Text:   txt,
+						Status: runtime.NormalizeTodoStatus(item.Status),
+					})
+				}
+			}
+			expl := strings.TrimSpace(p.Explanation)
+			s.emit(runtime.Event{
+				Kind:      runtime.EventTodoUpdated,
+				ItemID:    "todo",
+				Text:      expl,
+				HasFocus:  expl != "",
+				TodoSteps: steps,
+			})
+		}
+
 	case "item/agentMessage/delta":
 		var p struct {
 			ItemID string `json:"itemId"`
