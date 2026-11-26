@@ -68,7 +68,9 @@ func newFixture(t *testing.T, mod func(*Config)) *fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { r.Close() })
-	db, err := sqlitedb.Open(filepath.Join(dir, "mcp.db"), []string{Schema(false)})
+	db, err := sqlitedb.Open(filepath.Join(dir, "mcp.db"), []sqlitedb.Migration{
+		{Version: 1, Description: "initial_mcp_gateway_schema", SQL: Schema(false)},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
@@ -645,41 +646,66 @@ func TestReasoningIsLiveUntilTheNextStep(t *testing.T) {
 
 func TestStoreImportsLegacyV1Sessions(t *testing.T) {
 	dataDir := t.TempDir()
-	legDB, err := sqlitedb.Open(filepath.Join(dataDir, "hermeshd.db"), []string{`
+	legDB, err := sqlitedb.Open(filepath.Join(dataDir, "hermeshd.db"), []sqlitedb.Migration{{
+		Version:     1,
+		Description: "v1_sessions",
+		SQL: `
 CREATE TABLE sessions (
-  id TEXT PRIMARY KEY,
-  machine_id TEXT NOT NULL,
+  session_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
   agent TEXT NOT NULL,
   status INTEGER NOT NULL,
   created_by TEXT NOT NULL,
-  created_as TEXT NOT NULL DEFAULT '',
-  title TEXT NOT NULL DEFAULT '',
-  branch TEXT NOT NULL DEFAULT '',
-  workspace INTEGER NOT NULL DEFAULT 0,
+  grant_id TEXT NOT NULL DEFAULT '',
   model TEXT NOT NULL DEFAULT '',
-  effort TEXT NOT NULL DEFAULT '',
   provider_ref TEXT NOT NULL DEFAULT '',
-  result TEXT NOT NULL DEFAULT '',
+  base_commit TEXT NOT NULL DEFAULT '',
+  branch TEXT NOT NULL DEFAULT '',
+  worktree TEXT NOT NULL DEFAULT '',
+  pgid INTEGER NOT NULL DEFAULT 0,
+  progress BLOB,
   error TEXT NOT NULL DEFAULT '',
-  turn_count INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
-);`})
+  updated_at INTEGER NOT NULL,
+  workspace INTEGER NOT NULL DEFAULT 0,
+  result TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '',
+  effort TEXT NOT NULL DEFAULT '',
+  conversation TEXT NOT NULL DEFAULT '',
+  agent_model TEXT NOT NULL DEFAULT '',
+  agent_effort TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE session_events (
+  session_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  payload BLOB NOT NULL,
+  PRIMARY KEY (session_id, seq)
+);`,
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = legDB.Exec(`INSERT INTO sessions VALUES('s_legacy_1', 'm_1', 'proj', 'claude', 3, 'c_her', 'bot_1', 'Legacy Task', 'main', 1, 'claude-sonnet-4-6', 'high', 'ref_1', 'done!', '', 2, 1000, 2000)`)
+	prog2, err := proto.Marshal(&sessionv1.SessionProgress{TurnCount: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = legDB.Exec(`INSERT INTO sessions VALUES('s_legacy_failed', 'm_1', 'proj', 'codex', 7, 'owner', '', 'Crashed Task', 'feat', 2, 'gpt-5', 'medium', '', '', 'boom', 1, 1500, 2500)`)
+	prog1, err := proto.Marshal(&sessionv1.SessionProgress{TurnCount: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = legDB.Exec(`INSERT INTO sessions(session_id, project_id, agent, status, created_by, model, provider_ref, branch, progress, error, created_at, updated_at, workspace, result, title, effort, conversation)
+		VALUES('s_legacy_1', 'proj', 'claude', 3, 'c_her', 'claude-sonnet-4-6', 'ref_1', 'main', ?, '', 1000, 2000, 1, 'done!', 'Legacy Task', 'high', 'bot_1')`, prog2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = legDB.Exec(`INSERT INTO sessions(session_id, project_id, agent, status, created_by, model, provider_ref, branch, progress, error, created_at, updated_at, workspace, result, title, effort, conversation)
+		VALUES('s_legacy_failed', 'proj', 'codex', ?, 'owner', 'gpt-5', '', 'feat', ?, 'boom', 1500, 2500, 2, '', 'Crashed Task', 'medium', '')`, int32(sessionv1.SessionStatus_SESSION_STATUS_CRASHED), prog1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	legDB.Close()
 
-	st, err := store.Open(filepath.Join(dataDir, "sessions_v2.db"))
+	st, err := store.Open(filepath.Join(dataDir, "sessions.db"))
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}
