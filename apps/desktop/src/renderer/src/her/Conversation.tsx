@@ -257,6 +257,16 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
   // Follow the conversation: open at its end, stay there as it grows unless the owner scrolled up.
   const atEnd = useRef(true);
   const [away, setAway] = useState(false);
+  const [spoken, setSpoken] = useState(0);
+  const touched = useRef(-Infinity);
+  const touch = () => {
+    touched.current = performance.now();
+  };
+  const hold = () => {
+    touched.current = Infinity;
+    window.addEventListener("pointerup", touch, { once: true });
+    window.addEventListener("pointercancel", touch, { once: true });
+  };
   const firstKey = items[0]?.key;
   const fromEnd = useRef<number | null>(null);
   const lastFirst = useRef(firstKey);
@@ -275,9 +285,9 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
     if (!el) return;
     const below = el.scrollHeight - el.scrollTop - el.clientHeight;
     if (below < 80) atEnd.current = true;
-    else if (el.scrollTop < lastTop.current) atEnd.current = false;
+    else if (el.scrollTop < lastTop.current && performance.now() - touched.current < 1000) atEnd.current = false;
     lastTop.current = el.scrollTop;
-    setAway(below > 240);
+    setAway(!atEnd.current && below > 240);
     if (el.scrollTop < el.clientHeight * 1.5) earlier();
   };
   // What grows on its own, a picture read after its message showed, stays in view at the end.
@@ -294,8 +304,22 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
     const el = scroll.current;
     if (!el) return;
     atEnd.current = true;
-    el.scrollTo({ top: el.scrollHeight, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    touched.current = -Infinity;
+    setAway(false);
+    const far = el.scrollHeight - el.scrollTop - el.clientHeight > 3 * el.clientHeight;
+    el.scrollTo({ top: el.scrollHeight, behavior: !far && !matchMedia("(prefers-reduced-motion: reduce)").matches ? "smooth" : "auto" });
   };
+  useLayoutEffect(() => {
+    if (!spoken) return;
+    const el = scroll.current;
+    atEnd.current = true;
+    touched.current = -Infinity;
+    setAway(false);
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+      lastTop.current = el.scrollTop;
+    }
+  }, [spoken]);
   // A choice in the onboarding is the owner's word: the conversation goes to its end, where Her answers
   // it (a key's field, say), even when the owner had scrolled up to a long list's first choices.
   const chose = flow?.said.filter((s) => s.who === "owner").length ?? 0;
@@ -420,7 +444,10 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
               options={item.options}
               open={item.open && conv.rpc !== null}
               // A tapped answer is the owner's message: while the assistant works, it waits for the step under way.
-              onAnswer={(label) => op({ type: "prompt", input: [{ type: "text", text: label }], mode: view?.live ? "steer" : undefined })}
+              onAnswer={(label) => {
+                setSpoken((n) => n + 1);
+                return op({ type: "prompt", input: [{ type: "text", text: label }], mode: view?.live ? "steer" : undefined });
+              }}
             />
           </BotMessage>
         );
@@ -464,7 +491,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
   };
   return (
     <Replying.Provider value={replying}>
-      <div className="cscroll" ref={scrollRef} onScroll={onScroll}>
+      <div className="cscroll" ref={scrollRef} onScroll={onScroll} onWheel={touch} onTouchMove={touch} onKeyDown={touch} onPointerDown={hold}>
         <div className="dbody" ref={body} style={{ paddingBottom: dock + 40 }}>
           {view?.before && (
             <div className="tdiv earlier">
@@ -494,7 +521,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
         <Icon name="arrowDown" />
       </button>
       <ReplyPill root={scroller} />
-      <Dock bot={bot} conv={conv} op={op} state={state} onWaiting={onWaiting} onHeight={setDock} />
+      <Dock bot={bot} conv={conv} op={op} state={state} onWaiting={onWaiting} onHeight={setDock} onSpoken={() => setSpoken((n) => n + 1)} />
     </Replying.Provider>
   );
 }
@@ -747,13 +774,14 @@ const handed = new WeakSet<object>();
  * this page has open or on one of its own, now or when the machine is back; sent again, her takes it
  * once.
  */
-function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
+function Dock({ bot, conv, op, state, onWaiting, onHeight, onSpoken }: {
   bot: BotSummary;
   conv: Conv;
   op: SendOp;
   state: EnvState;
   onWaiting: () => Promise<HerWaiting[]>;
   onHeight: (h: number) => void;
+  onSpoken: () => void;
 }) {
   const { t } = useTranslation("her");
   const st = useStore();
@@ -862,6 +890,7 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
   }, [key, deliver]);
   const sendDraft = (sent: Draft) => {
     if (drafts.get(key) !== sent) return;
+    onSpoken();
     change({ text: "", attachments: [] });
     const id = messageId();
     outbox.add(key, {

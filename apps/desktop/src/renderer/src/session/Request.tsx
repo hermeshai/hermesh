@@ -12,11 +12,12 @@ import { errorText, useStore } from "../store";
 type Answer = { decision?: ApprovalDecision; feedback?: string; approvePlan?: boolean; secretValue?: string };
 
 /** The pending runtime request of session `s`: tool approval, plan review, secret input, or structured question. */
-export function SessionRequest({ s, req }: { s: Session; req: RuntimeRequest }) {
+export function SessionRequest({ s, req, onResponded }: { s: Session; req: RuntimeRequest; onResponded?: () => void }) {
   const st = useStore();
   const respond = async (a: Answer) => {
     try {
       await sessionApi.respondRuntimeRequest({ sessionId: s.sessionId, requestId: req.requestId, ...a });
+      onResponded?.();
       return true;
     } catch (e) {
       st.show(errorText(e));
@@ -36,8 +37,8 @@ export function SessionRequest({ s, req }: { s: Session; req: RuntimeRequest }) 
           <QuestionPanel
             s={s}
             q={sessionQuestion(req)}
-            answer={(answers, decline) =>
-              sessionApi.respondRuntimeRequest({
+            answer={async (answers, decline) => {
+              const res = await sessionApi.respondRuntimeRequest({
                 sessionId: s.sessionId,
                 requestId: req.requestId,
                 decline,
@@ -45,8 +46,10 @@ export function SessionRequest({ s, req }: { s: Session; req: RuntimeRequest }) 
                 answers: decline
                   ? {}
                   : Object.fromEntries(answers.map((a) => [a.itemId, create(QuestionAnswerSchema, { selectedOptions: a.selected, customText: a.text })])),
-              })
-            }
+              });
+              onResponded?.();
+              return res;
+            }}
           />
         </div>
       );

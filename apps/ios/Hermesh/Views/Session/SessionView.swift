@@ -743,18 +743,20 @@ extension View {
     func followsEnd<Bottom: View>(
         id: String,
         ready: Bool,
+        spoken: Int = 0,
         atEnd: Binding<Bool>,
         position: Binding<ScrollPosition>,
         scrollBox: ConversationScrollBox,
         @ViewBuilder bottom: @escaping () -> Bottom
     ) -> some View {
-        modifier(FollowsEnd(id: id, ready: ready, atEnd: atEnd, position: position, scrollBox: scrollBox, bottom: bottom))
+        modifier(FollowsEnd(id: id, ready: ready, spoken: spoken, atEnd: atEnd, position: position, scrollBox: scrollBox, bottom: bottom))
     }
 }
 
 private struct FollowsEnd<Bottom: View>: ViewModifier {
     let id: String
     let ready: Bool
+    let spoken: Int
     @Binding var atEnd: Bool
     @Binding var position: ScrollPosition
     let scrollBox: ConversationScrollBox
@@ -766,7 +768,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
     @State private var alignTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var still
 
-    private let endThreshold: CGFloat = 24
+    private let endThreshold: CGFloat = 64
 
     private var userInteracting: Bool {
         if scrolling { return true }
@@ -783,8 +785,19 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
             }
             .onChange(of: ready, initial: true) { _, isReady in
                 if isReady && !positioned {
-                    scheduleInitialAlign()
+                    scheduleAlign(markPositioned: true)
                 }
+            }
+            .onChange(of: spoken) {
+                if let sv = scrollBox.view, sv.isDecelerating {
+                    sv.setContentOffset(sv.contentOffset, animated: false)
+                }
+                scrolling = false
+                atEnd = true
+                away = false
+                positioned = true
+                position.scrollTo(edge: .bottom)
+                scheduleAlign(markPositioned: false)
             }
             .onScrollPhaseChange { oldPhase, newPhase, context in
                 let active = newPhase == .interacting || newPhase == .decelerating
@@ -817,13 +830,9 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
                 layout = next
                 guard atEnd, !userInteracting else { return }
                 if ready {
-                    if !positioned {
-                        scheduleInitialAlign()
-                    } else {
-                        alignToBottom()
-                    }
+                    scheduleAlign(markPositioned: !positioned)
                 } else if next.contentHeight > 0 {
-                    alignToBottom()
+                    scheduleAlign(markPositioned: false)
                 }
             }
             .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, far in away = far }
@@ -836,6 +845,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
                     .frame(maxWidth: .infinity)
                     .toEndButton(away && !atEnd) {
                         atEnd = true
+                        away = false
                         positioned = true
                         alignTask?.cancel()
                         alignTask = nil
@@ -851,7 +861,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
         away = false
         scrolling = false
         positioned = false
-        if ready { scheduleInitialAlign() }
+        if ready { scheduleAlign(markPositioned: true) }
     }
 
     private func detachFromEnd() {
@@ -861,12 +871,12 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
         alignTask = nil
     }
 
-    private func scheduleInitialAlign() {
+    private func scheduleAlign(markPositioned: Bool) {
         guard atEnd, !userInteracting else { return }
         alignTask?.cancel()
         alignTask = Task { @MainActor in
             alignToBottom()
-            for delay in [0, 32, 100] {
+            for delay in [0, 32, 100, 260] {
                 if delay > 0 {
                     try? await Task.sleep(for: .milliseconds(delay))
                 } else {
@@ -875,7 +885,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
                 guard !Task.isCancelled, atEnd, !userInteracting else { return }
                 alignToBottom()
             }
-            if !Task.isCancelled, ready, layout.containerHeight > 0 {
+            if markPositioned, !Task.isCancelled, ready, layout.containerHeight > 0 {
                 positioned = true
             }
         }
@@ -886,8 +896,9 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
         if let sv = scrollBox.view {
             sv.layoutIfNeeded()
             guard !sv.isTracking, !sv.isDragging, !sv.isDecelerating else { return }
-            let content = max(sv.contentSize.height, layout.contentHeight)
-            let targetY = max(-sv.adjustedContentInset.top, content + sv.adjustedContentInset.bottom - sv.bounds.height)
+            let uikitTargetY = sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height
+            let layoutTargetY = layout.containerHeight > 0 ? layout.contentHeight - layout.containerHeight - layout.topInset : uikitTargetY
+            let targetY = max(-sv.adjustedContentInset.top, max(uikitTargetY, layoutTargetY))
             if sv.bounds.height > 0, abs(sv.contentOffset.y - targetY) > 1 {
                 sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetY), animated: false)
             }
