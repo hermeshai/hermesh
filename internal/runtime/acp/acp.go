@@ -64,6 +64,7 @@ type Provider struct {
 	acpProbe     map[string]bool
 	chosenStamp  string
 	chosenLaunch launch
+	startSem     chan struct{}
 }
 
 type launch struct {
@@ -313,13 +314,16 @@ func newProbeSession(proc *runtime.Proc, ctx context.Context) *session {
 type Driver struct {
 	PathEnv string
 	// Optional overrides for deterministic tests; zero uses production defaults.
-	PostPromptMergeWindow time.Duration
-	OutOfTurnToolWait     time.Duration
-	OutOfTurnDebounce     time.Duration
-	OutOfTurnQuietLimit   time.Duration
-	BusyPromptRetryDelay  time.Duration
-	TaskLogPollInterval   time.Duration
-	ScheduleExpiryGrace   time.Duration
+	PostPromptMergeWindow  time.Duration
+	OutOfTurnToolWait      time.Duration
+	OutOfTurnDebounce      time.Duration
+	OutOfTurnQuietLimit    time.Duration
+	BusyPromptRetryDelay   time.Duration
+	TaskLogPollInterval    time.Duration
+	ScheduleExpiryGrace    time.Duration
+	SessionStartTimeout    time.Duration
+	SessionStartRetryDelay time.Duration
+	MaxConcurrentStarts    int
 
 	mu        sync.Mutex
 	providers map[string]*Provider
@@ -372,6 +376,47 @@ func (d *Driver) busyPromptRetryDelay() time.Duration {
 		return d.BusyPromptRetryDelay
 	}
 	return 350 * time.Millisecond
+}
+
+func (d *Driver) sessionStartTimeout() time.Duration {
+	if d != nil && d.SessionStartTimeout > 0 {
+		return d.SessionStartTimeout
+	}
+	return 60 * time.Second
+}
+
+func (d *Driver) sessionStartRetryDelay() time.Duration {
+	if d != nil && d.SessionStartRetryDelay > 0 {
+		return d.SessionStartRetryDelay
+	}
+	return 500 * time.Millisecond
+}
+
+func (d *Driver) maxConcurrentStarts() int {
+	if d != nil && d.MaxConcurrentStarts > 0 {
+		return d.MaxConcurrentStarts
+	}
+	return 3
+}
+
+func (p *Provider) acquireStartSlot(ctx context.Context) (func(), error) {
+	if p == nil {
+		return func() {}, nil
+	}
+	p.acpMu.Lock()
+	if p.startSem == nil {
+		p.startSem = make(chan struct{}, p.drv.maxConcurrentStarts())
+	}
+	sem := p.startSem
+	p.acpMu.Unlock()
+
+	select {
+	case sem <- struct{}{}:
+		var once sync.Once
+		return func() { once.Do(func() { <-sem }) }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func NewDriver(pathEnv string) *Driver {
@@ -509,6 +554,12 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 	return prov.startRuntimeSession(ctx, cmd, env, spec)
 }
 
+const (
+	maxSessionStartAttempts = 3
+	codeInternalError       = -32603
+	codeResourceNotFound    = -32002
+)
+
 func (p *Provider) startRuntimeSession(ctx context.Context, cmd launch, baseEnv []string, spec runtime.StartSpec) (runtime.Session, error) {
 	if cmd.probeErr != nil {
 		return nil, cmd.probeErr
@@ -516,12 +567,57 @@ func (p *Provider) startRuntimeSession(ctx context.Context, cmd launch, baseEnv 
 	if !runtime.Exists(cmd.bin) {
 		return nil, runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_START_FAILED, p.notFoundDetail())
 	}
-	env := append(slices.Clip(baseEnv), cmd.env...)
-	proc, err := runtime.StartProc(ctx, cmd.bin, cmd.acpArgs(), spec.Workdir, env)
-	if err != nil {
-		return nil, err
+	startCtx := spec.StartCtx
+	if startCtx == nil {
+		startCtx = ctx
 	}
-	sessCtx, sessCancel := context.WithCancel(ctx)
+	isResume := spec.ResumeCursor != ""
+	baseDelay := p.drv.sessionStartRetryDelay()
+
+	var (
+		lastMethod string
+		lastStderr string
+		lastErr    error
+	)
+	for attempt := range maxSessionStartAttempts {
+		releaseSlot, slotErr := p.acquireStartSlot(startCtx)
+		if slotErr != nil {
+			return nil, slotErr
+		}
+		attemptCtx, cancel := context.WithTimeout(startCtx, p.drv.sessionStartTimeout())
+		sess, method, stderrTail, err := p.startRuntimeSessionAttempt(ctx, attemptCtx, cmd, baseEnv, spec)
+		cancel()
+		releaseSlot()
+		if err == nil {
+			return sess, nil
+		}
+		if startCtx.Err() != nil {
+			return nil, startCtx.Err()
+		}
+		lastMethod, lastStderr, lastErr = method, stderrTail, err
+		if attempt == maxSessionStartAttempts-1 || !isTransientACPStartError(err, isResume) {
+			break
+		}
+		delay := baseDelay * time.Duration(1<<attempt)
+		if q := int64(delay / 4); q > 0 {
+			delay += time.Duration(time.Now().UnixNano() % q)
+		}
+		select {
+		case <-time.After(delay):
+		case <-startCtx.Done():
+			return nil, startCtx.Err()
+		}
+	}
+	return nil, classifyACPStartFailure(p, lastMethod, lastErr, lastStderr, isResume)
+}
+
+func (p *Provider) startRuntimeSessionAttempt(leaseCtx, attemptCtx context.Context, cmd launch, baseEnv []string, spec runtime.StartSpec) (*session, string, string, error) {
+	env := append(slices.Clip(baseEnv), cmd.env...)
+	proc, err := runtime.StartProc(attemptCtx, cmd.bin, cmd.acpArgs(), spec.Workdir, env)
+	if err != nil {
+		return nil, "start", "", err
+	}
+	sessCtx, sessCancel := context.WithCancel(leaseCtx)
 	s := &session{
 		drv:           p.drv,
 		proc:          proc,
@@ -542,6 +638,16 @@ func (p *Provider) startRuntimeSession(ctx context.Context, cmd launch, baseEnv 
 	s.alive.Store(true)
 	go s.readLoop()
 
+	abort := func(method string, err error) (*session, string, string, error) {
+		stderrTail := strings.TrimSpace(proc.StderrTail())
+		sessCancel()
+		proc.Stop(time.Second)
+		if stderrTail == "" {
+			stderrTail = strings.TrimSpace(proc.StderrTail())
+		}
+		return nil, method, stderrTail, err
+	}
+
 	clientCaps := map[string]any{
 		"fs":          map[string]any{"readTextFile": true, "writeTextFile": true},
 		"terminal":    true,
@@ -554,14 +660,13 @@ func (p *Provider) startRuntimeSession(ctx context.Context, cmd launch, baseEnv 
 			},
 		}
 	}
-	initRes, err := s.call(ctx, "initialize", map[string]any{
+	initRes, err := s.call(attemptCtx, "initialize", map[string]any{
 		"protocolVersion":    1,
 		"clientCapabilities": clientCaps,
 		"clientInfo":         map[string]any{"name": "hermesh", "version": "2.0.0"},
 	})
 	if err != nil {
-		proc.Stop(time.Second)
-		return nil, fmt.Errorf("acp initialize: %w", err)
+		return abort("initialize", err)
 	}
 	var caps struct {
 		AuthMethods []struct {
@@ -585,9 +690,8 @@ func (p *Provider) startRuntimeSession(ctx context.Context, cmd launch, baseEnv 
 		authID = pickAuthMethod(caps.AuthMethods, env)
 	}
 	if authID != "" {
-		if _, authErr := s.call(ctx, "authenticate", map[string]any{"methodId": authID}); authErr != nil {
-			proc.Stop(time.Second)
-			return nil, runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_AUTH, authErr.Error())
+		if _, authErr := s.call(attemptCtx, "authenticate", map[string]any{"methodId": authID}); authErr != nil {
+			return abort("authenticate", runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_AUTH, authErr.Error()))
 		}
 	}
 
@@ -601,63 +705,77 @@ func (p *Provider) startRuntimeSession(ctx context.Context, cmd launch, baseEnv 
 	var sessRes json.RawMessage
 	if spec.ResumeCursor != "" {
 		params["sessionId"] = spec.ResumeCursor
-		var resumeErr error
-		if canResume {
-			sessRes, resumeErr = s.call(ctx, "session/resume", params)
+		tryResume := func() (json.RawMessage, error) {
+			var res json.RawMessage
+			var rErr error
+			if canResume {
+				res, rErr = s.call(attemptCtx, "session/resume", params)
+			}
+			if (rErr != nil || !canResume) && caps.AgentCapabilities.LoadSession {
+				s.replaying.Store(true)
+				res, rErr = s.call(attemptCtx, "session/load", params)
+				s.replaying.Store(false)
+			} else if !canResume && !caps.AgentCapabilities.LoadSession {
+				rErr = errors.New("acp agent does not support session resume or load")
+			}
+			return res, rErr
 		}
-		if (resumeErr != nil || !canResume) && caps.AgentCapabilities.LoadSession {
-			s.replaying.Store(true)
-			sessRes, resumeErr = s.call(ctx, "session/load", params)
-			s.replaying.Store(false)
-		} else if !canResume && !caps.AgentCapabilities.LoadSession {
-			resumeErr = errors.New("acp agent does not support session resume or load")
+		var resumeErr error
+		sessRes, resumeErr = tryResume()
+		if resumeErr != nil && s.Alive() && attemptCtx.Err() == nil && isTransientACPStartError(resumeErr, true) {
+			select {
+			case <-time.After(p.drv.sessionStartRetryDelay()):
+				if s.Alive() && attemptCtx.Err() == nil {
+					sessRes, resumeErr = tryResume()
+				}
+			case <-attemptCtx.Done():
+				resumeErr = attemptCtx.Err()
+			}
 		}
 		if resumeErr != nil {
-			proc.Stop(time.Second)
-			var rpc *rpcError
-			if errors.As(resumeErr, &rpc) && rpc.Code == codeAuthRequired {
-				msg := resumeErr.Error()
-				if p.Name() == "antigravity" {
-					msg += "; run `hermesh agent login antigravity`"
-				}
-				return nil, runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_AUTH, msg)
-			}
-			return nil, runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_RESUME_REJECTED, resumeErr.Error())
+			return abort("session/resume", resumeErr)
 		}
 		s.sessionID = spec.ResumeCursor
 	} else {
-		newRes, newErr := s.call(ctx, "session/new", params)
-		if newErr != nil {
-			proc.Stop(time.Second)
-			var rpc *rpcError
-			if errors.As(newErr, &rpc) && rpc.Code == codeAuthRequired {
-				msg := newErr.Error()
-				if p.Name() == "antigravity" {
-					msg += "; run `hermesh agent login antigravity`"
-				}
-				return nil, runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_AUTH, msg)
+		callSessionNew := func() (json.RawMessage, string, error) {
+			res, nErr := s.call(attemptCtx, "session/new", params)
+			if nErr != nil {
+				return nil, "", nErr
 			}
-			return nil, fmt.Errorf("acp session/new: %w", newErr)
+			var nr struct {
+				SessionID string `json:"sessionId"`
+			}
+			_ = json.Unmarshal(res, &nr)
+			if nr.SessionID == "" {
+				return nil, "", errors.New("acp session/new returned empty sessionId")
+			}
+			return res, nr.SessionID, nil
 		}
-		sessRes = newRes
-		var nr struct {
-			SessionID string `json:"sessionId"`
+		var sid string
+		var newErr error
+		sessRes, sid, newErr = callSessionNew()
+		if newErr != nil && s.Alive() && attemptCtx.Err() == nil && isTransientACPStartError(newErr, false) {
+			select {
+			case <-time.After(p.drv.sessionStartRetryDelay()):
+				if s.Alive() && attemptCtx.Err() == nil {
+					sessRes, sid, newErr = callSessionNew()
+				}
+			case <-attemptCtx.Done():
+				newErr = attemptCtx.Err()
+			}
 		}
-		_ = json.Unmarshal(newRes, &nr)
-		if nr.SessionID == "" {
-			proc.Stop(time.Second)
-			return nil, errors.New("acp session/new returned empty sessionId")
+		if newErr != nil {
+			return abort("session/new", newErr)
 		}
-		s.sessionID = nr.SessionID
+		s.sessionID = sid
 	}
 	opts := s.parseSessionConfigOptions(sessRes)
 	if p != nil && spec.ResumeCursor == "" {
 		p.learn(modelContext(cmd.bin, env), opts, true)
 	}
 	if spec.Selection != nil {
-		if err := s.applyInitialSelection(ctx, spec.Selection, opts); err != nil {
-			proc.Stop(time.Second)
-			return nil, err
+		if err := s.applyInitialSelection(attemptCtx, spec.Selection, opts); err != nil {
+			return abort("session/set_config_option", err)
 		}
 	}
 	_, curOwn, _ := s.curOptions.list()
@@ -668,8 +786,124 @@ func (p *Provider) startRuntimeSession(ctx context.Context, cmd launch, baseEnv 
 		Model:        curOwn.Model,
 		Effort:       curOwn.Effort,
 	})
-	_ = s.SetModes(ctx, spec.EffectiveMode, spec.InteractionMode)
-	return s, nil
+	_ = s.SetModes(attemptCtx, spec.EffectiveMode, spec.InteractionMode)
+	return s, "", "", nil
+}
+
+func isPermanentFailureKind(k sessionv1.FailureKind) bool {
+	switch k {
+	case sessionv1.FailureKind_FAILURE_KIND_AUTH,
+		sessionv1.FailureKind_FAILURE_KIND_QUOTA,
+		sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE,
+		sessionv1.FailureKind_FAILURE_KIND_INVALID_REQUEST,
+		sessionv1.FailureKind_FAILURE_KIND_REFUSED,
+		sessionv1.FailureKind_FAILURE_KIND_CONTEXT_OVERFLOW,
+		sessionv1.FailureKind_FAILURE_KIND_RESUME_REJECTED,
+		sessionv1.FailureKind_FAILURE_KIND_START_FAILED:
+		return true
+	}
+	return false
+}
+
+func isTransientACPStartError(err error, isResume bool) bool {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return false
+	}
+	var fe *runtime.FailureError
+	if errors.As(err, &fe) {
+		return !isPermanentFailureKind(fe.Kind)
+	}
+	var rpc *rpcError
+	if errors.As(err, &rpc) {
+		switch rpc.Code {
+		case codeAuthRequired, -32700, -32600, -32601, -32602:
+			return false
+		case codeResourceNotFound:
+			if isResume {
+				return false
+			}
+		}
+		if isResume && runtime.IsResumeRejected(err.Error()) {
+			return false
+		}
+		return !isPermanentFailureKind(runtime.Classify(rpc.Message))
+	}
+	if isResume && (runtime.IsResumeRejected(err.Error()) || strings.Contains(err.Error(), "does not support session resume or load")) {
+		return false
+	}
+	if errors.Is(err, syscall.EAGAIN) || errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, io.EOF) || errors.Is(err, syscall.EPIPE) ||
+		strings.Contains(err.Error(), "acp exited:") ||
+		strings.Contains(err.Error(), "returned empty sessionId") {
+		return true
+	}
+	switch runtime.Classify(err.Error()) {
+	case sessionv1.FailureKind_FAILURE_KIND_RATE_LIMIT,
+		sessionv1.FailureKind_FAILURE_KIND_PROVIDER_ERROR,
+		sessionv1.FailureKind_FAILURE_KIND_NETWORK:
+		return true
+	}
+	return false
+}
+
+func tailStderrSnippet(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	lines := strings.Split(raw, "\n")
+	var kept []string
+	for i := len(lines) - 1; i >= 0 && len(kept) < 3; i-- {
+		if l := strings.TrimSpace(lines[i]); l != "" {
+			kept = append(kept, l)
+		}
+	}
+	slices.Reverse(kept)
+	return runtime.Redact(strings.Join(kept, "; "))
+}
+
+func classifyACPStartFailure(p *Provider, method string, err error, stderr string, isResume bool) error {
+	if err == nil {
+		return nil
+	}
+	var fe *runtime.FailureError
+	if errors.As(err, &fe) {
+		return err
+	}
+	var rpc *rpcError
+	if errors.As(err, &rpc) && rpc.Code == codeAuthRequired {
+		msg := err.Error()
+		if p != nil && p.Name() == "antigravity" {
+			msg += "; run `hermesh agent login antigravity`"
+		}
+		return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_AUTH, msg)
+	}
+	prefix := "acp"
+	if method != "" && !strings.HasPrefix(err.Error(), "acp ") {
+		prefix = "acp " + method + ": "
+	} else {
+		prefix = ""
+	}
+	msg := prefix + err.Error()
+	if tail := tailStderrSnippet(stderr); tail != "" && !strings.Contains(msg, tail) {
+		msg += " (stderr: " + tail + ")"
+	}
+	if isResume {
+		return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_RESUME_REJECTED, msg)
+	}
+	if k := runtime.Classify(err.Error()); k != sessionv1.FailureKind_FAILURE_KIND_UNKNOWN {
+		return runtime.Fail(k, msg)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_TIMEOUT, msg)
+	}
+	if strings.Contains(err.Error(), "acp exited:") {
+		return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED, msg)
+	}
+	if (errors.As(err, &rpc) && rpc.Code == codeInternalError) || strings.Contains(err.Error(), "returned empty sessionId") {
+		return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_PROVIDER_ERROR, msg)
+	}
+	return errors.New(msg)
 }
 
 func pickAuthMethod(methods []struct {

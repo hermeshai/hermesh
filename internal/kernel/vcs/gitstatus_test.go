@@ -195,3 +195,178 @@ func TestInspectGitStatusCherryPickMerged(t *testing.T) {
 		t.Fatalf("cherry-picked session got %+v, want MERGED into main", st)
 	}
 }
+
+func TestInspectGitStatusSquashMergeBaselineDirtyAndRemoteSync(t *testing.T) {
+	ctx := context.Background()
+	repo := initTestRepo(t)
+	origin := filepath.Join(t.TempDir(), "origin.git")
+	runGitTest(t, repo, "init", "--bare", "-b", "main", origin)
+	runGitTest(t, repo, "remote", "add", "origin", origin)
+	runGitTest(t, repo, "push", "-u", "origin", "main")
+
+	// Pre-existing untracked file in repo before session starts:
+	if err := os.MkdirAll(filepath.Join(repo, "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "skills", "SKILL.md"), []byte("# pre-existing\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := NewManager(filepath.Join(t.TempDir(), "worktrees"))
+	baseCp, err := mgr.CaptureCheckpoint(ctx, repo, "ckpt_0", "s_inplace", "", 0, "")
+	if err != nil || baseCp == nil {
+		t.Fatalf("CaptureCheckpoint baseline: %v", err)
+	}
+	preDirty := map[string]bool{}
+	for _, f := range baseCp.Files {
+		preDirty[f.Path] = true
+	}
+
+	// 1. In-place branch commit + push with untouched pre-existing untracked file -> PUSHED (not masked as DIRTY).
+	runGitTest(t, repo, "checkout", "-b", "fix/issue-1331")
+	if err := os.WriteFile(filepath.Join(repo, "fix.txt"), []byte("fixed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitTest(t, repo, "add", "fix.txt")
+	runGitTest(t, repo, "commit", "-m", "fix: resolve 1331")
+	runGitTest(t, repo, "push", "-u", "origin", "fix/issue-1331")
+
+	st := mgr.InspectGitStatus(ctx, GitStatusInput{
+		Workdir:          repo,
+		RepoPath:         repo,
+		SessionBranch:    "fix/issue-1331",
+		BaseRef:          "main",
+		InitialHeadOID:   baseCp.HeadOid,
+		InitialTreeOID:   baseCp.GitTreeOid,
+		PreExistingDirty: preDirty,
+		HasChangesHint:   true,
+	})
+	if st == nil || st.State != sessionv1.GitState_GIT_STATE_PUSHED {
+		t.Fatalf("pre-existing untracked file masked PUSHED state: got %+v, want PUSHED", st)
+	}
+
+	// Modifying the pre-existing file after baseline MUST report DIRTY.
+	if err := os.WriteFile(filepath.Join(repo, "skills", "SKILL.md"), []byte("# modified during session\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stMod := mgr.InspectGitStatus(ctx, GitStatusInput{
+		Workdir:          repo,
+		RepoPath:         repo,
+		SessionBranch:    "fix/issue-1331",
+		BaseRef:          "main",
+		InitialHeadOID:   baseCp.HeadOid,
+		InitialTreeOID:   baseCp.GitTreeOid,
+		PreExistingDirty: preDirty,
+		HasChangesHint:   true,
+	})
+	if stMod == nil || stMod.State != sessionv1.GitState_GIT_STATE_DIRTY || stMod.DirtyFiles != 1 {
+		t.Fatalf("modified pre-existing file must count as dirty: got %+v", stMod)
+	}
+	// Restore pre-existing file and switch repo back to main.
+	if err := os.WriteFile(filepath.Join(repo, "skills", "SKILL.md"), []byte("# pre-existing\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitTest(t, repo, "checkout", "main")
+
+	// 2. Multi-commit worktree branch squash-merged on remote (GitHub-style) + SyncRemoteTargetBranch:
+	wtPath, wtBranch, err := mgr.PrepareWorktree(ctx, repo, "s_squash", "main", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtPath, "part1.go"), []byte("package p\nconst A = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitTest(t, wtPath, "add", "part1.go")
+	runGitTest(t, wtPath, "commit", "-m", "feat: part 1")
+	if err := os.WriteFile(filepath.Join(wtPath, "part2.go"), []byte("package p\nconst B = 2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitTest(t, wtPath, "add", "part2.go")
+	runGitTest(t, wtPath, "commit", "-m", "feat: part 2")
+	runGitTest(t, wtPath, "push", "origin", wtBranch)
+
+	// No-op branch (reverted back to initial tree) must NOT falsely report MERGED via merge-tree:
+	wtNoop, noopBranch, err := mgr.PrepareWorktree(ctx, repo, "s_noop", "main", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtNoop, "tmp.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitTest(t, wtNoop, "add", "tmp.txt")
+	runGitTest(t, wtNoop, "commit", "-m", "chore: add tmp")
+	_ = os.Remove(filepath.Join(wtNoop, "tmp.txt"))
+	runGitTest(t, wtNoop, "add", "-A")
+	runGitTest(t, wtNoop, "commit", "-m", "chore: revert tmp")
+	runGitTest(t, wtNoop, "push", "origin", noopBranch)
+
+	stNoop := mgr.InspectGitStatus(ctx, GitStatusInput{
+		Workdir:        wtNoop,
+		RepoPath:       repo,
+		SessionBranch:  noopBranch,
+		BaseRef:        "main",
+		InitialHeadOID: baseCp.HeadOid,
+	})
+	if stNoop == nil || stNoop.State != sessionv1.GitState_GIT_STATE_PUSHED {
+		t.Fatalf("reverted zero-net-diff branch got %+v, want PUSHED (not MERGED)", stNoop)
+	}
+
+	// Simulate GitHub advancing origin/main with an unrelated commit + squash merge of wtBranch in a separate clone:
+	ghClone := filepath.Join(t.TempDir(), "github-server-clone")
+	runGitTest(t, t.TempDir(), "clone", origin, ghClone)
+	runGitTest(t, ghClone, "config", "user.name", "GitHub")
+	runGitTest(t, ghClone, "config", "user.email", "noreply@github.com")
+	if err := os.WriteFile(filepath.Join(ghClone, "unrelated.md"), []byte("other pr\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitTest(t, ghClone, "add", "unrelated.md")
+	runGitTest(t, ghClone, "commit", "-m", "chore: other PR (#100)")
+	runGitTest(t, ghClone, "fetch", "origin", wtBranch)
+	runGitTest(t, ghClone, "merge", "--squash", "FETCH_HEAD")
+	runGitTest(t, ghClone, "commit", "-m", "feat: squash merge s_squash (#101)")
+	runGitTest(t, ghClone, "push", "origin", "main")
+
+	// Before SyncRemoteTargetBranch, local repo still has old origin/main -> PUSHED.
+	stBefore := mgr.InspectGitStatus(ctx, GitStatusInput{
+		Workdir:        wtPath,
+		RepoPath:       repo,
+		SessionBranch:  wtBranch,
+		BaseRef:        "main",
+		InitialHeadOID: baseCp.HeadOid,
+		HasChangesHint: true,
+	})
+	if stBefore == nil || stBefore.State != sessionv1.GitState_GIT_STATE_PUSHED {
+		t.Fatalf("before remote sync got %+v, want PUSHED", stBefore)
+	}
+
+	// Remove any existing FETCH_HEAD in repo so we can assert SyncRemoteTargetBranch never writes FETCH_HEAD.
+	fetchHeadPath := filepath.Join(repo, ".git", "FETCH_HEAD")
+	_ = os.Remove(fetchHeadPath)
+
+	updated, err := mgr.SyncRemoteTargetBranch(ctx, repo, "main")
+	if err != nil || !updated {
+		t.Fatalf("SyncRemoteTargetBranch expected updated=true err=nil, got updated=%v err=%v", updated, err)
+	}
+	if _, statErr := os.Stat(fetchHeadPath); !os.IsNotExist(statErr) {
+		t.Fatalf("SyncRemoteTargetBranch must not write .git/FETCH_HEAD")
+	}
+
+	// Second call when remote has not moved must be a zero-fetch no-op (updated=false).
+	updated2, err := mgr.SyncRemoteTargetBranch(ctx, repo, "main")
+	if err != nil || updated2 {
+		t.Fatalf("second SyncRemoteTargetBranch expected updated=false err=nil, got updated=%v err=%v", updated2, err)
+	}
+
+	// After SyncRemoteTargetBranch, multi-commit squash merge into origin/main resolves as MERGED!
+	stAfter := mgr.InspectGitStatus(ctx, GitStatusInput{
+		Workdir:        wtPath,
+		RepoPath:       repo,
+		SessionBranch:  wtBranch,
+		BaseRef:        "main",
+		InitialHeadOID: baseCp.HeadOid,
+		HasChangesHint: true,
+	})
+	if stAfter == nil || stAfter.State != sessionv1.GitState_GIT_STATE_MERGED || stAfter.TargetRef != "main" {
+		t.Fatalf("after remote squash merge sync got %+v, want MERGED into main", stAfter)
+	}
+}

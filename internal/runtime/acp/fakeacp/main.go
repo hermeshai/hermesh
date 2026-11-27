@@ -310,6 +310,19 @@ func handle(m msg) {
 		}
 		reply(m.ID, map[string]any{})
 	case "session/new":
+		if cntFile := os.Getenv("FAKE_ACP_NEW_CALLS_FILE"); cntFile != "" {
+			prev, _ := os.ReadFile(cntFile)
+			seq := len(prev) + 1
+			_ = os.WriteFile(cntFile, append(prev, '1'), 0o600)
+			if crashN, _ := strconv.Atoi(os.Getenv("FAKE_ACP_NEW_CRASH_FIRST")); crashN > 0 && seq <= crashN {
+				fmt.Fprintln(os.Stderr, "language_server bootstrap crashed")
+				os.Exit(2)
+			}
+			if failN, _ := strconv.Atoi(os.Getenv("FAKE_ACP_NEW_FAIL_FIRST")); failN > 0 && seq <= failN {
+				replyErr(m.ID, -32603, "Failed to start Antigravity conversation")
+				return
+			}
+		}
 		if code := fakeSetting("FAKE_ACP_NEW_ERROR", "fakeacp.new_error"); code != "" {
 			n, _ := strconv.Atoi(code)
 			replyErr(m.ID, n, "session/new failed")
@@ -342,6 +355,17 @@ func handle(m msg) {
 		if needAuth {
 			replyErr(m.ID, -32000, "Authentication required")
 			return
+		}
+		if m.Method == "session/resume" {
+			if cntFile := os.Getenv("FAKE_ACP_RESUME_CALLS_FILE"); cntFile != "" {
+				prev, _ := os.ReadFile(cntFile)
+				seq := len(prev) + 1
+				_ = os.WriteFile(cntFile, append(prev, '1'), 0o600)
+				if failN, _ := strconv.Atoi(os.Getenv("FAKE_ACP_RESUME_FAIL_FIRST")); failN > 0 && seq <= failN {
+					replyErr(m.ID, -32603, "Failed to read session "+p.SessionID+"; retry, or load it with session/load")
+					return
+				}
+			}
 		}
 		if m.Method == "session/resume" && resume == "load-fallback" {
 			replyErr(m.ID, -32603, "Failed to read session "+p.SessionID+"; retry, or load it with session/load")

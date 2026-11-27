@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -830,6 +831,56 @@ func runMockACP() {
 			}
 			write(map[string]any{"jsonrpc": "2.0", "id": *m.ID, "result": map[string]any{"agentCapabilities": map[string]any{"loadSession": true}}})
 		case "session/new":
+			if stateDir := os.Getenv("MOCK_ACP_START_DIR"); stateDir != "" {
+				inFlightDir := filepath.Join(stateDir, "inflight")
+				_ = os.MkdirAll(inFlightDir, 0o755)
+				token := filepath.Join(inFlightDir, fmt.Sprintf("p_%d_%d", os.Getpid(), time.Now().UnixNano()))
+				_ = os.WriteFile(token, []byte("1"), 0o600)
+				entries, _ := os.ReadDir(inFlightDir)
+				if len(entries) > 0 {
+					maxFile := filepath.Join(stateDir, "max_inflight")
+					prevB, _ := os.ReadFile(maxFile)
+					prevMax, _ := strconv.Atoi(strings.TrimSpace(string(prevB)))
+					if len(entries) > prevMax {
+						_ = os.WriteFile(maxFile, []byte(strconv.Itoa(len(entries))), 0o600)
+					}
+				}
+				time.Sleep(25 * time.Millisecond)
+				_ = os.Remove(token)
+
+				modeBytes, _ := os.ReadFile(filepath.Join(stateDir, "mode"))
+				modeStr := strings.TrimSpace(string(modeBytes))
+				seqDir := filepath.Join(stateDir, "calls")
+				_ = os.MkdirAll(seqDir, 0o755)
+				var seq int
+				for i := 1; i <= 500; i++ {
+					if os.Mkdir(filepath.Join(seqDir, strconv.Itoa(i)), 0o755) == nil {
+						seq = i
+						break
+					}
+				}
+				switch modeStr {
+				case "transient_burst":
+					if seq%2 == 1 {
+						write(map[string]any{"jsonrpc": "2.0", "id": *m.ID, "error": map[string]any{"code": -32603, "message": "Failed to start Antigravity conversation"}})
+						continue
+					}
+				case "always_32603":
+					fmt.Fprintln(os.Stderr, "language_server: sqlite database is locked")
+					write(map[string]any{"jsonrpc": "2.0", "id": *m.ID, "error": map[string]any{"code": -32603, "message": "Failed to start Antigravity conversation"}})
+					continue
+				case "hang_forever":
+					time.Sleep(30 * time.Second)
+					continue
+				case "hang_once":
+					if seq == 1 {
+						time.Sleep(30 * time.Second)
+						continue
+					}
+				}
+				write(map[string]any{"jsonrpc": "2.0", "id": *m.ID, "result": map[string]any{"sessionId": fmt.Sprintf("acp_sess_%d_%d", os.Getpid(), seq)}})
+				continue
+			}
 			write(map[string]any{"jsonrpc": "2.0", "id": *m.ID, "result": map[string]any{"sessionId": "acp_sess_42"}})
 		case "session/load", "session/set_mode", "session/set_config_option":
 			write(map[string]any{"jsonrpc": "2.0", "id": *m.ID, "result": map[string]any{}})
@@ -3624,5 +3675,176 @@ func TestClaudeSupersededScheduleAndPlaceholderNoCountLeak(t *testing.T) {
 		if bt.Status == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
 			t.Fatalf("leaked RUNNING background task in projection: %+v", bt)
 		}
+	}
+}
+
+func TestACPSessionStartReliabilityE2E(t *testing.T) {
+	ctx := context.Background()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	drv := acp.NewDriver("")
+	drv.SessionStartRetryDelay = 10 * time.Millisecond
+	drv.SessionStartTimeout = 150 * time.Millisecond
+	drv.MaxConcurrentStarts = 2
+
+	eng, err := kernel.Open(kernel.Config{
+		DataDir:   t.TempDir(),
+		MachineID: "m_acp_start_e2e",
+		Drivers:   map[string]runtime.Driver{"acp": drv},
+		IdleTTL:   time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+
+	owner := kernel.OwnerPrincipal("dev_owner", "Owner")
+	if _, err := eng.UpsertProviderInstance(ctx, owner, &sessionv1.ProviderInstanceConfig{
+		InstanceId:  "antigravity",
+		Driver:      "acp",
+		AcpFlavor:   "antigravity",
+		DisplayName: "Antigravity",
+		Enabled:     true,
+		BinaryPath:  exe,
+		LaunchArgs:  []string{"-test.run=TestHelperMockCLI", "--", "acp"},
+		Env: map[string]string{
+			"HERMESH_MOCK_DRIVER": "acp",
+			"MOCK_ACP_START_DIR":  stateDir,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	waitSession := func(sid string, pred func(*sessionv1.SessionProjection) bool) *sessionv1.SessionProjection {
+		t.Helper()
+		deadline := time.Now().Add(8 * time.Second)
+		var last *sessionv1.SessionProjection
+		for time.Now().Before(deadline) {
+			p, gErr := eng.GetSession(ctx, owner, sid)
+			if gErr == nil {
+				last = p
+				if pred(p) {
+					return p
+				}
+			}
+			time.Sleep(15 * time.Millisecond)
+		}
+		t.Fatalf("timed out waiting on session %s (last=%+v runs=%+v)", sid, last.GetSession(), last.GetRuns())
+		return nil
+	}
+
+	// 1. Parallel burst of 6 concurrent StartSession requests under transient -32603 errors:
+	// all 6 must succeed and settle to IDLE, and in-flight handshakes must respect MaxConcurrentStarts=2.
+	if err := os.WriteFile(filepath.Join(stateDir, "mode"), []byte("transient_burst"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const nBurst = 6
+	sids := make([]string, nBurst)
+	var wg sync.WaitGroup
+	errs := make(chan error, nBurst)
+	for i := range nBurst {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			res, sErr := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+				ModelSelection: &sessionv1.ModelSelection{InstanceId: "antigravity", Model: "default"},
+				InitialPrompt:  fmt.Sprintf("hello_%d", idx),
+			})
+			if sErr != nil {
+				errs <- sErr
+				return
+			}
+			sids[idx] = res.Session.SessionId
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Fatalf("burst StartSession failed: %v", e)
+	}
+	for _, sid := range sids {
+		p := waitSession(sid, func(p *sessionv1.SessionProjection) bool {
+			return p.GetSession().GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_IDLE
+		})
+		if len(p.GetRuns()) != 1 || p.GetRuns()[0].GetStatus() != sessionv1.RunStatus_RUN_STATUS_COMPLETED {
+			t.Fatalf("expected burst session %s run COMPLETED, got %+v", sid, p.GetRuns())
+		}
+	}
+	if maxB, _ := os.ReadFile(filepath.Join(stateDir, "max_inflight")); len(maxB) > 0 {
+		if gotMax, _ := strconv.Atoi(strings.TrimSpace(string(maxB))); gotMax > 2 {
+			t.Fatalf("concurrent ACP handshakes = %d, exceeded MaxConcurrentStarts=2", gotMax)
+		}
+	}
+
+	// 2. Hung handshake recovers automatically via SessionStartTimeout:
+	_ = os.RemoveAll(filepath.Join(stateDir, "calls"))
+	if err := os.WriteFile(filepath.Join(stateDir, "mode"), []byte("hang_once"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hangOnceRes, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "antigravity", Model: "default"},
+		InitialPrompt:  "recover_after_hang",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pHangOnce := waitSession(hangOnceRes.Session.SessionId, func(p *sessionv1.SessionProjection) bool {
+		return p.GetSession().GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_IDLE
+	})
+	if pHangOnce.GetRuns()[0].GetStatus() != sessionv1.RunStatus_RUN_STATUS_COMPLETED {
+		t.Fatalf("expected hang_once session to recover and complete, got %+v", pHangOnce.GetRuns())
+	}
+
+	// 3. Persistent -32603 across all retries classifies as retryable PROVIDER_ERROR (with stderr context),
+	// not non-retryable START_FAILED ("run hermeshd doctor").
+	_ = os.RemoveAll(filepath.Join(stateDir, "calls"))
+	if err := os.WriteFile(filepath.Join(stateDir, "mode"), []byte("always_32603"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	failRes, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "antigravity", Model: "default"},
+		InitialPrompt:  "will_fail",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pFail := waitSession(failRes.Session.SessionId, func(p *sessionv1.SessionProjection) bool {
+		return len(p.GetRuns()) == 1 && p.GetRuns()[0].GetStatus() == sessionv1.RunStatus_RUN_STATUS_FAILED
+	})
+	f := pFail.GetRuns()[0].GetFailure()
+	if f.GetKind() != sessionv1.FailureKind_FAILURE_KIND_PROVIDER_ERROR || !f.GetRetryable() {
+		t.Fatalf("expected retryable PROVIDER_ERROR for exhausted -32603, got %+v", f)
+	}
+	if !strings.Contains(f.GetMessage(), "sqlite database is locked") {
+		t.Fatalf("expected stderr detail in failure message, got %q", f.GetMessage())
+	}
+
+	// 4. Owner InterruptSession during a stuck session/new cancels promptly as INTERRUPTED (not hung or FAILED).
+	drv.SessionStartTimeout = 10 * time.Second
+	_ = os.RemoveAll(filepath.Join(stateDir, "calls"))
+	if err := os.WriteFile(filepath.Join(stateDir, "mode"), []byte("hang_forever"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hungRes, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "antigravity", Model: "default"},
+		InitialPrompt:  "stop_me",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if _, err := eng.InterruptSession(ctx, owner, &sessionv1.InterruptSessionRequest{
+		SessionId: hungRes.Session.SessionId,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pInt := waitSession(hungRes.Session.SessionId, func(p *sessionv1.SessionProjection) bool {
+		return len(p.GetRuns()) == 1 && p.GetRuns()[0].GetStatus() != sessionv1.RunStatus_RUN_STATUS_RUNNING
+	})
+	if pInt.GetRuns()[0].GetStatus() != sessionv1.RunStatus_RUN_STATUS_INTERRUPTED {
+		t.Fatalf("expected interrupted run when stopped mid-startup, got %+v", pInt.GetRuns()[0])
 	}
 }

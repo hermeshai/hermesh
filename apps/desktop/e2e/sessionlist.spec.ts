@@ -195,17 +195,28 @@ test("only pushed or merged sessions show a sidebar git mark, and hovering shows
     });
   }, repo);
 
+  // Pure Q&A / review session with no code changes: hover card omits the noisy .shover-git box.
+  await cli("session", "start", "--project", "gitdemo", "--agent", "gemini", "--title", "纯审查无改动", "--prompt", "say 只读复核完成", "--wait");
+  const list = await sessionList(page);
+  const qaRow = list.getByRole("listitem").filter({ hasText: "纯审查无改动" });
+  await expect(qaRow).toBeVisible();
+  await qaRow.hover();
+  const card = page.getByTestId("session-hover-card");
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("纯审查无改动");
+  await expect(card.locator(".shover-git")).toHaveCount(0);
+  await page.locator(".side-h").hover();
+  await expect(card).toHaveCount(0);
+
   const started = JSON.parse(
     await cli("session", "start", "--project", "gitdemo", "--agent", "gemini", "--title", "实现分支感知", "--prompt", "write feature.ts export const ok = true;\nsay 改好了", "--wait", "-o", "json"),
   ).session as { session_id: string };
 
-  const list = await sessionList(page);
   const row = list.getByRole("listitem").filter({ hasText: "实现分支感知" });
   await expect(row).toBeVisible();
   // Dirty worktree: no sidebar row icon, hover card shows uncommitted status and has zero action buttons.
   await expect(row.locator(".smeta [role=img]")).toHaveCount(0);
   await row.hover();
-  const card = page.getByTestId("session-hover-card");
   await expect(card).toBeVisible();
   await expect(card).toContainText("实现分支感知");
   await expect(card).toContainText("1 个文件改动未提交");
@@ -232,23 +243,32 @@ test("only pushed or merged sessions show a sidebar git mark, and hovering shows
     return { worktreePath: ws.worktreePath as string, branch: ws.branch as string };
   }, started.session_id);
 
-  // Push externally and focus window: sidebar row lights up the pushed mark.
+  // Push externally (2 commits total) and hover row: on-demand single-session refresh updates card & row mark.
+  fs.writeFileSync(path.join(info.worktreePath, "feature2.ts"), "export const v2 = 2;\n");
+  execFileSync("git", ["add", "feature2.ts"], { cwd: info.worktreePath, env: gitEnv });
+  execFileSync("git", ["commit", "-q", "-m", "feat: second commit"], { cwd: info.worktreePath, env: gitEnv });
   execFileSync("git", ["push", "-q", "origin", info.branch], { cwd: info.worktreePath, env: gitEnv });
-  await page.waitForTimeout(1600);
-  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(row.getByRole("img", { name: "已推送" })).toBeVisible();
+  await page.waitForTimeout(5100);
   await row.hover();
   await expect(card).toContainText("已提交并推送");
-  await expect(card).toContainText("feat: add status perception");
+  await expect(card).toContainText("feat: second commit");
   await page.locator(".side-h").hover();
+  await expect(row.getByRole("img", { name: "已推送" })).toBeVisible();
 
-  // Merge into main externally and focus window: sidebar mark updates automatically to merged.
-  execFileSync("git", ["merge", "-q", "--no-ff", "-m", "Merge feature", info.branch], { cwd: repo, env: gitEnv });
-  await page.waitForTimeout(1600);
-  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(row.getByRole("img", { name: "已合并" })).toBeVisible();
+  // Squash-merge on remote origin/main via a separate clone (local repo never fetches),
+  // then hover the row: on-demand remote sync flips both card and row mark to merged!
+  const ghClone = path.join(fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "hmgh-"))), "clone");
+  execFileSync("git", ["clone", "-q", origin, ghClone], { env: gitEnv });
+  execFileSync("git", ["fetch", "-q", "origin", info.branch], { cwd: ghClone, env: gitEnv });
+  execFileSync("git", ["merge", "-q", "--squash", "FETCH_HEAD"], { cwd: ghClone, env: gitEnv });
+  execFileSync("git", ["commit", "-q", "-m", "feat: squash merge (#1)"], { cwd: ghClone, env: gitEnv });
+  execFileSync("git", ["push", "-q", "origin", "main"], { cwd: ghClone, env: gitEnv });
+
+  await page.waitForTimeout(10_200);
   await row.hover();
   await expect(card).toContainText("已合并至 main");
+  await page.locator(".side-h").hover();
+  await expect(row.getByRole("img", { name: "已合并" })).toBeVisible();
 
   await app.close();
 });
@@ -372,6 +392,11 @@ test("drag-and-drop places sessions into any slot across done, attention, projec
   };
 
   await expect.poll(() => topDone()).toEqual(["完成 5", "完成 4", "完成 3", "完成 2", "完成 1"]);
+  for (let i = (await titlesOf("需要处理")).length; i < 3; i++) {
+    const title = `待处理 ${i + 1}`;
+    await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", title, "--prompt", "fail rate limited", "--wait").catch(() => {});
+    await expect(group("需要处理")).toContainText(title);
+  }
   const initialAttention = await titlesOf("需要处理");
   expect(initialAttention).toHaveLength(3);
 

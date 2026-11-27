@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -194,6 +195,9 @@ type Config struct {
 	// CachedAgentModels returns an agent's already-cached model list in memory
 	// without triggering any subprocess or network discovery.
 	CachedAgentModels func(agent string) []runtime.Model
+	// GitRemoteSyncCooldown throttles on-demand background remote ref probes per
+	// repository; zero uses the production default (60s).
+	GitRemoteSyncCooldown time.Duration
 }
 
 type shellSub struct {
@@ -233,6 +237,9 @@ type Engine struct {
 	titleDoneChs     map[string]chan struct{}               // session_id -> closed on completion
 	sessionSubs      map[string]map[*sessionSub]struct{}
 	shellSubs        map[*shellSub]struct{}
+	gitSyncMu        sync.Mutex
+	gitSyncLastAt    map[string]time.Time
+	gitSyncInFlight  map[string]bool
 }
 
 func Open(cfg Config) (*Engine, error) {
@@ -272,6 +279,8 @@ func Open(cfg Config) (*Engine, error) {
 		titleDoneChs:     map[string]chan struct{}{},
 		sessionSubs:      map[string]map[*sessionSub]struct{}{},
 		shellSubs:        map[*shellSub]struct{}{},
+		gitSyncLastAt:    map[string]time.Time{},
+		gitSyncInFlight:  map[string]bool{},
 	}
 	e.sup.SetOnReap(e.onLeaseReaped)
 	e.machineID.Store(cfg.MachineID)
@@ -827,9 +836,18 @@ func (e *Engine) inspectSessionGitStatus(ctx context.Context, sess *sessionv1.Se
 
 	ckpts, _ := e.st.Checkpoints(sess.SessionId)
 	var initialHeadOID, initialTreeOID string
+	var preExistingDirty map[string]bool
 	if len(ckpts) > 0 && ckpts[0].RunOrdinal == 0 {
 		initialHeadOID = ckpts[0].HeadOid
 		initialTreeOID = ckpts[0].GitTreeOid
+		if len(ckpts[0].Files) > 0 {
+			preExistingDirty = make(map[string]bool, len(ckpts[0].Files))
+			for _, f := range ckpts[0].Files {
+				if f.Path != "" {
+					preExistingDirty[f.Path] = true
+				}
+			}
+		}
 	}
 	latestCp := cp
 	if latestCp == nil && len(ckpts) > 0 && ckpts[len(ckpts)-1].RunOrdinal > 0 {
@@ -844,28 +862,172 @@ func (e *Engine) inspectSessionGitStatus(ctx context.Context, sess *sessionv1.Se
 	gCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	// An in-place session shares the project folder with other sessions: if its own
-	// turns changed neither the working tree nor HEAD, keep it CLEAN even if later
-	// work in that shared folder modified or pushed commits.
-	if mode != identityv1.Workspace_WORKSPACE_WORKTREE && initialTreeOID != "" && latestCp != nil &&
-		latestCp.GitTreeOid == initialTreeOID && latestCp.HeadOid == initialHeadOID && !hasChangesHint {
-		if !vcs.IsGitRepo(gCtx, ws.Path) {
-			return nil
+	// An in-place session shares the project folder with other sessions:
+	// 1. If a settled in-place session was already classified CLEAN (only RefreshGitStatus
+	//    calls inspectSessionGitStatus with cp == nil), keep it CLEAN without inheriting
+	//    later commits or branch switches made in the shared folder.
+	// 2. If its own turns neither modified files in ws.Path nor executed git ref mutations,
+	//    keep it CLEAN (with an empty branch so unrelated shared-folder branches do not bleed onto its card).
+	if mode != identityv1.Workspace_WORKSPACE_WORKTREE {
+		if cp == nil && sess.GetGitStatus().GetState() == sessionv1.GitState_GIT_STATE_CLEAN && !hasChangesHint {
+			return &sessionv1.GitStatus{State: sessionv1.GitState_GIT_STATE_CLEAN}
 		}
-		return &sessionv1.GitStatus{
-			State:  sessionv1.GitState_GIT_STATE_CLEAN,
-			Branch: cmp.Or(vcs.CurrentBranch(gCtx, ws.Path), sessionBranch),
+		unchangedCheckpoints := initialTreeOID != "" && latestCp != nil &&
+			latestCp.GitTreeOid == initialTreeOID && latestCp.HeadOid == initialHeadOID && !hasChangesHint
+		if unchangedCheckpoints || !e.inPlaceSessionMutatedRepo(sess.SessionId, ws.Path, initialHeadOID, latestCp) {
+			if !vcs.IsGitRepo(gCtx, ws.Path) {
+				return nil
+			}
+			return &sessionv1.GitStatus{State: sessionv1.GitState_GIT_STATE_CLEAN}
+		}
+		if prevBr := sess.GetGitStatus().GetBranch(); cp == nil && prevBr != "" {
+			sessionBranch = prevBr
 		}
 	}
 
 	return e.vcs.InspectGitStatus(gCtx, vcs.GitStatusInput{
-		Workdir:        workdir,
-		RepoPath:       ws.Path,
-		SessionBranch:  sessionBranch,
-		BaseRef:        cmp.Or(strat.GetBaseRef(), ws.DefaultBaseRef),
-		InitialHeadOID: initialHeadOID,
-		HasChangesHint: hasChangesHint,
+		Workdir:           workdir,
+		RepoPath:          ws.Path,
+		SessionBranch:     sessionBranch,
+		BaseRef:           cmp.Or(strat.GetBaseRef(), ws.DefaultBaseRef),
+		InitialHeadOID:    initialHeadOID,
+		InitialTreeOID:    initialTreeOID,
+		PreExistingDirty:  preExistingDirty,
+		LockSessionBranch: mode != identityv1.Workspace_WORKSPACE_WORKTREE && cp == nil && sess.GetGitStatus().GetBranch() != "",
+		HasChangesHint:    hasChangesHint,
 	})
+}
+
+var gitRefMutateRE = regexp.MustCompile(`\bgit\b[^\n;|&]*\b(commit|checkout|switch|merge|rebase|cherry-pick|reset|pull|am|stash|apply)\b`)
+
+func (e *Engine) inPlaceSessionMutatedRepo(sessionID, repoPath, initialHeadOID string, latestCp *sessionv1.Checkpoint) bool {
+	items, err := e.st.TurnItems(sessionID)
+	if err != nil {
+		return true
+	}
+	headMoved := initialHeadOID != "" && latestCp != nil && latestCp.HeadOid != "" && latestCp.HeadOid != initialHeadOID
+	var sawWorkspaceWrite, sawShellCmd, sawGitRefCmd bool
+	cleanRepo := filepath.Clean(repoPath)
+	withinRepo := func(p string) bool {
+		if p == "" {
+			return false
+		}
+		if !filepath.IsAbs(p) {
+			return true
+		}
+		cp := filepath.Clean(p)
+		return cp == cleanRepo || strings.HasPrefix(cp, cleanRepo+string(filepath.Separator))
+	}
+	for _, it := range items {
+		switch it.Kind {
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_FILE_CHANGE:
+			if it.FilePath == "" || withinRepo(it.FilePath) {
+				sawWorkspaceWrite = true
+			}
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_TOOL_CALL:
+			tn := strings.ToLower(strings.TrimSpace(it.ToolName))
+			if (tn == "write" || tn == "edit" || tn == "write_file" || tn == "edit_file" || tn == "multiedit") &&
+				(it.FilePath == "" || withinRepo(it.FilePath)) {
+				sawWorkspaceWrite = true
+			}
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION:
+			sawShellCmd = true
+			if gitRefMutateRE.MatchString(it.Command) {
+				sawGitRefCmd = true
+			}
+		}
+	}
+	if sawWorkspaceWrite || sawGitRefCmd {
+		return true
+	}
+	if headMoved {
+		// HEAD changed while the session never ran a git ref-mutating command -> concurrent external switch/commit.
+		return false
+	}
+	return sawShellCmd
+}
+
+const defaultGitRemoteSyncCooldown = 10 * time.Second
+
+func (e *Engine) gitRemoteSyncCooldown() time.Duration {
+	if e.cfg.GitRemoteSyncCooldown > 0 {
+		return e.cfg.GitRemoteSyncCooldown
+	}
+	return defaultGitRemoteSyncCooldown
+}
+
+func (e *Engine) maybeTriggerRemoteGitSync(projectID string) {
+	if projectID == "" || e.bgCtx.Err() != nil {
+		return
+	}
+	now := time.Now()
+	e.gitSyncMu.Lock()
+	if e.gitSyncInFlight[projectID] || now.Sub(e.gitSyncLastAt[projectID]) < e.gitRemoteSyncCooldown() {
+		e.gitSyncMu.Unlock()
+		return
+	}
+	e.gitSyncInFlight[projectID] = true
+	e.gitSyncLastAt[projectID] = now
+	e.gitSyncMu.Unlock()
+
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		defer func() {
+			e.gitSyncMu.Lock()
+			delete(e.gitSyncInFlight, projectID)
+			e.gitSyncMu.Unlock()
+		}()
+		ws, err := e.st.Workspace(projectID)
+		if err != nil || ws.Path == "" {
+			return
+		}
+		syncCtx, cancel := context.WithTimeout(e.bgCtx, 8*time.Second)
+		updated, syncErr := e.vcs.SyncRemoteTargetBranch(syncCtx, ws.Path, ws.DefaultBaseRef)
+		cancel()
+		if syncErr != nil || !updated || e.bgCtx.Err() != nil {
+			return
+		}
+		all, err := e.st.ListSessions(projectID, false, 100)
+		if err != nil {
+			return
+		}
+		type gitPatch struct {
+			sessionID string
+			gitStatus *sessionv1.GitStatus
+		}
+		var patches []gitPatch
+		for _, s := range all {
+			if s.ActiveRunId != "" || s.GetGitStatus().GetState() != sessionv1.GitState_GIT_STATE_PUSHED {
+				continue
+			}
+			next := e.inspectSessionGitStatus(e.bgCtx, s, nil, nil)
+			if !proto.Equal(s.GitStatus, next) {
+				patches = append(patches, gitPatch{sessionID: s.SessionId, gitStatus: next})
+			}
+		}
+		if len(patches) == 0 || e.bgCtx.Err() != nil {
+			return
+		}
+		var changed []*sessionv1.Session
+		_, _ = e.st.Mutate(func(tx *store.Tx) error {
+			for _, pt := range patches {
+				cur, gErr := tx.GetSession(pt.sessionID)
+				if gErr != nil || cur.ActiveRunId != "" || proto.Equal(cur.GitStatus, pt.gitStatus) {
+					continue
+				}
+				cur.GitStatus = pt.gitStatus
+				if pErr := tx.PutSessionPreserveUpdatedAt(cur); pErr != nil {
+					return pErr
+				}
+				changed = append(changed, proto.Clone(cur).(*sessionv1.Session))
+			}
+			return nil
+		})
+		if len(changed) > 0 {
+			e.notifyOutOfBandSessionChanges(changed)
+		}
+	}()
 }
 
 func (e *Engine) RefreshGitStatus(ctx context.Context, p *Principal, sessionIDs []string) (*sessionv1.RefreshGitStatusResponse, error) {
@@ -977,7 +1139,13 @@ func (e *Engine) RefreshGitStatus(ctx context.Context, p *Principal, sessionIDs 
 
 	out := make([]*sessionv1.Session, 0, len(candidates))
 	for _, s := range candidates {
-		out = append(out, byID[s.SessionId])
+		cur := byID[s.SessionId]
+		out = append(out, cur)
+		// Only targeted user inspections (hover / click / explicit IDs) trigger the
+		// throttled background remote probe when a session is waiting in PUSHED state.
+		if len(sessionIDs) > 0 && len(sessionIDs) <= 4 && cur.GetGitStatus().GetState() == sessionv1.GitState_GIT_STATE_PUSHED {
+			e.maybeTriggerRemoteGitSync(cur.ProjectId)
+		}
 	}
 	return &sessionv1.RefreshGitStatusResponse{Sessions: out}, nil
 }
@@ -2512,7 +2680,7 @@ func (e *Engine) loadTurnAttachments(refs []*sessionv1.AttachmentRef) []runtime.
 	return out
 }
 
-func (e *Engine) buildStartSpec(sess *sessionv1.Session, workdir string, instCfg *sessionv1.ProviderInstanceConfig, curRun *sessionv1.Run, resumeCursor string) runtime.StartSpec {
+func (e *Engine) buildStartSpec(runCtx context.Context, sess *sessionv1.Session, workdir string, instCfg *sessionv1.ProviderInstanceConfig, curRun *sessionv1.Run, resumeCursor string) runtime.StartSpec {
 	spec := runtime.StartSpec{
 		SessionID:       sess.SessionId,
 		Workdir:         workdir,
@@ -2523,6 +2691,7 @@ func (e *Engine) buildStartSpec(sess *sessionv1.Session, workdir string, instCfg
 		InteractionMode: curRun.InteractionMode,
 		ResumeCursor:    resumeCursor,
 		Gate:            e.makeGate(sess.SessionId, workdir),
+		StartCtx:        runCtx,
 	}
 	if e.cfg.MCPServers != nil {
 		spec.MCPServers = e.cfg.MCPServers(sess.SessionId)
@@ -2752,7 +2921,7 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 			}
 		}
 
-		drvSess, startErr := drv.StartSession(e.bgCtx, e.buildStartSpec(sess, workdir, instCfg, curRun, resumeCursor))
+		drvSess, startErr := drv.StartSession(e.bgCtx, e.buildStartSpec(runCtx, sess, workdir, instCfg, curRun, resumeCursor))
 		if startErr != nil && resumeCursor != "" && runCtx.Err() == nil && e.bgCtx.Err() == nil {
 			// Native session cursor expired or cannot be resumed; self-heal by spawning a
 			// fresh ProviderSession carrying the Hermesh transcript handoff.
@@ -2774,9 +2943,15 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 				Driver:            instCfg.Driver,
 				ProcessAlive:      true,
 			}
-			drvSess, startErr = drv.StartSession(e.bgCtx, e.buildStartSpec(sess, workdir, instCfg, curRun, ""))
+			drvSess, startErr = drv.StartSession(e.bgCtx, e.buildStartSpec(runCtx, sess, workdir, instCfg, curRun, ""))
 		}
 		if startErr != nil {
+			if runCtx.Err() != nil {
+				if e.bgCtx.Err() == nil {
+					e.finishRunInterrupted(sessionID, runID, "interrupted", nil, nil)
+				}
+				return
+			}
 			e.finishRunFailed(sessionID, runID, "session_start_failed", startErr.Error(), runtime.FailureOf(startErr, sessionv1.FailureKind_FAILURE_KIND_START_FAILED))
 			return
 		}
@@ -4570,7 +4745,16 @@ func (e *Engine) finishRunFailedWithCheckpoint(sessionID, runID, code, msg strin
 			if len(queued) > 0 {
 				sess.QueueHeld = true
 			}
-			sess.Status = sessionv1.SessionStatus_SESSION_STATUS_CRASHED
+			isCrash := code == workspaceErrorCode ||
+				code == "provider_unavailable" ||
+				code == "session_closed" ||
+				protoFail.GetKind() == sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED ||
+				protoFail.GetKind() == sessionv1.FailureKind_FAILURE_KIND_START_FAILED
+			if isCrash {
+				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_CRASHED
+			} else {
+				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+			}
 		}
 		if err := putSessionSynced(tx, sess); err != nil {
 			return err
