@@ -853,8 +853,9 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(app.buttons["start-new"].waitForExistence(timeout: 15))
     }
 
-    /// The Usage page at a very busy owner's numbers (billions of tokens, hundreds of hours, many agents), in the
-    /// narrowest phone: every number whole on one line, the legend in one column when two would squeeze it.
+    /// The Usage page at a very busy owner's numbers (billions of tokens, hundreds of hours, many agents, long project
+    /// names): every legend is uniformly one vertical column, normal names stay one line, and long names wrap cleanly
+    /// inside the card with their numbers aligned.
     func testUsageAtLargeNumbers() {
         app.terminate()
         app.launchArguments += ["-DemoBigUsage", "-DemoSessions", "300"]
@@ -866,11 +867,14 @@ final class DemoUITests: XCTestCase {
         let big = any["usage-tokens-big"].firstMatch
         XCTAssertTrue(big.waitForExistence(timeout: 10))
         XCTAssertTrue(wait { big.label.contains("M") }, big.label)
-        // A cell is one line high, its number never broken; names may be cut short, numbers not.
+        // Both cards use one vertical column; normal agent names stay on one line with full names.
         for prefix in ["usage-sessions-part-", "usage-tokens-part-"] {
             let cells = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", prefix)).allElementsBoundByIndex
             XCTAssertGreaterThanOrEqual(cells.count, 3, prefix)
             for c in cells { XCTAssertLessThanOrEqual(c.frame.height, 36, "\(c.identifier) is one line: \(c.label)") }
+            let frames = cells.map(\.frame)
+            XCTAssertEqual(Set(frames.map { Int($0.minX.rounded()) }).count, 1, "\(prefix) is one vertical column")
+            XCTAssertEqual(Set(frames.map { Int($0.maxX.rounded()) }).count, 1, "\(prefix) cells end together")
         }
         let others = any["usage-tokens-others"].firstMatch
         XCTAssertTrue(others.exists && others.frame.height <= 36, "Other is one line")
@@ -881,12 +885,36 @@ final class DemoUITests: XCTestCase {
         let busy = any.matching(NSPredicate(format: "label BEGINSWITH %@", "Time at work")).firstMatch
         XCTAssertTrue(busy.exists && busy.frame.height <= 48, "the time at work is one line under its name: \(busy.label), \(busy.frame.height)")
         checkpoint("usage-large-numbers")
-        // A number lines up with the others' in its column (one or two of them, as the width allows), Other's too.
+        // Other's row lines up in the same single column with the parts above it.
         let frames = (app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "usage-sessions-part-")).allElementsBoundByIndex + [app.buttons["usage-sessions-others"]]).map(\.frame)
-        for (column, cells) in Dictionary(grouping: frames, by: { Int($0.minX.rounded()) }) {
-            XCTAssertEqual(Set(cells.map { Int($0.maxX.rounded()) }).count, 1, "the cells of the column at \(column) end together")
-        }
-        // Other opened lists every agent (five here: the busiest three and Other's two), each on one line.
+        XCTAssertEqual(Set(frames.map { Int($0.minX.rounded()) }).count, 1, "single vertical column")
+        XCTAssertEqual(Set(frames.map { Int($0.maxX.rounded()) }).count, 1, "the cells end together")
+        // Long names wrap cleanly in the single-column legend while keeping the trailing edge aligned,
+        // and the bar callout stays within the card width.
+        let group = app.segmentedControls["usage-group"]
+        XCTAssertTrue(group.buttons["Machines"].waitForExistence(timeout: 5), "Machines segment")
+        group.buttons["Machines"].tap()
+        let longRow = app.buttons["usage-sessions-part-demo-linux"]
+        XCTAssertTrue(longRow.waitForExistence(timeout: 10), "long machine row")
+        let shortRow = app.buttons["usage-sessions-part-demo-mac"]
+        XCTAssertTrue(shortRow.waitForExistence(timeout: 5), "short machine row")
+        let sessionsCard = any["usage-sessions"].firstMatch.frame
+        XCTAssertGreaterThan(longRow.frame.height, shortRow.frame.height, "long name wraps instead of squeezing into one line")
+        XCTAssertEqual(Int(longRow.frame.minX.rounded()), Int(shortRow.frame.minX.rounded()), "aligned leading edge")
+        XCTAssertEqual(Int(longRow.frame.maxX.rounded()), Int(shortRow.frame.maxX.rounded()), "aligned trailing edge")
+        XCTAssertLessThanOrEqual(longRow.frame.maxX, sessionsCard.maxX, "stays within card")
+        // Tapping today's bar shows the callout inside the card even with a long name.
+        let today = app.staticTexts.matching(NSPredicate(format: "label == %@", "Today")).firstMatch
+        XCTAssertTrue(today.waitForExistence(timeout: 5))
+        today.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -1.5)).tap()
+        let callout = any["usage-sessions-callout"].firstMatch
+        XCTAssertTrue(callout.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(callout.frame.minX, sessionsCard.minX - 1, "callout stays inside card leading edge")
+        XCTAssertLessThanOrEqual(callout.frame.maxX, sessionsCard.maxX + 1, "callout stays inside card trailing edge")
+        checkpoint("usage-large-numbers-long-names")
+        // Back to Agents: Other opened lists every agent (five here: the busiest three and Other's two), each on one line.
+        group.buttons["Agents"].tap()
+        XCTAssertTrue(others.waitForExistence(timeout: 5))
         others.tap()
         XCTAssertTrue(wait { app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "usage-tokens-part-")).count == 5 })
         for c in app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "usage-tokens-part-")).allElementsBoundByIndex {

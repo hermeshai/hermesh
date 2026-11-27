@@ -477,11 +477,11 @@ for its width. The screens are in
 - **Four parts in the bars**, where the Mac draws six: every part when there
   are four or fewer, else the three busiest and the rest as Other. A bar is
   72 pt tall (56 before), in every grouping, so four parts can be told apart.
-- **The legend is the card's own**, in two columns between its number and its
-  bars (one column at the accessibility type sizes): a part's colour, short
-  name, number and share. Other says how many it holds and opens in place to
-  every part, those in it grey; both cards open and close together. A part
-  tapped is seen alone in both charts (one of Other's in the accent).
+- **The legend is the card's own**, laid out vertically in a single column between its number and its bars: a part's
+  colour, full name (wrapping onto additional lines when long instead of truncating), number and share (aligned on
+  the trailing edge, or tucked under the name at accessibility type sizes). Other says how many it holds and opens in
+  place to every part, those in it grey; both cards open and close together. A part tapped is seen alone in both
+  charts (one of Other's in the accent).
 - **A bar tapped** says over itself what it stands for, as the Mac's does
   under the pointer: its whole, when, and each part that has any. Tapped
   again it is let go; held, the finger moves along the bars (a day of thirty

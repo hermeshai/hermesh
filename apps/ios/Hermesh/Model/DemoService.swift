@@ -44,7 +44,10 @@ final class DemoService {
             $0.version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
             $0.deviceKeyID = "demo-iphone"
         }
-        world.machines = [machine("demo-mac", "Mac mini", "darwin/arm64"), machine("demo-linux", "Linux Studio", "linux/amd64")]
+        world.machines = [
+            machine("demo-mac", "Mac mini", "darwin/arm64"),
+            machine("demo-linux", Self.bigUsage ? "Production Linux Build Workstation (us-west-2)" : "Linux Studio", "linux/amd64"),
+        ]
         world.machines[0].her = .with { $0.enabled = true; $0.running = true; $0.modelReady = true }
         world.devices = [.with { $0.keyID = "demo-iphone"; $0.label = "iPhone"; $0.platform = "ios"; $0.thisDevice = true }]
         world.projects = world.machines.map { m in .with {

@@ -63,7 +63,7 @@ struct UsagePage: View {
             let other = p.id == UsagePart.other
             let name = other ? String(localized: "Other") : split.by == .agent ? agentTitle(p.id) : split.by == .machine ? model.machineName(p.id) : p.id
             // One of those among Other, seen alone, is drawn in the accent: grey would say nothing of it.
-            return MeasureParts.Row(id: p.id, name: name, short: split.by == .agent && !other ? agentShortTitle(p.id) : name,
+            return MeasureParts.Row(id: p.id, name: name,
                                     color: p.color >= 0 ? partColor(p.color) : p.id == solo && !other ? .accentColor : partGrey,
                                     value: value(.init(sessions: p.sessions, tokens: p.tokens)), buckets: p.buckets.map(value))
         }
@@ -299,8 +299,6 @@ struct MeasureParts {
     struct Row: Identifiable {
         let id: String
         let name: String
-        /// For the legend's narrow cells.
-        let short: String
         let color: Color
         let value: Double
         let buckets: [Double]
@@ -316,9 +314,9 @@ struct MeasureParts {
 
 /// A measure: its number and unit, its parts when it is in parts, its bars an hour or a day, the axis under them,
 /// and its figures. Whole, a bar is ink grey (now in the accent, to come faint); in parts, its parts one on
-/// another, the busiest at its foot, each in its colour. The parts are named over the bars in two columns, each
-/// with its number and share: tapped, a part is seen alone; Other opens in place to the parts in it. A bar tapped
-/// (or, held, the one under the finger) says over itself what it stands for.
+/// another, the busiest at its foot, each in its colour. The parts are listed vertically over the bars, each with
+/// its full name, number and share: tapped, a part is seen alone; Other opens in place to the parts in it. A bar
+/// tapped (or, held, the one under the finger) says over itself what it stands for.
 struct MeasureCard: View {
     let id: String
     let big: Text
@@ -378,10 +376,12 @@ struct MeasureCard: View {
                     if let i = picked, i <= now, i < values.count, !loading {
                         let x = width * (CGFloat(i) + 0.5) / CGFloat(values.count)
                         // Over its bar, kept within the chart's width; its size is measured as it is drawn.
-                        callout(i)
-                            .fixedSize()
-                            .onGeometryChange(for: CGSize.self) { $0.size } action: { calloutSize = $0 }
-                            .offset(x: min(max(x - calloutSize.width / 2, 0), max(width - calloutSize.width, 0)), y: -calloutSize.height - 8)
+                        ViewThatFits(in: .horizontal) {
+                            callout(i).fixedSize()
+                            callout(i).fixedSize(horizontal: false, vertical: true).frame(maxWidth: width)
+                        }
+                        .onGeometryChange(for: CGSize.self) { $0.size } action: { calloutSize = $0 }
+                        .offset(x: min(max(x - calloutSize.width / 2, 0), max(width - calloutSize.width, 0)), y: -calloutSize.height - 8)
                             .allowsHitTesting(false)
                             .transition(.opacity)
                             .accessibilityElement(children: .combine)
@@ -457,37 +457,24 @@ struct MeasureCard: View {
         }
     }
 
-    /// The parts with their number and share: two columns while every cell fits half the card whole (its name and
-    /// its number on one line), else a row a part, as at the largest type. Many: the busiest and Other, which opens in
-    /// place to every part; those in it are grey.
+    /// The parts with their number and share, one row a part: full names wrap instead of truncating, while numbers
+    /// stay aligned on the trailing edge. Many: the busiest and Other, which opens in place to every part; those in
+    /// it are grey.
     private func legend(_ parts: MeasureParts) -> some View {
         let other = parts.drawn.first { $0.id == UsagePart.other }
         let shown = other != nil && opened ? parts.all : parts.drawn.filter { $0.id != UsagePart.other }
         let entries = shown.map(Entry.part) + (other.map { opened ? [Entry.less] : [Entry.other($0)] } ?? [])
-        return ViewThatFits(in: .horizontal) {
-            if !typeSize.isAccessibilitySize { grid(entries, columns: 2, parts: parts) }
-            grid(entries, columns: 1, parts: parts)
+        return VStack(alignment: .leading, spacing: 2) {
+            ForEach(entries) { entry($0, parts: parts) }
         }
         .font(.subheadline)
         .padding(.horizontal, -8)
     }
 
-    private func grid(_ entries: [Entry], columns n: Int, parts: MeasureParts) -> some View {
-        let rows = stride(from: 0, to: entries.count, by: n).map { Array(entries[$0 ..< min($0 + n, entries.count)]) }
-        return Grid(alignment: .leading, horizontalSpacing: 6, verticalSpacing: 2) {
-            ForEach(rows.indices, id: \.self) { r in
-                GridRow {
-                    ForEach(rows[r]) { entry($0, parts: parts) }
-                    if rows[r].count < n { Color.clear.gridCellUnsizedAxes([.horizontal, .vertical]) }
-                }
-            }
-        }
-    }
-
     @ViewBuilder private func entry(_ e: Entry, parts: MeasureParts) -> some View {
         switch e {
         case .part(let p):
-            Button { onSolo(p.id) } label: { cell(p, name: Text(verbatim: p.short), on: parts.solo == p.id) }
+            Button { onSolo(p.id) } label: { cell(p, name: Text(verbatim: p.name), on: parts.solo == p.id) }
                 .buttonStyle(.plain)
                 .opacity(parts.solo != nil && parts.solo != p.id ? 0.4 : 1)
                 .accessibilityLabel(Text(verbatim: "\(p.name), \(said(p.value)), \(share(p.value))"))
@@ -507,20 +494,58 @@ struct MeasureCard: View {
         }
     }
 
-    /// A part's cell: its colour, its name (cut short before anything else), its number and its share, which never wrap.
+    /// A part's cell: its colour, its full name (wrapping onto more lines when long), its number and its share,
+    /// which stay aligned in trailing columns. At accessibility type sizes, the figures sit under the name so both
+    /// have the full row width.
     private func cell(_ p: MeasureParts.Row, name: Text, on: Bool, more: Bool = false) -> some View {
-        HStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 2.5, style: .continuous).fill(p.color).frame(width: 9, height: 9)
-            name.lineLimit(1)
-            // Other opens in place: its sign beside its name, so the numbers stay in one column with the others'.
-            if more { Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary) }
-            Spacer(minLength: 2)
-            Text(verbatim: text(p.value)).fontWeight(.semibold).monospacedDigit().lineLimit(1).fixedSize()
-            Text(verbatim: share(p.value)).font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).fixedSize().frame(minWidth: 30, alignment: .trailing)
+        Group {
+            if typeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        swatch(p.color)
+                        cellLabel(name, more: more)
+                    }
+                    HStack(spacing: 6) {
+                        Text(verbatim: text(p.value)).fontWeight(.semibold).monospacedDigit()
+                        Text(verbatim: share(p.value)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    }
+                    .padding(.leading, 15)
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    swatch(p.color)
+                    cellLabel(name, more: more)
+                    Spacer(minLength: 8)
+                    Text(verbatim: text(p.value)).fontWeight(.semibold).monospacedDigit().lineLimit(1).fixedSize()
+                    Text(verbatim: share(p.value)).font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).fixedSize().frame(minWidth: 34, alignment: .trailing)
+                }
+            }
         }
-        .padding(.horizontal, 8).frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
         .background(on ? Color(.tertiarySystemFill) : .clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .contentShape(Rectangle())
+    }
+
+    private func swatch(_ color: Color, size: CGFloat = 9) -> some View {
+        RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+            .fill(color)
+            .frame(width: size, height: size)
+            .alignmentGuide(.firstTextBaseline) { $0.height + 0.5 }
+    }
+
+    @ViewBuilder private func cellLabel(_ name: Text, more: Bool) -> some View {
+        if more {
+            HStack(spacing: 4) {
+                name.lineLimit(1)
+                Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+        } else {
+            name
+                .lineLimit(3)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func share(_ value: Double) -> String { whole > 0 ? "\(Int((value / whole * 100).rounded()))%" : "" }
@@ -531,17 +556,19 @@ struct MeasureCard: View {
         let rows = alone == nil ? (parts?.drawn ?? []).filter { $0.buckets.indices.contains(i) && $0.buckets[i] > 0 } : []
         return VStack(alignment: .leading, spacing: 0) {
             Text(verbatim: said(alone.map { $0.buckets[i] } ?? values[i])).font(.subheadline.weight(.semibold)).monospacedDigit()
-            Text(verbatim: (alone.map { $0.name + " · " } ?? "") + when(i)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            Text(verbatim: (alone.map { $0.name + " · " } ?? "") + when(i))
+                .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                .multilineTextAlignment(.leading)
             if !rows.isEmpty {
                 Divider().padding(.vertical, 6)
                 Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 2) {
                     ForEach(rows) { p in
-                        GridRow {
-                            HStack(spacing: 6) {
-                                RoundedRectangle(cornerRadius: 2.5, style: .continuous).fill(p.color).frame(width: 8, height: 8)
-                                Text(verbatim: p.name)
+                        GridRow(alignment: .firstTextBaseline) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                swatch(p.color, size: 8)
+                                Text(verbatim: p.name).lineLimit(2).multilineTextAlignment(.leading)
                             }
-                            Text(verbatim: text(p.buckets[i])).fontWeight(.semibold).monospacedDigit().gridColumnAlignment(.trailing)
+                            Text(verbatim: text(p.buckets[i])).fontWeight(.semibold).monospacedDigit().lineLimit(1).fixedSize().gridColumnAlignment(.trailing)
                         }
                     }
                 }
