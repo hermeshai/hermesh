@@ -14,6 +14,7 @@ struct HerConversation: View {
     let chat: HerChat
     let machine: HerMachine
     let state: HerEnvState
+    var archived = false
     /// Whether the conversation shows its end, so it follows what comes.
     @State private var atEnd = true
     @State private var scrolling = false
@@ -44,8 +45,8 @@ struct HerConversation: View {
 
     var body: some View {
         let said = chat.session.map(herChat) ?? []
-        let waiting = chat.bot.map { herOutbox(sending: chat.sending, waiting: chat.waiting, botID: $0.id, said: said) } ?? []
-        let place = herOnboardingPlace(chat.flow, noModel: noModel, session: chat.session?.sessionID, last: (said + waiting).last?.key)
+        let waiting = chat.bot.map { herOutbox(sending: chat.sending, waiting: chat.waiting, botID: $0.id, conversation: chat.conversation ?? "", said: said) } ?? []
+        let place = herOnboardingPlace(chat.isMainConversation ? chat.flow : nil, noModel: chat.isMainConversation && noModel, session: chat.session?.sessionID, last: (said + waiting).last?.key)
         let rows = herWithOnboarding(said + waiting, place, at: chat.flow?.at ?? .now)
         let busy = chat.live.flatMap(herBusyBubble)
         let asking = chat.convUp ? chat.live.flatMap(herPendingApproval) : nil
@@ -113,14 +114,16 @@ struct HerConversation: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                HerToEnd(far: far) {
-                    atEnd = true
-                    withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
-                } over: {
-                    if let asking {
-                        HerApprovalPanel(chat: chat, approval: asking.approval, agent: asking.agent, waiting: asking.waiting).id(asking.approval.callID)
-                    } else {
-                        HerComposer(chat: chat, machine: machine, state: state, noModel: noModel)
+                if !archived {
+                    HerToEnd(far: far) {
+                        atEnd = true
+                        withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
+                    } over: {
+                        if let asking {
+                            HerApprovalPanel(chat: chat, approval: asking.approval, agent: asking.agent, waiting: asking.waiting).id(asking.approval.callID)
+                        } else {
+                            HerComposer(chat: chat, machine: machine, state: state, noModel: noModel)
+                        }
                     }
                 }
             }

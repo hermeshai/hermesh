@@ -9,18 +9,66 @@ import SwiftUI
 struct SessionListRow: View {
     @Environment(AppModel.self) private var model
     let session: Session
+    var isChild = false
+    var childFirst = false
+    var childLast = false
+    var twistShut: Bool?
+    var collapsedMark: TreeMark?
+    var onTwist: (() -> Void)?
     @State private var renaming = false
     @State private var deleting = false
 
     var body: some View {
-        Button { model.open(.session(session.sessionID)) } label: { MenuSessionRow(session: session, metadata: model.listView.metadata) }
+        let base = HStack(spacing: 0) {
+            if let twistShut {
+                Button {
+                    onTwist?()
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(twistShut ? -90 : 0))
+                        .frame(width: 26, height: 44)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 4)
+                .accessibilityLabel(twistShut ? Text("Expand") : Text("Collapse"))
+                .accessibilityIdentifier("twist-\(session.displayTitle)")
+            }
+            Button { model.open(.session(session.sessionID)) } label: {
+                MenuSessionRow(session: session, metadata: model.listView.metadata, isChild: isChild, hasTwist: twistShut != nil, collapsedMark: collapsedMark)
+            }
             .buttonStyle(RowStyle(selected: model.chosenSession == session.sessionID))
+            .contentShape(.contextMenuPreview, .capsule)
             .accessibilityAddTraits(model.chosenSession == session.sessionID ? .isSelected : [])
-            .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
-            .contextMenu { SessionActions(session: session, renaming: $renaming, deleting: $deleting) }
-            .sessionDialogs(session, renaming: $renaming, deleting: $deleting)
+            .contextMenu { SessionActions(session: session, isChild: isChild, renaming: $renaming, deleting: $deleting) }
+        }
+        .padding(.leading, isChild ? 26 : 0)
+        .overlay(alignment: .leading) {
+            if isChild {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.12))
+                    .frame(width: 1.5)
+                    .padding(.leading, 18)
+                    .padding(.top, childFirst ? 6 : 0)
+                    .padding(.bottom, childLast ? 6 : 0)
+            }
+        }
+        .sessionDialogs(session, renaming: $renaming, deleting: $deleting)
+
+        Group {
+            if twistShut != nil {
+                base
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("tree-\(session.displayTitle)")
+            } else {
+                base
+            }
+        }
+        .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
     }
 }
 
@@ -29,16 +77,21 @@ struct MenuSessionRow: View {
     @Environment(AppModel.self) private var model
     let session: Session
     var metadata = false
+    var isChild = false
+    var hasTwist = false
+    var collapsedMark: TreeMark?
 
     var body: some View {
         let running = session.isActive && !session.needsAttention
         let paused = !(model.drawerOpen || model.menuInView)
-        HStack(alignment: .top, spacing: 12) {
-            AgentLogo(id: session.agent, size: 22, running: running, paused: paused).frame(width: 28, height: 22)
+        let logoSize: CGFloat = isChild ? 19 : 22
+        HStack(alignment: .top, spacing: isChild ? 10 : 12) {
+            AgentLogo(id: session.agent, size: logoSize, running: running, paused: paused).frame(width: isChild ? 24 : 28, height: logoSize)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
                     // One running has no trailing mark: its logo has a brand-blue orbit and its title shimmers.
                     Text(session.displayTitle)
+                        .font(isChild ? .subheadline : .body)
                         .foregroundStyle(session.status == .archived ? .secondary : .primary)
                         .lineLimit(1)
                         .shimmer(running || session.titleGenerating, paused: paused)
@@ -47,24 +100,28 @@ struct MenuSessionRow: View {
                 }
                 if metadata {
                     HStack(spacing: 8) {
-                        Text(model.senderLine(session)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        Text(model.senderLine(session, child: isChild)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                         time.monospacedDigit()
                     }
                     .font(.footnote).foregroundStyle(.secondary)
                 }
             }
         }
-        .padding(.horizontal, 16).padding(.vertical, metadata ? 8 : 11)
-        .frame(minHeight: 44)
+        .padding(.leading, hasTwist ? 4 : (isChild ? 12 : 16))
+        .padding(.trailing, 16)
+        .padding(.vertical, isChild ? (metadata ? 6 : 8) : (metadata ? 8 : 11))
+        .frame(minHeight: isChild ? 38 : 44)
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
         .accessibilityValue(state.map { Text($0) } ?? Text(""))
         .accessibilityIdentifier("session-\(session.displayTitle)")
     }
 
-    /// One mark: orange, it waits for the owner; red, it failed; nothing, it runs (its title shimmers) or is done.
+    /// One mark: a shut tree shows its most urgent mark (D12); else orange while waiting, red when failed, nothing while running or done.
     @ViewBuilder private var mark: some View {
-        if session.status == .waitingInput || session.isFailed {
+        if let collapsedMark {
+            Circle().fill(collapsedMark == .waiting ? .orange : .red).frame(width: 9, height: 9).accessibilityHidden(true)
+        } else if session.status == .waitingInput || session.isFailed {
             Circle().fill(session.status == .waitingInput ? .orange : .red).frame(width: 9, height: 9).accessibilityHidden(true)
         } else if session.status == .unspecified {
             Text(statusTitle(session.status)).font(.footnote).foregroundStyle(.secondary) // its machine cannot be read now
@@ -73,6 +130,9 @@ struct MenuSessionRow: View {
 
     /// The mark in words, for VoiceOver.
     private var state: String? {
+        if let collapsedMark {
+            return collapsedMark == .waiting ? statusTitle(.waitingInput) : String(localized: "Failed")
+        }
         if session.isFailed && session.status != .crashed && session.status != .waitingInput { return String(localized: "Failed") }
         switch session.status {
         case .waitingInput, .crashed, .preparing, .queued, .running: return statusTitle(session.status)
@@ -95,11 +155,12 @@ struct MenuSessionRow: View {
 struct SessionActions: View {
     @Environment(AppModel.self) private var model
     let session: Session
+    var isChild = false
     @Binding var renaming: Bool
     @Binding var deleting: Bool
 
     var body: some View {
-        if session.status != .archived {
+        if session.status != .archived && !isChild {
             Button(session.pinned ? "Unpin" : "Pin", systemImage: session.pinned ? "pin.slash" : "pin") {
                 Task { await model.setPinned(session, !session.pinned) }
             }
@@ -108,8 +169,25 @@ struct SessionActions: View {
         if session.status == .archived {
             Button("Unarchive", systemImage: "tray.and.arrow.up") { Task { await model.setArchived(session, false) } }
         } else {
-            Button("Archive", systemImage: "archivebox") { Task { await model.setArchived(session, true) } }
-                .disabled(!session.isArchivable)
+            let archivable = model.canArchive(session)
+            let treeBusy = session.isArchivable && !archivable
+            if treeBusy {
+                Button {
+                    Task { await model.setArchived(session, true) }
+                } label: {
+                    Text("Archive")
+                    Text("Tasks are still running")
+                    Image(systemName: "archivebox")
+                }
+                .disabled(true)
+                .accessibilityIdentifier("archive-still-running")
+            } else {
+                Button("Archive", systemImage: "archivebox") {
+                    Task { await model.setArchived(session, true) }
+                }
+                .disabled(!archivable)
+                .accessibilityIdentifier("session-archive")
+            }
         }
         Divider()
         Button("Delete…", systemImage: "trash", role: .destructive) { deleting = true }
@@ -152,7 +230,10 @@ private struct SessionDialogs: ViewModifier {
         let gone = session.branch.isEmpty
             ? String(localized: "Its record and conversation are deleted for good.")
             : String(localized: "Its record, conversation and worktree are deleted for good. The agent’s changes stay on the branch \(session.branch).")
-        return session.isActive ? gone + " " + String(localized: "Its turn in progress is interrupted first.") : gone
+        var parts = [gone]
+        if session.isActive { parts.append(String(localized: "Its turn in progress is interrupted first.")) }
+        if session.isHerConversation { parts.append(String(localized: "The tasks it sent are kept.")) }
+        return parts.joined(separator: " ")
     }
 }
 
@@ -207,9 +288,10 @@ struct ViewMenu: View {
             }
             Menu {
                 Toggle("Metadata", isOn: $model.listView.metadata)
+                Toggle("Nest subtasks", isOn: $model.listView.nest)
             } label: {
                 Text("Show")
-                Text(model.listView.metadata ? "Metadata" : "Title Only")
+                Text(showValue)
             }
         } label: {
             if inBar {
@@ -221,6 +303,15 @@ struct ViewMenu: View {
                     .glassEffect(.regular.interactive(), in: .circle)
                     .contentShape(.circle)
             }
+        }
+    }
+
+    private var showValue: LocalizedStringKey {
+        switch (model.listView.metadata, model.listView.nest) {
+        case (true, true): "Metadata, nested"
+        case (true, false): "Metadata"
+        case (false, true): "Nested"
+        case (false, false): "Title Only"
         }
     }
 

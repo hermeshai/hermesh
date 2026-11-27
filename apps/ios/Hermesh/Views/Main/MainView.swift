@@ -59,7 +59,21 @@ private struct PageView: View {
         case .grants: GrantsView()
         case .machines: EnvironmentsView()
         case .newSession(let machine, let project): SessionPage(machineID: machine, projectID: project).id("new/\(machine)/\(project)")
-        case .session(let id): SessionPage(sessionID: id).id(id)
+        case .session(let id): SessionOrHerPage(sessionID: id).id(id)
+        }
+    }
+}
+
+/// Routes a task session to Her's chat when it is a conversation of hers (docs/her-conversations.md §3.2), else SessionPage.
+struct SessionOrHerPage: View {
+    @Environment(AppModel.self) private var model
+    let sessionID: String
+
+    var body: some View {
+        if model.session(sessionID)?.isHerConversation == true {
+            HerConversationPage(sessionID: sessionID)
+        } else {
+            SessionPage(sessionID: sessionID)
         }
     }
 }
@@ -69,7 +83,7 @@ private struct PageView: View {
     case .machines: EnvironmentsView(isRoot: false)
     case .tasks: TasksView()
     case .grants: GrantsView(isRoot: false)
-    case .session(let id): SessionPage(sessionID: id).id(id)
+    case .session(let id): SessionOrHerPage(sessionID: id).id(id)
     case .grant(let id): GrantView(id: id).syncSubtitle()
     case .machine(let id): EnvironmentView(id: id).syncSubtitle()
     case .machineAgent(let machine, let agent): MachineAgentView(machineID: machine, agent: agent).syncSubtitle()

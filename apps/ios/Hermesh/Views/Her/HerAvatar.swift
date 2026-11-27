@@ -20,6 +20,18 @@ struct HerAvatar: View {
     }
 }
 
+/// Her's cat at small sizes (rows, model badges, subtitle lines), matching Cat.tsx `small = true`:
+/// body, ears, face and larger solid eyes alone, still.
+struct HerSmallCat: View {
+    var size: CGFloat
+
+    var body: some View {
+        Canvas { ctx, _ in HerCat.draw(&ctx, size: size, time: nil, busy: false, small: true) }
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
+    }
+}
+
 /// The cat, on a 120 grid of which the box 8 16 104 104 shows.
 enum HerCat {
     private static func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x, y: y) }
@@ -74,12 +86,25 @@ enum HerCat {
     private static let blush = Color(hex: "ffa3be")
     private static let ink = Color(hex: "3c2f3a")
 
-    /// Draws her in a square of `size`; `time` nil holds her still.
-    static func draw(_ ctx: inout GraphicsContext, size: CGFloat, time: Double?, busy: Bool, asleep: Bool = false) {
+    /// Draws her in a square of `size`; `time` nil holds her still; `small` draws body, ears, face and larger eyes alone.
+    static func draw(_ ctx: inout GraphicsContext, size: CGFloat, time: Double?, busy: Bool, asleep: Bool = false, small: Bool = false) {
         let k = size / 104
         ctx.scaleBy(x: k, y: k)
         ctx.translateBy(x: -8, y: -16)
         let fill = GraphicsContext.Shading.radialGradient(coat, center: pt(44, 50), startRadius: 0, endRadius: 72)
+        if small {
+            for side in [CGAffineTransform.identity, mirror] {
+                let e = ear.applying(side)
+                ctx.fill(e, with: .color(earColor))
+                ctx.stroke(e, with: .color(earColor), style: StrokeStyle(lineWidth: 8, lineJoin: .round))
+            }
+            ctx.fill(body, with: fill)
+            ctx.fill(face, with: .color(Color(hex: "fafbff")))
+            for x in [47.5, 72.5] {
+                ctx.fill(Path(ellipseIn: CGRect(x: x - 5.2, y: 64 - 5.9, width: 10.4, height: 11.8)), with: .color(ink))
+            }
+            return
+        }
         // Blurred in a layer of its own, by the Mac's standard deviation: half of it as a radius here, in points.
         func soft(_ deviation: CGFloat, _ draw: (inout GraphicsContext) -> Void) {
             ctx.drawLayer { layer in

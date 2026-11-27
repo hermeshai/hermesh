@@ -549,7 +549,7 @@ struct SessionBar: View {
 }
 
 /// A button of the page's own bar: its symbol in a circle of the system's glass, the size of the system's bar buttons.
-private struct BarIcon: View {
+struct BarIcon: View {
     let systemImage: String
 
     var body: some View {
@@ -689,7 +689,7 @@ private struct SessionBarTop: ViewModifier {
 /// The system's swipe back from the left edge, on a page that hides the system's bar: UIKit stops that swipe with the
 /// bar hidden. While the page shows, the stack's edge swipe asks this whether to begin (on a pushed page, with no
 /// transition under way) and its own delegate everything else; when the page goes, the swipe is the system's again.
-private struct SwipesBack: UIViewControllerRepresentable {
+struct SwipesBack: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> Controller { Controller() }
     func updateUIViewController(_ controller: Controller, context: Context) {}
 

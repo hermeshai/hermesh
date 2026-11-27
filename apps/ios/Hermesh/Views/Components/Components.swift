@@ -55,15 +55,21 @@ struct AgentLogo: View {
 
     var body: some View {
         let r = size * 0.26
+        let isHer = !initialOnly && id == herAgent
         let tile = Group {
-            if !initialOnly, let a = Self.asset(id) {
+            if isHer {
+                HerSmallCat(size: size)
+            } else if !initialOnly, let a = Self.asset(id) {
                 Image("Logos/\(a)").resizable().interpolation(.high)
+                    .frame(width: size, height: size)
+                    .clipShape(RoundedRectangle(cornerRadius: r, style: .continuous))
             } else {
                 Initial(text: id, color: Self.color(id))
+                    .frame(width: size, height: size)
+                    .clipShape(RoundedRectangle(cornerRadius: r, style: .continuous))
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: r, style: .continuous))
 
         if running {
             tile.scaleEffect(0.80)

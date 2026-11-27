@@ -1,8 +1,6 @@
 # Her 对话：在任务列表里随时开一条 Her
 
-状态：底层能力已实现，2026-11-26，未提交（§4）。交互方案于 2026-11-27 对着可点原型
-[her-conversations-demo.html](her-conversations-demo.html) 定稿（§2、§3）；同日主人授权按"用户体验最好"的
-建议定下了余下的问题，实现改为"Her 作为 hermeshd 的提供方"（§5）。App 部分和 §5 还没开始。
+状态：已实现（2026-11-27）。`her`、`hermeshd`（Her 作为提供方）、`packages/core`、Mac 桌面端与 iPhone 端均已落地并通过端到端验证（包括真实模型测试 `TestHerConversationReal`、后端 `TestHerConversationIsATask`、桌面端 `TestDesktopHerConversations` 与 iPhone `testHerConversations`）。交互原型见 [her-conversations-demo.html](her-conversations-demo.html) 与 [her-conversations-iphone-demo.html](her-conversations-iphone-demo.html)。
 
 ## 0. 结论
 
@@ -154,13 +152,12 @@ Her 对话按任务的规则提醒：需要你处理时、做完时提醒。主�
 
 ### 3.10 iPhone
 
-规则相同，有三点不同：
+规则与桌面端一致（可点原型见 [her-conversations-iphone-demo.html](her-conversations-iphone-demo.html)），针对触屏形态定下四处细节：
 
 - iPhone 没有"按派活的人"分组。
-- 新会话页面板顶部同样是角色切换。
-- 行的菜单是长按，展开 / 收起是点对话行左侧的箭头。
-
-具体的 iPhone 交互，等桌面端做完、做一个 iPhone 原型以后再定。
+- **新会话页**：顶部居中为角色切换（Agent 在左、Her 在右，带极光背景过渡，记住上一次选择）；底部模型面板里 Her 为第一组、默认模型标"默认"，选模型与顶部角色切换双向同步。
+- **Her 对话页**：顶部为两行紧凑液态玻璃胶囊栏（上行任务标题，下行"猫 Her · 机器名"及非默认模型名 / 实时状态），不展示主会话的大头像与团队状态胶囊；右上 `⋯` 菜单包含复制会话 ID、置顶、重命名、归档（子任务运行中置灰并显示副标题"还有任务在进行"）、删除（确认框说明"它派出的任务会保留。"）以及"Her 的设置"入口。
+- **侧栏任务列表**：展开 / 收起点击对话行左侧独立箭头，点标题进入对话；父对话与子任务行各自拥有独立的长按菜单，子任务无置顶按钮且不可单独拖动，拖动父对话时整棵树一起移动。
 
 ### 3.11 新增文案
 
@@ -180,7 +177,7 @@ Her 对话按任务的规则提醒：需要你处理时、做完时提醒。主�
 | 不能归档 | 还有任务在进行 | Tasks are still running |
 | 删除确认 | 它派出的任务会保留。 | The tasks it sent are kept. |
 
-## 4. 已经做好的底层（2026-11-26，未提交）
+## 4. her 与 herlink 底层
 
 ### 4.1 是什么
 
@@ -320,8 +317,11 @@ Her 就成了那台机器上的一个提供方，Her 对话就是这个提供方
 
 ### 5.6 iPhone
 
-和桌面端一样的规则（§3.10）。数据层（任务列表、分组）跟着 core 和 replica 一起就有了，主要工作在界面。
-等桌面端做完，先做一个 iPhone 原型再开始。
+和桌面端一样的规则（§3.10）：
+
+1. **`HermeshSessions` / `HermeshHer`**：`SessionListLayout` 新增 `nest`（默认 `true`），补齐 `childrenOf`、`treeStatus`、`treeUpdated`、`treeMark`、`isTreeArchivable`、`sliceChildren` 与 `sessionSections` 的嵌套分组排序规则（单测 `HerTreeTests`）；`herOutbox` 按 `conversation` 隔离主会话与各条 Her 对话的待发消息。
+2. **新会话页与模型面板**：`PresenceView` 实现角色切换、极光背景与离线环境说明；`SessionPage` 与 `ModelSheet` 实现 Her 第一组排序、"默认"标记及双向角色联动。
+3. **Her 对话页与侧栏**：`HerChat` / `HerPlace` 支持按 `conversation` 独立连接与发送（避免未创建 ID 时误连主会话，跳过主会话专属的引导与已读计数）；`HerConversationPage` 展示两行紧凑顶栏与 `⋯` 菜单；`DrawerView` / `SessionsView` 实现独立列表行的子任务树、左侧箭头收起展开、"嵌套子任务"视图开关及整棵树归档/拖动规则。
 
 ### 5.7 风险
 
@@ -355,7 +355,8 @@ Her 就成了那台机器上的一个提供方，Her 对话就是这个提供方
   - 按项目分组时，Her 排在置顶之后。
   - 有任务在进行时，归档置灰。
 - **截图检查**：按 hands-on-desktop-walkthrough 的做法走一遍，看布局和动效。
-- **iPhone**：XCUITest 覆盖同样的流程。
+- **真实模型端到端**：`e2e/her_conversation_real_test.go`（`TestHerConversationReal`），用真实模型开 Her 对话、经审批派出编码 agent、子任务挂树、回报回到该对话且主会话不受影响、最后删除对话。
+- **iPhone**：`HerTreeTests` 覆盖分组与子树单测；`HerConversationsUITests`（`testHerConversations`）端到端覆盖新会话角色切换与重启记忆、模型面板联动、`HerConversationPage` 审批、侧栏子任务树展开收起、按项目分组 Her 置首、"嵌套子任务"开关、运行中禁止归档提示、子任务无置顶、完成回报定向回到该对话且主会话不受影响。
 
 ## 7. 分步
 
