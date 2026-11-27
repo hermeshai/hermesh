@@ -61,7 +61,8 @@ Shared between TypeScript (`packages/her-client/src/refs.ts`) and Swift (`Hermes
 
 - **Inline presentation**:
   - Single image: left-aligned in the prose column, `max-width: min(460px, 100%)`, `max-height: 380px`, `object-fit: contain`, `border-radius: var(--r-lg)` (`10px`), `0.5px` inner border (`var(--sep)`), `var(--fill)` ground for transparent PNGs, `cursor: zoom-in`. A `1206 × 2622` portrait phone screenshot sits at `~175 × 380 px` instead of dominating 1,000 px of vertical scroll.
-  - Multiple images in one block/strip: side-by-side flex row (`gap: 8px`, shared row height up to `300px`, weighted by aspect ratio as in `her/Messages.tsx` `ImageGroup`), with subtle captions when `alt`/label is descriptive.
+  - 2 images in one block/strip: 2-column side-by-side comparison (`gap: 10px`) with clean 2-line captions placed underneath the image frame instead of covering the screenshot.
+  - 3+ consecutive images (from `carousel`, multi-image paragraphs, blank-line-separated pure-image blocks, pure-image lists, or linked-image strips): **Focus Stage + Filmstrip** (`simg-stage`, `264px` steady height so stepping never shifts scroll, `1 / N · W × H` pill, `‹` / `›` + keyboard arrow stepping, 2-line caption bar, and `56 × 34px` filmstrip thumbnails; active & neighbor slides prioritized in the fetch queue).
 - **Blurred Lightbox**:
   - Full-window portal with dark translucent veil + Gaussian blur (`backdrop-filter: blur(22px) saturate(1.28)`), paired with `html.vibrant:has(..., .lightbox)` so macOS sidebar vibrancy turns opaque and never bleeds sharp text through the blur.
   - **Symmetric top bar (`96px minmax(0, 1fr) 96px`)**:
@@ -74,7 +75,7 @@ Shared between TypeScript (`packages/her-client/src/refs.ts`) and Swift (`Hermes
 
 - **Inline presentation**:
   - Single portrait screenshot: capped at `maxHeight: 260pt`, `maxWidth: 100%`, continuous `cornerRadius: 14pt`, `0.5pt` `Palette.separator` stroke. Keeps surrounding chat readable on a `393pt`–`402pt` screen.
-  - 2 images in one block/strip (e.g. Before / After): **2-column side-by-side row** (`HStack(spacing: 8)`, height `220pt`) with compact bottom-left corner badges (`修复前` / `修复后`); 3+ images use a horizontal view-aligned snap strip.
+  - 2 images in one block/strip (e.g. Before / After): **2-column side-by-side row** (`HStack(spacing: 8)`) with captions placed below the image frame; 3+ consecutive images use a **Focus Stage + Filmstrip** (`SessionImageStageView`: paged `TabView` stage at `214pt` height, `1 / N` badge, 2-line caption bar, and horizontal `54 × 32pt` filmstrip).
   - Long-press (`.contextMenu`): native lift preview + `查看大图`、`存储到相册`、`分享…`、`拷贝路径`.
 - **Full-screen Blurred Lightbox (replaces pushing `SessionFilePage` for images)**:
   - Overlays the session with darkened `.ultraThinMaterial` blur + spring zoom transition.
