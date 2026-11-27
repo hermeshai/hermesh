@@ -164,14 +164,13 @@ func (c conversations) NewConversation(ctx context.Context, model, thinking stri
 	return r.SessionID, nil
 }
 
-// open attaches conn to the conversation, loading it.
-func (c conversations) open(ctx context.Context, conn *conn, id string) error {
+// open attaches conn to the conversation, loading it and returning bots/open's reply.
+func (c conversations) open(ctx context.Context, conn *conn, id string) (json.RawMessage, error) {
 	bot, err := c.bot()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	_, err = callOn(ctx, conn, "bots/open", map[string]any{"bot_id": bot, "conversation": id, "history_limit": 0, "events": convEvents})
-	return err
+	return callOn(ctx, conn, "bots/open", map[string]any{"bot_id": bot, "conversation": id, "history_limit": 0, "events": convEvents})
 }
 
 func (c conversations) Attach(ctx context.Context, id string) (her.Conversation, error) {
@@ -179,13 +178,90 @@ func (c conversations) Attach(ctx context.Context, id string) (her.Conversation,
 	if err != nil {
 		return nil, err
 	}
-	if err := c.open(ctx, conn, id); err != nil {
+	opened, err := c.open(ctx, conn, id)
+	if err != nil {
 		conn.Close()
 		return nil, err
 	}
-	f := &followed{id: id, conn: conn, events: make(chan json.RawMessage, 64)}
+	seed := snapshotEvents(opened)
+	f := &followed{id: id, conn: conn, events: make(chan json.RawMessage, max(64, len(seed)+64))}
+	for _, ev := range seed {
+		f.events <- ev
+	}
 	go f.relay()
 	return f, nil
+}
+
+// snapshotEvents turns work already running in bots/open's snapshot (an active turn, running
+// sub-agents, or pending approvals) into initial events so a resumed lease sees them too.
+func snapshotEvents(raw json.RawMessage) []json.RawMessage {
+	type approval struct {
+		CallID  string          `json:"call_id"`
+		Name    string          `json:"name"`
+		Args    json.RawMessage `json:"args"`
+		Summary string          `json:"summary"`
+		Reason  string          `json:"reason"`
+	}
+	type activeTask struct {
+		TaskID    string     `json:"task_id"`
+		Approvals []approval `json:"approvals"`
+	}
+	var r struct {
+		Snapshot struct {
+			ActiveTask *activeTask `json:"active_task"`
+			Agents     []struct {
+				AgentID     string      `json:"agent_id"`
+				Name        string      `json:"name"`
+				Description string      `json:"description"`
+				CallID      string      `json:"call_id"`
+				Status      string      `json:"status"`
+				ActiveTask  *activeTask `json:"active_task"`
+			} `json:"agents"`
+		} `json:"snapshot"`
+	}
+	if json.Unmarshal(raw, &r) != nil {
+		return nil
+	}
+	var out []json.RawMessage
+	emit := func(v any) {
+		if b, err := json.Marshal(v); err == nil {
+			out = append(out, b)
+		}
+	}
+	askPayload := func(a approval) map[string]any {
+		m := map[string]any{"type": "approval_requested", "call_id": a.CallID, "name": a.Name, "summary": a.Summary}
+		if len(a.Args) > 0 {
+			m["args"] = a.Args
+		}
+		if a.Reason != "" {
+			m["reason"] = a.Reason
+		}
+		return m
+	}
+	if t := r.Snapshot.ActiveTask; t != nil {
+		emit(map[string]any{"type": "task_started", "task_id": t.TaskID})
+		for _, a := range t.Approvals {
+			emit(askPayload(a))
+		}
+	}
+	for _, ag := range r.Snapshot.Agents {
+		if ag.Status != "running" || ag.AgentID == "" {
+			continue
+		}
+		emit(map[string]any{
+			"type":        "agent_started",
+			"agent_id":    ag.AgentID,
+			"name":        ag.Name,
+			"description": ag.Description,
+			"call_id":     ag.CallID,
+		})
+		if ag.ActiveTask != nil {
+			for _, a := range ag.ActiveTask.Approvals {
+				emit(map[string]any{"type": "agent_event", "agent_id": ag.AgentID, "event": askPayload(a)})
+			}
+		}
+	}
+	return out
 }
 
 func (c conversations) Op(ctx context.Context, id string, op any) error {
@@ -194,7 +270,7 @@ func (c conversations) Op(ctx context.Context, id string, op any) error {
 		return err
 	}
 	defer conn.Close()
-	if err := c.open(ctx, conn, id); err != nil {
+	if _, err := c.open(ctx, conn, id); err != nil {
 		return err
 	}
 	_, err = callOn(ctx, conn, "session/op", map[string]any{"session_id": id, "op": op})

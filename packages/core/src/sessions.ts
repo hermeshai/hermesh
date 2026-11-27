@@ -263,13 +263,11 @@ export function herParentOf(s: Session): string | undefined {
 export const HER_SECTION = "her";
 
 /**
- * The work under each conversation with Her, newest first, while the view nests it: only work whose
- * conversation is in `sessions` too, and only while neither is archived (an archived one is listed
- * on its own).
+ * All non-archived work sent from each non-archived conversation with Her in `sessions`, newest
+ * first, whether or not the list currently nests child rows under it.
  */
-export function childrenOf(sessions: readonly Session[], view: Pick<SessionView, "nest">): Map<string, Session[]> {
+export function herChildren(sessions: readonly Session[]): Map<string, Session[]> {
   const out = new Map<string, Session[]>();
-  if (!view.nest) return out;
   const parents = new Set(sessions.filter((s) => isHerConversation(s) && s.status !== SessionStatus.ARCHIVED).map((s) => s.sessionId));
   for (const s of sessions) {
     const parent = herParentOf(s);
@@ -280,6 +278,15 @@ export function childrenOf(sessions: readonly Session[], view: Pick<SessionView,
   }
   for (const list of out.values()) list.sort((a, b) => byNewest(updatedDate(a), updatedDate(b)));
   return out;
+}
+
+/**
+ * The work under each conversation with Her, newest first, while the view nests it: only work whose
+ * conversation is in `sessions` too, and only while neither is archived (an archived one is listed
+ * on its own).
+ */
+export function childrenOf(sessions: readonly Session[], view: Pick<SessionView, "nest">): Map<string, Session[]> {
+  return view.nest ? herChildren(sessions) : new Map();
 }
 
 /** A conversation and the work under it: the most pressing state of them (needs you, runs, done). */
@@ -437,11 +444,12 @@ export function sessionSections(
   const by = new Map<string, Session[]>();
   const pinned: Session[] = [];
   const archived: Session[] = [];
-  // Nested, the work under a conversation with Her goes where the conversation goes, and the
-  // conversation is placed by all of it (docs/her-conversations.md D8, D9).
-  const children = childrenOf(sessions, view);
+  // Nested, the work under a conversation with Her goes where the conversation goes; nested or flat,
+  // a conversation is placed by all the work it sent so it never reads as Done while work still runs (docs/her-conversations.md D8, D9).
+  const allChildren = herChildren(sessions);
+  const children = view.nest ? allChildren : new Map<string, Session[]>();
   const nested = new Set([...children.values()].flat().map((c) => c.sessionId));
-  const kidsOf = (s: Session) => children.get(s.sessionId) ?? [];
+  const kidsOf = (s: Session) => allChildren.get(s.sessionId) ?? [];
   for (const s of sessions) {
     if (s.status === SessionStatus.ARCHIVED) {
       if (o.archived) archived.push(s);
@@ -498,7 +506,7 @@ export function sessionSections(
       timeFor,
       view.newestFirst,
       o.activeOrder,
-      (s) => isActBucket || (isActive(s) && !needsAttention(s)),
+      (s) => isActBucket || treeStatus(s, kidsOf(s)) === "active",
     );
   };
 
@@ -544,13 +552,14 @@ export function sliceSectionSessions(
   grouping: SessionSection["grouping"],
   limit = SECTION_INITIAL_LIMIT,
   selectedId?: string | null,
+  trees?: ReadonlyMap<string, readonly Session[]>,
 ): SectionSlice {
   const cap = Math.max(0, limit);
   if (!isCappedGrouping(grouping) || sessions.length <= cap + 1) {
     return { visible: [...sessions], hiddenCount: 0 };
   }
   const head = sessions.slice(0, cap);
-  const pinned = sessions.slice(cap).filter((s) => s.sessionId === selectedId || needsAttention(s) || isActive(s));
+  const pinned = sessions.slice(cap).filter((s) => s.sessionId === selectedId || treeStatus(s, trees?.get(s.sessionId) ?? []) !== "done");
   const hiddenCount = sessions.length - head.length - pinned.length;
   if (hiddenCount <= 1) {
     return { visible: [...sessions], hiddenCount: 0 };
@@ -595,7 +604,11 @@ export function searchSessions(
   text: (s: Session) => string,
 ): Session[] {
   const q = trimWhitespace(query).toLowerCase();
-  const rank = (s: Session) => (needsAttention(s) ? 0 : isActive(s) ? 1 : 2);
+  const kids = herChildren(sessions);
+  const rank = (s: Session) => {
+    const st = treeStatus(s, kids.get(s.sessionId) ?? []);
+    return st === "attention" ? 0 : st === "active" ? 1 : 2;
+  };
   return sessions
     .filter(
       (s) =>
@@ -622,12 +635,21 @@ export interface TodayStats {
 }
 
 export function todayStats(all: Session[], now: Date, hours = 9): TodayStats {
-  const today = all.filter((s) => sameDay(updatedDate(s), now) || sameDay(createdDate(s), now) || isActive(s));
+  const kids = herChildren(all);
+  const today = all.filter(
+    (s) => sameDay(updatedDate(s), now) || sameDay(createdDate(s), now) || isActive(s) || (kids.get(s.sessionId)?.some(isActive) ?? false),
+  );
   const t: TodayStats = {
     sessions: today.length,
-    done: today.filter(
-      (s) => !isFailed(s) && (s.status === SessionStatus.IDLE || s.status === SessionStatus.ARCHIVED),
-    ).length,
+    done: today.filter((s) => {
+      const k = kids.get(s.sessionId) ?? [];
+      return (
+        !isFailed(s) &&
+        !isActive(s) &&
+        (s.status === SessionStatus.IDLE || s.status === SessionStatus.ARCHIVED) &&
+        !k.some((c) => isActive(c) || c.status === SessionStatus.WAITING_INPUT)
+      );
+    }).length,
     failed: today.filter(isFailed).length,
     files: 0,
     insertions: 0,

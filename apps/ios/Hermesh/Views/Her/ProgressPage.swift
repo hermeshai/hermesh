@@ -131,7 +131,7 @@ private struct ProgressBoard: View {
     @State private var source: Source?
 
     var body: some View {
-        let chat = model.her.chat(machine.machineID, model: model)
+        let chat = model.her.chat(machine.machineID, conversation: model.her.conversation, model: model)
         let all = posts(chat.progress).sorted { $0.at > $1.at }
         let need = all.filter(\.stand.needsOwner)
         let working = all.filter(\.stand.atWork)
@@ -645,7 +645,7 @@ struct ProgressAgentPage: View {
 
     var body: some View {
         if let machine = herPick(herEnvironments(model.machines), remembered: model.her.machine) {
-            let chat = model.her.chat(machine.machineID, model: model)
+            let chat = model.her.chat(machine.machineID, conversation: model.her.conversation, model: model)
             let found = find(chat.progress)
             Group {
                 if let found, let agent = found.launch.agent {

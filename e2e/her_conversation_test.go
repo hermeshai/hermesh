@@ -139,6 +139,27 @@ func TestHerConversationIsATask(t *testing.T) {
 		t.Fatalf("what Her read of the answer: %s", transcript)
 	}
 
+	// A sub-agent Her spawns keeps the conversation active (active_background_count > 0) after Her's
+	// own turn ends, puts its approval to the owner via agent_approval, and settles once Her reports back.
+	if _, err := sc.DispatchMessage(ctx, &sessionv1.DispatchMessageRequest{
+		CommandId: "her-conv-subagent", MachineId: env.machine, SessionId: conv, Text: "[[mock:relay_run:touch sub_made.txt]] 派子智能体建文件",
+		Intent: sessionv1.DispatchIntent_DISPATCH_INTENT_START,
+	}); err != nil {
+		t.Fatalf("sub-agent message: %v", err)
+	}
+	s = waitFor("sub-agent's approval while active_background_count > 0", conv, func(s *sessionv1.Session) bool {
+		return s.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT && s.ActiveBackgroundCount > 0 && s.PendingRequestId != ""
+	})
+	if _, err := sc.RespondRuntimeRequest(ctx, &sessionv1.RespondRuntimeRequestRequest{
+		CommandId: "her-conv-subagent-approve", MachineId: env.machine, SessionId: conv, RequestId: s.PendingRequestId,
+		Decision: sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE,
+	}); err != nil {
+		t.Fatalf("approving sub-agent: %v", err)
+	}
+	waitFor("Her's summary after sub-agent finishes", conv, func(s *sessionv1.Session) bool {
+		return s.Status == sessionv1.SessionStatus_SESSION_STATUS_IDLE && s.ActiveBackgroundCount == 0 && strings.Contains(s.Result, "<agent_report")
+	})
+
 	// Deleting the session deletes Her's conversation too.
 	if _, err := sc.DeleteSession(ctx, &sessionv1.DeleteSessionRequest{MachineId: env.machine, SessionId: conv}); err != nil {
 		t.Fatalf("delete: %v", err)

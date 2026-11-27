@@ -4,8 +4,8 @@ import XCTest
 /// her itself with her-mock as its model. Mirrors apps/desktop/e2e/her-conversations.spec.ts:
 /// Her turned on and connected; a new session goes to Agent the first time, Her small on the right;
 /// tapping Her switches the page to her question, her machine and her models (first in the model sheet,
-/// her default badged); starting a conversation opens HerConversationPage under its compact two-line bar;
-/// Her asks before starting a coding agent; the child nests under the conversation in the drawer, folds
+/// her default badged); starting a conversation opens HerConversationPage with Her's animated avatar and
+/// floating team capsule; Her asks before starting a coding agent; the child nests under the conversation in the drawer, folds
 /// and unfolds, blocks archiving while running, has no pin of its own, groups under Her first by project,
 /// and un-nests when "嵌套子任务" is off; the child's news comes back to this conversation while Her's main
 /// conversation never hears of it; and the next new session remembers Her across restarts too.
@@ -75,10 +75,10 @@ extension HermeshUITests {
         let aiAllow = app.alerts["与第三方 AI 共享数据？"].buttons["允许与 AI 共享"]
         if aiAllow.waitForExistence(timeout: 3) { aiAllow.tap() }
 
-        let barWhere = any["session-where"].firstMatch
-        XCTAssertTrue(barWhere.waitForExistence(timeout: 60), "HerConversationPage compact bar")
-        XCTAssertTrue(waitUntil(timeout: 30) { barWhere.label.contains("Her") && barWhere.label.contains("owner-mac") }, barWhere.label)
-        XCTAssertFalse(app.buttons["her-tag"].exists, "compact bar, not main Her's large avatar and team tag")
+        let avatar = app.buttons["her-avatar"]
+        XCTAssertTrue(avatar.waitForExistence(timeout: 60), "HerConversationPage shares Her's animated avatar")
+        XCTAssertTrue(app.buttons["her-tag"].exists, "HerConversationPage shares Her's floating team capsule")
+        XCTAssertTrue(waitUntil(timeout: 30) { app.buttons["her-progress"].exists }, "HerConversationPage shows Progress button")
 
         let approval = any["her-approval"].firstMatch
         XCTAssertTrue(approval.waitForExistence(timeout: 60), "Her asks before starting the coding agent")
@@ -97,7 +97,7 @@ extension HermeshUITests {
         let childRow = drawer.buttons["session-对话派的活"]
         XCTAssertTrue(childRow.waitForExistence(timeout: 15), "nested child row visible")
         let parentBtn = tree.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'session-' AND identifier != 'session-对话派的活'")).firstMatch
-        XCTAssertTrue(waitUntil(timeout: 20) { (parentBtn.value as? String ?? "").isEmpty }, "Her's own turn settled to idle in Watch")
+        XCTAssertTrue(waitUntil(timeout: 20) { (parentBtn.value as? String) == "运行中" }, "parent row stays visibly running while child runs")
         let activeHeader = drawer.buttons["group-进行中"]
         let doneHeader = drawer.buttons["group-已结束"]
         if activeHeader.exists && doneHeader.exists {
@@ -106,12 +106,13 @@ extension HermeshUITests {
         }
         herShot("Her conversations: nested subtask tree in drawer")
 
-        // Fold and unfold via the left chevron.
+        // Fold and unfold via the left chevron: parent row stays 运行中 while folded too.
         let twist = tree.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'twist-'")).firstMatch
         XCTAssertTrue(twist.exists && twist.label == "收起", twist.label)
         press(twist)
         XCTAssertTrue(childRow.waitForNonExistence(timeout: 5), "folded: child hidden")
         XCTAssertEqual(twist.label, "展开")
+        XCTAssertEqual(parentBtn.value as? String, "运行中", "folded parent row still reports running")
         press(twist)
         XCTAssertTrue(childRow.waitForExistence(timeout: 5), "unfolded: child visible again")
 

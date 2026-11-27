@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { botWorking, herStatus, routineDot, type SessionView } from "@hermesh/her-client";
-import type { Session } from "@hermesh/proto/session";
-import { displayTitle } from "@hermesh/core";
-import { AgentLogo } from "@hermesh/ui";
+import { botWorking, herStatus, routineDot, runningAgents, type SessionView } from "@hermesh/her-client";
+import { SessionStatus, type Session } from "@hermesh/proto/session";
+import { isArchivable } from "@hermesh/core";
 import { Icon } from "../icons";
+import { setSidebar } from "../layout";
 import { TitleShine } from "../runningMotion";
+import { archive, canArchive, confirmDelete, togglePin, unarchive } from "../Sidebar";
 import { Avatar, BotAvatar } from "./Avatar";
 import { useHer } from "./context";
 import { reachable } from "./environments";
@@ -14,17 +15,17 @@ import { TagWords, TeamPanel, useTeam } from "../team";
 import { useNow, useStore } from "../store";
 
 /**
- * The Her page's top (docs/her-server.md §9.1), as on the iPhone: Her's avatar in the middle, larger than a bar's,
- * its name on a capsule over the avatar's lower edge, and the conversation scrolling under them. A click on the avatar
- * opens her page beside the conversation (docs/her-panel-demo.html), where her work, her abilities and her settings
- * are; the avatar is marked while a scheduled task's last run failed. The capsule is the team's: it opens the team
- * panel. On the right Progress, looked at often, marked while her work waits or runs; then ⋯: the environments, the
- * environment's console, and another environment.
+ * The Her page's top (docs/her-server.md §9.1, docs/her-conversations.md §3.2), shared by Her's main conversation and
+ * conversations opened from the task list: Her's avatar in the middle, larger than a bar's, its name on a capsule over
+ * the avatar's lower edge, and the conversation scrolling under them. A click on the avatar opens her page beside the
+ * conversation (docs/her-panel-demo.html), where her work, her abilities and her settings are; the avatar is marked
+ * while a scheduled task's last run failed. The capsule is the team's: it opens the team panel. On the right Progress,
+ * looked at often, marked while her work waits or runs; then ⋯: task actions (when in a task conversation), the
+ * environments, the environment's console, and another environment.
  */
-export function TopBar({ view }: { view?: SessionView | null } = {}) {
+export function TopBar({ view, task }: { view?: SessionView | null; task?: Session } = {}) {
   const { t } = useTranslation("her");
   const her = useHer();
-  const st = useStore();
   const bot = her.bot;
   const panel = her.panel;
   const team = useTeam();
@@ -40,12 +41,13 @@ export function TopBar({ view }: { view?: SessionView | null } = {}) {
   // A scheduled task's last run failed, which her page's card says; what waits in Progress, its button does.
   const waits = bot ? routineDot(bot.routines) === "failed" : false;
   const label = waits ? `${t("head.settings")} · ${t("head.waiting")}` : t("head.settings");
+  const busy = task ? !!(view?.live || (view && runningAgents(view).length > 0)) : bot ? botWorking(bot) : false;
   return (
     <div className="ctool drag her-head">
       <div className="her-id">
         {bot ? (
           <button className="her-id-av" title={label} aria-label={label} aria-pressed={!!panel} data-testid="her-avatar" onClick={() => her.setPanel(panel ? null : { kind: "settings" })}>
-            <BotAvatar bot={bot} size={56} busy={botWorking(bot)} />
+            <BotAvatar bot={bot} size={56} busy={busy} />
             {waits && <i className="her-id-dot" aria-hidden="true" />}
           </button>
         ) : (
@@ -59,55 +61,30 @@ export function TopBar({ view }: { view?: SessionView | null } = {}) {
       </div>
       {teamOpen && <TeamPanel onClose={closeTeam} />}
       <span className="bhead-gap" />
-      {bot && <ProgressButton />}
-      <MoreMenu />
-    </div>
-  );
-}
-
-/**
- * A conversation with Her opened from the task list (docs/her-conversations.md §3.2): the task's title, then Her and
- * where she is, and the model when it is not her default; on the right her status and ⋯, as on her page.
- */
-export function ConversationBar({ task, view }: { task: Session; view: SessionView | null }) {
-  const { t } = useTranslation("her");
-  const her = useHer();
-  const now = useNow(view?.live?.retry ? 1000 : 60_000).getTime();
-  const status = view ? herStatus(view, now) : null;
-  const model = view?.info.model ?? task.modelSelection?.model ?? "";
-  const named = model && model !== her.env.models.defaults?.model ? her.env.models.models.find((m) => m.id === model)?.name ?? model : "";
-  return (
-    <div className="ctool drag">
-      <div className="ctitle">
-        <h2 data-testid="thread-title" title={displayTitle(task)}>
-          {displayTitle(task)}
-        </h2>
-        <span className="th-where" data-testid="session-where">
-          <AgentLogo agent="her" size={14} />
-          {[her.bot?.name ?? "Her", her.machine.machineName, named].filter(Boolean).join(" · ")}
-        </span>
-      </div>
-      {status && (
-        <span className="th-where her-conv-st" role="status">
-          <span className="wb-sweep">{t(`line.${status}`)}</span>
-        </span>
-      )}
-      <MoreMenu />
+      {bot && <ProgressButton view={view} task={task} />}
+      <MoreMenu task={task} />
     </div>
   );
 }
 
 /** Progress (docs/her-team.md §15): marked orange while a sub-agent of hers waits for the owner, else blue while one is at work. */
-function ProgressButton() {
+function ProgressButton({ view, task }: { view?: SessionView | null; task?: Session }) {
   const { t } = useTranslation("her");
   const st = useStore();
   const her = useHer();
-  const { waits, running } = st.herAgents ?? { waits: 0, running: 0 };
+  const counts = task
+    ? (() => {
+        const live = view ? runningAgents(view) : [];
+        const waits = live.filter((a) => (a.view.live?.approvals.length ?? 0) > 0).length;
+        return { waits, running: live.length - waits };
+      })()
+    : (st.herAgents ?? { waits: 0, running: 0 });
+  const { waits, running } = counts;
   const label = waits > 0 ? `${t("progress.title")} · ${t("progress.waiting", { count: waits })}`
     : running > 0 ? `${t("progress.title")} · ${t("progress.atWork", { count: running })}`
     : t("progress.title");
   return (
-    <button className="tb rtn-btn" title={label} aria-label={label} data-testid="her-progress" onClick={() => st.set({ selection: { kind: "progress", machine: her.machine.machineId } })}>
+    <button className="tb rtn-btn" title={label} aria-label={label} data-testid="her-progress" onClick={() => her.openProgress()}>
       <Icon name="pulse" />
       {(waits > 0 || running > 0) && <i className={`rtn-dot ${waits > 0 ? "" : "run"}`} />}
     </button>
@@ -151,32 +128,61 @@ function useMenu(edge: "left" | "right") {
   return { open, btn, toggle, close, props };
 }
 
-function Item({ icon, children, onClick }: { icon: string; children: ReactNode; onClick: () => void }) {
+function Item({ icon, children, disabled, title, danger, onClick }: { icon?: string; children: ReactNode; disabled?: boolean; title?: string; danger?: boolean; onClick: () => void }) {
   return (
-    <button className="mi" role="menuitem" tabIndex={-1} onMouseMove={(e) => e.currentTarget.focus()} onClick={onClick}>
-      <Icon name={icon} />
+    <button className={`mi ${danger ? "danger" : ""}`} role="menuitem" tabIndex={-1} disabled={disabled} title={title} onMouseMove={(e) => e.currentTarget.focus()} onClick={onClick}>
+      {icon && <Icon name={icon} />}
       <span>{children}</span>
     </button>
   );
 }
 
 /**
- * ⋯: the environments when Her runs on more than one machine (the one shown checked, whether each is online and
- * what is unread there; the capsule is the team's now, docs/her-team.md §14.3), the environment's console ("Manage
- * this environment"), and Add Environment.
+ * ⋯: on a task conversation, its actions (pin, rename, archive, copy id, delete) and the environment's console; on
+ * Her's main page, the environments when Her runs on more than one machine, the environment's console, and Add Environment.
  */
-function MoreMenu() {
-  const { t } = useTranslation("her");
+function MoreMenu({ task }: { task?: Session }) {
+  const { t } = useTranslation(["her", "common"]);
+  const st = useStore();
   const her = useHer();
   const menu = useMenu("right");
   const m = her.machine;
+  const archived = task?.status === SessionStatus.ARCHIVED;
+  const archivable = task ? archived || canArchive(st, task) : false;
+  const waits = task ? !archived && isArchivable(task) && !canArchive(st, task) : false;
   return (
     <>
-      <button ref={menu.btn} className={`tb ${menu.open ? "on" : ""}`} title={t("page.more")} aria-label={t("page.more")} aria-haspopup="menu" aria-expanded={!!menu.open} onClick={menu.toggle}>
+      <button ref={menu.btn} className={`tb ${menu.open ? "on" : ""}`} title={t("her:page.more")} aria-label={t("her:page.more")} aria-haspopup="menu" aria-expanded={!!menu.open} onClick={menu.toggle}>
         <Icon name="more" />
       </button>
       {menu.open && (
-        <div {...menu.props(t("page.more"))}>
+        <div {...menu.props(t("her:page.more"))}>
+          {task && (
+            <>
+              {!archived && (
+                <Item onClick={() => (menu.close(), togglePin(st, task))}>
+                  {t(task.pinned ? "common:sessionMenu.unpin" : "common:sessionMenu.pin")}
+                </Item>
+              )}
+              <Item onClick={() => (menu.close(), setSidebar(st, true), st.set({ renaming: task.sessionId }))}>
+                {t("common:sessionMenu.rename")}
+              </Item>
+              <Item
+                disabled={!archivable}
+                title={waits ? t("common:sessionMenu.stillRunning") : undefined}
+                onClick={() => (menu.close(), archived ? void unarchive(st, task) : archive(st, task))}
+              >
+                {t(archived ? "common:sessionMenu.unarchive" : "common:sessionMenu.archive")}
+              </Item>
+              <Item onClick={() => (menu.close(), void navigator.clipboard.writeText(task.sessionId))}>
+                {t("common:sessionMenu.copyId")}
+              </Item>
+              <Item danger onClick={() => (menu.close(), confirmDelete(st, task))}>
+                {t("common:sessionMenu.delete")}
+              </Item>
+              <div className="msep" role="separator" />
+            </>
+          )}
           {her.envs.length > 1 && !her.conversation && (
             <>
               {her.envs.map((e) => (
@@ -184,7 +190,7 @@ function MoreMenu() {
                   <span className="ck">{e.machineId === m.machineId && <Icon name="check" className="sm" />}</span>
                   <span className="two">
                     {e.machineName}
-                    <span>{reachable(e) ? t("env.online") : t("env.offlineShort")}</span>
+                    <span>{reachable(e) ? t("her:env.online") : t("her:env.offlineShort")}</span>
                   </span>
                   {(e.her?.unread ?? 0) > 0 && <span className="bbadge">{e.her!.unread}</span>}
                 </button>
@@ -193,11 +199,11 @@ function MoreMenu() {
             </>
           )}
           <Item icon="gear" onClick={() => (menu.close(), her.openConsole())}>
-            {t("page.manage", { name: m.machineName })}
+            {t("her:page.manage", { name: m.machineName })}
           </Item>
           {!her.conversation && (
             <Item icon="plus" onClick={() => (menu.close(), her.setSheet({ kind: "add" }))}>
-              {t("page.addEnvironment")}
+              {t("her:page.addEnvironment")}
             </Item>
           )}
         </div>

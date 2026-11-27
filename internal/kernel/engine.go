@@ -4937,13 +4937,24 @@ func (e *Engine) finishRunCompleted(sessionID, runID, psID string, cp *sessionv1
 		} else {
 			sess.ActiveRunId = ""
 			sess.QueuedRunCount = uint32(len(queued))
+			keepBgReq := false
+			if sess.PendingRequestId != "" {
+				if curReq, rErr := tx.GetRuntimeRequest(sess.PendingRequestId); rErr == nil &&
+					curReq.Status == sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING && curReq.RunId == "" {
+					keepBgReq = true
+				}
+			}
 			if len(queued) > 0 {
 				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_QUEUED
+				sess.PendingRequestId = ""
+				sess.Progress.PendingQuestion = nil
+			} else if keepBgReq {
+				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT
 			} else {
 				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+				sess.PendingRequestId = ""
+				sess.Progress.PendingQuestion = nil
 			}
-			sess.PendingRequestId = ""
-			sess.Progress.PendingQuestion = nil
 		}
 		if err := putSessionSynced(tx, sess); err != nil {
 			return err
@@ -5237,7 +5248,7 @@ func (e *Engine) makeGate(sessionID, workdir string) runtime.GateFunc {
 		if err != nil {
 			return runtime.ToolGateResult{}, err
 		}
-		if sess.ActiveProviderSessionId != "" {
+		if !req.Background && sess.ActiveProviderSessionId != "" {
 			if pump := e.getLeasePump(sess.ActiveProviderSessionId); pump != nil {
 				if sess.ActiveRunId == "" {
 					if h := e.ensureContinuationTurn(pump); h != nil {
@@ -5251,7 +5262,13 @@ func (e *Engine) makeGate(sessionID, workdir string) runtime.GateFunc {
 			}
 		}
 		runID := sess.ActiveRunId
-		curRun, _ := e.st.Run(runID)
+		if req.Background {
+			runID = ""
+		}
+		var curRun *sessionv1.Run
+		if runID != "" {
+			curRun, _ = e.st.Run(runID)
+		}
 
 		if req.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL && req.Approval != nil && !req.Delegated {
 			mode, imode := sess.EffectiveRuntimeMode, sess.InteractionMode
@@ -5342,17 +5359,24 @@ func (e *Engine) makeGate(sessionID, workdir string) runtime.GateFunc {
 			if sNow.Progress == nil {
 				sNow.Progress = &sessionv1.SessionProgress{}
 			}
-			rNow, err := tx.GetRun(runID)
-			if err != nil {
-				return err
+			var rNow *sessionv1.Run
+			if runID != "" {
+				rNow, err = tx.GetRun(runID)
+				if err != nil {
+					return err
+				}
+				rNow.Status = sessionv1.RunStatus_RUN_STATUS_WAITING_REQUEST
 			}
-			rNow.Status = sessionv1.RunStatus_RUN_STATUS_WAITING_REQUEST
 			sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT
 			sNow.PendingRequestId = reqID
 			if req.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT && req.UserInput != nil {
+				var turn uint32
+				if rNow != nil {
+					turn = rNow.Ordinal
+				}
 				sNow.Progress.PendingQuestion = &sessionv1.Question{
 					QuestionId:           reqID,
-					Turn:                 rNow.Ordinal,
+					Turn:                 turn,
 					Items:                req.UserInput.Questions,
 					AskedAt:              timestamppb.New(now),
 					ExpiresAt:            expiresAt,
@@ -5373,8 +5397,10 @@ func (e *Engine) makeGate(sessionID, workdir string) runtime.GateFunc {
 			if err := tx.PutTurnItem(item); err != nil {
 				return err
 			}
-			if err := tx.PutRun(rNow); err != nil {
-				return err
+			if rNow != nil {
+				if err := tx.PutRun(rNow); err != nil {
+					return err
+				}
 			}
 			if err := putSessionSynced(tx, sNow); err != nil {
 				return err
@@ -5400,9 +5426,12 @@ func (e *Engine) makeGate(sessionID, workdir string) runtime.GateFunc {
 			timerC = timer.C
 		}
 
-		e.mu.Lock()
-		runDoneCh := e.runDoneChs[runID]
-		e.mu.Unlock()
+		var runDoneCh <-chan struct{}
+		if !req.Background && runID != "" {
+			e.mu.Lock()
+			runDoneCh = e.runDoneChs[runID]
+			e.mu.Unlock()
+		}
 
 		expirePending := func() {
 			if e.bgCtx.Err() == nil {
@@ -5451,7 +5480,11 @@ func (e *Engine) makeGate(sessionID, workdir string) runtime.GateFunc {
 					rNow.Status = sessionv1.RunStatus_RUN_STATUS_RUNNING
 					_ = tx.PutRun(rNow)
 				}
-				sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+				if sNow.ActiveRunId != "" {
+					sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+				} else {
+					sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+				}
 				if sNow.PendingRequestId == reqID {
 					sNow.PendingRequestId = ""
 				}
@@ -5503,7 +5536,11 @@ func (e *Engine) resumeAfterRequest(sessionID, runID, reqID string) {
 			_ = tx.PutRun(rNow)
 		}
 		if sNow.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT {
-			sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+			if sNow.ActiveRunId != "" {
+				sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+			} else {
+				sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+			}
 		}
 		if err := putSessionSynced(tx, sNow); err != nil {
 			return err
@@ -5726,11 +5763,17 @@ func (e *Engine) RespondRuntimeRequest(ctx context.Context, p *Principal, req *s
 		}
 		_ = tx.PutTurnItem(reqItem)
 		if waitCh != nil {
-			if rNow, rErr := tx.GetRun(target.RunId); rErr == nil {
-				rNow.Status = sessionv1.RunStatus_RUN_STATUS_RUNNING
-				_ = tx.PutRun(rNow)
+			if target.RunId != "" {
+				if rNow, rErr := tx.GetRun(target.RunId); rErr == nil {
+					rNow.Status = sessionv1.RunStatus_RUN_STATUS_RUNNING
+					_ = tx.PutRun(rNow)
+				}
 			}
-			sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+			if sNow.ActiveRunId != "" {
+				sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+			} else {
+				sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+			}
 			sNow.PendingRequestId = ""
 			sNow.Progress.PendingQuestion = nil
 		} else {
@@ -6350,7 +6393,11 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *sessionv1.M
 				}
 				_ = tx.PutTurnItem(startedItem)
 				sNow.ActiveRunId = startNow.RunId
-				sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+				if sNow.ActiveRunId != "" {
+					sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+				} else {
+					sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+				}
 				sNow.ModelSelection = startNow.ModelSelection
 				sNow.EffectiveRuntimeMode = startNow.RuntimeMode
 				sNow.InteractionMode = startNow.InteractionMode

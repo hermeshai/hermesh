@@ -8,12 +8,18 @@ import {
   herParentOf,
   isHerConversation,
   isTreeArchivable,
+  searchSessions,
+  sessionFilter,
   sessionSections,
   sessionView,
   sliceChildren,
+  sliceSectionSessions,
+  todayStats,
   treeMark,
   treeStatus,
 } from "./sessions";
+import { noticeDiff, noticeSnapshots } from "./notices";
+import { teamState } from "./team";
 import { now, session } from "./testing";
 
 // Her's conversations and the work she sent from them (docs/her-conversations.md §3.4, §3.5).
@@ -130,5 +136,45 @@ describe("Her's conversations", () => {
     const h = her("h", SessionStatus.IDLE);
     expect(isTreeArchivable(h, [sent("a", "h", SessionStatus.IDLE)])).toBe(true);
     expect(isTreeArchivable(h, [sent("a", "h", SessionStatus.RUNNING)])).toBe(false);
+  });
+
+  test("with running or waiting child cards or sub-agents, a conversation never reads as Done in flat view, overview, search, stats or notices", () => {
+    const h = her("h", SessionStatus.IDLE, { updated: -120 });
+    const runChild = sent("c_run", "h", SessionStatus.RUNNING, { updated: -30 });
+    const settledOther = session("done_1", SessionStatus.IDLE, { updated: -10 });
+
+    // Flat by-status: both the Her conversation and its running child stay in "active", not "done".
+    const flatByStatus = sessionSections([h, runChild, settledOther], sessionView({ group: "status", nest: false }), opts);
+    expect(keys(flatByStatus)).toEqual(["active", "done"]);
+    expect(ids(flatByStatus[0].sessions)).toEqual(["h", "c_run"]);
+    expect(ids(flatByStatus[1].sessions)).toEqual(["done_1"]);
+
+    // Overview / teamState: h is in running (not finished) while c_run runs; when a child waits on the owner, h is still not in finished.
+    const tRun = teamState([h, runChild, settledOther], 0);
+    expect(ids(tRun.running)).toContain("h");
+    expect(ids(tRun.finished)).toEqual(["done_1"]);
+
+    const waitChild = sent("c_wait", "h", SessionStatus.WAITING_INPUT, { updated: -20 });
+    const tWait = teamState([h, waitChild, settledOther], 0);
+    expect(ids(tWait.waiting)).toEqual(["c_wait"]);
+    expect(ids(tWait.finished)).toEqual(["done_1"]);
+
+    // Search ranks active Her conversation ahead of newer settled work; Today stats do not count h as done yet.
+    expect(ids(searchSessions([settledOther, h, runChild], "", sessionFilter(), (s) => s.sessionId))).toEqual(["c_run", "h", "done_1"]);
+    expect(todayStats([h, runChild, settledOther], now).done).toBe(1);
+
+    // Entity section folding keeps active Her conversation past the 5-item cap.
+    const many = Array.from({ length: 7 }, (_, i) => her(`h_${i}`, SessionStatus.IDLE, { updated: -10 * (i + 1) }));
+    const lateKids = new Map([[many[6].sessionId, [sent("c_late", many[6].sessionId, SessionStatus.RUNNING)]]]);
+    expect(ids(sliceSectionSessions(many, "project", 5, null, lateKids).visible)).toContain(many[6].sessionId);
+
+    // Turn-done notice is suppressed while child cards or background sub-agents are still active.
+    const hBefore = her("h", SessionStatus.RUNNING, { turns: 0 });
+    const prev = noticeSnapshots([hBefore]);
+    const hDispatched = her("h", SessionStatus.IDLE, { turns: 1 });
+    expect(noticeDiff(prev, [hDispatched, runChild], () => "You")).toEqual([]);
+    const hSubagent = her("h", SessionStatus.IDLE, { turns: 1 });
+    hSubagent.activeBackgroundCount = 1;
+    expect(noticeDiff(prev, [hSubagent], () => "You")).toEqual([]);
   });
 });

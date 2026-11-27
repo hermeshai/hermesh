@@ -105,10 +105,12 @@ test("Her conversations: given to Her from a new session, the work she sends nes
   await expect(panel.getByTestId("picker-provider-her")).toContainText("默认");
   await page.keyboard.press("Escape");
 
-  // Sent: the conversation opens on Her's chat. She asks before she starts a coding agent.
+  // Sent: the conversation opens on Her's chat under the same Her header (avatar + team capsule + Progress) as entering Her.
   await box.fill(`[[mock:mesh:session_start:${JSON.stringify({ project: "owner-mac/demo", prompt: "sleep 25s\nsay 做完了", title: "对话派的活" })}]] 开工`);
   await box.press("Enter");
-  await expect(page.getByTestId("session-where")).toContainText("Her", { timeout: 60_000 });
+  await expect(page.getByTestId("her-avatar")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("button", { name: "团队" })).toBeVisible();
+  await expect(page.getByTestId("her-progress")).toBeVisible();
   const log = page.getByRole("log", { name: "对话" });
   const approval = page.getByRole("region", { name: "等你批准" });
   await expect(approval).toContainText("owner-mac/demo", { timeout: 60_000 });
@@ -133,15 +135,23 @@ test("Her conversations: given to Her from a new session, the work she sends nes
   const childRow = tree.locator(`.kids [data-session-id="${child}"]`);
   await expect(childRow).toBeVisible({ timeout: 30_000 });
   await expect(childRow).toContainText("对话派的活");
-  // The whole tree is in progress while the child works.
+  // The whole tree is in progress while the child works, and the parent row itself shows running orbit + shimmer.
   await expect(list.getByRole("group", { name: "进行中" }).locator(`[data-session-id="${conv}"]`)).toBeVisible();
+  await expect(convRow.locator(".slogo.run")).toBeVisible();
+  await expect(convRow.locator(".stitle.run")).toBeVisible();
   await snap(page, "her-conv-tree");
 
-  // Folded and unfolded.
+  // Folded and unfolded: parent row stays visibly running while folded too.
   await convRow.getByRole("button", { name: "收起" }).click();
   await expect(childRow).toBeHidden();
+  await expect(convRow.locator(".slogo.run")).toBeVisible();
   await convRow.getByRole("button", { name: "展开" }).click();
   await expect(childRow).toBeVisible();
+
+  // Overview also keeps the Her conversation under In Progress (never prematurely in Just Finished) while its child runs.
+  await navTo(page, /^概览/);
+  await expect(page.getByRole("region", { name: "进行中" }).getByRole("button", { name: /对话派的活/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: "进行中" }).getByRole("button").filter({ hasText: "你 → Her" })).toBeVisible();
 
   // Not archived while what it sent still runs; the work under it has no pin of its own.
   await convRow.hover();
@@ -167,13 +177,14 @@ test("Her conversations: given to Her from a new session, the work she sends nes
   await expect(list.getByRole("group", { name: "Her", exact: true }).locator(`.kids [data-session-id="${child}"]`)).toBeVisible();
   await snap(page, "her-conv-by-project");
 
-  // Nesting off: the child goes back to its own project.
+  // Nesting off: the child goes back to its own project, and by status the parent still stays in 进行中 (not 已结束).
   await view(/显示/, "显示", "嵌套子任务", "menuitemcheckbox");
   await expect(list.locator(".stree")).toHaveCount(0);
   await expect(list.getByRole("group", { name: "demo", exact: true }).locator(`[data-session-id="${child}"]`)).toBeVisible();
+  await view(/分组/, "分组", "按状态", "menuitemradio");
+  await expect(list.getByRole("group", { name: "进行中" }).locator(`[data-session-id="${conv}"]`)).toBeVisible();
   await view(/显示/, "显示", "嵌套子任务", "menuitemcheckbox");
   await expect(childRow).toBeVisible();
-  await view(/分组/, "分组", "按状态", "menuitemradio");
 
   // The child's news comes back here, and her main conversation never hears of it.
   await convRow.click();

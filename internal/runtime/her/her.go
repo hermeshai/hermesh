@@ -5,6 +5,7 @@
 package her
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -118,6 +119,7 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		events: make(chan runtime.Event, 64),
 		closed: make(chan struct{}),
 		asks:   map[string]context.CancelFunc{},
+		agents: map[string]subAgent{},
 	}
 	s.alive.Store(true)
 	s.emit(runtime.Event{Kind: runtime.EventNativeSession, NativeID: id, ResumeCursor: id})
@@ -138,6 +140,12 @@ func effort(sel *sessionv1.ModelSelection) string {
 	return sel.GetOptions()["effort"].GetStringValue()
 }
 
+type subAgent struct {
+	callID  string
+	title   string
+	running bool
+}
+
 type session struct {
 	id     string
 	conv   Conversation
@@ -150,8 +158,12 @@ type session struct {
 	emitMu sync.RWMutex
 	done   bool
 
-	mu   sync.Mutex
-	asks map[string]context.CancelFunc // approvals put to the owner, by call
+	mu            sync.Mutex
+	asks          map[string]context.CancelFunc // approvals put to the owner, by askKey
+	agents        map[string]subAgent           // Her's sub-agents, by agent_id
+	settledAgents []runtime.Event               // sub-agent settlements held while !inTask until task_started or idle
+	turnPending   bool                          // StartTurn awaits task_started
+	inTask        bool                          // between task_started and task_completed/failed/interrupted
 }
 
 func (s *session) Events() <-chan runtime.Event { return s.events }
@@ -206,7 +218,16 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 		}
 	}
 	// The run's id names the message, so that sending it again never doubles it.
-	return s.conv.Op(ctx, map[string]any{"type": "prompt", "input": input, "id": "hm_" + idChars(in.RunID)})
+	s.mu.Lock()
+	s.turnPending = true
+	s.mu.Unlock()
+	if err := s.conv.Op(ctx, map[string]any{"type": "prompt", "input": input, "id": "hm_" + idChars(in.RunID)}); err != nil {
+		s.mu.Lock()
+		s.turnPending = false
+		s.mu.Unlock()
+		return err
+	}
+	return nil
 }
 
 // idChars keeps what a prompt id may hold (A-Z a-z 0-9 _ -), at most 61 of them.
@@ -250,6 +271,32 @@ func (s *session) Interrupt(ctx context.Context) error {
 	return s.conv.Op(ctx, map[string]any{"type": "interrupt"})
 }
 
+// StopBackgroundTask interrupts one of Her's running sub-agents, or all of them when taskID is
+// empty (runtime.BackgroundController).
+func (s *session) StopBackgroundTask(ctx context.Context, taskID string) error {
+	if !s.Alive() {
+		return runtime.ErrSessionClosed
+	}
+	if taskID != "" {
+		return s.conv.Op(ctx, map[string]any{"type": "agent_interrupt", "agent": taskID})
+	}
+	s.mu.Lock()
+	var ids []string
+	for id, a := range s.agents {
+		if a.running {
+			ids = append(ids, id)
+		}
+	}
+	s.mu.Unlock()
+	var firstErr error
+	for _, id := range ids {
+		if err := s.conv.Op(ctx, map[string]any{"type": "agent_interrupt", "agent": id}); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 func (s *session) ForceStop() error { return s.Close() }
 
 func (s *session) Close() error {
@@ -272,14 +319,19 @@ func (s *session) Close() error {
 
 // herEvent is what the driver reads of one of her session events.
 type herEvent struct {
-	Type    string          `json:"type"`
-	CallID  string          `json:"call_id"`
-	Name    string          `json:"name"`
-	Title   string          `json:"title"`
-	Args    json.RawMessage `json:"args"`
-	Summary string          `json:"summary"`
-	Reason  string          `json:"reason"`
-	Error   struct {
+	Type        string          `json:"type"`
+	TaskID      string          `json:"task_id"`
+	CallID      string          `json:"call_id"`
+	AgentID     string          `json:"agent_id"`
+	Name        string          `json:"name"`
+	Title       string          `json:"title"`
+	Description string          `json:"description"`
+	Status      string          `json:"status"`
+	Args        json.RawMessage `json:"args"`
+	Event       json.RawMessage `json:"event"`
+	Summary     string          `json:"summary"`
+	Reason      string          `json:"reason"`
+	Error       struct {
 		Kind    string `json:"kind"`
 		Message string `json:"message"`
 	} `json:"error"`
@@ -314,6 +366,20 @@ func (s *session) follow() {
 
 func (s *session) take(ev herEvent) {
 	switch ev.Type {
+	case "task_started":
+		s.mu.Lock()
+		external := !s.turnPending && !s.inTask
+		s.turnPending = false
+		s.inTask = true
+		settled := s.settledAgents
+		s.settledAgents = nil
+		s.mu.Unlock()
+		if external {
+			s.emit(runtime.Event{Kind: runtime.EventReasoningDelta, ItemID: "think_" + cmp.Or(ev.TaskID, "turn")})
+		}
+		for _, bg := range settled {
+			s.emit(bg)
+		}
 	case "tool_started":
 		if ev.Name == sendToUser {
 			var a sendArgs
@@ -336,16 +402,162 @@ func (s *session) take(ev herEvent) {
 			ex = 1
 		}
 		s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: ev.CallID, ToolName: ev.Result.ToolName, ExitCode: ex, HasExitCode: true})
+	case "agent_started":
+		if ev.AgentID == "" {
+			return
+		}
+		title := cmp.Or(strings.TrimSpace(ev.Description), strings.TrimSpace(ev.Name), ev.AgentID)
+		s.mu.Lock()
+		s.agents[ev.AgentID] = subAgent{callID: ev.CallID, title: title, running: true}
+		s.mu.Unlock()
+		s.emit(runtime.Event{
+			Kind:                runtime.EventBackgroundTask,
+			TaskID:              ev.AgentID,
+			ItemID:              ev.CallID,
+			ToolName:            title,
+			Command:             title,
+			BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
+			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundAwaited:   true,
+		})
+	case "agent_status":
+		s.takeAgentStatus(ev)
+	case "agent_event":
+		if ev.AgentID == "" || len(ev.Event) == 0 {
+			return
+		}
+		var inner herEvent
+		if json.Unmarshal(ev.Event, &inner) != nil {
+			return
+		}
+		switch inner.Type {
+		case "approval_requested":
+			s.ask(ev.AgentID, inner)
+		case "approval_resolved":
+			s.settled(askKey(ev.AgentID, inner.CallID))
+		}
 	case "approval_requested":
-		s.ask(ev)
+		s.ask("", ev)
 	case "approval_resolved":
-		s.settled(ev.CallID)
+		s.settled(askKey("", ev.CallID))
 	case "task_completed":
+		s.endTask()
 		s.emit(runtime.Event{Kind: runtime.EventTurnCompleted})
 	case "task_failed":
+		s.endTask()
 		s.emit(runtime.Event{Kind: runtime.EventTurnFailed, ErrorCode: "her_" + ev.Error.Kind, ErrorMessage: ev.Error.Message})
 	case "task_interrupted":
+		s.endTask()
 		s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
+	case "idle":
+		s.mu.Lock()
+		settled := s.settledAgents
+		s.settledAgents = nil
+		s.mu.Unlock()
+		for _, bg := range settled {
+			s.emit(bg)
+		}
+	}
+}
+
+func (s *session) endTask() {
+	s.mu.Lock()
+	s.inTask = false
+	s.turnPending = false
+	s.mu.Unlock()
+}
+
+func (s *session) takeAgentStatus(ev herEvent) {
+	if ev.AgentID == "" {
+		return
+	}
+	s.mu.Lock()
+	sub := s.agents[ev.AgentID]
+	title := cmp.Or(sub.title, strings.TrimSpace(ev.Name), ev.AgentID)
+	var bg runtime.Event
+	switch ev.Status {
+	case "running":
+		sub.title = title
+		sub.running = true
+		s.agents[ev.AgentID] = sub
+		s.mu.Unlock()
+		s.emit(runtime.Event{
+			Kind:                runtime.EventBackgroundTask,
+			TaskID:              ev.AgentID,
+			ItemID:              sub.callID,
+			ToolName:            title,
+			Command:             title,
+			BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
+			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundAwaited:   true,
+		})
+		return
+	case "completed":
+		sub.running = false
+		s.agents[ev.AgentID] = sub
+		bg = runtime.Event{
+			Kind:                runtime.EventBackgroundTask,
+			TaskID:              ev.AgentID,
+			ItemID:              sub.callID,
+			ToolName:            title,
+			Command:             title,
+			Text:                strings.TrimSpace(ev.Summary),
+			HasExitCode:         true,
+			ExitCode:            0,
+			BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
+			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
+			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundAwaited:   true,
+		}
+	case "failed":
+		sub.running = false
+		s.agents[ev.AgentID] = sub
+		bg = runtime.Event{
+			Kind:                runtime.EventBackgroundTask,
+			TaskID:              ev.AgentID,
+			ItemID:              sub.callID,
+			ToolName:            title,
+			Command:             title,
+			Text:                cmp.Or(strings.TrimSpace(ev.Error.Message), strings.TrimSpace(ev.Summary)),
+			HasExitCode:         true,
+			ExitCode:            1,
+			BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
+			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED,
+			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundAwaited:   true,
+		}
+	case "interrupted", "closed":
+		sub.running = false
+		s.agents[ev.AgentID] = sub
+		bg = runtime.Event{
+			Kind:                runtime.EventBackgroundTask,
+			TaskID:              ev.AgentID,
+			ItemID:              sub.callID,
+			ToolName:            title,
+			Command:             title,
+			Text:                strings.TrimSpace(ev.Summary),
+			HasExitCode:         true,
+			ExitCode:            130,
+			BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
+			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundAwaited:   true,
+		}
+	default:
+		s.mu.Unlock()
+		return
+	}
+	inTask := s.inTask
+	if !inTask {
+		// Held until task_started (when the sub-agent's report wakes Her) or idle (when nothing
+		// wakes her), so the session never flashes Done between the sub-agent's end and Her's reply.
+		s.settledAgents = append(s.settledAgents, bg)
+	}
+	s.mu.Unlock()
+	if inTask {
+		s.emit(bg)
 	}
 }
 
@@ -363,26 +575,36 @@ func question(callID string, a sendArgs) *sessionv1.UserInputPayload {
 	return &sessionv1.UserInputPayload{Questions: []*sessionv1.QuestionItem{item}}
 }
 
-// ask puts an approval Her asks for to the owner, as the session's request: Her's own policy decided
-// that the owner must answer, so the machine's never answers in their place (Delegated). It is
-// settled by the owner's answer there, or by their answer in Her's chat (approval_resolved).
-func (s *session) ask(ev herEvent) {
+func askKey(agentID, callID string) string {
+	if agentID == "" {
+		return callID
+	}
+	return agentID + "/" + callID
+}
+
+// ask puts an approval Her (or one of her sub-agents) asks for to the owner, as the session's
+// request: Her's own policy decided that the owner must answer, so the machine's never answers in
+// their place (Delegated). It is settled by the owner's answer there, or by their answer in Her's
+// chat (approval_resolved).
+func (s *session) ask(agentID string, ev herEvent) {
 	if s.gate == nil {
 		return
 	}
+	key := askKey(agentID, ev.CallID)
 	ctx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
-	if old, ok := s.asks[ev.CallID]; ok {
+	if old, ok := s.asks[key]; ok {
 		old()
 	}
-	s.asks[ev.CallID] = cancel
+	s.asks[key] = cancel
 	s.mu.Unlock()
 	summary, detail, _ := strings.Cut(ev.Summary, "\n")
 	go func() {
-		defer s.settled(ev.CallID)
+		defer s.settled(key)
 		res, err := s.gate(ctx, runtime.ToolGateRequest{
-			Delegated: true,
-			Kind:      sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
+			Delegated:  true,
+			Background: agentID != "",
+			Kind:       sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
 			Approval: &sessionv1.ToolApprovalPayload{
 				ToolCategory: "her",
 				ToolName:     ev.Name,
@@ -404,15 +626,19 @@ func (s *session) ask(ev herEvent) {
 				decision["feedback"] = res.Feedback
 			}
 		}
-		_ = s.conv.Op(context.Background(), map[string]any{"type": "approval", "call_id": ev.CallID, "decision": decision})
+		op := map[string]any{"type": "approval", "call_id": ev.CallID, "decision": decision}
+		if agentID != "" {
+			op = map[string]any{"type": "agent_approval", "agent": agentID, "call_id": ev.CallID, "decision": decision}
+		}
+		_ = s.conv.Op(context.Background(), op)
 	}()
 }
 
 // settled ends the wait for an approval that was answered.
-func (s *session) settled(callID string) {
+func (s *session) settled(key string) {
 	s.mu.Lock()
-	cancel, ok := s.asks[callID]
-	delete(s.asks, callID)
+	cancel, ok := s.asks[key]
+	delete(s.asks, key)
 	s.mu.Unlock()
 	if ok {
 		cancel()

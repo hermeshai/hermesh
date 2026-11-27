@@ -108,3 +108,29 @@ private func sentWork(_ id: String, parent: String, _ status: SessionStatus, upd
     #expect(isTreeArchivable(idleHer, children: [sentWork("a", parent: "idleHer", .idle)]))
     #expect(!isTreeArchivable(idleHer, children: [sentWork("a", parent: "idleHer", .running)]))
 }
+
+@Test func conversationWithRunningOrWaitingChildrenStaysActiveEverywhere() {
+    let h = herConv("h", .idle, updated: -120)
+    let runChild = sentWork("c_run", parent: "h", .running, updated: -30)
+    let settledOther = session("done_1", .idle, updated: -10)
+
+    let flat = sessionSections([h, runChild, settledOther], view: SessionListLayout(group: .status, nest: false), archived: false, now: now, calendar: utc)
+    #expect(flat.map(\.key) == ["active", "done"])
+    #expect(flat[0].sessions.map(\.sessionID) == ["h", "c_run"])
+    #expect(flat[1].sessions.map(\.sessionID) == ["done_1"])
+
+    let tRun = teamState([h, runChild, settledOther], requests: 0)
+    #expect(tRun.running.map(\.sessionID).contains("h"))
+    #expect(tRun.finished.map(\.sessionID) == ["done_1"])
+
+    let waitChild = sentWork("c_wait", parent: "h", .waitingInput, updated: -20)
+    let tWait = teamState([h, waitChild, settledOther], requests: 0)
+    #expect(tWait.waiting.map(\.sessionID) == ["c_wait"])
+    #expect(tWait.finished.map(\.sessionID) == ["done_1"])
+
+    #expect(searchSessions([settledOther, h, runChild], query: "", filter: SessionFilter(), text: \.sessionID).map(\.sessionID) == ["c_run", "h", "done_1"])
+
+    let many = (0 ..< 7).map { i in herConv("h_\(i)", .idle, updated: Double(-10 * (i + 1))) }
+    let lateKids = [many[6].sessionID: [sentWork("c_late", parent: many[6].sessionID, .running)]]
+    #expect(sliceSectionSessions(many, grouping: .project, limit: 5, selectedID: nil, trees: lateKids).visible.map(\.sessionID).contains(many[6].sessionID))
+}

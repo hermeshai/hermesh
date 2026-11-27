@@ -43,7 +43,10 @@ type ToolGateRequest struct {
 	// Delegated: the agent has already decided that the owner must answer (Her's own approval
 	// policy did), so the machine's policy and allow rules never answer in the owner's place.
 	Delegated bool
-	Kind      sessionv1.RuntimeRequestKind
+	// Background: asked by an awaited background task (such as one of Her's sub-agents), not by
+	// the foreground turn, so a foreground turn's end neither cancels nor clears it.
+	Background bool
+	Kind       sessionv1.RuntimeRequestKind
 	Approval  *sessionv1.ToolApprovalPayload
 	UserInput *sessionv1.UserInputPayload
 	Plan      *sessionv1.PlanReviewPayload

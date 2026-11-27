@@ -260,3 +260,92 @@ func TestAsOwner(t *testing.T) {
 		}
 	}
 }
+
+// Sub-agents Her spawns keep the session active as awaited background tasks across her turn's end,
+// forward their approvals via agent_approval, and settle without a Done flash when their report
+// wakes her (or on idle when stopped).
+func TestSubAgentsAndApproval(t *testing.T) {
+	asked := make(chan runtime.ToolGateRequest, 2)
+	answer := make(chan runtime.ToolGateResult, 2)
+	gate := func(ctx context.Context, req runtime.ToolGateRequest) (runtime.ToolGateResult, error) {
+		asked <- req
+		select {
+		case r := <-answer:
+			return r, nil
+		case <-ctx.Done():
+			return runtime.ToolGateResult{CancelTurn: true}, ctx.Err()
+		}
+	}
+	b := newFakeBridge()
+	s, c := start(t, b, gate, "")
+	if err := s.StartTurn(context.Background(), runtime.TurnInput{RunID: "r_sub", Prompt: "research"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = op(t, c) // prompt
+
+	c.say(t, `{"type":"task_started","task_id":"t1"}`)
+	c.say(t, `{"type":"agent_started","agent_id":"ag_1","name":"researcher","description":"查资料","call_id":"c_sp1"}`)
+	c.say(t, `{"type":"tool_started","call_id":"c_say","name":"send_to_user","args":{"text":"交给子智能体了。"}}`)
+	c.say(t, `{"type":"task_completed","task_id":"t1"}`)
+
+	bgRun := next(t, s)
+	if bgRun.Kind != runtime.EventBackgroundTask || bgRun.TaskID != "ag_1" || bgRun.ToolName != "查资料" ||
+		bgRun.BackgroundKind != sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT ||
+		bgRun.BackgroundStatus != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING || !bgRun.BackgroundAwaited {
+		t.Fatalf("agent_started event: %+v", bgRun)
+	}
+	if next(t, s).Kind != runtime.EventAssistantMessage || next(t, s).Kind != runtime.EventTurnCompleted {
+		t.Fatal("expected assistant message and turn completion while sub-agent runs")
+	}
+
+	// Sub-agent asks for approval while Her is between turns -> routed as agent_approval.
+	c.say(t, `{"type":"agent_event","agent_id":"ag_1","event":{"type":"approval_requested","call_id":"c_sub_1","name":"bash","summary":"touch a.txt"}}`)
+	req := <-asked
+	if !req.Delegated || req.Approval.GetCommand() != "touch a.txt" {
+		t.Fatalf("sub-agent approval: %+v", req)
+	}
+	answer <- runtime.ToolGateResult{Allowed: true}
+	if o := op(t, c); o["type"] != "agent_approval" || o["agent"] != "ag_1" || o["call_id"] != "c_sub_1" {
+		t.Fatalf("agent_approval op: %v", o)
+	}
+
+	// Sub-agent finishes while !inTask: held until Her's wakeup task_started so active_background_count
+	// never drops to 0 before Her's continuation turn is running.
+	c.say(t, `{"type":"agent_status","agent_id":"ag_1","name":"researcher","status":"completed","summary":"查完了"}`)
+	select {
+	case ev := <-s.Events():
+		t.Fatalf("premature settlement before task_started/idle: %+v", ev)
+	case <-time.After(80 * time.Millisecond):
+	}
+	c.say(t, `{"type":"task_started","task_id":"t2","trigger":"mail"}`)
+	if ev := next(t, s); ev.Kind != runtime.EventReasoningDelta {
+		t.Fatalf("wakeup should open continuation run first, got %+v", ev)
+	}
+	bgDone := next(t, s)
+	if bgDone.Kind != runtime.EventBackgroundTask || bgDone.TaskID != "ag_1" ||
+		bgDone.BackgroundStatus != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED || bgDone.Text != "查完了" {
+		t.Fatalf("settled sub-agent event: %+v", bgDone)
+	}
+	c.say(t, `{"type":"tool_started","call_id":"c_fin","name":"send_to_user","args":{"text":"汇总好了。"}}`)
+	c.say(t, `{"type":"task_completed","task_id":"t2"}`)
+	c.say(t, `{"type":"idle"}`)
+	if next(t, s).Kind != runtime.EventAssistantMessage || next(t, s).Kind != runtime.EventTurnCompleted {
+		t.Fatal("expected wakeup reply and turn completion")
+	}
+
+	// Stopping a running sub-agent sends agent_interrupt, and idle flushes its stopped state.
+	c.say(t, `{"type":"agent_started","agent_id":"ag_2","name":"runner","call_id":"c_sp2"}`)
+	_ = next(t, s)
+	bc := s.(runtime.BackgroundController)
+	if err := bc.StopBackgroundTask(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	if o := op(t, c); o["type"] != "agent_interrupt" || o["agent"] != "ag_2" {
+		t.Fatalf("agent_interrupt op: %v", o)
+	}
+	c.say(t, `{"type":"agent_status","agent_id":"ag_2","name":"runner","status":"interrupted"}`)
+	c.say(t, `{"type":"idle"}`)
+	if ev := next(t, s); ev.Kind != runtime.EventBackgroundTask || ev.BackgroundStatus != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED {
+		t.Fatalf("stopped sub-agent on idle: %+v", ev)
+	}
+}

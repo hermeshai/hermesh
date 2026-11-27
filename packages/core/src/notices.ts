@@ -5,7 +5,7 @@ import { HerLatestKind, type HerLatest } from "@hermesh/proto/machine";
 import { FailureSchema, SessionStatus, type Session } from "@hermesh/proto/session";
 import { codingAgentTitle } from "./agents";
 import { t } from "./i18n";
-import { dateOf, displayTitle, isFailed, pendingQuestion } from "./sessions";
+import { dateOf, displayTitle, herChildren, isActive, isFailed, pendingQuestion } from "./sessions";
 import { failureAdvice, failureTitle } from "./text";
 import { isInterruption } from "./transcript";
 
@@ -58,6 +58,7 @@ export function noticeDiff(
   since?: Date,
 ): NoticeItem[] {
   const out: NoticeItem[] = [];
+  const kids = herChildren(sessions);
   for (const s of sessions) {
     const before = previous.get(s.sessionId);
     const created = dateOf(s.createdAt);
@@ -92,8 +93,10 @@ export function noticeDiff(
       });
     } else if (
       s.status === SessionStatus.IDLE &&
+      !isActive(s) &&
       !isFailed(s) &&
       !isInterruption(s.progress?.lastFailure) &&
+      !(kids.get(s.sessionId)?.some((c) => isActive(c) || c.status === SessionStatus.WAITING_INPUT)) &&
       turns > before.turns &&
       before.status !== SessionStatus.IDLE
     ) {
