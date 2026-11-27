@@ -171,6 +171,9 @@ final class DemoService {
         if Self.questionFlow {
             seedQuestionFlow()
         }
+        if Self.planReviewFlow {
+            seedPlanReviewFlow()
+        }
         #endif
         _ = pairing(.client)
         #if targetEnvironment(simulator)
@@ -463,6 +466,15 @@ final class DemoService {
     private static let questionFlow: Bool = {
         #if targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("-DemoQuestionFlow")
+        #else
+        false
+        #endif
+    }()
+
+    // Simulator-only fixture for PlanReviewFlowUITests.
+    private static let planReviewFlow: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-DemoPlanReviewFlow")
         #else
         false
         #endif
@@ -762,11 +774,22 @@ final class DemoService {
             world.sessions[i].updatedAt = .init(date: .now)
             syncSession(req.sessionID)
             if let rIdx = projections[req.sessionID]?.requests.firstIndex(where: { $0.requestID == req.requestID || $0.status == .pending }) {
+                let kind = projections[req.sessionID]!.requests[rIdx].kind
                 projections[req.sessionID]?.requests[rIdx].status = .resolved
-                projections[req.sessionID]?.requests[rIdx].resolvedDecision = declined ? .decline : .acceptOnce
-                projections[req.sessionID]?.requests[rIdx].questionResolution = declined ? .declined : .answered
+                if kind == .planReview {
+                    let approved = req.approvePlan
+                    projections[req.sessionID]?.requests[rIdx].resolvedDecision = approved ? .acceptOnce : .decline
+                    projections[req.sessionID]?.requests[rIdx].resolvedFeedback = req.feedback
+                    if approved {
+                        world.sessions[i].interactionMode = .code
+                        syncSession(req.sessionID)
+                    }
+                } else {
+                    projections[req.sessionID]?.requests[rIdx].resolvedDecision = declined ? .decline : .acceptOnce
+                    projections[req.sessionID]?.requests[rIdx].questionResolution = declined ? .declined : .answered
+                    projections[req.sessionID]?.requests[rIdx].resolvedAnswers = req.answers
+                }
                 projections[req.sessionID]?.requests[rIdx].resolvedBy = .with { $0.kind = .owner; $0.id = "owner" }
-                projections[req.sessionID]?.requests[rIdx].resolvedAnswers = req.answers
                 if let firstAns = req.answers["greeting"] ?? req.answers.values.first {
                     let custom = firstAns.customText
                     greeting = firstAns.selectedOptions.first ?? (custom.isEmpty ? "Hello, world!" : custom)
@@ -1610,6 +1633,64 @@ final class DemoService {
             $0.status = "completed"
         }
         openQuestionRequest(id, runID: "r12", question: q)
+        syncSession(id)
+    }
+
+    private func seedPlanReviewFlow() {
+        let id = "demo-plan-review-flow"
+        let reqID = "req-plan-flow-1"
+        var s = session(id, title: "Plan review flow session", machine: "demo-mac", status: .waitingInput)
+        s.agent = "antigravity"
+        s.createdBy = "owner"
+        s.interactionMode = .plan
+        s.pendingRequestID = reqID
+        s.progress.turnCount = 10
+        s.updatedAt = .init(date: .now)
+        world.sessions.insert(s, at: 0)
+
+        for t in 1 ... 9 {
+            let rid = "r\(t)"
+            beginRun(id, runID: rid, ordinal: UInt32(t), asker: "owner", status: .completed, startedAt: .now.addingTimeInterval(Double(-120 + t * 5)))
+            appendItem(id, runID: rid, kind: .userMessage) {
+                $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+                $0.text = "Plan background #\(t): review multi-device session title sync."
+            }
+            appendItem(id, runID: rid, kind: .assistantMessage) {
+                $0.text = "Plan analysis #\(t): checked desktop, iOS, and CLI title rendering consistency for step \(t)."
+            }
+        }
+
+        beginRun(id, runID: "r10", ordinal: 10, asker: "owner", status: .completed, startedAt: .now)
+        appendItem(id, runID: "r10", kind: .userMessage) {
+            $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+            $0.text = "Design the internationalized session title mechanism and ask for my approval before coding."
+        }
+        appendItem(id, runID: "r10", kind: .proposedPlan) {
+            $0.planTitle = "Hermesh Internationalized Session Title Design Plan"
+            $0.text = """
+            1. Single authoritative Session.title generated in the initiating client's UI language.
+            2. Zero-config lightweight model routing on the machine side with automatic offline fallback.
+            3. Right-click or long-press Regenerate Title to re-title after switching language.
+            """
+        }
+        let req = Hermesh_Session_V1_RuntimeRequest.with {
+            $0.requestID = reqID
+            $0.sessionID = id
+            $0.runID = "r10"
+            $0.kind = .planReview
+            $0.status = .pending
+            $0.responseMode = .resumeTurn
+            $0.planReview = .with {
+                $0.planID = "plan-1"
+                $0.title = "Hermesh Internationalized Session Title Design Plan"
+            }
+        }
+        projections[id, default: .init()].requests.append(req)
+        appendItem(id, runID: "r10", kind: .runtimeRequest) {
+            $0.requestID = reqID
+            $0.status = "waiting"
+        }
+        emitEvent(id) { $0.type = "request.opened"; $0.request = req }
         syncSession(id)
     }
 

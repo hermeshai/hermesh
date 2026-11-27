@@ -588,6 +588,8 @@ struct SessionPage: View {
             nil
         }
         let hasInlineQuestion = pendingReq?.kind == .userInput || fallbackQuestion != nil
+        let hasInlinePlan = pendingReq?.kind == .planReview
+        let hasInlinePrompt = hasInlineQuestion || hasInlinePlan
         let todos = activeTodoSteps(activeProj)
         let workStatus = sessionWorkStatus(activeProj, steps: steps)
         let todoWindow = windowTodoSteps(todos, workText: workStatus?.text)
@@ -634,6 +636,11 @@ struct SessionPage: View {
                 })
                 if let req = pendingReq, req.kind == .userInput {
                     inlineQuestionPanel(req, s)
+                } else if let req = pendingReq, req.kind == .planReview {
+                    PlanReviewPanel(session: s, request: req, isTyping: $questionTyping) { build in
+                        await respondNow(req, build)
+                    }
+                    .id(req.requestID)
                 } else if let q = fallbackQuestion {
                     QuestionPanel(session: s, question: q, isTyping: $questionTyping) { answers, decline in
                         if await model.answer(s, answers: answers, decline: decline) { spoken += 1 }
@@ -660,20 +667,22 @@ struct SessionPage: View {
                 withAnimation(.smooth(duration: 0.2)) { position.scrollTo(edge: .bottom) }
             }
         }
-        .onChange(of: hasInlineQuestion) { _, has in
+        .onChange(of: hasInlinePrompt) { _, has in
             if !has && questionTyping { questionTyping = false }
         }
-        .followsEnd(id: sessionID, ready: historyReady(s), spoken: spoken, waitingAgent: hasInlineQuestion && !questionTyping ? s.agent : nil,
+        .followsEnd(id: sessionID, ready: historyReady(s), spoken: spoken,
+                    waitingAgent: hasInlinePrompt && !questionTyping ? s.agent : nil,
+                    waitingPlan: hasInlinePlan,
                     todoSummary: todoEndSummary, atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
             if s.status != .archived {
                 VStack(spacing: 6) {
-                    if let req = pendingReq, req.kind != .userInput {
+                    if let req = pendingReq, req.kind != .userInput, req.kind != .planReview {
                         SessionRequestPanel(session: s, request: req) { build in await respondNow(req, build) }
                             .id(req.requestID)
                     }
                     backgroundBar
                     queue(activeProj)
-                    if !(hasInlineQuestion && questionTyping) {
+                    if !(hasInlinePrompt && questionTyping) {
                         box
                     }
                 }

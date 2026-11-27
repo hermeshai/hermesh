@@ -51,6 +51,7 @@ private func kind(_ it: TranscriptItem) -> String {
     case .agent: "agent"
     case .tool: "tool"
     case .question: "question"
+    case .planReview: "planReview"
     case .turnEnd: "turnEnd"
     case .error: "error"
     case .message: "message"
@@ -140,6 +141,63 @@ private func kind(_ it: TranscriptItem) -> String {
     #expect(texts == [
         "### Unified Refactor\n\n1. Build\n2. Test",
         "# Unified Refactor\n\n1. Build\n2. Test",
+    ])
+}
+
+@Test func settledPlanReviewEmitsQuietReceiptOnlyWhenResolved() {
+    let proj: Hermesh_Session_V1_SessionProjection = .with {
+        $0.runs = [.with { $0.runID = "r1"; $0.ordinal = 1; $0.status = .completed }]
+        $0.requests = [
+            .with {
+                $0.requestID = "req-pending"
+                $0.kind = .planReview
+                $0.status = .pending
+                $0.planReview.title = "Pending Plan"
+            },
+            .with {
+                $0.requestID = "req-dismissed"
+                $0.kind = .planReview
+                $0.status = .dismissed
+                $0.planReview.title = "Dismissed Plan"
+            },
+            .with {
+                $0.requestID = "req-expired"
+                $0.kind = .planReview
+                $0.status = .expired
+                $0.planReview.title = "Expired Plan"
+            },
+            .with {
+                $0.requestID = "req-revised"
+                $0.kind = .planReview
+                $0.status = .resolved
+                $0.resolvedDecision = .decline
+                $0.resolvedBy = .with { $0.kind = .owner; $0.id = "owner" }
+                $0.planReview.title = "  Plan v1  "
+            },
+            .with {
+                $0.requestID = "req-approved"
+                $0.kind = .planReview
+                $0.status = .resolved
+                $0.resolvedDecision = .acceptOnce
+                $0.resolvedBy = .with { $0.kind = .owner; $0.id = "owner" }
+                $0.planReview.title = "Plan v2"
+            },
+        ]
+        $0.items = [
+            item(1, "r1", .runtimeRequest) { $0.requestID = "req-pending" },
+            item(2, "r1", .runtimeRequest) { $0.requestID = "req-dismissed" },
+            item(3, "r1", .runtimeRequest) { $0.requestID = "req-expired" },
+            item(4, "r1", .runtimeRequest) { $0.requestID = "req-revised" },
+            item(5, "r1", .runtimeRequest) { $0.requestID = "req-approved" },
+        ]
+    }
+    let rows = sessionTranscript(proj).filter {
+        if case .planReview = $0 { return true }
+        return false
+    }
+    #expect(rows == [
+        .planReview(seq: 16, title: "Plan v1", approved: false, by: "owner"),
+        .planReview(seq: 20, title: "Plan v2", approved: true, by: "owner"),
     ])
 }
 

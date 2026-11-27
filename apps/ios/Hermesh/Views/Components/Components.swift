@@ -667,19 +667,24 @@ struct TodoEndSummary: Equatable {
 }
 
 /// Back to a conversation's end, once it was scrolled well up from it (the Mac's): an arrow in a glass circle, a
-/// "Back to question" glass capsule when a question waits at the bottom, or a live step progress capsule when a
-/// checklist runs at the bottom.
+/// "Back to question" / "Back to plan" glass capsule when an inline prompt waits at the bottom, or a live step
+/// progress capsule when a checklist runs at the bottom.
 struct ToEndButton: View {
     var waitingAgent: String? = nil
+    var waitingPlan: Bool = false
     var todoSummary: TodoEndSummary? = nil
     let action: () -> Void
+
+    private var waitingLabel: LocalizedStringKey {
+        waitingPlan ? "Back to plan" : "Back to question"
+    }
 
     var body: some View {
         Button(action: action) {
             if let waitingAgent {
                 HStack(spacing: 7) {
                     AgentLogo(id: waitingAgent, size: 18)
-                    Text("Back to question")
+                    Text(waitingLabel)
                         .font(.footnote.weight(.semibold))
                         .lineLimit(1)
                     Image(systemName: "arrow.down")
@@ -725,7 +730,7 @@ struct ToEndButton: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(waitingAgent != nil ? Text("Back to question") : Text("Back to the Bottom"))
+        .accessibilityLabel(waitingAgent != nil ? Text(waitingLabel) : Text("Back to the Bottom"))
         .accessibilityIdentifier("to-end")
     }
 }
@@ -733,11 +738,11 @@ struct ToEndButton: View {
 extension View {
     /// The button back to the end, centred 12 over this (what is at the bottom of a conversation, or nothing),
     /// while `away`: it takes no room, so nothing moves as it comes and goes.
-    func toEndButton(_ away: Bool, waitingAgent: String? = nil, todoSummary: TodoEndSummary? = nil, action: @escaping () -> Void) -> some View {
+    func toEndButton(_ away: Bool, waitingAgent: String? = nil, waitingPlan: Bool = false, todoSummary: TodoEndSummary? = nil, action: @escaping () -> Void) -> some View {
         overlay(alignment: .top) {
             ZStack {
                 if away {
-                    ToEndButton(waitingAgent: waitingAgent, todoSummary: todoSummary, action: action)
+                    ToEndButton(waitingAgent: waitingAgent, waitingPlan: waitingPlan, todoSummary: todoSummary, action: action)
                         .transition(.opacity.combined(with: .offset(y: 6)))
                 }
             }

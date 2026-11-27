@@ -48,6 +48,8 @@ public enum TranscriptItem: Equatable {
     case agent(seq: UInt64, text: String, runID: String = "")
     case tool(ToolItem)
     case question(seq: UInt64, question: Question, resolution: QuestionResolved?)
+    /// A resolved plan review request rendered as a quiet inline receipt in the conversation stream.
+    case planReview(seq: UInt64, title: String, approved: Bool, by: String)
     /// took: seconds since the turn started, when known.
     case turnEnd(seq: UInt64, end: TurnCompleted, took: Double?)
     case error(seq: UInt64, error: ErrorEvent)
@@ -60,8 +62,8 @@ public enum TranscriptItem: Equatable {
 
     public var seq: UInt64 {
         switch self {
-        case .turn(let s, _, _, _), .user(let s, _, _, _, _), .agent(let s, _, _), .question(let s, _, _), .turnEnd(let s, _, _), .error(let s, _),
-             .message(let s, _, _, _, _): s
+        case .turn(let s, _, _, _), .user(let s, _, _, _, _), .agent(let s, _, _), .question(let s, _, _),
+             .planReview(let s, _, _, _), .turnEnd(let s, _, _), .error(let s, _), .message(let s, _, _, _, _): s
         case .tool(let t): t.seq
         case .workspace(let w): w.seq
         }
@@ -270,8 +272,15 @@ public func sessionTranscript(_ proj: Hermesh_Session_V1_SessionProjection?) -> 
         case .commandExecution, .fileChange:
             out.append(.tool(toolItem(it, run: run, activeBgItems: activeBgItems)))
         case .runtimeRequest:
-            if let req = requests[it.requestID], req.kind == .userInput, req.status != .pending {
-                out.append(.question(seq: seq, question: sessionQuestion(req), resolution: settledQuestionResolution(req)))
+            if let req = requests[it.requestID], req.status != .pending {
+                if req.kind == .userInput {
+                    out.append(.question(seq: seq, question: sessionQuestion(req), resolution: settledQuestionResolution(req)))
+                } else if req.kind == .planReview, req.status == .resolved {
+                    let approved = req.resolvedDecision == .acceptOnce || req.resolvedDecision == .acceptForSession
+                    let title = req.planReview.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let by = actorID(req.hasResolvedBy ? req.resolvedBy : nil)
+                    out.append(.planReview(seq: seq, title: title, approved: approved, by: by))
+                }
             }
         case .messageReceived:
             out.append(.message(seq: seq, incoming: true, name: it.mailName.isEmpty ? it.mailAddress : it.mailName, text: it.text, queued: it.mailDelivered == "queued"))
