@@ -200,6 +200,9 @@ struct SessionPage: View {
     /// Horizontal drag offset when swiping the side panel's leading edge right to put it away.
     @GestureState private var panelDrag: CGFloat = 0
     @State private var questionTyping = false
+    @State private var boxOpen = false
+    @State private var boxFocused = false
+    @ScaledMetric(relativeTo: .body) private var composerLineHeight: CGFloat = 20.5
     @FocusState private var focused: Bool
 
     init(machineID: String, projectID: String) {
@@ -1123,8 +1126,12 @@ struct SessionPage: View {
 
     // MARK: The box
 
-    private var boxOpen: Bool {
+    private var boxShouldOpen: Bool {
         focused || !draft.isEmpty || !attached.isEmpty || attaching || pickingModel
+    }
+
+    private var composerAnimation: Animation? {
+        still ? .easeOut(duration: 0.16) : .smooth(duration: 0.20)
     }
 
     private var isShellDraft: Bool {
@@ -1189,6 +1196,9 @@ struct SessionPage: View {
             .accessibilityLabel(Text(online ? (running && !waitingInput ? (liveSteer && !shellDraft ? "Steer" : "Queue") : "Send") : "Queue Until It’s Online"))
             .accessibilityIdentifier("thread-send")
         }
+        let boxShape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+        let hasFocusGlow = isNew && starting == nil && herAt != nil
+        let glowColor = who == .her ? Color(hex: "b3bcf2") : Color.accentColor
         return VStack(alignment: .leading, spacing: 6) {
             if !attached.isEmpty || uploading > 0 {
                 ScrollView(.horizontal) {
@@ -1228,47 +1238,72 @@ struct SessionPage: View {
                 .scrollIndicators(.hidden)
                 .accessibilityIdentifier("thread-attached")
             }
-            HStack(alignment: .bottom, spacing: 8) {
-                if !open { plusButton }
+            ZStack(alignment: .bottom) {
                 TextField(isNew && starting == nil ? (who == .her ? String(localized: "Message Her") : String(localized: "Describe what to build, debug or plan")) : running ? String(localized: "Say more; it goes to the next turn") : String(localized: "Keep going"),
                           text: $draft, axis: .vertical)
                     .font(shellDraft ? .body.monospaced() : .body)
                     .lineLimit(open ? 2 ... 6 : 1 ... 6)
                     .focused($focused)
-                    .padding(.vertical, 8).padding(.leading, open ? 10 : 0)
+                    .padding(.vertical, 8)
+                    .frame(minHeight: open ? composerLineHeight * 2 + 16 : max(36, composerLineHeight + 16), alignment: .top)
                     .accessibilityIdentifier("thread-composer")
-                if !open { ends }
-            }
-            if open {
+                    .padding(.leading, open ? 10 : 44)
+                    .padding(.trailing, open ? 0 : (running ? 88 : 44))
+                    .padding(.bottom, open ? 42 : 0)
+
                 HStack(spacing: 6) {
                     plusButton
-                    modelButton
-                    if shellDraft {
-                        Label("Direct shell", systemImage: "terminal")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 9).frame(height: 36)
-                            .background(Palette.fill2, in: Capsule())
-                            .accessibilityIdentifier("thread-shell-badge")
+                    if open {
+                        modelButton
+                            .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .leading)))
+                        if shellDraft {
+                            Label("Direct shell", systemImage: "terminal")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 9).frame(height: 36)
+                                .background(Palette.fill2, in: Capsule())
+                                .accessibilityIdentifier("thread-shell-badge")
+                                .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .leading)))
+                        }
                     }
                     Spacer(minLength: 0)
                     ends
                 }
                 .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("thread-bar")
+                .accessibilityIdentifier(open ? "thread-bar" : "")
             }
         }
         .padding(6)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay {
-            if isNew && herAt != nil && focused {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder((who == .her ? Color(hex: "b3bcf2") : Color.accentColor).opacity(0.45), lineWidth: 1)
+        .glassEffect(.regular, in: boxShape)
+        .background {
+            if hasFocusGlow {
+                ComposerFocusHalo(color: glowColor)
+                    .opacity(boxFocused ? 1 : 0)
             }
         }
-        .shadow(color: (isNew && herAt != nil && focused) ? (who == .her ? Color(hex: "b3bcf2") : Color.accentColor).opacity(0.28) : .clear, radius: 14, y: 4)
+        .overlay {
+            if hasFocusGlow {
+                boxShape
+                    .strokeBorder(glowColor.opacity(0.45), lineWidth: 1)
+                    .opacity(boxFocused ? 1 : 0)
+                    .allowsHitTesting(false)
+            }
+        }
         .keyboardAwayOnFlickDown()
-        .animation(.snappy(duration: 0.22), value: open)
+        .animation(composerAnimation, value: who)
+        .onAppear {
+            boxOpen = boxShouldOpen
+            boxFocused = focused
+        }
+        .onChange(of: [boxShouldOpen, focused]) {
+            guard boxOpen != boxShouldOpen || boxFocused != focused else { return }
+            Task { @MainActor in
+                withAnimation(composerAnimation) {
+                    boxOpen = boxShouldOpen
+                    boxFocused = focused
+                }
+            }
+        }
         .padding(.horizontal, 12)
         .photosPicker(isPresented: $pickingPhotos, selection: $photos, maxSelectionCount: 10, matching: .images)
         .onChange(of: photos) {
@@ -1323,6 +1358,8 @@ struct SessionPage: View {
         attached = saved.attachments.map { ref in
             Attached(ref: ref, picture: store.pictures[ref.blobSha256] ?? nil)
         }
+        boxOpen = boxShouldOpen
+        boxFocused = focused
         for ref in saved.attachments where isImageRef(ref) && store.pictures[ref.blobSha256] == nil {
             Task { await store.loadPicture(api: model.api, sessionID: sessionID, machineID: effectiveMachineID, ref: ref) }
         }
@@ -3218,5 +3255,30 @@ private struct SessionTodoSpine: View {
             out.append(metaPart)
         }
         return out
+    }
+}
+
+/// Soft outer glow around the new-session composer, cut out on the inside so translucent glass stays untinted while
+/// the halo morphs with the box's exact continuous rounded-rectangle bounds on every frame.
+private struct ComposerFocusHalo: View {
+    let color: Color
+    private let pad: CGFloat = 48
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+        ZStack {
+            shape
+                .fill(color.opacity(0.32))
+                .offset(y: 4)
+                .blur(radius: 14)
+            shape
+                .fill(.black)
+                .blendMode(.destinationOut)
+        }
+        .padding(pad)
+        .compositingGroup()
+        .padding(-pad)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

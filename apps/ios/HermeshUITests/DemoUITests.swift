@@ -1020,6 +1020,53 @@ final class DemoUITests: XCTestCase {
         checkpoint("new-session-composer-restored")
     }
 
+    func testNewSessionComposerFocusAndCollapse() {
+        enterWorkDemo()
+        tap("menu")
+        tap("new-session-place")
+
+        let title = app.descendants(matching: .any)["new-session-title"].firstMatch
+        let composer = app.descendants(matching: .any)["thread-composer"].firstMatch
+        let plus = app.buttons["thread-attach"]
+        let send = app.buttons["thread-send"]
+        let model = app.buttons["thread-model"]
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        XCTAssertTrue(composer.waitForExistence(timeout: 5) && plus.exists && send.exists)
+        XCTAssertFalse(model.exists, "initial 1-line state hides bottom model chip")
+        XCTAssertLessThan(abs(plus.frame.midY - send.frame.midY), 4, "plus and send sit on the single row")
+        XCTAssertLessThan(abs(composer.frame.midY - plus.frame.midY), 10, "text field shares the single row")
+
+        composer.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertTrue(model.waitForExistence(timeout: 5), "tapping composer expands the bottom bar")
+        XCTAssertLessThan(abs(plus.frame.midY - send.frame.midY), 4)
+        XCTAssertLessThan(abs(plus.frame.midY - model.frame.midY), 4)
+        XCTAssertLessThanOrEqual(composer.frame.maxY, model.frame.minY + 12, "text field rises above the bottom bar")
+
+        sleep(1)
+        composer.swipeDown()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 10), "flicking down dismisses keyboard")
+        XCTAssertTrue(model.waitForNonExistence(timeout: 5), "empty composer collapses back to 1 line")
+        XCTAssertLessThan(abs(composer.frame.midY - plus.frame.midY), 10, "text field returns to the single row")
+
+        // Switch to Her and verify focus + collapse works identically with Her's glow.
+        tap("presence-her")
+        XCTAssertTrue(wait(5) { self.app.buttons["presence-her"].isSelected })
+        composer.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        XCTAssertTrue(model.waitForExistence(timeout: 5))
+        sleep(1)
+        let topClearY = (app.navigationBars.firstMatch.frame.maxY + composer.frame.minY) / 2
+        if composer.frame.minY - app.navigationBars.firstMatch.frame.maxY >= 24 {
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.midX, dy: topClearY)).tap()
+        } else {
+            composer.swipeDown()
+        }
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(model.waitForNonExistence(timeout: 5))
+    }
+
     private func cancelSearch() {
         let field = app.searchFields.firstMatch
         let frame = field.frame
