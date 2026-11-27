@@ -146,6 +146,21 @@ public func fileBaseName(_ path: String) -> String {
     return String(p.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last ?? "")
 }
 
+private let htmlExt = regex(#"(?i)\.html?$"#)
+private let internalPageURL = regex(#"(?i)^(?:hermesh-file|about):"#)
+
+/// The label for an HTML page tab: the page's document `<title>` when set, otherwise its filename
+/// without `.html`/`.htm` (since the globe glyph already marks it as a page).
+public func pageTabTitle(_ path: String, pageTitle: String? = nil) -> String {
+    let title = (pageTitle ?? "")
+        .split(whereSeparator: { $0.isWhitespace })
+        .joined(separator: " ")
+    if !title.isEmpty && !matches(internalPageURL, title) { return title }
+    let name = fileBaseName(path)
+    let stem = htmlExt.stringByReplacingMatches(in: name, range: NSRange(name.startIndex..., in: name), withTemplate: "")
+    return stem.isEmpty ? name : stem
+}
+
 public func fileView(_ path: String) -> FileView {
     let name = fileBaseName(path)
     for (re, view) in views where matches(re, name) { return view }

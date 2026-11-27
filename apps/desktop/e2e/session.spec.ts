@@ -821,6 +821,7 @@ test("files dragged over a session's window are attached to its box when let go,
     // ...and a page running, on its own: the script it refers to was not sent, and the bar under it says so.
     await reloadedBubble.locator('.um-att .tile.file[title="page.html"] .tile-open').click();
     await expect(panel.getByRole("tab")).toHaveCount(2);
+    await expect(panel.locator(".sfp-tab.on")).toHaveText("page");
     await expect(panel.getByTestId("panel-page")).toBeVisible();
     await expect(panel.getByTestId("attachment-alone")).toContainText("只发送了这一个文件");
     await expect

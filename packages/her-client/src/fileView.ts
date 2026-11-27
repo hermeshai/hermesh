@@ -27,6 +27,19 @@ const views: [RegExp, FileView][] = [
 const codeNames = new Set(["Makefile", "Dockerfile", "Gemfile", "Rakefile", "Procfile", "Justfile", "Brewfile", "Vagrantfile", "Containerfile", "Jenkinsfile"]);
 
 const baseName = (path: string) => path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "";
+const htmlExt = /\.html?$/i;
+
+/**
+ * The label for an HTML page tab: the page's document `<title>` when set, otherwise its filename
+ * without `.html`/`.htm` (since the globe glyph already marks it as a page).
+ */
+export function pageTabTitle(path: string, pageTitle?: string | null): string {
+  const title = (pageTitle ?? "").replace(/\s+/g, " ").trim();
+  if (title && !/^(?:hermesh-file|about):/i.test(title)) return title;
+  const name = baseName(path);
+  const stem = name.replace(htmlExt, "");
+  return stem || name;
+}
 
 export function fileView(path: string): FileView {
   const name = baseName(path);

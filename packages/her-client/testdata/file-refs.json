@@ -124,5 +124,15 @@
     { "a": "C:\\Temp\\shot.png", "b": "C:/Temp/shot.png", "same": true },
     { "a": "shot.png", "b": "sub/shot.png", "same": false },
     { "a": "/tmp/a/shot.png", "b": "/tmp/b/shot.png", "same": false }
+  ],
+  "pageTitle": [
+    { "path": "docs/settings-appearance-demo.html", "title": "Hermesh 外观设置方案", "label": "Hermesh 外观设置方案" },
+    { "path": "docs/settings-appearance-demo.html", "title": "  Multi\n  Line  ", "label": "Multi Line" },
+    { "path": "docs/settings-appearance-demo.html", "title": "", "label": "settings-appearance-demo" },
+    { "path": "docs/settings-appearance-demo.html", "title": "   ", "label": "settings-appearance-demo" },
+    { "path": "docs/demo.HTM", "title": null, "label": "demo" },
+    { "path": "page.html", "title": "hermesh-file://files/s/-/page.html", "label": "page" },
+    { "path": "page.html", "title": "about:blank", "label": "page" },
+    { "path": ".html", "title": "", "label": ".html" }
   ]
 }

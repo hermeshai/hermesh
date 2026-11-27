@@ -48,6 +48,7 @@ extension HermeshUITests {
         let panel = app.descendants(matching: .any)["side-panel"].firstMatch
         XCTAssertTrue(panel.waitForExistence(timeout: 10), "the side panel")
         XCTAssertTrue(panel.webViews.firstMatch.staticTexts["附件页"].waitForExistence(timeout: 30), "the page, in its tab")
+        XCTAssertTrue(panel.staticTexts["page"].waitForExistence(timeout: 5), "attached page tab drops .html suffix when untitled")
         tap("file-more")
         XCTAssertTrue(app.buttons["file-share"].waitForExistence(timeout: 5), "Share… on the tab")
         shotAttachments("attachment-panel")

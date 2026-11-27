@@ -44,6 +44,11 @@ private func ref(_ any: Any?) -> FileRef? {
         let a = c["a"] as! String, b = c["b"] as! String
         #expect(sameImagePath(a, b) == (c["same"] as! Bool), "\(a) vs \(b)")
     }
+    for c in shared["pageTitle"] as! [[String: Any]] {
+        let path = c["path"] as! String
+        let title = c["title"] as? String
+        #expect(pageTabTitle(path, pageTitle: title) == c["label"] as! String, "\(path) (\(title ?? "nil"))")
+    }
 }
 
 @Test func resolveDocPathResolvesRelativePathsInsideMarkdownDocuments() {
