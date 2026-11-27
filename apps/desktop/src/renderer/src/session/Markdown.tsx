@@ -15,7 +15,7 @@ import { texMath } from "./markdown/tex";
 import { MarkdownTable } from "./markdown/Table";
 import { CodeBlock, InlineCode, Link } from "./content";
 import { FilesHomeContext } from "./files/files";
-import { ReplyImagesContext, scanReplyImages, type ReplyImageItem } from "./files/images";
+import { extractPureImageSlice, ReplyImagesContext, scanReplyImages, type ReplyImageItem } from "./files/images";
 import { SessionImageSlot } from "./files/InlineImages";
 import { DraftContext, StreamContext } from "./scope";
 
@@ -58,26 +58,66 @@ export function Markdown({ text, streaming = false, mode = "chat", basePath = ""
     });
   }, [blocks, inSession, replyImages, basePath]);
 
+  const renderedEntries = useMemo(() => {
+    type Entry =
+      | { kind: "block"; block: (typeof blocks)[number]; idx: number }
+      | { kind: "images"; id: number; raw: string };
+    if (!inSession) return blocks.map((block, idx): Entry => ({ kind: "block", block, idx }));
+    const entries: Entry[] = [];
+    let i = 0;
+    while (i < blocks.length) {
+      const cur = blocks[i]!;
+      const firstPure = !cur.pending ? extractPureImageSlice(cur.text, basePath) : null;
+      if (!firstPure) {
+        entries.push({ kind: "block", block: cur, idx: i });
+        i++;
+        continue;
+      }
+      const merged: ReplyImageItem[] = [...firstPure.items];
+      let j = i + 1;
+      while (j < blocks.length && !blocks[j]!.pending) {
+        const nextPure = extractPureImageSlice(blocks[j]!.text, basePath);
+        if (!nextPure) break;
+        for (const it of nextPure.items) {
+          if (!merged.some((x) => sameImagePath(x.path, it.path))) merged.push(it);
+        }
+        j++;
+      }
+      const span = j - i;
+      if (span >= 2 || (firstPure.fromList && merged.length >= 2)) {
+        entries.push({ kind: "images", id: cur.id, raw: JSON.stringify({ items: merged, fromLinks: false }) });
+      } else {
+        entries.push({ kind: "block", block: cur, idx: i });
+      }
+      i = j;
+    }
+    return entries;
+  }, [blocks, inSession, basePath]);
+
   return (
     <StreamContext.Provider value={animate}>
       <BasePathContext.Provider value={basePath}>
         <ReplyImagesContext.Provider value={replyImages}>
           <div className="md sel-text" data-mode={mode}>
-            {blocks.map((block, idx) => (
-              <Block
-                key={block.id}
-                text={block.text}
-                pending={block.pending}
-                animate={animate}
-                prefix={prefix}
-                offset={block.id}
-                mode={mode}
-                inSession={inSession}
-                basePath={basePath}
-                explicitKey={explicitKey}
-                allowedLinksKey={blockAllowedLinks[idx] ?? ""}
-              />
-            ))}
+            {renderedEntries.map((entry) =>
+              entry.kind === "images" ? (
+                <SessionImageSlot key={`imgs:${entry.id}`} raw={entry.raw} />
+              ) : (
+                <Block
+                  key={entry.block.id}
+                  text={entry.block.text}
+                  pending={entry.block.pending}
+                  animate={animate}
+                  prefix={prefix}
+                  offset={entry.block.id}
+                  mode={mode}
+                  inSession={inSession}
+                  basePath={basePath}
+                  explicitKey={explicitKey}
+                  allowedLinksKey={blockAllowedLinks[entry.idx] ?? ""}
+                />
+              ),
+            )}
           </div>
         </ReplyImagesContext.Provider>
       </BasePathContext.Provider>
@@ -292,9 +332,57 @@ function DocAwareLink({ href, children }: { href?: string; children?: ReactNode 
   return <Link href={resolved}>{children}</Link>;
 }
 
+function parseExplicitSlot(node: HtmlContent | undefined): ReplyImageItem[] | null {
+  if (!node || node.type !== "element" || node.tagName !== "div") return null;
+  const raw = node.properties?.["data-simg"];
+  if (typeof raw !== "string") return null;
+  try {
+    const parsed = JSON.parse(raw) as { items?: ReplyImageItem[]; fromLinks?: boolean };
+    if (parsed.fromLinks || !Array.isArray(parsed.items) || parsed.items.length === 0) return null;
+    return parsed.items;
+  } catch {
+    return null;
+  }
+}
+
+function pushOrMergeSlot(list: HtmlContent[], items: ReplyImageItem[], fromLinks: boolean) {
+  if (!fromLinks) {
+    const prev = parseExplicitSlot(list.at(-1));
+    if (prev) {
+      const merged = [...prev];
+      for (const it of items) {
+        if (!merged.some((x) => sameImagePath(x.path, it.path))) merged.push(it);
+      }
+      list[list.length - 1] = makeImageSlot(merged, false);
+      return;
+    }
+  }
+  list.push(makeImageSlot(items, fromLinks));
+}
+
+function extractPureListSlotItems(listEl: HtmlElement): ReplyImageItem[] | null {
+  const items: ReplyImageItem[] = [];
+  for (const child of listEl.children as HtmlContent[]) {
+    if (child.type === "text" && child.value.trim() === "") continue;
+    if (child.type !== "element" || child.tagName !== "li") return null;
+    const cls = child.properties?.className;
+    const clsList = Array.isArray(cls) ? cls.map(String) : cls ? [String(cls)] : [];
+    if (clsList.includes("task-list-item")) return null;
+    const nonEmpty = trimBr(child.children as HtmlContent[]);
+    if (nonEmpty.length !== 1) return null;
+    const slotItems = parseExplicitSlot(nonEmpty[0]);
+    if (!slotItems) return null;
+    for (const it of slotItems) {
+      if (!items.some((x) => sameImagePath(x.path, it.path))) items.push(it);
+    }
+  }
+  return items.length >= 2 ? items : null;
+}
+
 /**
  * Lifts session `![alt](path)` images out of `<p>` into block-level `<SessionImageSlot>` cards,
- * and attaches deduplicated `[label](path.png)` image strips below their enclosing block.
+ * merges consecutive standalone image blocks / pure-image lists, and attaches deduplicated
+ * `[label](path.png)` image strips below their enclosing block.
  */
 function rehypeSessionImages(opts: { pending: boolean; explicitKey: string; allowedLinksKey: string; basePath: string }) {
   const explicit = opts.explicitKey ? opts.explicitKey.split("\0") : [];
@@ -304,6 +392,9 @@ function rehypeSessionImages(opts: { pending: boolean; explicitKey: string; allo
     const transformChildren = (parent: HtmlRoot | HtmlElement, topLevel: boolean) => {
       const next: HtmlContent[] = [];
       for (const child of parent.children as HtmlContent[]) {
+        if (child.type === "text" && child.value.trim() === "" && parseExplicitSlot(next.at(-1))) {
+          continue;
+        }
         if (child.type !== "element") {
           next.push(child);
           continue;
@@ -341,7 +432,11 @@ function rehypeSessionImages(opts: { pending: boolean; explicitKey: string; allo
           }
           flushImgs();
           flushProse();
-          next.push(...parts);
+          for (const part of parts) {
+            const slotItems = !opts.pending ? parseExplicitSlot(part) : null;
+            if (slotItems) pushOrMergeSlot(next, slotItems, false);
+            else next.push(part);
+          }
           if (topLevel && !opts.pending && allowedLinks.length > 0) {
             const linked = collectLinkedImages(child, allowedLinks, claimed, opts.basePath);
             if (linked.length > 0) next.push(makeImageSlot(linked, true));
@@ -349,12 +444,17 @@ function rehypeSessionImages(opts: { pending: boolean; explicitKey: string; allo
           continue;
         }
         if (child.tagName === "ul" || child.tagName === "ol" || child.tagName === "blockquote") {
+          const linked = topLevel && !opts.pending && allowedLinks.length > 0 ? collectLinkedImages(child, allowedLinks, claimed, opts.basePath) : [];
           transformChildren(child, false);
-          next.push(child);
-          if (topLevel && !opts.pending && allowedLinks.length > 0) {
-            const linked = collectLinkedImages(child, allowedLinks, claimed, opts.basePath);
-            if (linked.length > 0) next.push(makeImageSlot(linked, true));
+          const pureListItems = !opts.pending && (child.tagName === "ul" || child.tagName === "ol") && linked.length === 0
+            ? extractPureListSlotItems(child)
+            : null;
+          if (pureListItems) {
+            pushOrMergeSlot(next, pureListItems, false);
+          } else {
+            next.push(child);
           }
+          if (linked.length > 0) next.push(makeImageSlot(linked, true));
           continue;
         }
         next.push(child);

@@ -176,6 +176,8 @@
     "source": "Source",
     "preview": "Preview",
     "more": "More",
+    "prevImage": "Previous Image",
+    "nextImage": "Next Image",
     "line": "Line {{line}}",
     "lines": "Lines {{line}}–{{end}}",
     "notFound": "File not found",

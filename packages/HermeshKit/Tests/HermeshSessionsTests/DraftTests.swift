@@ -73,4 +73,7 @@ import Testing
 
     let spaced = "See ![shot](/Users/me/Library/Application Support/Hermesh/shot.png) and `[raw](/Application Support/x.png)`"
     #expect(unwrapCarousels(spaced) == "See ![shot](/Users/me/Library/Application%20Support/Hermesh/shot.png) and `[raw](/Application Support/x.png)`")
+
+    let nested = "````carousel\n![方案 A [推荐 1]](/Users/me/Library/Application Support/demo (1).png)\n<!-- slide -->\n![方案 B [推荐 2]](/tmp/demo (2).png)\n````"
+    #expect(unwrapCarousels(nested) == "![方案 A [推荐 1]](/Users/me/Library/Application%20Support/demo%20(1).png)\n![方案 B [推荐 2]](/tmp/demo%20(2).png)")
 }

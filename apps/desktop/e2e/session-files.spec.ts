@@ -210,6 +210,24 @@ test("a reply's files are tags opening side panel tabs; a page runs there offlin
   await expect(walkReply).not.toContainText("[!NOTE]");
   await expect(walkReply.locator("pre")).toHaveCount(0);
   await expect(walkReply.getByTestId("session-image-row").getByTestId("session-image")).toHaveCount(2);
+
+  // 3+ consecutive standalone images (separated by blank lines) merge into a Focus Stage + Filmstrip carousel.
+  const stageReply = log.locator(".am").filter({ hasText: "多图舞台：" });
+  const stageBox = stageReply.getByTestId("session-image-row");
+  await expect(stageBox).toHaveAttribute("data-simg-mode", "stage");
+  await expect(stageBox.getByTestId("session-image-thumb")).toHaveCount(4);
+  await expect(stageBox.getByTestId("session-image-counter")).toContainText("1 / 4 · 240 × 135");
+  await expect(stageBox.getByTestId("session-image-caption")).toHaveText("方案一 [默认收起]：连体抽屉托盘");
+  await stageBox.getByTestId("session-image-thumb").nth(2).click();
+  await expect(stageBox.getByTestId("session-image-counter")).toContainText("3 / 4 · 240 × 135");
+  await expect(stageBox.getByTestId("session-image-caption")).toHaveText("方案三：浅色模式对比");
+  await stageBox.getByTestId("session-image").click();
+  await expect(lb).toBeVisible();
+  await expect(lb.getByTestId("lightbox-title")).toHaveText("stage_3.png");
+  await expect(lb.getByTestId("lightbox-meta")).toContainText("3 / 4 · 240 × 135");
+  await page.keyboard.press("Escape");
+  await expect(lb).toBeHidden();
+
   const walkTag = walkReply.locator('[data-testid=file-tag][data-path$="walkthrough.md"]');
   await expect(walkTag).toBeVisible();
   await expect(walkTag).not.toHaveClass(/\bgone\b/);
