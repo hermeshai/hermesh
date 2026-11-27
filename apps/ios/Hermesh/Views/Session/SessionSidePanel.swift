@@ -56,6 +56,8 @@ struct SessionTree: View {
                 }
                 .padding(.horizontal, 8)
             }
+            .scrollDismissesKeyboard(.immediately)
+            .onScrollPhaseChange { _, phase in if phase == .interacting { hideKeyboard() } }
             .task(id: activePath) {
                 files.reveal(activePath ?? "")
                 if let activePath {
@@ -261,6 +263,8 @@ struct SessionSidePanel: View {
             }
         }
         .background(Color(UIColor.systemBackground))
+        .keyboardAwayOnTap()
+        .simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { _ in hideKeyboard() })
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("side-panel")
     }

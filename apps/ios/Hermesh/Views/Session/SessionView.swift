@@ -452,12 +452,14 @@ struct PromptBubble<Sender: View>: View {
 
     /// The bubble's pictures in the Lightbox, from the one tapped; one that could not be read says why there.
     private func openPicture(_ att: Hermesh_Session_V1_AttachmentRef) {
+        hideKeyboard()
         let pictures = attachments.filter(isSessionImageAttachment)
         lightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: machineID, run: "", items: pictures.map(LightboxItem.attachment),
                                                initialIndex: pictures.firstIndex(of: att) ?? 0)
     }
 
     private func open(_ att: Hermesh_Session_V1_AttachmentRef) {
+        hideKeyboard()
         // A page, Markdown, code or text: shown by the app, as a reply's file is (a tab of the side panel on a wide
         // screen, a page of its own on a narrow one); the rest in Quick Look.
         if attachmentOpensInApp(att) {
@@ -619,6 +621,7 @@ struct SessionBar: View {
             .frame(width: side, alignment: .trailing)
         }
         .padding(.horizontal, 16).padding(.bottom, 4)
+        .keyboardAwayOnTap()
     }
 
     private func title(_ s: Session) -> some View {
@@ -693,6 +696,7 @@ private struct SidePanelButton: View {
     }
 
     private func toggle(_ files: SessionFilesModel) {
+        hideKeyboard()
         withAnimation(.snappy) {
             if files.panelOpen {
                 files.panelOpen = false

@@ -125,6 +125,7 @@ private struct HerPage: View {
         // The tag's words grow with the text size, up to what the top has room for.
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .padding(.horizontal, 16).padding(.bottom, 4)
+        .keyboardAwayOnTap()
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0 }
     }
 
@@ -174,7 +175,7 @@ private struct HerPage: View {
     private let tagHeight: CGFloat = 36
 
     private func showTeam(_ on: Bool) {
-        if on { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+        if on { hideKeyboard() }
         withAnimation(still ? .easeOut(duration: 0.15) : .snappy(duration: 0.36, extraBounce: 0.08)) { team = on }
     }
 }
@@ -409,6 +410,7 @@ struct HerConversationPage: View {
                         ArchivedNote(session: session).padding(.horizontal, 16)
                     }
                 }
+                .keyboardAwayOnTap()
             }
             .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
             .background { if !sideBars { SwipesBack() } }
@@ -429,6 +431,7 @@ struct HerConversationPage: View {
             .herConnections(chat, machine: machine)
             .herAISharingAlert(chat)
             .sessionDialogs(session, renaming: $renaming, deleting: $deleting)
+            .onChange(of: deleting) { _, on in if on { hideKeyboard() } }
             .task(id: "\(sessionID)/\(session.offlineQueued)") {
                 guard session.offlineQueued, convID.isEmpty, let res = try? await model.api?.getSession(sessionID, cachedOnly: true) else { return }
                 if let item = res.projection.items.first(where: { $0.kind == .userMessage }) {

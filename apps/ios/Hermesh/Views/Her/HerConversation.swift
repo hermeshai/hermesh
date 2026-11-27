@@ -133,6 +133,7 @@ struct HerConversation: View {
         .sheet(item: $selecting) { from in
             HerSelectText(text: from.text) { picked in chat.reply(herQuote(ref: from.id, own: from.own, whole: from.text, selected: picked)) }
         }
+        .onChange(of: preview != nil || page != nil || selecting != nil) { _, on in if on { hideKeyboard() } }
         // Her's onboarding: begun when her says no model works there, or HerStatus says so for a while (it says
         // Her runs a moment before her has listed her models); done once the conversation opens on a model.
         .task(id: state == .noModel) {
@@ -533,6 +534,7 @@ struct HerBubble: View {
                 HerWrap(spacing: 6) {
                     ForEach(Array(pictures.enumerated()), id: \.offset) { i, picture in
                         Button {
+                            hideKeyboard()
                             lightbox = SessionLightboxPresentation(sessionID: "", machineID: "", run: "",
                                                                    items: pictures.map { .picture(String(localized: "Picture"), $0, keep: false) }, initialIndex: i)
                         } label: {
@@ -832,6 +834,7 @@ private struct HerFiles: View {
     }
 
     private func open(_ f: HerFile) {
+        hideKeyboard()
         // A picture she sent, read here already: large in the app's one picture viewer, with the message's other
         // pictures, Save to Photos and Share… in its menu.
         if f.image, (chat.pictures[f.source] ?? nil) != nil {

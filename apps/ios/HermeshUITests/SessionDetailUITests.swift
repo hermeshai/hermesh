@@ -144,9 +144,11 @@ final class SessionDetailUITests: XCTestCase {
                       "latest message should stay above composer when keyboard opens (msg=\(longLatest.frame), composer=\(composer.frame))")
         XCTAssertFalse(app.buttons["to-end"].exists, "still at the bottom with keyboard up")
 
-        // 2. Send a multi-line message from the bottom: both sent prompt and reply land above the composer.
+        // 2. Send a multi-line message from the bottom: keyboard dismisses and both sent prompt and reply land above the composer.
         composer.typeText("Bottom follow-up line 1\nLine 2\nLine 3")
         tap("thread-send")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "sending dismisses keyboard")
+        XCTAssertFalse(app.buttons["thread-model"].exists, "composer folds back to single line after send")
         let sentAtBottom = text(beginningWith: "Bottom follow-up line 1")
         XCTAssertTrue(waitUntil(timeout: 8) {
             guard let reply = self.latestDemoFollowUpReply() else { return false }
@@ -162,6 +164,7 @@ final class SessionDetailUITests: XCTestCase {
         composer.typeText("Sent after scrolling up")
         XCTAssertTrue(toEnd.exists, "typing in composer while scrolled up does not steal scroll position")
         tap("thread-send")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "sending from scrolled-up position dismisses keyboard")
         let sentFromUp = text(beginningWith: "Sent after scrolling up")
         XCTAssertTrue(waitUntil(timeout: 8) {
             guard let reply = self.latestDemoFollowUpReply() else { return false }

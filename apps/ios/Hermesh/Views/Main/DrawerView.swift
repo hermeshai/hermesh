@@ -52,6 +52,8 @@ struct DrawerView: View {
                 .scrollContentBackground(.hidden)
                 .environment(\.defaultMinListRowHeight, 0)
                 .scrollIndicators(.hidden)
+                .scrollDismissesKeyboard(.immediately)
+                .onScrollPhaseChange { _, phase in if phase == .interacting { hideKeyboard() } }
             }
             bottomBar
         }

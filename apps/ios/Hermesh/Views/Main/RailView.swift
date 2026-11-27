@@ -25,6 +25,8 @@ struct RailView: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.hidden)
+            .scrollDismissesKeyboard(.immediately)
+            .onScrollPhaseChange { _, phase in if phase == .interacting { hideKeyboard() } }
             Button {
                 model.accountPresented = true
             } label: {
