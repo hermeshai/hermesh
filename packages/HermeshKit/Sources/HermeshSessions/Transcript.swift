@@ -227,11 +227,23 @@ private func settledQuestionResolution(_ req: Hermesh_Session_V1_RuntimeRequest)
     return r
 }
 
+private func isRedundantQuestionToolCall(_ it: Hermesh_Session_V1_TurnItem) -> Bool {
+    guard it.kind == .toolCall, it.status != "failed", it.exitCode == 0 else { return false }
+    var norm = it.toolName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if norm.hasPrefix("run ") { norm = String(norm.dropFirst(4)).trimmingCharacters(in: .whitespaces) }
+    return norm == "ask_question" || norm == "askuserquestion" || norm == "request_user_input"
+}
+
 /// A session's items reduced into conversation rows.
 public func sessionTranscript(_ proj: Hermesh_Session_V1_SessionProjection?) -> [TranscriptItem] {
     guard let proj else { return [] }
     let runs = Dictionary(proj.runs.map { ($0.runID, $0) }, uniquingKeysWith: { _, b in b })
     let requests = Dictionary(proj.requests.map { ($0.requestID, $0) }, uniquingKeysWith: { _, b in b })
+    let questionRuns = Set(proj.requests.filter { $0.kind == .userInput && !$0.runID.isEmpty }.map(\.runID))
+        .union(proj.items.compactMap { it -> String? in
+            guard it.kind == .runtimeRequest, let req = requests[it.requestID], req.kind == .userInput else { return nil }
+            return it.runID
+        })
     let activeBgItems = activeBackgroundItemIDs(of: proj)
     let items = proj.items
     let setupFailed = workspaceFailedRun(proj)
@@ -253,7 +265,7 @@ public func sessionTranscript(_ proj: Hermesh_Session_V1_SessionProjection?) -> 
         case .proposedPlan:
             out.append(.agent(seq: seq, text: formatProposedPlan(title: it.planTitle, text: it.text), runID: it.runID))
         case .toolCall:
-            if isMetaProgressToolItem(it) { break }
+            if isMetaProgressToolItem(it) || (questionRuns.contains(it.runID) && isRedundantQuestionToolCall(it)) { break }
             out.append(.tool(toolItem(it, run: run, activeBgItems: activeBgItems)))
         case .commandExecution, .fileChange:
             out.append(.tool(toolItem(it, run: run, activeBgItems: activeBgItems)))
@@ -543,8 +555,13 @@ public func resolutionTitle(_ r: QuestionResolved, name: (String) -> String = { 
     let you = r.by == "owner"
     switch r.resolution {
     case .answered:
-        let answers = r.answers.map { a in (a.selected + (a.text.isEmpty ? [] : [a.text])).joined(separator: ", ") }
-            .joined(separator: String(localized: "; ", bundle: .module, comment: "Separates the answers to a question's items"))
+        let answers = r.answers.map { a in
+            let cleaned = a.selected.map { parseOptionLabel($0).text }
+            let trimmed = a.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (cleaned + (trimmed.isEmpty ? [] : [trimmed])).joined(separator: ", ")
+        }
+        .filter { !$0.isEmpty }
+        .joined(separator: String(localized: "; ", bundle: .module, comment: "Separates the answers to a question's items"))
         return you ? String(localized: "You answered: \(answers)", bundle: .module) : String(localized: "\(name(r.by)) answered: \(answers)", bundle: .module)
     case .declined:
         return you ? String(localized: "You chose not to answer", bundle: .module) : String(localized: "\(name(r.by)) chose not to answer", bundle: .module)

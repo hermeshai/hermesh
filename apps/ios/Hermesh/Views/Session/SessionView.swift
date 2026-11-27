@@ -129,17 +129,7 @@ struct StepView: View {
             .background(Palette.fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         case .question(_, let q, let r):
             if let r {
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Image(systemName: "questionmark.circle").foregroundStyle(.secondary)
-                        Text(asked(q))
-                    }
-                    Text(resolutionTitle(r, name: { AgentLogo.name(model.clientLabel($0)) })).foregroundStyle(.secondary)
-                }
-                .font(.footnote)
-                .padding(.horizontal, 12).padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Palette.fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                SettledQuestionCard(question: q, resolution: r)
             }
         case .turnEnd(_, let end, _):
             if end.isError, isInterruption(end.hasFailure ? end.failure : nil) {
@@ -166,11 +156,122 @@ struct StepView: View {
             : label.map { String(localized: "\(AgentLogo.name($0)) interrupted this turn") } ?? String(localized: "This turn was interrupted")
         return TurnNote(text: text)
     }
+}
 
-    private func asked(_ q: Question) -> AttributedString {
-        var s = AttributedString(String(localized: "Agent asked:"))
-        s.inlinePresentationIntent = .stronglyEmphasized
-        return s + AttributedString(" " + q.items.map(\.text).joined(separator: " "))
+/// Settled question card (Style A): calm secondary question prompt over a highlighted checked answer row
+/// with the Recommended badge preserved inline and zero redundant top header clutter.
+struct SettledQuestionCard: View {
+    @Environment(AppModel.self) private var model
+    let question: Question
+    let resolution: QuestionResolved
+
+    var body: some View {
+        let nameOf: (String) -> String = { AgentLogo.name(model.clientLabel($0)) }
+        let rows = settledQuestionRows(question, resolution: resolution, name: nameOf)
+        let byOther: String? = (resolution.by.isEmpty || resolution.by == "owner") ? nil : nameOf(resolution.by)
+
+        VStack(alignment: .leading, spacing: 10) {
+            if let byOther, resolution.resolution == .answered {
+                Text("\(byOther) answered")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(Array(rows.enumerated()), id: \.offset) { i, row in
+                if i > 0 {
+                    Rectangle().fill(Palette.separator).frame(height: 0.5)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    if !row.prompt.isEmpty {
+                        Text(verbatim: row.prompt)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if row.status == .answered {
+                        answerBox(choices: row.choices, status: row.status, statusText: "")
+                    } else if !row.statusText.isEmpty {
+                        answerBox(choices: [], status: row.status, statusText: row.statusText)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 13).padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settled-question")
+    }
+
+    @ViewBuilder private func answerBox(choices: [ParsedOptionLabel], status: SettledQuestionRow.StatusKind, statusText: String) -> some View {
+        let answered = status == .answered
+        HStack(alignment: .top, spacing: 8) {
+            answerMark(status)
+                .padding(.top, 1.5)
+            Group {
+                if answered {
+                    joinedChoicesText(choices)
+                        .foregroundStyle(.primary)
+                } else {
+                    Text(verbatim: statusText)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 11).padding(.vertical, 8.5)
+        .background(answered ? Palette.fill2 : Color.clear, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
+    }
+
+    @ViewBuilder private func answerMark(_ status: SettledQuestionRow.StatusKind) -> some View {
+        switch status {
+        case .answered:
+            Image(systemName: "checkmark")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.green)
+                .frame(width: 18, height: 18)
+                .background(Color.green.opacity(0.15), in: .circle)
+                .overlay(Circle().strokeBorder(Color.green.opacity(0.3), lineWidth: 0.5))
+        case .timedOut:
+            Image(systemName: "clock")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.orange)
+                .frame(width: 18, height: 18)
+                .background(Color.orange.opacity(0.15), in: .circle)
+        default:
+            Image(systemName: "minus")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 18, height: 18)
+                .background(Palette.fill2, in: .circle)
+        }
+    }
+
+    private func joinedChoicesText(_ choices: [ParsedOptionLabel]) -> some View {
+        let baseFont: Font = .subheadline.weight(.medium)
+        let badgeFont: Font = .caption2.weight(.semibold)
+        let sep = String(localized: " · ")
+        let combined = choices.enumerated().reduce(Text(verbatim: "")) { acc, entry in
+            let prefix = entry.offset == 0 ? Text(verbatim: "") : Text(verbatim: sep).font(baseFont).foregroundStyle(.secondary)
+            let p = entry.element
+            let itemText: Text
+            if p.recommended {
+                let badge = Text(verbatim: "\u{00A0}\(String(localized: "Recommended"))\u{00A0}")
+                    .font(badgeFont)
+                    .foregroundStyle(Color.accentColor)
+                    .customAttribute(RecommendedBadgeAttribute(selected: false))
+                let space = Text(verbatim: " ").font(baseFont)
+                let label = Text(verbatim: p.text).font(baseFont)
+                itemText = Text("\(badge)\(space)\(label)")
+            } else {
+                itemText = Text(verbatim: p.text).font(baseFont)
+            }
+            return Text("\(acc)\(prefix)\(itemText)")
+        }
+        return combined.textRenderer(RecommendedTextRenderer(accent: .accentColor))
     }
 }
 
@@ -962,12 +1063,13 @@ extension View {
         id: String,
         ready: Bool,
         spoken: Int = 0,
+        waitingAgent: String? = nil,
         atEnd: Binding<Bool>,
         position: Binding<ScrollPosition>,
         scrollBox: ConversationScrollBox,
         @ViewBuilder bottom: @escaping () -> Bottom
     ) -> some View {
-        modifier(FollowsEnd(id: id, ready: ready, spoken: spoken, atEnd: atEnd, position: position, scrollBox: scrollBox, bottom: bottom))
+        modifier(FollowsEnd(id: id, ready: ready, spoken: spoken, waitingAgent: waitingAgent, atEnd: atEnd, position: position, scrollBox: scrollBox, bottom: bottom))
     }
 }
 
@@ -975,6 +1077,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
     let id: String
     let ready: Bool
     let spoken: Int
+    let waitingAgent: String?
     @Binding var atEnd: Bool
     @Binding var position: ScrollPosition
     let scrollBox: ConversationScrollBox
@@ -1053,7 +1156,9 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
                     scheduleAlign(markPositioned: false)
                 }
             }
-            .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, far in away = far }
+            .onScrollGeometryChange(for: Bool.self) { g in
+                fromEnd(g) > (waitingAgent != nil ? 140 : 240)
+            } action: { _, far in away = far }
             .onDisappear {
                 alignTask?.cancel()
                 alignTask = nil
@@ -1061,7 +1166,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 0) { bottom() }
                     .frame(maxWidth: .infinity)
-                    .toEndButton(away && !atEnd) {
+                    .toEndButton(away && !atEnd, waitingAgent: waitingAgent) {
                         atEnd = true
                         away = false
                         positioned = true

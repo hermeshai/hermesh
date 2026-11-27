@@ -581,6 +581,14 @@ func TestAntigravityToolFields(t *testing.T) {
 	if got := extractACPRawOutput(json.RawMessage(`{"combinedOutput":"acp-shell-ok","exitCode":0}`)); got != "acp-shell-ok" {
 		t.Fatal(got)
 	}
+	for _, title := range []string{"ask_question", "Run ask_question", "AskUserQuestion"} {
+		if ev, _, isMeta := parseACPProgressTool(title, "", nil, "completed"); !isMeta || ev != nil {
+			t.Fatalf("parseACPProgressTool(%q, completed) = (%+v, %v), want suppressed meta tool", title, ev, isMeta)
+		}
+		if _, _, isMeta := parseACPProgressTool(title, "", nil, "failed"); isMeta {
+			t.Fatalf("parseACPProgressTool(%q, failed) should remain visible on failure", title)
+		}
+	}
 }
 
 func TestAntigravityStepsFocusAndToolSummary(t *testing.T) {
@@ -635,10 +643,10 @@ func TestAntigravityStepsFocusAndToolSummary(t *testing.T) {
 	}
 
 	// Verify bare, MCP-namespaced, and shell-kind collision cases directly:
-	if ev, _, isMeta := parseACPProgressTool("mcp__ccd_turn__update_plan", "other", json.RawMessage(`{"items":[{"content":"Audit ACP","status":"in_progress"}]}`)); !isMeta || ev == nil || len(ev.TodoSteps) != 1 || ev.TodoSteps[0].Text != "Audit ACP" {
+	if ev, _, isMeta := parseACPProgressTool("mcp__ccd_turn__update_plan", "other", json.RawMessage(`{"items":[{"content":"Audit ACP","status":"in_progress"}]}`), "completed"); !isMeta || ev == nil || len(ev.TodoSteps) != 1 || ev.TodoSteps[0].Text != "Audit ACP" {
 		t.Fatalf("expected MCP update_plan parsed as TodoUpdated, got isMeta=%v ev=%+v", isMeta, ev)
 	}
-	if _, _, isMeta := parseACPProgressTool("Run update_steps", "execute", json.RawMessage(`{"command":"echo hi"}`)); isMeta {
+	if _, _, isMeta := parseACPProgressTool("Run update_steps", "execute", json.RawMessage(`{"command":"echo hi"}`), "completed"); isMeta {
 		t.Fatal("shell execute tool must never be misclassified as meta progress tool")
 	}
 }

@@ -449,9 +449,9 @@ enum Palette {
 
 /// Putting the keyboard away, as Messages does (docs/thread-composer.md §16): there is no button for it on iPhone.
 extension View {
-    /// A tap on the page (its blank parts or what's on it) puts it away; what was tapped still does what it does.
+    /// A tap on the page (its blank parts or what's on it, outside any text input) puts it away; what was tapped still does what it does.
     func keyboardAwayOnTap() -> some View {
-        simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
+        gesture(DismissKeyboardTapGesture())
     }
 
     /// A quick flick down on the box puts it away. Only a flick: a slow drag (selecting text) leaves it.
@@ -463,22 +463,121 @@ extension View {
     }
 }
 
+private struct DismissKeyboardTapGesture: UIGestureRecognizerRepresentable {
+    func makeUIGestureRecognizer(context: Context) -> UITapGestureRecognizer {
+        let g = UITapGestureRecognizer()
+        g.cancelsTouchesInView = false
+        g.delaysTouchesEnded = false
+        g.delegate = context.coordinator
+        return g
+    }
+
+    func updateUIGestureRecognizer(_ recognizer: UITapGestureRecognizer, context: Context) {}
+
+    func handleUIGestureRecognizerAction(_ recognizer: UITapGestureRecognizer, context: Context) {
+        if recognizer.state == .ended {
+            DispatchQueue.main.async { hideKeyboard() }
+        }
+    }
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            var v: UIView? = touch.view
+            while let cur = v {
+                if cur is UITextField || cur is UITextView { return false }
+                v = cur.superview
+            }
+            return true
+        }
+
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            true
+        }
+    }
+}
+
 private func hideKeyboard() {
     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 }
 
-/// Back to a conversation's end, once it was scrolled well up from it (the Mac's): an arrow in a glass circle.
+/// Inline "Recommended" badge rendered directly inside a SwiftUI Text run so multi-line option text wraps cleanly
+/// back to the leading edge and scales proportionally with Dynamic Type.
+struct RecommendedBadgeAttribute: TextAttribute {
+    let selected: Bool
+}
+
+struct RecommendedTextRenderer: TextRenderer {
+    let accent: Color
+
+    func draw(layout: Text.Layout, in ctx: inout GraphicsContext) {
+        for line in layout {
+            for run in line {
+                if let badge = run[RecommendedBadgeAttribute.self] {
+                    let rect = run.typographicBounds.rect.insetBy(dx: -0.5, dy: -1.5)
+                    let path = Path(roundedRect: rect, cornerRadius: 4.5, style: .continuous)
+                    ctx.fill(path, with: .color(badge.selected ? accent : accent.opacity(0.15)))
+                }
+                ctx.draw(run)
+            }
+        }
+    }
+}
+
+struct RecommendedOptionText: View {
+    let parsed: ParsedOptionLabel
+    var selected = false
+    var font: Font = .subheadline.weight(.medium)
+    var badgeFont: Font = .caption2.weight(.semibold)
+
+    var body: some View {
+        let bodyText = Text(verbatim: parsed.text).font(font)
+        if parsed.recommended {
+            let badge = Text(verbatim: "\u{00A0}\(String(localized: "Recommended"))\u{00A0}")
+                .font(badgeFont)
+                .foregroundStyle(selected ? Color.white : Color.accentColor)
+                .customAttribute(RecommendedBadgeAttribute(selected: selected))
+            let space = Text(verbatim: " ").font(font)
+            Text("\(badge)\(space)\(bodyText)")
+                .textRenderer(RecommendedTextRenderer(accent: .accentColor))
+        } else {
+            bodyText
+        }
+    }
+}
+
+/// Back to a conversation's end, once it was scrolled well up from it (the Mac's): an arrow in a glass circle, or
+/// a "Back to question" glass capsule when a question waits at the bottom.
 struct ToEndButton: View {
+    var waitingAgent: String? = nil
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: "arrow.down").font(.body.weight(.semibold)).frame(width: 44, height: 44)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .contentShape(.circle)
+            if let waitingAgent {
+                HStack(spacing: 7) {
+                    AgentLogo(id: waitingAgent, size: 18)
+                    Text("Back to question")
+                        .font(.footnote.weight(.semibold))
+                        .lineLimit(1)
+                    Image(systemName: "arrow.down")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 20, height: 20)
+                        .background(Color.accentColor, in: .circle)
+                }
+                .padding(.leading, 10).padding(.trailing, 8).padding(.vertical, 8)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .contentShape(.capsule)
+            } else {
+                Image(systemName: "arrow.down").font(.body.weight(.semibold)).frame(width: 44, height: 44)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .contentShape(.circle)
+            }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text("Back to the Bottom"))
+        .accessibilityLabel(waitingAgent != nil ? Text("Back to question") : Text("Back to the Bottom"))
         .accessibilityIdentifier("to-end")
     }
 }
@@ -486,12 +585,16 @@ struct ToEndButton: View {
 extension View {
     /// The button back to the end, centred 12 over this (what is at the bottom of a conversation, or nothing),
     /// while `away`: it takes no room, so nothing moves as it comes and goes.
-    func toEndButton(_ away: Bool, action: @escaping () -> Void) -> some View {
+    func toEndButton(_ away: Bool, waitingAgent: String? = nil, action: @escaping () -> Void) -> some View {
         overlay(alignment: .top) {
             ZStack {
-                if away { ToEndButton(action: action).transition(.opacity.combined(with: .offset(y: 6))) }
+                if away {
+                    ToEndButton(waitingAgent: waitingAgent, action: action)
+                        .transition(.opacity.combined(with: .offset(y: 6)))
+                }
             }
-            .frame(height: 44)
+            .frame(minHeight: 44)
+            .padding(.horizontal, 16)
             .alignmentGuide(.top) { $0[.bottom] + 12 }
             .animation(.easeOut(duration: 0.18), value: away)
         }

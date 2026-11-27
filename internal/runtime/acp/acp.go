@@ -2955,7 +2955,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		if startPoller[0] != "" {
 			s.startTaskLogPoller(startPoller[0], startPoller[1])
 		}
-		if metaEv, sig, isMeta := parseACPProgressTool(stSnap.title, stSnap.kind, stSnap.rawInput); isMeta {
+		if metaEv, sig, isMeta := parseACPProgressTool(stSnap.title, stSnap.kind, stSnap.rawInput, status); isMeta {
 			if metaEv != nil && sig != stSnap.lastArtifactSig {
 				s.mu.Lock()
 				if cur := s.tools[id]; cur != nil {
@@ -3465,7 +3465,7 @@ func normalizeACPProgressToolName(title, kind string) string {
 	} else if idx := strings.LastIndex(norm, "."); idx >= 0 {
 		norm = norm[idx+1:]
 	}
-	for _, sfx := range []string{"update_focus", "update_steps", "todowrite", "todo_write", "update_plan"} {
+	for _, sfx := range []string{"ask_question", "askuserquestion", "request_user_input", "update_focus", "update_steps", "todowrite", "todo_write", "update_plan"} {
 		if norm == sfx || (strings.HasPrefix(norm, "mcp_") && strings.HasSuffix(norm, "_"+sfx)) {
 			return sfx
 		}
@@ -3473,9 +3473,12 @@ func normalizeACPProgressToolName(title, kind string) string {
 	return ""
 }
 
-func parseACPProgressTool(title, kind string, rawInput json.RawMessage) (ev *runtime.Event, sig string, isMeta bool) {
+func parseACPProgressTool(title, kind string, rawInput json.RawMessage, status string) (ev *runtime.Event, sig string, isMeta bool) {
 	norm := normalizeACPProgressToolName(title, kind)
 	switch norm {
+	case "ask_question", "askuserquestion", "request_user_input":
+		return nil, "", status != "failed"
+
 	case "update_focus":
 		if len(rawInput) == 0 {
 			return nil, "", true

@@ -86,31 +86,37 @@ describe("unified session transcript", () => {
     expect(first.kind === "turn" && first.asker).toBe("c_bot");
   });
 
-  it("renders inter-agent messages and settled questions", () => {
+  it("renders inter-agent messages, deduplicates ask_question tool calls, and strips Recommended prefix", () => {
     const withMailAndQ = create(SessionProjectionSchema, {
       requests: [
         create(RuntimeRequestSchema, {
           requestId: "req1",
+          runId: "r1",
           kind: RuntimeRequestKind.USER_INPUT,
           status: RuntimeRequestStatus.RESOLVED,
           questionResolution: QuestionResolution.ANSWERED,
           resolvedBy: create(ActorSchema, { kind: ActorKind.OWNER, id: "owner" }),
-          resolvedAnswers: { q1: create(QuestionAnswerSchema, { selectedOptions: ["Red"] }) },
+          resolvedAnswers: { q1: create(QuestionAnswerSchema, { selectedOptions: ["(Recommended) Red"] }) },
           userInput: create(UserInputPayloadSchema, {
-            questions: [create(QuestionItemSchema, { id: "q1", text: "Color?", options: [create(QuestionOptionSchema, { id: "o1", label: "Red" })] })],
+            questions: [create(QuestionItemSchema, { id: "q1", text: "Color?", options: [create(QuestionOptionSchema, { id: "o1", label: "(Recommended) Red" })] })],
           }),
         }),
       ],
       items: [
         item(1, "r1", TurnItemKind.MESSAGE_RECEIVED, { mailName: "helper", mailAddress: "c_helper", text: "check staging", mailDelivered: "queued" }),
         item(2, "r1", TurnItemKind.MESSAGE_SENT, { mailName: "bot", mailAddress: "c_bot", text: "halfway" }),
-        item(3, "r1", TurnItemKind.RUNTIME_REQUEST, { requestId: "req1" }),
+        item(3, "r1", TurnItemKind.TOOL_CALL, { toolName: "Run ask_question", status: "completed" }),
+        item(4, "r1", TurnItemKind.RUNTIME_REQUEST, { requestId: "req1" }),
       ],
     });
     const rows = sessionTranscript(withMailAndQ);
+    expect(rows.length).toBe(3);
     expect(rows[0]).toMatchObject({ kind: "message", direction: "in", name: "helper", address: "c_helper", text: "check staging", delivered: "queued" });
     expect(rows[1]).toMatchObject({ kind: "message", direction: "out", name: "bot", address: "c_bot", text: "halfway" });
     expect(rows[2]?.kind === "question" && rows[2].resolution?.by).toBe("owner");
+    if (rows[2]?.kind === "question" && rows[2].resolution) {
+      expect(resolutionTitle(rows[2].resolution)).not.toContain("(Recommended)");
+    }
   });
 
   it("tells tool calls as grouped steps", () => {

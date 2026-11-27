@@ -106,16 +106,24 @@ private func kind(_ it: TranscriptItem) -> String {
             $0.status = .resolved
             $0.resolvedBy = .with { $0.kind = .owner; $0.id = "owner" }
             $0.userInput.questions = [.with { $0.id = "q1"; $0.text = "Proceed?" }]
-            $0.resolvedAnswers = ["q1": .with { $0.selectedOptions = ["yes"] }]
+            $0.resolvedAnswers = ["q1": .with { $0.selectedOptions = ["(Recommended) yes"] }]
         }]
-        $0.items = [item(1, "r1", .runtimeRequest) { $0.requestID = "req1" }]
+        $0.items = [
+            item(1, "r1", .toolCall) { $0.toolName = "Run ask_question"; $0.status = "completed" },
+            item(2, "r1", .runtimeRequest) { $0.requestID = "req1" },
+        ]
     }
     let qRows = sessionTranscript(settledProj)
-    guard case .question(_, _, let res?) = qRows[1] else {
+    #expect(qRows.count == 2, "Run ask_question wrapper tool call is deduplicated when USER_INPUT exists")
+    guard case .question(_, let settledQ, let res?) = qRows[1] else {
         Issue.record("expected resolved question row in \(qRows)")
         return
     }
     #expect(resolutionTitle(res) == "You answered: yes")
+    let displayRows = settledQuestionRows(settledQ, resolution: res)
+    #expect(displayRows == [
+        SettledQuestionRow(prompt: "Proceed?", choices: [ParsedOptionLabel(recommended: true, text: "yes")], status: .answered),
+    ])
 }
 
 @Test func proposedPlanFormattingAvoidsDuplicateHeadings() {

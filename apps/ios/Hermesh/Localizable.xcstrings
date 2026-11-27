@@ -14978,6 +14978,26 @@
         }
       }
     },
+    "Back to question": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回到问题"
+          }
+        }
+      }
+    },
+    "%@ answered": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已回答"
+          }
+        }
+      }
+    },
     "Typing…": {
       "localizations": {
         "zh-Hans": {
