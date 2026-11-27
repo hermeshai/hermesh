@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { sameImagePath } from "@hermesh/her-client";
 import { FileRefKind } from "@hermesh/proto/session";
@@ -141,6 +141,7 @@ function SessionImageStage({
   const stripRef = useRef<HTMLDivElement>(null);
   const stateKey = `${home.session}\0${run}\0${items[0]?.path ?? ""}`;
   const [activeIdx, setActiveIdx] = useState(() => stageIndexStore.get(stateKey) ?? 0);
+  const [stageRatio, setStageRatio] = useState<number | null>(null);
   const safeIdx = Math.max(0, Math.min(items.length - 1, activeIdx));
   const activeItem = items[safeIdx]!;
 
@@ -169,6 +170,15 @@ function SessionImageStage({
   const effectivePath = info && !goneByInfo && info.path ? info.path : activeItem.path;
   const activeFile: SessionFile = { session: home.session, run, path: effectivePath };
   const activeState = useSessionImage(goneByInfo ? null : activeFile, visible && !goneByInfo, online, true);
+
+  // Lock stage aspect ratio to the first decoded slide (clamped for portrait decks) so the viewport
+  // fills the prose column edge-to-edge without shifting height when stepping across slides.
+  useEffect(() => {
+    if (stageRatio !== null) return;
+    if (activeState?.status === "ready" && activeState.width > 0 && activeState.height > 0) {
+      setStageRatio(Math.max(1.25, Math.min(2.2, activeState.width / activeState.height)));
+    }
+  }, [stageRatio, activeState]);
 
   // Prioritize immediate neighbor slides right after the active slide so stepping feels instantaneous.
   useEffect(() => {
@@ -206,7 +216,10 @@ function SessionImageStage({
         }
       }}
     >
-      <div className={`simg-stage-main ${stageLoading ? "shimmer" : ""}`}>
+      <div
+        className={`simg-stage-main ${stageLoading ? "shimmer" : ""}`}
+        style={stageRatio ? ({ "--stage-ratio": String(stageRatio) } as CSSProperties) : undefined}
+      >
         <span className="simg-stage-pill" data-testid="session-image-counter">
           {`${safeIdx + 1} / ${items.length}${activeDims ? ` · ${activeDims}` : ""}`}
         </span>
