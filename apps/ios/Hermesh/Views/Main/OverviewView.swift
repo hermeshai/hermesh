@@ -138,7 +138,7 @@ struct OverviewView: View {
             if !list.isEmpty { NeedsDeck(needs: list, team: team, step: step, front: $front) }
             LinkMapView(map: map, lit: picked.map { map.touched(by: $0, sessions: team.waiting + team.failed + team.running + team.finished) },
                         mine: about.nodes, mineLine: about.line, spot: spot, awake: phase == .active, picked: $picked)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 16)
             if let picked, let node = (map.senders + map.environments).first(where: { $0.id == picked }) {
                 through(node, team: team)
             } else {
@@ -162,7 +162,8 @@ struct OverviewView: View {
         switch need {
         case .question(let id), .failed(let id):
             guard let s = (team.waiting + team.failed).first(where: { $0.sessionID == id }) else { return ([], nil) }
-            return ([LinkMap.sender(s.createdBy), LinkMap.environment(s.machineID)], id)
+            let a = LinkMap.sender(s.createdBy), b = LinkMap.environment(s.machineID)
+            return ([a, b], LinkMap.line(sender: a, environment: b))
         case .expiring(let id):
             return (Set(model.clients.filter { $0.grantID == id }.map { LinkMap.sender($0.clientID) }), nil)
         default:
