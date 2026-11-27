@@ -227,11 +227,23 @@ private func settledQuestionResolution(_ req: Hermesh_Session_V1_RuntimeRequest)
     return r
 }
 
+private func isRedundantQuestionToolCall(_ it: Hermesh_Session_V1_TurnItem) -> Bool {
+    guard it.kind == .toolCall, it.status != "failed", it.exitCode == 0 else { return false }
+    var norm = it.toolName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if norm.hasPrefix("run ") { norm = String(norm.dropFirst(4)).trimmingCharacters(in: .whitespaces) }
+    return norm == "ask_question" || norm == "askuserquestion" || norm == "request_user_input"
+}
+
 /// A session's items reduced into conversation rows.
 public func sessionTranscript(_ proj: Hermesh_Session_V1_SessionProjection?) -> [TranscriptItem] {
     guard let proj else { return [] }
     let runs = Dictionary(proj.runs.map { ($0.runID, $0) }, uniquingKeysWith: { _, b in b })
     let requests = Dictionary(proj.requests.map { ($0.requestID, $0) }, uniquingKeysWith: { _, b in b })
+    let questionRuns = Set(proj.requests.filter { $0.kind == .userInput && !$0.runID.isEmpty }.map(\.runID))
+        .union(proj.items.compactMap { it -> String? in
+            guard it.kind == .runtimeRequest, let req = requests[it.requestID], req.kind == .userInput else { return nil }
+            return it.runID
+        })
     let activeBgItems = activeBackgroundItemIDs(of: proj)
     let items = proj.items
     let setupFailed = workspaceFailedRun(proj)
@@ -252,7 +264,10 @@ public func sessionTranscript(_ proj: Hermesh_Session_V1_SessionProjection?) -> 
             out.append(.agent(seq: seq, text: it.text, runID: it.runID))
         case .proposedPlan:
             out.append(.agent(seq: seq, text: formatProposedPlan(title: it.planTitle, text: it.text), runID: it.runID))
-        case .toolCall, .commandExecution, .fileChange:
+        case .toolCall:
+            if isMetaProgressToolItem(it) || (questionRuns.contains(it.runID) && isRedundantQuestionToolCall(it)) { break }
+            out.append(.tool(toolItem(it, run: run, activeBgItems: activeBgItems)))
+        case .commandExecution, .fileChange:
             out.append(.tool(toolItem(it, run: run, activeBgItems: activeBgItems)))
         case .runtimeRequest:
             if let req = requests[it.requestID], req.kind == .userInput, req.status != .pending {
@@ -303,7 +318,7 @@ public enum SessionWork: Equatable, Sendable { case tool, thinking, replying, wo
 public func sessionWork(_ proj: Hermesh_Session_V1_SessionProjection?) -> SessionWork {
     guard let proj, !proj.session.activeRunID.isEmpty else { return .working }
     let now = proj.items.filter { $0.runID == proj.session.activeRunID }
-    if now.contains(where: { $0.status == "running" && [.toolCall, .commandExecution, .fileChange].contains($0.kind) }) { return .tool }
+    if now.contains(where: { $0.status == "running" && [.toolCall, .commandExecution, .fileChange].contains($0.kind) && !isMetaProgressToolItem($0) }) { return .tool }
     if now.contains(where: { $0.kind == .reasoning && $0.streaming }) { return .thinking }
     if now.contains(where: { $0.kind == .assistantMessage && $0.streaming }) { return .replying }
     return .working
@@ -375,21 +390,90 @@ private func isSessionChecklistLive(_ proj: Hermesh_Session_V1_SessionProjection
     }
 }
 
+private func normalizeMetaProgressToolName(_ rawName: String) -> String {
+    var norm = rawName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    for pfx in ["run ", "call ", "tool: ", "tool "] where norm.hasPrefix(pfx) {
+        norm = String(norm.dropFirst(pfx.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        break
+    }
+    if let r = norm.range(of: "__", options: .backwards) {
+        norm = String(norm[r.upperBound...])
+    } else if let i = norm.lastIndex(of: "/") {
+        norm = String(norm[norm.index(after: i)...])
+    } else if let i = norm.lastIndex(of: ".") {
+        norm = String(norm[norm.index(after: i)...])
+    }
+    for sfx in ["update_focus", "update_steps", "todowrite", "todo_write", "update_plan"] {
+        if norm == sfx || (norm.hasPrefix("mcp_") && norm.hasSuffix("_\(sfx)")) { return sfx }
+    }
+    if ["todoread", "taskcreate", "taskupdate", "tasklist", "taskget"].contains(norm) { return norm }
+    return ""
+}
+
+private func isMetaProgressToolItem(_ it: Hermesh_Session_V1_TurnItem) -> Bool {
+    it.kind == .toolCall && it.command.isEmpty && !normalizeMetaProgressToolName(it.toolName).isEmpty
+}
+
+private func reduceChainProgress(_ proj: Hermesh_Session_V1_SessionProjection, chain: Set<String>) -> (steps: [TodoStepView], focus: String) {
+    var steps: [TodoStepView] = []
+    var focus = ""
+    for it in proj.items where chain.contains(it.runID) {
+        if it.kind == .todoList {
+            if !it.todoSteps.isEmpty {
+                steps = it.todoSteps.compactMap { step in
+                    let text = step.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { return nil }
+                    return TodoStepView(text: text, status: normalizeTodoStepStatus(step.status))
+                }
+            }
+            focus = it.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            continue
+        }
+        guard it.kind == .toolCall, it.command.isEmpty else { continue }
+        let meta = normalizeMetaProgressToolName(it.toolName)
+        guard !meta.isEmpty,
+              let data = it.input.data(using: .utf8),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { continue }
+        if meta == "update_focus" {
+            if let f = (obj["focus"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !f.isEmpty {
+                focus = f
+            }
+            continue
+        }
+        let rawList = (obj["steps"] as? [[String: Any]])
+            ?? (obj["todos"] as? [[String: Any]])
+            ?? (obj["plan"] as? [[String: Any]])
+            ?? (obj["items"] as? [[String: Any]])
+        guard let rawList else { continue }
+        var nextFocus = ((obj["focus"] as? String) ?? (obj["explanation"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var parsed: [TodoStepView] = []
+        for rec in rawList {
+            let candidates = [rec["title"], rec["content"], rec["step"], rec["text"]].compactMap { $0 as? String }
+            guard let label = candidates.map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) }).first(where: { !$0.isEmpty }) else {
+                continue
+            }
+            let st = normalizeTodoStepStatus((rec["status"] as? String) ?? "")
+            parsed.append(TodoStepView(text: label, status: st))
+            if nextFocus.isEmpty, st == .inProgress,
+               let af = (rec["activeForm"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !af.isEmpty {
+                nextFocus = af
+            }
+        }
+        steps = parsed
+        focus = nextFocus
+    }
+    return (steps, focus)
+}
+
 /// Steps for the floating live checklist above the composer while the session is working.
 /// Automatically returns `[]` once the turn settles or all steps are completed/skipped.
 public func activeTodoSteps(_ proj: Hermesh_Session_V1_SessionProjection?) -> [TodoStepView] {
     guard let proj, isSessionChecklistLive(proj) else { return [] }
     let chain = currentTurnChainRunIDs(proj)
-    guard !chain.isEmpty,
-          let latest = proj.items.last(where: { $0.kind == .todoList && chain.contains($0.runID) }),
-          !latest.todoSteps.isEmpty else {
-        return []
-    }
-    let steps = latest.todoSteps.compactMap { step -> TodoStepView? in
-        let text = step.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return nil }
-        return TodoStepView(text: text, status: normalizeTodoStepStatus(step.status))
-    }
+    guard !chain.isEmpty else { return [] }
+    let (steps, _) = reduceChainProgress(proj, chain: chain)
     if steps.isEmpty || steps.allSatisfy({ $0.status == .completed || $0.status == .skipped }) {
         return []
     }
@@ -408,16 +492,14 @@ public func sessionFocusText(_ proj: Hermesh_Session_V1_SessionProjection?) -> S
     if work == .thinking || work == .replying { return nil }
 
     let chain = currentTurnChainRunIDs(proj)
-    if let latestTodo = proj.items.last(where: { $0.kind == .todoList && chain.contains($0.runID) }) {
-        let focus = latestTodo.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !focus.isEmpty { return focus }
-    }
+    let (_, focus) = reduceChainProgress(proj, chain: chain)
+    if !focus.isEmpty { return focus }
 
     let activeRunID = proj.session.activeRunID
     if let runningTool = proj.items.last(where: {
         $0.runID == activeRunID &&
         $0.status == "running" &&
-        ($0.kind == .commandExecution || $0.kind == .toolCall) &&
+        ($0.kind == .commandExecution || ($0.kind == .toolCall && !isMetaProgressToolItem($0))) &&
         !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }) {
         return runningTool.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -473,8 +555,13 @@ public func resolutionTitle(_ r: QuestionResolved, name: (String) -> String = { 
     let you = r.by == "owner"
     switch r.resolution {
     case .answered:
-        let answers = r.answers.map { a in (a.selected + (a.text.isEmpty ? [] : [a.text])).joined(separator: ", ") }
-            .joined(separator: String(localized: "; ", bundle: .module, comment: "Separates the answers to a question's items"))
+        let answers = r.answers.map { a in
+            let cleaned = a.selected.map { parseOptionLabel($0).text }
+            let trimmed = a.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (cleaned + (trimmed.isEmpty ? [] : [trimmed])).joined(separator: ", ")
+        }
+        .filter { !$0.isEmpty }
+        .joined(separator: String(localized: "; ", bundle: .module, comment: "Separates the answers to a question's items"))
         return you ? String(localized: "You answered: \(answers)", bundle: .module) : String(localized: "\(name(r.by)) answered: \(answers)", bundle: .module)
     case .declined:
         return you ? String(localized: "You chose not to answer", bundle: .module) : String(localized: "\(name(r.by)) chose not to answer", bundle: .module)

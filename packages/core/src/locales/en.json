@@ -117,6 +117,7 @@
     "declinedBy": "{{name}} skipped the question",
     "timedOut": "No response received; the agent continued on its own",
     "withdrawn": "Question withdrawn",
+    "skipped": "Skipped",
     "separator": "; "
   },
   "steps": {

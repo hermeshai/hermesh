@@ -168,8 +168,16 @@ final class DemoService {
         if UserDefaults.standard.bool(forKey: "DemoGitStatus") || ProcessInfo.processInfo.arguments.contains("-DemoGitStatus") {
             seedGitStatusDemo()
         }
+        if Self.questionFlow {
+            seedQuestionFlow()
+        }
         #endif
         _ = pairing(.client)
+        #if targetEnvironment(simulator)
+        if Self.linkMap {
+            seedLinkMap()
+        }
+        #endif
     }
 
     private static func demoLimits(_ agent: String) -> Hermesh_Machine_V1_AgentLimits {
@@ -451,6 +459,24 @@ final class DemoService {
         #endif
     }()
 
+    // Simulator-only fixture for QuestionFlowUITests.
+    private static let questionFlow: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-DemoQuestionFlow")
+        #else
+        false
+        #endif
+    }()
+
+    // Simulator-only fixture for multi-node, multi-session LinkMap verification.
+    private static let linkMap: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-DemoLinkMap")
+        #else
+        false
+        #endif
+    }()
+
     private var sampleQuestion = Question()
     private var greetings: [String: String] = [:]
     private var wakes: [Wake] = []
@@ -664,6 +690,11 @@ final class DemoService {
                   world.sessions[i].status == .waitingInput else { throw CancellationError() }
             let declined = req.decline || req.decision == .decline
             var greeting = "Hello, world!"
+            world.sessions[i].progress.clearPendingQuestion()
+            world.sessions[i].pendingRequestID = ""
+            world.sessions[i].status = .running
+            world.sessions[i].updatedAt = .init(date: .now)
+            syncSession(req.sessionID)
             if let rIdx = projections[req.sessionID]?.requests.firstIndex(where: { $0.requestID == req.requestID || $0.status == .pending }) {
                 projections[req.sessionID]?.requests[rIdx].status = .resolved
                 projections[req.sessionID]?.requests[rIdx].resolvedDecision = declined ? .decline : .acceptOnce
@@ -684,11 +715,6 @@ final class DemoService {
                 let updatedReq = projections[req.sessionID]!.requests[rIdx]
                 emitEvent(req.sessionID) { $0.type = "request.resolved"; $0.request = updatedReq }
             }
-            world.sessions[i].progress.clearPendingQuestion()
-            world.sessions[i].pendingRequestID = ""
-            world.sessions[i].status = .running
-            world.sessions[i].updatedAt = .init(date: .now)
-            syncSession(req.sessionID)
             publish()
             if !Self.holdWorkTaskForUITest {
                 let sid = req.sessionID
@@ -1369,12 +1395,17 @@ final class DemoService {
         }
         appendItem(id, runID: "r1", kind: .todoList) {
             $0.itemID = "r1:todo:todo"
-            $0.text = "Inspecting CALayer sprite benchmark"
             $0.todoSteps = [
                 .with { $0.text = "Check motion constraints"; $0.status = "completed" },
                 .with { $0.text = "Rewrite CALayer halo"; $0.status = "in_progress" },
                 .with { $0.text = "Verify GPU usage"; $0.status = "pending" },
             ]
+        }
+        appendItem(id, runID: "r1", kind: .toolCall) {
+            $0.itemID = "r1:call_legacy_steps"
+            $0.toolName = "Run update_steps"
+            $0.status = "completed"
+            $0.input = #"{"steps":[{"title":"Check motion constraints","status":"done"},{"title":"Rewrite CALayer halo","status":"in_progress"},{"title":"Verify GPU usage","status":"pending"}]}"#
         }
         appendItem(id, runID: "r1", kind: .assistantMessage) {
             $0.text = "Running GPU benchmark in background."
@@ -1409,6 +1440,7 @@ final class DemoService {
         emitEvent(id) { $0.type = "run.started"; $0.run = contRun }
         appendItem(id, runID: "r2", kind: .commandExecution) {
             $0.itemID = "r2:cmd:1"
+            $0.text = "Run HermeshKit tests and iOS Simulator UI tests"
             $0.command = "swift test"
             $0.status = "running"
         }
@@ -1451,6 +1483,133 @@ final class DemoService {
                 self.emitEvent(id) { $0.type = "run.completed"; $0.run = doneRun }
             }
             self.publish()
+        }
+    }
+
+    private func seedQuestionFlow() {
+        let id = "demo-question-flow"
+        let q = Question.with {
+            $0.questionID = "req-flow-q1"
+            $0.turn = 12
+            $0.askedAt = .init(date: .now)
+            $0.expiresAt = .init(date: .now.addingTimeInterval(1800))
+            $0.items = [.with {
+                $0.id = "noise"
+                $0.text = "How should sidebar status colors reduce visual noise?"
+                $0.allowOther = true
+                $0.options = [
+                    .with { $0.label = "(Recommended) Keep sage green & muted purple with lower sidebar brightness so titles stay primary" },
+                    .with { $0.label = "Strict monochrome icons in sidebar rows and keep semantic colors only inside the hover card" },
+                    .with { $0.label = "Merge pushed and merged states into one muted green hue distinguished only by icon shape" },
+                ]
+            }]
+        }
+
+        var s = session(id, title: "Question flow session", machine: "demo-mac", status: .waitingInput)
+        s.agent = "antigravity"
+        s.createdBy = "owner"
+        s.activeRunID = "r12"
+        s.pendingRequestID = q.questionID
+        s.progress.pendingQuestion = q
+        s.progress.turnCount = 11
+        s.updatedAt = .init(date: .now)
+        world.sessions.insert(s, at: 0)
+
+        for t in 1 ... 11 {
+            let rid = "r\(t)"
+            beginRun(id, runID: rid, ordinal: UInt32(t), asker: "owner", status: .completed, startedAt: .now.addingTimeInterval(Double(-120 + t * 5)))
+            appendItem(id, runID: rid, kind: .userMessage) {
+                $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+                $0.text = "Flow prompt #\(t): review sidebar palette contrast."
+            }
+            appendItem(id, runID: rid, kind: .assistantMessage) {
+                $0.text = "Flow context #\(t): measured luminance across sidebar rows and hover popovers for entry \(t)."
+            }
+        }
+
+        beginRun(id, runID: "r12", ordinal: 12, asker: "owner", status: .waitingRequest, startedAt: .now)
+        appendItem(id, runID: "r12", kind: .userMessage) {
+            $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+            $0.text = "Please propose three color noise-reduction options."
+        }
+        appendItem(id, runID: "r12", kind: .assistantMessage) {
+            $0.text = "Flow latest analysis: I compared saturation levels in Sidebar.tsx and prepared three options below."
+        }
+        appendItem(id, runID: "r12", kind: .toolCall) {
+            $0.toolName = "Run ask_question"
+            $0.status = "completed"
+        }
+        openQuestionRequest(id, runID: "r12", question: q)
+        syncSession(id)
+    }
+
+    private func seedLinkMap() {
+        func envMachine(_ id: String, _ name: String, local: Bool, agents: [String]) -> Machine {
+            .with {
+                $0.machineID = id; $0.machineName = name; $0.local = local; $0.online = true; $0.version = "Demo"
+                $0.status = .with {
+                    $0.name = name; $0.platform = "darwin/arm64"; $0.maxSessions = 8
+                    $0.agents = agents.map { a in .with {
+                        $0.name = a; $0.available = true; $0.loggedIn = true; $0.version = "Demo"
+                        $0.models = [.with { $0.id = "demo-model"; $0.name = "Demo Model"; $0.efforts = ["high"] }]
+                    } }
+                }
+            }
+        }
+        var homebook = envMachine("m-homebook", "yee-homebook", local: true, agents: ["claude", "codex", "antigravity", "deepseek"])
+        homebook.her = .with { $0.enabled = true; $0.running = true; $0.modelReady = true }
+        let mini = envMachine("m-mini", "yi-mac-mini", local: false, agents: ["claude", "codex"])
+        world.machines = [homebook, mini]
+        world.devices = [
+            .with { $0.keyID = "demo-iphone"; $0.label = "iPhone"; $0.platform = "ios"; $0.thisDevice = true },
+            .with { $0.keyID = "demo-mac-device"; $0.label = "MacBook"; $0.platform = "macos" },
+        ]
+        world.projects = world.machines.map { m in .with {
+            $0.machineID = m.machineID; $0.projectID = "hermesh"; $0.path = "/Demo/hermesh"
+            $0.defaultBaseRef = "main"; $0.workspace = .worktree; $0.agents = ["claude", "codex", "antigravity", "deepseek"]
+        } }
+        func grant(_ id: String, _ label: String, herMachine: String = "") -> Client {
+            .with {
+                $0.clientID = id; $0.grantID = "g-" + id; $0.label = label; $0.online = true
+                $0.herMachineID = herMachine; $0.grantVersion = 1
+                $0.expiresAt = .init(date: .now.addingTimeInterval(30 * 86400))
+                $0.spec = .with { $0.label = label; $0.machineIds = ["*"]; $0.projectIds = ["*"]; $0.agents = ["*"]; $0.ttlDays = 30 }
+            }
+        }
+        world.clients = [
+            grant("c-claude", "Claude (claude.ai)"),
+            grant("c-her", "Her", herMachine: "m-homebook"),
+            grant("c-muse", "Muse (agent.meta.ai)"),
+        ]
+        world.pairings.removeAll()
+        projections.removeAll()
+        events.removeAll()
+
+        let specs: [(id: String, title: String, by: String, machine: String, agent: String, elapsed: TimeInterval)] = [
+            ("lm-1", "Polish streaming typewriter cadence", "owner", "m-homebook", "antigravity", 930),
+            ("lm-2", "Double-click inline session rename on Mac", "owner", "m-homebook", "antigravity", 1395),
+            ("lm-3", "Inspect Claude desktop terminal CLI flags", "owner", "m-homebook", "antigravity", 1009),
+            ("lm-4", "Fix mobile and Mac session archive error", "owner", "m-homebook", "antigravity", 1576),
+            ("lm-5", "Refine mobile connection status copy", "owner", "m-homebook", "antigravity", 4171),
+            ("lm-6", "Investigate relay reconnect jitter", "c-claude", "m-homebook", "claude", 412),
+            ("lm-7", "Add offline world cache unit tests", "c-claude", "m-homebook", "claude", 265),
+            ("lm-8", "Audit nightly build and bundle size", "c-her", "m-mini", "codex", 188),
+        ]
+        world.sessions = specs.map { sp in
+            var s = session(sp.id, title: sp.title, machine: sp.machine, status: .running)
+            s.projectID = "hermesh"
+            s.agent = sp.agent
+            s.createdBy = sp.by
+            s.activeRunID = "r1"
+            let started = Date.now.addingTimeInterval(-sp.elapsed)
+            s.createdAt = .init(date: started)
+            s.updatedAt = .init(date: .now)
+            s.progress.turnStartedAt = .init(date: started)
+            return s
+        }
+        for sp in specs {
+            beginRun(sp.id, runID: "r1", ordinal: 1, asker: sp.by, status: .running)
+            appendItem(sp.id, runID: "r1", kind: .userMessage) { $0.text = sp.title }
         }
     }
     #endif

@@ -116,6 +116,7 @@
     "declinedBy": "{{name}} 跳过了回答",
     "timedOut": "无人回答，Agent 已自行继续",
     "withdrawn": "问题已撤回",
+    "skipped": "已跳过",
     "separator": "；"
   },
   "steps": {

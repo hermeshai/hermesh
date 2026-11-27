@@ -525,6 +525,7 @@ private struct SessionInlineImageCard: View {
 struct SessionImageLightbox: View {
     let presentation: SessionLightboxPresentation
     @Environment(AppModel.self) private var model
+    @Environment(\.sessionFiles) private var envFiles
     @Environment(\.dismiss) private var dismiss
 
     @State private var index: Int
@@ -555,7 +556,7 @@ struct SessionImageLightbox: View {
     }
 
     var body: some View {
-        let files = model.sessionFiles.model(presentation.sessionID, api: model.api)
+        let files = envFiles ?? model.sessionFiles.model(presentation.sessionID, api: model.api)
         let curPath = resolvedAskPath(files: files, item: currentItem)
         let curState = state(of: currentItem, path: curPath)
         let name = fileBaseName(loadedOf(curState)?.resolvedPath ?? curPath)
@@ -766,6 +767,11 @@ private struct LightboxPage: View {
             switch state {
             case nil, .loading?:
                 ProgressView().tint(.white)
+                    .task(id: "\(sessionID)\u{0}\(run)\u{0}\(path)\u{0}\(online)") {
+                        if picture == nil, attachment == nil, state == nil {
+                            SessionImageStore.shared.request(api: model.api, sessionID: sessionID, run: run, path: path)
+                        }
+                    }
             case .ready(let loaded)?:
                 ZoomableImageScrollView(
                     image: fullImage ?? loaded.thumbnail,

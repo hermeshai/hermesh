@@ -343,8 +343,11 @@ final class LiveProgressUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Rewrite CALayer halo"].exists)
         XCTAssertTrue(app.staticTexts["Verify GPU usage"].exists)
 
-        // 2. Native focus phrase shows on the bottom working status line:
-        XCTAssertTrue(app.staticTexts["Inspecting CALayer sprite benchmark"].exists, "live focus text")
+        // 2. Long live focus phrase wraps up to two lines on iPhone without single-line truncation, and legacy Run update_steps never leaks:
+        let working = app.descendants(matching: .any)["thread-working"].firstMatch
+        XCTAssertTrue(working.waitForExistence(timeout: 5), "live working line")
+        XCTAssertTrue(working.label.contains("Run HermeshKit tests and iOS Simulator UI tests"), "untruncated focus label: \(working.label)")
+        XCTAssertFalse(app.staticTexts["Run update_steps"].exists, "Run update_steps must not leak into chat log")
 
         // 3. Background continuation wake line "<task> finished" is visible and tappable:
         let wakeLine = app.buttons["thread-wake-line"].firstMatch
@@ -359,5 +362,90 @@ final class LiveProgressUITests: XCTestCase {
         // Tapping the wake line opens Background Tasks:
         wakeLine.tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Benchmark CALayer sprite orbit")).firstMatch.waitForExistence(timeout: 8))
+    }
+}
+
+final class QuestionFlowUITests: XCTestCase {
+    let app = XCUIApplication()
+
+    override func setUp() {
+        continueAfterFailure = false
+        app.launchArguments = [
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
+            "-DemoQuestionFlow",
+        ]
+        app.launch()
+        let tryDemo = app.buttons["try-demo"]
+        XCTAssertTrue(tryDemo.waitForExistence(timeout: 15), "try-demo")
+        tryDemo.tap()
+        let menu = app.descendants(matching: .any)["menu"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 15), "menu")
+        menu.tap()
+        let sessionRow = app.descendants(matching: .any)["session-Question flow session"].firstMatch
+        XCTAssertTrue(sessionRow.waitForExistence(timeout: 15), "drawer row Question flow session")
+        sessionRow.tap()
+        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10), "session page")
+    }
+
+    func testInlineQuestionScrollsWithContentAndSettlesCleanly() {
+        let panel = app.descendants(matching: .any)["question"].firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 10), "inline question panel")
+
+        // Redundant "Run ask_question" tool call wrapper must not show.
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "ask_question")).firstMatch.exists)
+
+        // All 3 options render in full inside the conversation scroll stream.
+        let opt1 = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Keep sage green & muted purple")).firstMatch
+        let opt3 = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Merge pushed and merged states")).firstMatch
+        XCTAssertTrue(opt1.exists && opt3.exists, "all options exist without nested clipping")
+
+        // Scrolling up moves the question panel down with the content so earlier messages become readable,
+        // and surfaces the "Back to question" pill ("to-end").
+        let conv = app.scrollViews.firstMatch
+        for _ in 0..<4 {
+            let start = conv.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30))
+            let finish = conv.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.82))
+            start.press(forDuration: 0.02, thenDragTo: finish)
+        }
+        let backToQuestion = app.buttons["to-end"]
+        XCTAssertTrue(backToQuestion.waitForExistence(timeout: 5), "Back to question pill appears when scrolled up")
+        XCTAssertTrue(backToQuestion.label.contains("Back to question"), "pill label: \(backToQuestion.label)")
+
+        // Tapping Back to question smoothly returns to the question panel at the bottom.
+        backToQuestion.tap()
+        XCTAssertTrue(backToQuestion.waitForNonExistence(timeout: 5), "pill hides once back at question")
+        XCTAssertTrue(opt1.isHittable, "first option hittable again at bottom")
+
+        // Tapping custom answer field focuses cleanly (without DismissKeyboardTapGesture stealing focus) and hides bottom composer;
+        // tapping outside dismisses keyboard, and choosing an option overrides custom text and settles into Style A card.
+        let customField = app.textFields["answer-text"]
+        XCTAssertTrue(customField.exists && customField.isHittable, "custom answer field hittable")
+        customField.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "keyboard opens on custom answer field")
+        XCTAssertFalse(app.textFields["thread-composer"].exists, "bottom composer hides while typing custom question answer")
+        customField.typeText("Custom draft")
+
+        let answerBtn = app.buttons["answer"]
+        XCTAssertTrue(answerBtn.wait(for: \.isEnabled, toEqual: true, timeout: 5), "custom draft enables answer")
+
+        // Tapping visible option 3 while keyboard is open selects it, clears custom text, dismisses keyboard, and restores composer;
+        // then switching to Recommended option 1 and answering settles into Style A card.
+        opt3.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "picking option dismisses keyboard")
+        XCTAssertTrue(app.textFields["thread-composer"].waitForExistence(timeout: 5), "bottom composer returns when keyboard closes")
+
+        opt1.tap()
+        XCTAssertTrue(answerBtn.wait(for: \.isEnabled, toEqual: true, timeout: 5))
+        answerBtn.tap()
+
+        let settled = app.descendants(matching: .any)["settled-question"].firstMatch
+        XCTAssertTrue(settled.waitForExistence(timeout: 10), "settled Style A card")
+        XCTAssertTrue(panel.waitForNonExistence(timeout: 5), "pending panel gone")
+        XCTAssertTrue(app.textFields["thread-composer"].waitForExistence(timeout: 5), "bottom composer returns once settled")
+        let rawLeak = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "(Recommended)")).firstMatch
+        XCTAssertFalse(rawLeak.exists, "raw (Recommended) prefix must not leak into settled card")
+        let cleanAnswer = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Keep sage green & muted purple")).firstMatch
+        XCTAssertTrue(cleanAnswer.exists, "settled card shows chosen answer with inline Recommended badge")
     }
 }

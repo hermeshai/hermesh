@@ -106,16 +106,24 @@ private func kind(_ it: TranscriptItem) -> String {
             $0.status = .resolved
             $0.resolvedBy = .with { $0.kind = .owner; $0.id = "owner" }
             $0.userInput.questions = [.with { $0.id = "q1"; $0.text = "Proceed?" }]
-            $0.resolvedAnswers = ["q1": .with { $0.selectedOptions = ["yes"] }]
+            $0.resolvedAnswers = ["q1": .with { $0.selectedOptions = ["(Recommended) yes"] }]
         }]
-        $0.items = [item(1, "r1", .runtimeRequest) { $0.requestID = "req1" }]
+        $0.items = [
+            item(1, "r1", .toolCall) { $0.toolName = "Run ask_question"; $0.status = "completed" },
+            item(2, "r1", .runtimeRequest) { $0.requestID = "req1" },
+        ]
     }
     let qRows = sessionTranscript(settledProj)
-    guard case .question(_, _, let res?) = qRows[1] else {
+    #expect(qRows.count == 2, "Run ask_question wrapper tool call is deduplicated when USER_INPUT exists")
+    guard case .question(_, let settledQ, let res?) = qRows[1] else {
         Issue.record("expected resolved question row in \(qRows)")
         return
     }
     #expect(resolutionTitle(res) == "You answered: yes")
+    let displayRows = settledQuestionRows(settledQ, resolution: res)
+    #expect(displayRows == [
+        SettledQuestionRow(prompt: "Proceed?", choices: [ParsedOptionLabel(recommended: true, text: "yes")], status: .answered),
+    ])
 }
 
 @Test func proposedPlanFormattingAvoidsDuplicateHeadings() {
@@ -374,11 +382,33 @@ private func kind(_ it: TranscriptItem) -> String {
     p.session.activeRunID = "r2"
     #expect(activeTodoSteps(p).count == 2)
 
+    // Focus-only update in continuation run r2 updates focus without wiping r1's checklist steps:
+    p.items.append(item(5, "r2", .todoList) {
+        $0.itemID = "r2:todo:todo"
+        $0.text = "Summarizing GPU benchmark results"
+    })
+    #expect(activeTodoSteps(p).count == 2)
+    #expect(sessionFocusText(p) == "Summarizing GPU benchmark results")
+
     p.runs.append(.with { $0.runID = "r3"; $0.ordinal = 3; $0.status = .running; $0.author = .with { $0.kind = .owner } })
     p.session.activeRunID = "r3"
     #expect(activeTodoSteps(p).isEmpty)
 
-    p.items.append(item(5, "r3", .todoList) {
+    // Legacy leaked "Run update_steps" TOOL_CALL items are hidden from transcript rows and drive checklist + focus:
+    p.items.append(item(6, "r3", .toolCall) {
+        $0.itemID = "r3:call_legacy_steps"
+        $0.toolName = "Run update_steps"
+        $0.status = "completed"
+        $0.input = #"{"steps":[{"title":"Add Git status helpers","status":"done"},{"title":"Verify with HermeshKit and iOS Simulator tests","status":"in_progress"}]}"#
+    })
+    #expect(!sessionTranscript(p).contains { if case .tool(let t) = $0 { t.call.name.contains("update_steps") } else { false } })
+    #expect(activeTodoSteps(p) == [
+        TodoStepView(text: "Add Git status helpers", status: .completed),
+        TodoStepView(text: "Verify with HermeshKit and iOS Simulator tests", status: .inProgress),
+    ])
+    #expect(sessionFocusText(p) == "Verify with HermeshKit and iOS Simulator tests")
+
+    p.items.append(item(7, "r3", .todoList) {
         $0.itemID = "r3:todo:todo"
         $0.todoSteps = [
             .with { $0.text = "Step A"; $0.status = "done" },

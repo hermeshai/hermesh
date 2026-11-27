@@ -17,6 +17,7 @@
     "failed": "出错了",
     "failedWith": "出错了：{{title}}",
     "agentAsked": "agent 提问：",
+    "answeredBy": "{{name}} 已回答",
     "interruptedByYou": "你打断了这一轮",
     "interrupted": "这一轮被打断了",
     "interruptedBy": "{{name}} 打断了这一轮",

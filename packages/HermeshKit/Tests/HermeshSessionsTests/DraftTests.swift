@@ -57,3 +57,20 @@ import Testing
     #expect(prose.distance(from: prose.startIndex, to: cut) >= 22)
     #expect(cut < prose.endIndex)
 }
+
+@Test func unwrapCarouselsMergesPureImageSlidesAndSeparatesMixedSlides() {
+    let pure = "Before\n\n````carousel\n![Dark](/tmp/dark.png)\n<!-- slide -->\n![Light](/tmp/light.png)\n````\n\nAfter"
+    #expect(unwrapCarousels(pure) == "Before\n\n![Dark](/tmp/dark.png)\n![Light](/tmp/light.png)\n\nAfter")
+
+    let mixed = "````carousel\n![Shot](/tmp/a.png)\n<!-- slide -->\n```python\nprint('<!-- slide -->')\n```\n````"
+    #expect(unwrapCarousels(mixed) == "![Shot](/tmp/a.png)\n\n---\n\n```python\nprint('<!-- slide -->')\n```")
+
+    let quoted = "`````markdown\n````carousel\n![Literal](/tmp/a.png)\n````\n`````"
+    #expect(unwrapCarousels(quoted) == quoted)
+
+    let streaming = "````carousel\n![One](/tmp/1.png)\n<!-- slide -->\n![Two](/tmp/2.png)"
+    #expect(unwrapCarousels(streaming) == "![One](/tmp/1.png)\n![Two](/tmp/2.png)")
+
+    let spaced = "See ![shot](/Users/me/Library/Application Support/Hermesh/shot.png) and `[raw](/Application Support/x.png)`"
+    #expect(unwrapCarousels(spaced) == "See ![shot](/Users/me/Library/Application%20Support/Hermesh/shot.png) and `[raw](/Application Support/x.png)`")
+}
