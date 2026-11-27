@@ -1014,7 +1014,17 @@ final class AppModel {
     }
 
     func searchText(_ s: Session) -> String {
-        [s.displayTitle, s.projectID, grantLabel(s), machineName(s.machineID), agentTitle(s.agent)].joined(separator: " ")
+        [
+            s.displayTitle,
+            s.projectID,
+            grantLabel(s),
+            senderName(s.createdBy),
+            machineName(s.machineID),
+            agentTitle(s.agent),
+            agentShortTitle(s.agent),
+            s.effectiveBranch,
+            s.searchExcerpt?.text ?? "",
+        ].joined(separator: " ")
     }
 
     // MARK: Navigation

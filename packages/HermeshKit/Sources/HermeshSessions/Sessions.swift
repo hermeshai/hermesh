@@ -88,6 +88,90 @@ public extension Session {
         default: nil
         }
     }
+
+    /// The session's Git branch from live Git status, workspace strategy, or launch record.
+    var effectiveBranch: String {
+        let gb = hasGitStatus ? gitStatus.branch.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        if !gb.isEmpty { return gb }
+        let wb = hasWorkspaceStrategy ? workspaceStrategy.branch.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        if !wb.isEmpty { return wb }
+        return branch.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// A one-line summary for search snippets and long-press preview cards:
+    /// pending question first, then failure message, active tool/message, or latest reply.
+    var searchExcerpt: SessionExcerpt? {
+        if let q = pendingQuestion, let item = q.items.first {
+            let text = collapseSearchWhitespace(item.text.isEmpty ? item.header : item.text)
+            if !text.isEmpty { return SessionExcerpt(kind: .waiting, text: text) }
+        }
+        if isFailed {
+            let raw = progress.hasLastFailure && !progress.lastFailure.message.isEmpty ? progress.lastFailure.message : error
+            let text = collapseSearchWhitespace(raw)
+            if !text.isEmpty { return SessionExcerpt(kind: .failed, text: text) }
+        }
+        let msg = collapseSearchWhitespace(progress.lastMessageExcerpt)
+        if isActive {
+            if !msg.isEmpty { return SessionExcerpt(kind: .running, text: msg) }
+            let tool = collapseSearchWhitespace(progress.currentTool)
+            if !tool.isEmpty { return SessionExcerpt(kind: .running, text: tool) }
+        }
+        if !msg.isEmpty { return SessionExcerpt(kind: .latest, text: msg) }
+        let res = collapseSearchWhitespace(result)
+        if !res.isEmpty { return SessionExcerpt(kind: .latest, text: res) }
+        return nil
+    }
+}
+
+public struct SessionExcerpt: Equatable, Sendable {
+    public enum Kind: String, Equatable, Sendable {
+        case waiting, failed, running, latest
+    }
+
+    public let kind: Kind
+    public let text: String
+
+    public init(kind: Kind, text: String) {
+        self.kind = kind
+        self.text = text
+    }
+}
+
+public struct HighlightSegment: Equatable, Sendable {
+    public let text: String
+    public let highlighted: Bool
+
+    public init(_ text: String, highlighted: Bool) {
+        self.text = text
+        self.highlighted = highlighted
+    }
+}
+
+private func collapseSearchWhitespace(_ text: String) -> String {
+    text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+}
+
+/// Splits `text` into plain and matched runs for case- and diacritic-insensitive search highlighting.
+public func highlightSegments(_ text: String, query: String) -> [HighlightSegment] {
+    let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isEmpty else { return [] }
+    guard !q.isEmpty else { return [HighlightSegment(text, highlighted: false)] }
+    var out: [HighlightSegment] = []
+    var cursor = text.startIndex
+    while cursor < text.endIndex,
+          let match = text.range(of: q, options: [.caseInsensitive, .diacriticInsensitive], range: cursor..<text.endIndex),
+          !match.isEmpty
+    {
+        if cursor < match.lowerBound {
+            out.append(HighlightSegment(String(text[cursor..<match.lowerBound]), highlighted: false))
+        }
+        out.append(HighlightSegment(String(text[match]), highlighted: true))
+        cursor = match.upperBound
+    }
+    if cursor < text.endIndex {
+        out.append(HighlightSegment(String(text[cursor..<text.endIndex]), highlighted: false))
+    }
+    return out
 }
 
 /// GitHub-style 5-square proportional diff bar for +insertions / -deletions.

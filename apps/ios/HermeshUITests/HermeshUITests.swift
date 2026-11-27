@@ -963,9 +963,10 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 10), "the search page")
         let results = app.descendants(matching: .any)["session-search"].firstMatch
         XCTAssertTrue(results.waitForExistence(timeout: 10))
-        XCTAssertTrue(text("按状态搜索").waitForExistence(timeout: 5), "the states")
+        XCTAssertTrue(app.descendants(matching: .any)["search-filter-status"].waitForExistence(timeout: 5), "the filter bar")
         XCTAssertTrue(results.descendants(matching: .any)["session-写 hello"].firstMatch.exists, "a recent session")
-        // A state becomes a token: the failed sessions alone.
+        // Status filter narrows to the failed sessions alone.
+        tap("search-filter-status")
         tap("search-state-failed")
         XCTAssertTrue(text("2 个结果").waitForExistence(timeout: 10), "the failed ones")
         XCTAssertTrue(results.descendants(matching: .any)["session-崩溃"].firstMatch.exists && results.descendants(matching: .any)["session-限流"].firstMatch.exists)
@@ -975,7 +976,7 @@ final class HermeshUITests: XCTestCase {
         tap("search")
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         sleep(1)
-        field.typeText("崩溃\n") // submit the query, dismissing the search suggestions
+        field.typeText("崩溃") // live results appear immediately without suggestion overlay
         XCTAssertTrue(text("1 个结果").waitForExistence(timeout: 10))
         let result = results.descendants(matching: .any)["session-崩溃"].firstMatch
         XCTAssertTrue(result.waitForExistence(timeout: 10))
