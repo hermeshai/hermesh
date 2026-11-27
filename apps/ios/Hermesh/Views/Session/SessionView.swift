@@ -1064,12 +1064,13 @@ extension View {
         ready: Bool,
         spoken: Int = 0,
         waitingAgent: String? = nil,
+        todoSummary: TodoEndSummary? = nil,
         atEnd: Binding<Bool>,
         position: Binding<ScrollPosition>,
         scrollBox: ConversationScrollBox,
         @ViewBuilder bottom: @escaping () -> Bottom
     ) -> some View {
-        modifier(FollowsEnd(id: id, ready: ready, spoken: spoken, waitingAgent: waitingAgent, atEnd: atEnd, position: position, scrollBox: scrollBox, bottom: bottom))
+        modifier(FollowsEnd(id: id, ready: ready, spoken: spoken, waitingAgent: waitingAgent, todoSummary: todoSummary, atEnd: atEnd, position: position, scrollBox: scrollBox, bottom: bottom))
     }
 }
 
@@ -1078,6 +1079,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
     let ready: Bool
     let spoken: Int
     let waitingAgent: String?
+    let todoSummary: TodoEndSummary?
     @Binding var atEnd: Bool
     @Binding var position: ScrollPosition
     let scrollBox: ConversationScrollBox
@@ -1166,7 +1168,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 0) { bottom() }
                     .frame(maxWidth: .infinity)
-                    .toEndButton(away && !atEnd, waitingAgent: waitingAgent) {
+                    .toEndButton(away && !atEnd, waitingAgent: waitingAgent, todoSummary: todoSummary) {
                         atEnd = true
                         away = false
                         positioned = true

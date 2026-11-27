@@ -334,20 +334,31 @@ final class LiveProgressUITests: XCTestCase {
         row.tap()
         XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10), "session page")
 
-        // 1. Floating checklist sits above the composer while running:
+        // 1. Inline B2 checklist spine flows at the foot of the conversation above the composer:
         let todoCard = app.descendants(matching: .any)["thread-todo-card"].firstMatch
         let composer = app.descendants(matching: .any)["thread-composer"].firstMatch
-        XCTAssertTrue(todoCard.waitForExistence(timeout: 8), "floating checklist card")
+        XCTAssertTrue(todoCard.waitForExistence(timeout: 8), "inline checklist spine")
         XCTAssertTrue(composer.waitForExistence(timeout: 8), "composer")
         XCTAssertLessThanOrEqual(todoCard.frame.maxY, composer.frame.minY + 4, "checklist sits above composer")
-        XCTAssertTrue(app.staticTexts["Rewrite CALayer halo"].exists)
-        XCTAssertTrue(app.staticTexts["Verify GPU usage"].exists)
+
+        // Smart 3-row window folds leading 2 completed steps, highlights active step 3/5, and previews Next step:
+        let toggle = app.buttons["thread-todo-toggle"].firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout: 4), "fold toggle")
+        XCTAssertTrue(toggle.label.contains("Completed 2"), "fold label: \(toggle.label)")
+        XCTAssertFalse(app.descendants(matching: .any)["thread-todo-step-0"].exists, "completed step folded by default")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Rewrite CALayer halo")).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Verify GPU usage")).firstMatch.exists)
 
         // 2. Long live focus phrase wraps up to two lines on iPhone without single-line truncation, and legacy Run update_steps never leaks:
         let working = app.descendants(matching: .any)["thread-working"].firstMatch
-        XCTAssertTrue(working.waitForExistence(timeout: 5), "live working line")
+        XCTAssertTrue(working.waitForExistence(timeout: 5), "live working sub-focus")
         XCTAssertTrue(working.label.contains("Run HermeshKit tests and iOS Simulator UI tests"), "untruncated focus label: \(working.label)")
         XCTAssertFalse(app.staticTexts["Run update_steps"].exists, "Run update_steps must not leak into chat log")
+
+        // Tapping fold toggle expands all 5 steps inline:
+        toggle.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["thread-todo-step-0"].waitForExistence(timeout: 3), "expanded step 0")
+        XCTAssertTrue(app.descendants(matching: .any)["thread-todo-step-4"].exists, "expanded step 4")
 
         // 3. Background continuation wake line "<task> finished" is visible and tappable:
         let wakeLine = app.buttons["thread-wake-line"].firstMatch
@@ -356,8 +367,8 @@ final class LiveProgressUITests: XCTestCase {
 
         // 4. Auto-collapses once all steps finish and the turn settles:
         let finalReply = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "GPU usage reduced to 2.7%.")).firstMatch
-        XCTAssertTrue(finalReply.waitForExistence(timeout: 12), "final reply streamed")
-        XCTAssertTrue(todoCard.waitForNonExistence(timeout: 5), "floating checklist auto-collapsed")
+        XCTAssertTrue(finalReply.waitForExistence(timeout: 15), "final reply streamed")
+        XCTAssertTrue(todoCard.waitForNonExistence(timeout: 6), "inline checklist auto-collapsed")
 
         // Tapping the wake line opens Background Tasks:
         wakeLine.tap()

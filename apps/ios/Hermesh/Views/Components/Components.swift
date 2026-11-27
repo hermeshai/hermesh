@@ -638,10 +638,19 @@ struct RecommendedOptionText: View {
     }
 }
 
-/// Back to a conversation's end, once it was scrolled well up from it (the Mac's): an arrow in a glass circle, or
-/// a "Back to question" glass capsule when a question waits at the bottom.
+struct TodoEndSummary: Equatable {
+    var stepNumber: Int
+    var total: Int
+    var text: String
+    var failed: Bool
+}
+
+/// Back to a conversation's end, once it was scrolled well up from it (the Mac's): an arrow in a glass circle, a
+/// "Back to question" glass capsule when a question waits at the bottom, or a live step progress capsule when a
+/// checklist runs at the bottom.
 struct ToEndButton: View {
     var waitingAgent: String? = nil
+    var todoSummary: TodoEndSummary? = nil
     let action: () -> Void
 
     var body: some View {
@@ -661,6 +670,33 @@ struct ToEndButton: View {
                 .padding(.leading, 10).padding(.trailing, 8).padding(.vertical, 8)
                 .glassEffect(.regular.interactive(), in: .capsule)
                 .contentShape(.capsule)
+            } else if let todoSummary {
+                HStack(spacing: 7) {
+                    if todoSummary.failed {
+                        Image(systemName: "xmark")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.red)
+                            .frame(width: 14, height: 14)
+                    } else {
+                        MovingMark(size: 14, motion: .seq)
+                    }
+                    Text(verbatim: "\(todoSummary.stepNumber)/\(todoSummary.total)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                    Text(verbatim: todoSummary.text)
+                        .font(.footnote.weight(.medium))
+                        .lineLimit(1)
+                        .frame(maxWidth: 196, alignment: .leading)
+                    Image(systemName: "arrow.down")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 20, height: 20)
+                        .background(Color.accentColor, in: .circle)
+                }
+                .padding(.leading, 11).padding(.trailing, 8).padding(.vertical, 8)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .contentShape(.capsule)
             } else {
                 Image(systemName: "arrow.down").font(.body.weight(.semibold)).frame(width: 44, height: 44)
                     .glassEffect(.regular.interactive(), in: .circle)
@@ -676,11 +712,11 @@ struct ToEndButton: View {
 extension View {
     /// The button back to the end, centred 12 over this (what is at the bottom of a conversation, or nothing),
     /// while `away`: it takes no room, so nothing moves as it comes and goes.
-    func toEndButton(_ away: Bool, waitingAgent: String? = nil, action: @escaping () -> Void) -> some View {
+    func toEndButton(_ away: Bool, waitingAgent: String? = nil, todoSummary: TodoEndSummary? = nil, action: @escaping () -> Void) -> some View {
         overlay(alignment: .top) {
             ZStack {
                 if away {
-                    ToEndButton(waitingAgent: waitingAgent, action: action)
+                    ToEndButton(waitingAgent: waitingAgent, todoSummary: todoSummary, action: action)
                         .transition(.opacity.combined(with: .offset(y: 6)))
                 }
             }

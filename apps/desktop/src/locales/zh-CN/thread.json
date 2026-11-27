@@ -52,7 +52,14 @@
     "working": "工作中"
   },
   "todo": {
-    "label": "步骤进展"
+    "label": "步骤进展",
+    "completedFold": "已完成前 {{done}} 步 · 共 {{total}} 步",
+    "expandedHeader": "步骤进展 · 已完成 {{done}}/{{total}}",
+    "hide": "收起",
+    "next": "下一步：{{text}}",
+    "moreSteps": "+{{count}} 步",
+    "parallel": "并行",
+    "skipped": "跳过"
   },
   "mode": {
     "code": "编码",

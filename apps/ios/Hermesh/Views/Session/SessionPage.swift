@@ -163,6 +163,7 @@ struct SessionPage: View {
     /// Horizontal drag offset when swiping the side panel's leading edge right to put it away.
     @GestureState private var panelDrag: CGFloat = 0
     @State private var questionTyping = false
+    @State private var todoExpanded = false
     @FocusState private var focused: Bool
 
     init(machineID: String, projectID: String) {
@@ -556,6 +557,12 @@ struct SessionPage: View {
             nil
         }
         let hasInlineQuestion = pendingReq?.kind == .userInput || fallbackQuestion != nil
+        let todos = activeTodoSteps(activeProj)
+        let workStatus = sessionWorkStatus(activeProj, steps: steps)
+        let todoWindow = windowTodoSteps(todos, workText: workStatus?.text)
+        let todoEndSummary: TodoEndSummary? = todoWindow.flatMap { w in
+            w.active.first.map { TodoEndSummary(stepNumber: w.stepNumber, total: w.total, text: $0.text, failed: w.hasFailed) }
+        }
         // A wide screen: the side panel beside the conversation (docs/session-files.md §15), or taking the page.
         let panel = model.wide != nil && files.panelOpen
         // Enlarged, the panel covers the conversation, which keeps its width and place underneath. On iPhone Duo
@@ -602,7 +609,10 @@ struct SessionPage: View {
                     }
                     .id(q.questionID)
                 }
-                ConnectionLine(machine: machine, linkUp: s.status == .archived || (following && reachable), work: sessionWorkStatus(activeProj, steps: steps))
+                if let todoWindow {
+                    SessionTodoSpine(window: todoWindow, since: workStatus?.since, hasWork: workStatus != nil, expanded: $todoExpanded)
+                }
+                ConnectionLine(machine: machine, linkUp: s.status == .archived || (following && reachable), work: todoWindow == nil ? workStatus : nil)
                 if let f = sessionFailure(currentSession) {
                     FailedView(session: s, failure: f, grant: grant)
                 }
@@ -612,6 +622,8 @@ struct SessionPage: View {
             .background(ConversationScrollFinder(box: scrollBox))
         }
         .keyboardAwayOnTap()
+        .onChange(of: sessionID) { _, _ in todoExpanded = false }
+        .onChange(of: todos.isEmpty) { _, empty in if empty { todoExpanded = false } }
         .onChange(of: questionTyping) { _, typingNow in
             if typingNow {
                 focused = false
@@ -623,7 +635,7 @@ struct SessionPage: View {
             if !has && questionTyping { questionTyping = false }
         }
         .followsEnd(id: sessionID, ready: historyReady(s), spoken: spoken, waitingAgent: hasInlineQuestion && !questionTyping ? s.agent : nil,
-                    atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
+                    todoSummary: todoEndSummary, atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
             if s.status != .archived {
                 VStack(spacing: 6) {
                     if let req = pendingReq, req.kind != .userInput {
@@ -632,7 +644,6 @@ struct SessionPage: View {
                     }
                     backgroundBar
                     queue(activeProj)
-                    todoCard(activeProj)
                     if !(hasInlineQuestion && questionTyping) {
                         box
                     }
@@ -784,61 +795,6 @@ struct SessionPage: View {
             .padding(.horizontal, 14).padding(.vertical, 10)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .padding(.horizontal, 20)
-        }
-    }
-
-    /// Live checklist floating over the composer while a multi-step turn runs; auto-collapses when all steps complete.
-    @ViewBuilder private func todoCard(_ activeProj: Hermesh_Session_V1_SessionProjection?) -> some View {
-        let todos = activeTodoSteps(activeProj)
-        if !todos.isEmpty {
-            let list = VStack(alignment: .leading, spacing: 7) {
-                ForEach(Array(todos.enumerated()), id: \.offset) { i, step in
-                    HStack(alignment: .firstTextBaseline, spacing: 9) {
-                        todoGlyph(step.status)
-                        Text(verbatim: step.text)
-                            .font(.subheadline)
-                            .foregroundStyle(todoTextStyle(step.status))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .accessibilityIdentifier("thread-todo-step-\(i)")
-                }
-            }
-            Group {
-                if todos.count > 5 {
-                    ScrollView { list }
-                        .frame(maxHeight: 168)
-                } else {
-                    list
-                }
-            }
-            .padding(.horizontal, 14).padding(.vertical, 11)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .padding(.horizontal, 20)
-            .accessibilityIdentifier("thread-todo-card")
-        }
-    }
-
-    @ViewBuilder private func todoGlyph(_ status: TodoStepStatus) -> some View {
-        switch status {
-        case .inProgress:
-            MovingMark(size: 14, motion: .seq)
-                .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.bottom] - 2 }
-        case .completed:
-            Image(systemName: "checkmark").font(.caption.weight(.semibold)).foregroundStyle(.tint)
-        case .skipped:
-            Image(systemName: "minus").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-        case .failed:
-            Image(systemName: "xmark").font(.caption.weight(.semibold)).foregroundStyle(.red)
-        case .pending:
-            Image(systemName: "circle").font(.caption).foregroundStyle(.tertiary)
-        }
-    }
-
-    private func todoTextStyle(_ status: TodoStepStatus) -> HierarchicalShapeStyle {
-        switch status {
-        case .inProgress, .failed: .primary
-        case .pending: .secondary
-        case .completed, .skipped: .tertiary
         }
     }
 
@@ -1242,11 +1198,13 @@ struct SessionPage: View {
             initialized = true
             return
         }
-        if let cached = model.conversations.projection(sessionID) {
-            apply(cached.session)
-            projection = cached
-        } else {
-            projection = nil
+        if projection?.session.sessionID != sessionID {
+            if let cached = model.conversations.projection(sessionID) {
+                apply(cached.session)
+                projection = cached
+            } else {
+                projection = nil
+            }
         }
         initialized = true
     }
@@ -2073,5 +2031,301 @@ private struct BackgroundTasksSheet: View {
 
     private static func stripANSI(_ text: String) -> String {
         text.replacingOccurrences(of: #"\u{001B}\[[0-9;]*[A-Za-z]"#, with: "", options: .regularExpression)
+    }
+}
+
+/// Inline B2 live checklist spine at the foot of the conversation: 18pt icon column aligned with `ConnectionLine`,
+/// a 1pt vertical spine connecting nodes, smart 3-row window while collapsed, and deduplicated live sub-focus + timer.
+private struct SessionTodoSpine: View {
+    @Environment(\.scenePhase) private var phase
+    @Environment(\.accessibilityReduceMotion) private var still
+    let window: TodoSpineWindow
+    let since: Date?
+    let hasWork: Bool
+    @Binding var expanded: Bool
+
+    private static let tokenRegex = /`([^`]+)`|(\b[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.\/-]+|\b[a-zA-Z0-9_-]+\.(?:swift|tsx?|jsx?|go|rs|py|css|html|md|json|ya?ml|sql|db|app)\b)/
+
+    private var activeIndexSet: Set<Int> { Set(window.active.map(\.index)) }
+    private var lastActiveIndex: Int? { window.active.last?.index }
+
+    private var spined: Bool {
+        let collapsedRows = (window.foldLeading ? 1 : window.leading.count)
+            + window.active.count
+            + (window.foldUpcoming ? 1 : window.upcoming.count)
+        return (expanded ? window.total + 1 : collapsedRows) >= 2
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if expanded {
+                Button {
+                    withAnimation(still ? nil : .snappy(duration: 0.22)) { expanded = false }
+                } label: {
+                    HStack(alignment: .center, spacing: 8) {
+                        glyphBox { checkCircle }
+                        HStack(spacing: 4) {
+                            Text("Steps · \(window.settledCount)/\(window.total) completed")
+                                .foregroundStyle(.secondary)
+                            Text("·").foregroundStyle(.tertiary)
+                            Text("Hide").foregroundStyle(.tertiary)
+                            Image(systemName: "chevron.up")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .font(.footnote)
+                    }
+                    .padding(.vertical, 3.5)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("thread-todo-toggle")
+
+                ForEach(window.all, id: \.index) { step in
+                    if activeIndexSet.contains(step.index) {
+                        let order = window.active.firstIndex(where: { $0.index == step.index }) ?? 0
+                        activeNode(step, order: order)
+                    } else {
+                        passiveNode(step)
+                    }
+                }
+            } else {
+                if window.foldLeading {
+                    Button {
+                        withAnimation(still ? nil : .snappy(duration: 0.22)) { expanded = true }
+                    } label: {
+                        HStack(alignment: .center, spacing: 8) {
+                            glyphBox { checkCircle }
+                            HStack(spacing: 4) {
+                                Text("Completed \(window.leading.count) · \(window.total) total")
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            .font(.footnote)
+                            .foregroundStyle(.tertiary)
+                        }
+                        .padding(.vertical, 3.5)
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("thread-todo-toggle")
+                } else {
+                    ForEach(window.leading, id: \.index) { passiveNode($0) }
+                }
+
+                ForEach(Array(window.active.enumerated()), id: \.element.index) { order, step in
+                    activeNode(step, order: order)
+                }
+
+                if window.foldUpcoming, let next = window.upcoming.first {
+                    HStack(alignment: .top, spacing: 8) {
+                        glyphBox { stepGlyph(next.status) }
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(next.status == .pending ? String(localized: "Next: \(next.text)") : next.text)
+                                .font(.footnote)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                            Button {
+                                withAnimation(still ? nil : .snappy(duration: 0.22)) { expanded = true }
+                            } label: {
+                                HStack(spacing: 2) {
+                                    Text("+\(window.moreUpcomingCount) more")
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 9.5, weight: .semibold))
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .fixedSize()
+                        }
+                    }
+                    .padding(.vertical, 3.5)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("thread-todo-step-\(next.index)")
+                } else {
+                    ForEach(Array(window.upcoming.enumerated()), id: \.element.index) { idx, step in
+                        if window.foldLeading, idx == 0, step.status == .pending {
+                            HStack(alignment: .top, spacing: 8) {
+                                glyphBox { stepGlyph(step.status) }
+                                Text("Next: \(step.text)")
+                                    .font(.footnote)
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                            }
+                            .padding(.vertical, 3.5)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("thread-todo-step-\(step.index)")
+                        } else {
+                            passiveNode(step)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(alignment: .topLeading) {
+            if spined {
+                Rectangle()
+                    .fill(Palette.separator)
+                    .frame(width: 1)
+                    .padding(.leading, 8.5)
+                    .padding(.vertical, 10)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("thread-todo-card")
+    }
+
+    @ViewBuilder private func activeNode(_ step: IndexedTodoStep, order: Int) -> some View {
+        let isLast = step.index == lastActiveIndex
+        let showSub = isLast && window.subFocus != nil
+        let deduplicatedWork = isLast && window.subFocus == nil && hasWork
+        HStack(alignment: .top, spacing: 8) {
+            glyphBox { stepGlyph(step.status) }
+            VStack(alignment: .leading, spacing: 2.5) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(Self.styledStepText(step.text, meta: order == 0 ? "\(window.stepNumber)/\(window.total)" : nil))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(step.status == .failed ? .red : .primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if order > 0 {
+                        Text("Parallel")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(Color.accentColor)
+                            .padding(.horizontal, 5.5).padding(.vertical, 1.5)
+                            .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            .fixedSize()
+                    } else if !showSub, let since {
+                        HStack(spacing: 3) {
+                            Text("·")
+                            Text(since, style: .timer).monospacedDigit()
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .fixedSize()
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier(deduplicatedWork ? "thread-working" : "thread-todo-active-\(step.index)")
+
+                if showSub, let subFocus = window.subFocus {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(verbatim: subFocus.replacingOccurrences(of: "/", with: "/\u{200B}"))
+                            .font(.footnote)
+                            .foregroundStyle(window.hasFailed ? .red : .secondary)
+                            .lineLimit(2)
+                            .shimmer(!window.hasFailed, paused: phase != .active)
+                        if let since {
+                            HStack(spacing: 3) {
+                                Text("·")
+                                Text(since, style: .timer).monospacedDigit()
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .fixedSize()
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("thread-working")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 4.5)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("thread-todo-step-\(step.index)")
+    }
+
+    @ViewBuilder private func passiveNode(_ step: IndexedTodoStep) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            glyphBox { stepGlyph(step.status) }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(Self.styledStepText(step.text))
+                    .font(.footnote)
+                    .foregroundStyle(step.status == .pending ? .secondary : .tertiary)
+                    .opacity(step.status == .pending ? 0.8 : 1)
+                    .fixedSize(horizontal: false, vertical: true)
+                if step.status == .skipped {
+                    Text("Skipped")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .fixedSize()
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 3.5)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("thread-todo-step-\(step.index)")
+    }
+
+    private func glyphBox<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .frame(width: 18, height: 20)
+            .background(Color(UIColor.systemBackground))
+    }
+
+    private var checkCircle: some View {
+        Image(systemName: "checkmark")
+            .font(.system(size: 8.5, weight: .bold))
+            .foregroundStyle(.green)
+            .frame(width: 14, height: 14)
+            .background(Color.green.opacity(0.14), in: .circle)
+            .overlay(Circle().strokeBorder(Color.green.opacity(0.35), lineWidth: 0.8))
+    }
+
+    @ViewBuilder private func stepGlyph(_ status: TodoStepStatus) -> some View {
+        switch status {
+        case .inProgress:
+            MovingMark(size: 16, motion: .seq)
+        case .completed:
+            Image(systemName: "checkmark")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.tertiary)
+        case .skipped:
+            Image(systemName: "minus")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.tertiary)
+        case .failed:
+            Image(systemName: "xmark")
+                .font(.system(size: 10.5, weight: .bold))
+                .foregroundStyle(.red)
+        case .pending:
+            Circle()
+                .strokeBorder(Color(UIColor.quaternaryLabel), lineWidth: 1.35)
+                .frame(width: 10, height: 10)
+        }
+    }
+
+    private static func styledStepText(_ raw: String, meta: String? = nil) -> AttributedString {
+        var out = AttributedString()
+        var cursor = raw.startIndex
+        for match in raw.matches(of: tokenRegex) {
+            if match.range.lowerBound > cursor {
+                out.append(AttributedString(String(raw[cursor ..< match.range.lowerBound])))
+            }
+            let token = String(match.output.1 ?? match.output.2 ?? match.output.0)
+                .replacingOccurrences(of: "/", with: "/\u{200B}")
+            var codePart = AttributedString(" \(token) ")
+            codePart.font = .footnote.monospaced()
+            codePart.backgroundColor = UIColor.tertiarySystemFill
+            out.append(codePart)
+            cursor = match.range.upperBound
+        }
+        if cursor < raw.endIndex {
+            out.append(AttributedString(String(raw[cursor...])))
+        }
+        if let meta, !meta.isEmpty {
+            var metaPart = AttributedString("  \(meta)")
+            metaPart.font = .caption.monospacedDigit()
+            metaPart.foregroundColor = UIColor.tertiaryLabel
+            out.append(metaPart)
+        }
+        return out
     }
 }
