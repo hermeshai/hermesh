@@ -131,6 +131,7 @@ struct SessionPage: View {
     @State private var draft = ""
     @State private var sending = false
     @State private var attached: [Attached] = []
+    @State private var loadedDraftKey: String?
     /// A picture in the box, large (the session's Lightbox).
     @State private var boxLightbox: SessionLightboxPresentation?
     @State private var uploading = 0
@@ -181,6 +182,11 @@ struct SessionPage: View {
     }
 
     private var isNew: Bool { sessionID.isEmpty }
+    private var draftKey: String {
+        if !isNew { return ComposerDraftStore.key(sessionID: sessionID) }
+        if let starting { return "starting:\(starting.request.commandID)" }
+        return ComposerDraftStore.newSessionKey
+    }
     private var herEnvs: [HerMachine] { herEnvironments(model.machines) }
     private var herAt: HerMachine? { herPick(herEnvs, remembered: model.her.machine) }
     private var who: NewSessionWho { isNew && selection.instanceID == herAgent && herAt != nil ? .her : .agent }
@@ -268,6 +274,12 @@ struct SessionPage: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { loadDraftIfNeeded(for: draftKey) }
+        .onChange(of: draftKey) { _, key in loadDraftIfNeeded(for: key) }
+        .onChange(of: draft) { _, next in
+            guard loadedDraftKey == draftKey else { return }
+            model.drafts.save(ComposerDraft(text: next, attachments: attached.map(\.ref)), for: draftKey)
+        }
         .fullScreenCover(item: $boxLightbox) { SessionImageLightbox(presentation: $0) }
         .task(id: sessionID) { await start() }
         // Keep following while not background-paused; quick app switches (< 15 s) stay live with zero reconnect.
@@ -846,6 +858,7 @@ struct SessionPage: View {
         let ready = !sending && starting == nil && uploading == 0 && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attached.isEmpty)
         let open = boxOpen
         let shellDraft = isShellDraft
+        let store = SessionAttachmentStore.shared
         let ends = HStack(spacing: 8) {
             if running {
                 Button { stop() } label: {
@@ -869,7 +882,7 @@ struct SessionPage: View {
                 ScrollView(.horizontal) {
                     HStack(spacing: 6) {
                         ForEach(attached) { a in
-                            if let picture = a.picture {
+                            if let picture = a.picture ?? (store.pictures[a.id] ?? nil) {
                                 ZStack(alignment: .topTrailing) {
                                     Button { openAttached(a) } label: {
                                         Image(uiImage: picture).resizable().scaledToFill().frame(width: 56, height: 56)
@@ -878,14 +891,14 @@ struct SessionPage: View {
                                     .buttonStyle(.plain)
                                     .accessibilityLabel(Text(verbatim: a.ref.name))
                                     .accessibilityIdentifier("thread-attached-\(a.ref.name)")
-                                    Button { attached.removeAll { $0.id == a.id } } label: {
+                                    Button { removeAttached(a.id) } label: {
                                         Image(systemName: "xmark.circle.fill").symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.55))
                                     }
                                     .padding(3)
                                     .accessibilityLabel(Text("Remove \(a.ref.name)"))
                                 }
                             } else {
-                                HerChip(name: a.ref.name) { attached.removeAll { $0.id == a.id } }
+                                HerChip(name: a.ref.name) { removeAttached(a.id) }
                                     .contentShape(.capsule)
                                     .onTapGesture { openAttached(a) }
                                     .accessibilityAddTraits(attachmentOpensInApp(a.ref) ? .isButton : [])
@@ -949,12 +962,14 @@ struct SessionPage: View {
         .onChange(of: photos) {
             let picked = photos
             guard !picked.isEmpty else { return }
+            let targetKey = draftKey
+            let targetMachineID = effectiveMachineID
             photos = []
             uploading += picked.count
             Task {
                 for item in picked {
                     if let data = try? await item.loadTransferable(type: Data.self), let jpeg = HerComposer.jpeg(data) {
-                        await upload(name: String(localized: "Photo") + ".jpg", mime: "image/jpeg", data: jpeg, picture: UIImage(data: jpeg))
+                        await upload(name: String(localized: "Photo") + ".jpg", mime: "image/jpeg", data: jpeg, picture: UIImage(data: jpeg), targetKey: targetKey, targetMachineID: targetMachineID)
                     }
                     uploading -= 1
                 }
@@ -962,6 +977,8 @@ struct SessionPage: View {
         }
         .fileImporter(isPresented: $pickingFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }
+            let targetKey = draftKey
+            let targetMachineID = effectiveMachineID
             uploading += urls.count
             Task {
                 for url in urls {
@@ -971,13 +988,38 @@ struct SessionPage: View {
                     if let data {
                         let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
                         let picture = (mime.lowercased().hasPrefix("image/") || fileView(url.lastPathComponent) == .image) ? UIImage(data: data) : nil
-                        await upload(name: url.lastPathComponent, mime: mime, data: data, picture: picture)
+                        await upload(name: url.lastPathComponent, mime: mime, data: data, picture: picture, targetKey: targetKey, targetMachineID: targetMachineID)
                     } else {
                         model.show(String(localized: "Couldn’t read \(url.lastPathComponent)"))
                     }
                     uploading -= 1
                 }
             }
+        }
+    }
+
+    private func isImageRef(_ ref: Hermesh_Session_V1_AttachmentRef) -> Bool {
+        ref.mimeType.lowercased().hasPrefix("image/") || fileView(ref.name) == .image
+    }
+
+    private func loadDraftIfNeeded(for key: String) {
+        guard loadedDraftKey != key else { return }
+        let saved = model.drafts.draft(for: key)
+        loadedDraftKey = key
+        draft = saved.text
+        let store = SessionAttachmentStore.shared
+        attached = saved.attachments.map { ref in
+            Attached(ref: ref, picture: store.pictures[ref.blobSha256] ?? nil)
+        }
+        for ref in saved.attachments where isImageRef(ref) && store.pictures[ref.blobSha256] == nil {
+            Task { await store.loadPicture(api: model.api, sessionID: sessionID, machineID: effectiveMachineID, ref: ref) }
+        }
+    }
+
+    private func removeAttached(_ sha: String) {
+        attached.removeAll { $0.id == sha }
+        if let key = loadedDraftKey {
+            model.drafts.removeAttachment(sha256: sha, for: key)
         }
     }
 
@@ -989,12 +1031,15 @@ struct SessionPage: View {
         }
     }
 
-    private func upload(name: String, mime: String, data: Data, picture: UIImage?) async {
+    private func upload(name: String, mime: String, data: Data, picture: UIImage?, targetKey: String, targetMachineID: String) async {
         guard let api = model.api else { return }
         do {
-            let ref = try await api.uploadBlob(machineID: effectiveMachineID, name: name, mimeType: mime, data: data).attachment
+            let ref = try await api.uploadBlob(machineID: targetMachineID, name: name, mimeType: mime, data: data).attachment
             SessionAttachmentStore.shared.keep(sha256: ref.blobSha256, name: name, data: data, picture: picture)
-            if !attached.contains(where: { $0.id == ref.blobSha256 }) { attached.append(Attached(ref: ref, picture: picture)) }
+            model.drafts.addAttachment(ref, for: targetKey)
+            if loadedDraftKey == targetKey, !attached.contains(where: { $0.id == ref.blobSha256 }) {
+                attached.append(Attached(ref: ref, picture: picture))
+            }
         } catch { model.report(error) }
     }
 
@@ -1385,6 +1430,8 @@ struct SessionPage: View {
                 r.interactionMode = plan ? .plan : .code
                 r.workspace = projectID == scratchProject ? .with { $0.mode = .inPlace } : place.workspace(branches)
                 let st = Starting(request: r, files: files)
+                model.drafts.clear(ComposerDraftStore.newSessionKey)
+                loadedDraftKey = "starting:\(st.request.commandID)"
                 draft = ""
                 attached = []
                 starting = st
@@ -1392,6 +1439,9 @@ struct SessionPage: View {
             }
             return
         }
+        let targetKey = draftKey
+        let modelDrafts = model.drafts
+        modelDrafts.clear(targetKey)
         draft = ""
         attached = []
         spoken += 1
@@ -1420,8 +1470,15 @@ struct SessionPage: View {
                 }
             } catch {
                 model.report(error)
-                if draft.isEmpty { draft = text }
-                if attached.isEmpty { attached = files }
+                let restored = modelDrafts.restore(ComposerDraft(text: text, attachments: files.map(\.ref)), for: targetKey)
+                if loadedDraftKey == targetKey {
+                    draft = restored.text
+                    let store = SessionAttachmentStore.shared
+                    let bySha = Dictionary(uniqueKeysWithValues: (files + attached).map { ($0.id, $0.picture) })
+                    attached = restored.attachments.map { ref in
+                        Attached(ref: ref, picture: bySha[ref.blobSha256] ?? (store.pictures[ref.blobSha256] ?? nil))
+                    }
+                }
             }
         }
     }
@@ -1507,6 +1564,7 @@ struct SessionPage: View {
             let took = Date.now.timeIntervalSince(began)
             if took > 0.4 && took < 0.9 { try? await Task.sleep(for: .seconds(0.9 - took)) }
             let id = res.session.sessionID
+            model.drafts.move(from: "starting:\(st.request.commandID)", to: ComposerDraftStore.key(sessionID: id))
             model.noteStarted(res.session)
             if !res.session.isHerConversation {
                 model.conversations.keep(id, startedProjection(res, st))
@@ -1529,9 +1587,12 @@ struct SessionPage: View {
 
     private func editStart() {
         guard let st = starting else { return }
-        draft = st.request.initialPrompt
-        attached = st.files
+        let cmdKey = "starting:\(st.request.commandID)"
+        model.drafts.restore(ComposerDraft(text: st.request.initialPrompt, attachments: st.files.map(\.ref)), for: ComposerDraftStore.newSessionKey)
+        model.drafts.move(from: cmdKey, to: ComposerDraftStore.newSessionKey)
         starting = nil
+        loadedDraftKey = nil
+        loadDraftIfNeeded(for: ComposerDraftStore.newSessionKey)
     }
 
     /// What the session's page shows until it reads the session: the session, its first run, and the message in it.
@@ -1671,8 +1732,10 @@ extension SessionPage {
     fileprivate func openAttached(_ a: Attached) {
         focused = false
         hideKeyboard()
-        if a.picture != nil {
-            let pictures = attached.filter { $0.picture != nil }
+        let store = SessionAttachmentStore.shared
+        let hasPic = { (x: Attached) in (x.picture ?? (store.pictures[x.id] ?? nil)) != nil }
+        if hasPic(a) {
+            let pictures = attached.filter(hasPic)
             boxLightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: effectiveMachineID, run: "", items: pictures.map { .attachment($0.ref) },
                                                       initialIndex: pictures.firstIndex { $0.id == a.id } ?? 0)
         } else if attachmentOpensInApp(a.ref) {

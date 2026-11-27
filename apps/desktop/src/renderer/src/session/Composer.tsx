@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { RuntimeMode } from "@hermesh/proto/identity";
 import type { Machine, Project } from "@hermesh/proto/local";
@@ -18,11 +18,12 @@ import {
 } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
+import { sessions as sessionApi } from "../api";
 import { Icon } from "../icons";
 import { MenuButton } from "../her/menus";
 import { Tile, useFileDrop } from "../her/Composer";
 import { pastedFiles } from "../her/attachments";
-import { attachmentUrl } from "./attachments";
+import { attachmentSnapshot, attachmentUrl, isImageAttachment, loadAttachmentBlob, subscribeAttachments } from "./attachments";
 import { openAttachmentLightbox } from "./files/ImageLightbox";
 import "../her/her.css";
 
@@ -61,6 +62,14 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
   const { t } = useTranslation("thread");
   const area = useRef<HTMLTextAreaElement>(null);
   const file = useRef<HTMLInputElement>(null);
+  const urls = useSyncExternalStore(subscribeAttachments, attachmentSnapshot);
+  useEffect(() => {
+    for (const a of attachments) {
+      if (isImageAttachment(a) && urls[a.blobSha256] === undefined) {
+        void loadAttachmentBlob(a, (sha256) => sessionApi.downloadBlob({ blobSha256: sha256 }));
+      }
+    }
+  }, [attachments.map((a) => a.blobSha256).join("\0")]);
   const ready = !sending && !blocked && (value.trim() !== "" || attachments.length > 0);
   const shellShortcut = /^[\t ]*!(?!\[)/.test(value);
   // Files dragged anywhere over the window come here, as to Her's box.

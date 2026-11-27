@@ -19,6 +19,7 @@ import { unreadCount } from "./her/environments";
 import { expiringClients } from "./overview/Attention";
 import { keys, ownKeys } from "./platform";
 import { useNow, useStore, type Store } from "./store";
+import { forgetSessionDraft } from "./session/draftMemory";
 
 export function grantLabel(st: Store, s: Session): string {
   // A session the owner started here (a v2 thread's): "You".
@@ -108,6 +109,7 @@ export function confirmDelete(st: Store, s: Session) {
       message,
       button: i18n.t("common:sessionMenu.deleteButton"),
       run: () => sessionApi.deleteSession({ sessionId: s.sessionId }).then(() => {
+        forgetSessionDraft(s.sessionId);
         if (st.selection.kind === "session" && st.selection.id === s.sessionId) {
           st.set({ selection: { kind: "overview" } });
         }

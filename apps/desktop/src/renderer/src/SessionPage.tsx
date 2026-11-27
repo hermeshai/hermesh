@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { clone, create, type MessageInitShape } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { RuntimeMode, Workspace } from "@hermesh/proto/identity";
 import type { Project } from "@hermesh/proto/local";
 import {
+  AttachmentRefSchema,
   DispatchIntent,
   InteractionMode,
   ModelSelectionSchema,
@@ -70,6 +71,19 @@ import { errorText, useNow, useStore } from "./store";
 import { Background, BackgroundLine } from "./session/Background";
 import { ChatFrame, Failed, PromptNote, Row, Stale, Unread, UserBubble, rowHeights, rowsOf, type ChatRow } from "./session/Chat";
 import { keepAttachmentBlob } from "./session/attachments";
+import {
+  NEW_SESSION_DRAFT,
+  addDraftAttachment,
+  clearDraft,
+  forgetSessionDraft,
+  moveDraft,
+  readDraft,
+  removeDraftAttachment,
+  restoreDraft,
+  sessionDraftKey,
+  setDraftText,
+  subscribeDrafts,
+} from "./session/draftMemory";
 import { ComposerPlace, LaunchAsk, ModelButtons, ThreadComposer, type Branches, type Place } from "./session/Composer";
 import { Inspector } from "./session/Inspector";
 import { SessionRequest } from "./session/Request";
@@ -191,18 +205,34 @@ export function SessionPage() {
   );
   const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>(RuntimeMode.AUTO);
   const [interactionMode, setInteractionMode] = useState<InteractionMode>(InteractionMode.CODE);
-  const [prompt, setPrompt] = useState<string>("");
-  const [attachments, setAttachments] = useState<AttachmentRef[]>([]);
-  const [slashOpen, setSlashOpen] = useState<boolean>(false);
+  const [slashOpenKey, setSlashOpenKey] = useState<string | null>(null);
   const [busySend, setBusySend] = useState<boolean>(false);
   const [starting, setStarting] = useState<Starting | null>(null);
   const [stopRequestedRun, setStopRequestedRun] = useState<string>("");
   const [spoken, setSpoken] = useState<number>(0);
 
+  const draftKey = activeSessionId
+    ? sessionDraftKey(activeSessionId)
+    : starting
+      ? `starting:${starting.req.commandId}`
+      : NEW_SESSION_DRAFT;
+  const draft = useSyncExternalStore(subscribeDrafts, () => readDraft(draftKey));
+  const prompt = draft.text;
+  const attachments = useMemo(
+    () => draft.attachments.map((a) => create(AttachmentRefSchema, a)),
+    [draft.attachments],
+  );
+  const slashOpen = slashOpenKey === draftKey;
+
   // Queue edit & in-flight action state
   const [editingRunId, setEditingRunId] = useState<string>("");
   const [editingText, setEditingText] = useState<string>("");
   const [managingRunId, setManagingRunId] = useState<string>("");
+  useEffect(() => {
+    setEditingRunId("");
+    setEditingText("");
+    setStopRequestedRun("");
+  }, [activeSessionId]);
   // Top-bar session title inline rename state
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
   const [pendingTitle, setPendingTitle] = useState<{ id: string; title: string } | null>(null);
@@ -367,9 +397,16 @@ export function SessionPage() {
   // The session's projection, then its events as they come; read and subscribed again after the subscription ended or
   // failed (in 1 s, then up to every 30 s), and at once when its machine can be reached again.
   useEffect(() => {
-    setProjection(activeSessionId ? keptProjections.get(activeSessionId) ?? null : null);
+    const initial = activeSessionId ? keptProjections.get(activeSessionId) ?? null : null;
+    setProjection(initial);
     if (!activeSessionId) {
       return;
+    }
+    if (initial?.session) {
+      if (initial.session.modelSelection) setModelSel(initial.session.modelSelection);
+      if (initial.session.runtimeMode) setRuntimeMode(initial.session.runtimeMode);
+      if (initial.session.interactionMode) setInteractionMode(initial.session.interactionMode);
+      if (initial.session.maxRuntimeMode) setMaxCeiling(initial.session.maxRuntimeMode);
     }
     const ctl = new AbortController();
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -417,6 +454,7 @@ export function SessionPage() {
           }
         } catch (e) {
           if (e instanceof ConnectError && e.code === Code.NotFound) {
+            forgetSessionDraft(activeSessionId);
             if (!ctl.signal.aborted) st.set({ selection: { kind: "overview" } });
             return;
           }
@@ -503,12 +541,14 @@ export function SessionPage() {
     const text = prompt.trim();
     if (!text && attachments.length === 0) return;
     if (activeSessionId) {
+      const targetSessionId = activeSessionId;
+      const targetKey = sessionDraftKey(targetSessionId);
       const sent = attachments;
-      setPrompt("");
-      setAttachments([]);
+      clearDraft(targetKey);
+      setSlashOpenKey(null);
       setSpoken((n) => n + 1);
       const req = {
-        sessionId: activeSessionId,
+        sessionId: targetSessionId,
         text,
         attachments: sent,
         intent: explicitIntent ?? DispatchIntent.QUEUE,
@@ -526,17 +566,17 @@ export function SessionPage() {
             const base = prev ?? create(SessionProjectionSchema, {});
             const runs = res.run && !base.runs.some((r) => r.runId === res.run!.runId) ? [...base.runs, res.run] : base.runs;
             const next = create(SessionProjectionSchema, { ...base, session: res.session ?? base.session, runs });
-            rememberProjection(activeSessionId, next);
+            rememberProjection(targetSessionId, next);
             return next;
           });
         }
       } catch (e) {
         st.show(errorText(e));
-        setPrompt((p) => p || text);
-        setAttachments((a) => (a.length ? a : sent));
+        restoreDraft(targetKey, { text, attachments: sent });
       }
       return;
     }
+    const sent = attachments;
     const req = {
       machineId: effectiveMachineId,
       projectId,
@@ -545,13 +585,13 @@ export function SessionPage() {
       interactionMode,
       workspace: create(WorkspaceStrategySchema, workspaceFor(projectId === SCRATCH_PROJECT ? undefined : place, branches)),
       initialPrompt: text,
-      attachments,
+      attachments: sent,
       commandId: crypto.randomUUID(),
       locale: language(),
     };
-    setPrompt("");
-    setAttachments([]);
-    void begin({ req, files: attachments, at: new Date() });
+    clearDraft(NEW_SESSION_DRAFT);
+    setSlashOpenKey(null);
+    void begin({ req, files: sent, at: new Date() });
   };
 
   // Starts the session: once its machine answers (or the core keeps it for a machine offline), its page opens with the
@@ -581,6 +621,9 @@ export function SessionPage() {
       if (took > 400 && took < 900) await new Promise((r) => setTimeout(r, 900 - took));
       if (res.session) {
         rememberProjection(res.session.sessionId, startedProjection(res, start));
+        if (start.req.commandId) {
+          moveDraft(`starting:${start.req.commandId}`, sessionDraftKey(res.session.sessionId));
+        }
         st.set({ selection: { kind: "session", id: res.session.sessionId } });
       }
       setStarting(null);
@@ -592,8 +635,10 @@ export function SessionPage() {
   };
   const editStart = () => {
     if (!starting) return;
-    setPrompt(starting.req.initialPrompt ?? "");
-    setAttachments(starting.files);
+    restoreDraft(NEW_SESSION_DRAFT, { text: starting.req.initialPrompt ?? "", attachments: starting.files });
+    if (starting.req.commandId) {
+      moveDraft(`starting:${starting.req.commandId}`, NEW_SESSION_DRAFT);
+    }
     setStarting(null);
   };
 
@@ -642,11 +687,13 @@ export function SessionPage() {
   };
 
   const handleAttachFiles = async (files: File[]) => {
+    const targetKey = draftKey;
+    const targetMachineId = effectiveMachineId;
     for (const f of files) {
       try {
         const buf = new Uint8Array(await f.arrayBuffer());
         const up = await sessionApi.uploadBlob({
-          machineId: effectiveMachineId,
+          machineId: targetMachineId,
           name: f.name,
           mimeType: f.type || "application/octet-stream",
           data: buf,
@@ -655,7 +702,7 @@ export function SessionPage() {
         const att = up.attachment;
         if (att) {
           keepAttachmentBlob(att.blobSha256, buf, f.type || att.mimeType, att.name || f.name);
-          setAttachments((prev) => (prev.some((a) => a.blobSha256 === att.blobSha256) ? prev : [...prev, att]));
+          addDraftAttachment(targetKey, att);
         }
       } catch (e) {
         st.show(errorText(e));
@@ -679,8 +726,8 @@ export function SessionPage() {
           type="button"
           className="btn"
           onClick={() => {
-            setPrompt(x.label + " ");
-            setSlashOpen(false);
+            setDraftText(draftKey, x.label + " ");
+            setSlashOpenKey(null);
           }}
         >
           {x.label}
@@ -946,8 +993,10 @@ export function SessionPage() {
   // Discarding a session kept here for its offline machine deletes it, as Her's waiting messages are.
   const discardOffline = () => {
     if (!activeSessionId) return;
+    const sid = activeSessionId;
     void st.run(async () => {
-      await sessionApi.deleteSession({ sessionId: activeSessionId });
+      await sessionApi.deleteSession({ sessionId: sid });
+      forgetSessionDraft(sid);
       st.set({ selection: { kind: "overview" } });
     });
   };
@@ -1101,8 +1150,8 @@ export function SessionPage() {
                   {...composerProps}
                   value={prompt}
                   onChange={(v) => {
-                    setPrompt(v);
-                    setSlashOpen(v.startsWith("/") && !v.includes(" "));
+                    setDraftText(draftKey, v);
+                    setSlashOpenKey(v.startsWith("/") && !v.includes(" ") ? draftKey : null);
                   }}
                   onSend={() => submitMessage()}
                   running={false}
@@ -1110,7 +1159,7 @@ export function SessionPage() {
                   placeholder={who === "her" ? t("chat.placeholder", { ns: "her", name: "Her" }) : t("launch.promptPlaceholder")}
                   attachments={attachments}
                   onAttach={handleAttachFiles}
-                  onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
+                  onRemove={(sha) => removeDraftAttachment(draftKey, sha)}
                   offline={!machineOnline}
                 />
               </div>
@@ -1154,14 +1203,14 @@ export function SessionPage() {
                     <ThreadComposer
                       {...composerProps}
                       value={prompt}
-                      onChange={setPrompt}
+                      onChange={(v) => setDraftText(draftKey, v)}
                       onSend={() => {}}
                       running={false}
                       sending
                       placeholder={t("composer.placeholderIdle")}
                       attachments={attachments}
                       onAttach={handleAttachFiles}
-                      onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
+                      onRemove={(sha) => removeDraftAttachment(draftKey, sha)}
                       offline={!machineOnline}
                     />
                   </ComposerZone>
@@ -1230,8 +1279,8 @@ export function SessionPage() {
                         {...composerProps}
                         value={prompt}
                         onChange={(v) => {
-                          setPrompt(v);
-                          setSlashOpen(v.startsWith("/") && !v.includes(" "));
+                          setDraftText(draftKey, v);
+                          setSlashOpenKey(v.startsWith("/") && !v.includes(" ") ? draftKey : null);
                         }}
                         onSend={() => submitMessage()}
                         onStop={handleStop}
@@ -1240,7 +1289,7 @@ export function SessionPage() {
                         placeholder={running ? t("composer.placeholderRunning") : t("composer.placeholderIdle")}
                         attachments={attachments}
                         onAttach={handleAttachFiles}
-                        onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
+                        onRemove={(sha) => removeDraftAttachment(draftKey, sha)}
                         offline={!machineOnline}
                       />
                     </ComposerZone>

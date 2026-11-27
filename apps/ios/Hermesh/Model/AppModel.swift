@@ -180,6 +180,8 @@ final class AppModel {
     var networkKind = ""
     /// The last conversations opened.
     @ObservationIgnored let conversations: Conversations
+    /// Unsent composer drafts per session and for New Session.
+    @ObservationIgnored let drafts: ComposerDraftStore
     /// Resolved file tags of recent sessions, so reopening one needs no second wait.
     @ObservationIgnored let sessionFiles = SessionFilesCache()
     /// Sessions opened right after Send on what it knew (SessionPage): their page reads them whole once.
@@ -295,6 +297,7 @@ final class AppModel {
         isDemo = demo != nil
         stats = StatsModel(isDemo: demo != nil)
         conversations = Conversations(persistent: demo == nil)
+        drafts = ComposerDraftStore(persistent: demo == nil)
         her = HerPlace(persistent: demo == nil)
         if let demo { api = AppAPI(demo: demo); root = .her; return }
         listView = Self.saved("listView") ?? SessionListLayout()
@@ -651,6 +654,7 @@ final class AppModel {
         UserDefaults.standard.removeObject(forKey: Guide.key) // the guide is the owner's
         UserDefaults.standard.removeObject(forKey: Guide.stepKey)
         conversations.forgetAll()
+        drafts.forgetAll()
         sessionFiles.forgetAll()
     }
 
@@ -900,6 +904,7 @@ final class AppModel {
             her.reloadKept()
         }
         r.deletedSessionIds.forEach(conversations.forget)
+        r.deletedSessionIds.forEach(drafts.forget(sessionID:))
         r.deletedSessionIds.forEach(sessionFiles.forget)
         if watched { saveSoon() }
         // Status-only snapshots before joining know no machines yet. Choose from the initialized owner's first
@@ -1166,6 +1171,7 @@ final class AppModel {
             try await api.delete(s.sessionID)
             heldSessions = mergeSessions(heldSessions, [], deleted: [s.sessionID])
             conversations.forget(s.sessionID)
+            drafts.forget(sessionID: s.sessionID)
             sessionFiles.forget(s.sessionID)
             path.removeAll { $0 == .session(s.sessionID) }
             if case .session(let id) = root, id == s.sessionID { root = .overview }
