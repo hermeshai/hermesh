@@ -147,6 +147,34 @@ func NormalizeTodoStatus(raw string) string {
 	}
 }
 
+// SelectionEffort extracts the canonical reasoning effort option across
+// live catalog ("reasoningEffort"), ACP ("thought_level"), and manifest/CLI ("effort") keys.
+func SelectionEffort(sel *sessionv1.ModelSelection) string {
+	if sel == nil || len(sel.Options) == 0 {
+		return ""
+	}
+	for _, k := range []string{"reasoningEffort", "thought_level", "effort"} {
+		if sv := sel.Options[k].GetStringValue(); sv != "" {
+			return sv
+		}
+	}
+	return ""
+}
+
+// SelectionFastMode extracts the fast/priority tier boolean option across
+// live ("fastMode") and manifest ("fast_mode") keys, reporting whether it was explicitly set.
+func SelectionFastMode(sel *sessionv1.ModelSelection) (enabled bool, set bool) {
+	if sel == nil || len(sel.Options) == 0 {
+		return false, false
+	}
+	for _, k := range []string{"fastMode", "fast_mode"} {
+		if opt, ok := sel.Options[k]; ok && opt != nil {
+			return opt.GetBoolValue(), true
+		}
+	}
+	return false, false
+}
+
 type StartSpec struct {
 	SessionID       string
 	Workdir         string

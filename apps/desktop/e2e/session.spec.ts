@@ -1363,6 +1363,73 @@ test("a live ACP session shows its inline step checklist and focus while running
   }
 });
 
+test("switching across providers in an active session asks for confirmation before summarizing context", async () => {
+  const { app, page } = await launch();
+  try {
+    // 1. In a brand-new session, switching providers needs no confirmation.
+    await page.getByTestId("nav-new-thread").click();
+    const bar = page.getByTestId("composer-bar");
+    const modelBtn = bar.getByRole("button", { name: "模型" });
+    const panel = page.getByTestId("model-traits-popover");
+    await pickFrom(modelBtn, panel.getByTestId("picker-model-gemini-3-pro"));
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByTestId("model-picker-trigger")).toHaveText("Gemini 3 Pro");
+
+    await pickFrom(modelBtn, panel.getByTestId("picker-model-scripted-fast"));
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByTestId("model-picker-trigger")).toHaveText("Scripted Fast");
+
+    // 2. Start Turn 1 on Scripted Agent, then switch to Gemini CLI in the active session:
+    const input = page.getByTestId("thread-composer-input");
+    await input.fill("say 第一轮由Scripted完成");
+    await input.press("Enter");
+    const log = page.getByRole("log", { name: "对话" });
+    await expect(log).toContainText("第一轮由Scripted完成", { timeout: 15_000 });
+
+    // Same-provider model switch (Scripted Fast -> Scripted Pro): no confirmation dialog.
+    await pickFrom(modelBtn, panel.getByTestId("picker-model-scripted-pro"));
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByTestId("model-picker-trigger")).toHaveText("Scripted Pro");
+
+    // Cross-provider switch (Scripted Agent -> Gemini CLI): asks for confirmation; Cancel keeps Scripted Pro.
+    await pickFrom(modelBtn, panel.getByTestId("picker-model-gemini-3-pro"));
+    const confirm = page.getByRole("dialog", { name: "切换到 Gemini CLI？" });
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toContainText("下一条消息会将与 Scripted Agent 的历史对话按摘要交接给 Gemini CLI");
+    await confirm.getByRole("button", { name: "取消" }).click();
+    await expect(confirm).toBeHidden();
+    await expect(page.getByTestId("model-picker-trigger")).toHaveText("Scripted Pro");
+
+    // Confirm switching to Gemini CLI; reverting back to still-bound Scripted Agent before sending needs no dialog.
+    await pickFrom(modelBtn, panel.getByTestId("picker-model-gemini-3-pro"));
+    await expect(confirm).toBeVisible();
+    await confirm.getByRole("button", { name: "切换到 Gemini CLI" }).click();
+    await expect(confirm).toBeHidden();
+    await expect(page.getByTestId("model-picker-trigger")).toHaveText("Gemini 3 Pro");
+
+    await pickFrom(modelBtn, panel.getByTestId("picker-model-scripted-fast"));
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByTestId("model-picker-trigger")).toHaveText("Scripted Fast");
+
+    // Confirm switching to Gemini CLI again and send Turn 2 end-to-end with handoff!
+    await pickFrom(modelBtn, panel.getByTestId("picker-model-gemini-3-pro"));
+    await confirm.getByRole("button", { name: "切换到 Gemini CLI" }).click();
+    await expect(confirm).toBeHidden();
+    await input.fill("stream 第二轮由Gemini接手完成");
+    await input.press("Enter");
+    await expect(log.locator(".am").filter({ hasText: "第二轮由Gemini接手完成" })).toBeVisible({ timeout: 15_000 });
+
+    // Once Turn 2 has run on Gemini CLI, switching back to Scripted Agent DOES ask for confirmation from Gemini CLI!
+    await pickFrom(modelBtn, panel.getByTestId("picker-model-scripted-fast"));
+    const confirmBack = page.getByRole("dialog", { name: "切换到 Scripted Agent？" });
+    await expect(confirmBack).toBeVisible();
+    await expect(confirmBack).toContainText("下一条消息会将与 Gemini CLI 的历史对话按摘要交接给 Scripted Agent");
+    await confirmBack.getByRole("button", { name: "取消" }).click();
+  } finally {
+    await app.close();
+  }
+});
+
 test("a conversation on a machine gone offline says why: one read before shows with a line under it, one never read says so instead of a blank page", async () => {
   test.skip(onWindows, "it stops the other machine by its process group");
   const { app, page } = await launch();

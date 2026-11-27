@@ -1383,7 +1383,8 @@ func (s *session) applyInitialSelection(ctx context.Context, sel *sessionv1.Mode
 	if wantModel == "default" {
 		wantModel = ""
 	}
-	wantEffort := sel.Options["reasoningEffort"].GetStringValue()
+	wantEffort := runtime.SelectionEffort(sel)
+	explicitEffort := sel.Options["reasoningEffort"].GetStringValue() != "" || sel.Options["effort"].GetStringValue() != ""
 
 	if opts.model != nil {
 		if wantModel != "" {
@@ -1416,7 +1417,10 @@ func (s *session) applyInitialSelection(ctx context.Context, sel *sessionv1.Mode
 		}
 		if wantEffort != "" {
 			if opts.thought == nil {
-				return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE, "agent takes no reasoning effort")
+				if explicitEffort {
+					return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE, "agent takes no reasoning effort")
+				}
+				return nil
 			}
 			effs := opts.efforts()
 			if len(effs) > 0 && !slices.Contains(effs, wantEffort) {
@@ -1439,7 +1443,7 @@ func (s *session) applyInitialSelection(ctx context.Context, sel *sessionv1.Mode
 	}
 
 	if len(opts.legacy) > 0 {
-		if wantEffort != "" {
+		if wantEffort != "" && explicitEffort {
 			return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE, "agent takes no reasoning effort")
 		}
 		if wantModel != "" {
@@ -2914,8 +2918,17 @@ func (s *session) SetSelection(ctx context.Context, sel *sessionv1.ModelSelectio
 			rawVal = bv.BoolValue
 		}
 		if rawVal != nil {
+			if k == "speed" || k == "fastMode" || k == "fast_mode" || k == "thinking" {
+				continue
+			}
 			cfgID := k
-			if (k == "reasoningEffort" || k == "effort") && s.thoughtOptionID != "" {
+			if k == "reasoningEffort" || k == "effort" || k == "thought_level" {
+				if s.thoughtOptionID == "" {
+					if k == "thought_level" {
+						continue
+					}
+					return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE, "agent takes no reasoning effort")
+				}
 				cfgID = s.thoughtOptionID
 			}
 			if _, err := s.call(ctx, "session/set_config_option", map[string]any{

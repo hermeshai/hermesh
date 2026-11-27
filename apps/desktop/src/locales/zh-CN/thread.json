@@ -98,7 +98,11 @@
       "xhigh": "超高",
       "max": "最高"
     },
-    "lastKnown": "{{machine}} 离线，这是上次读到的模型"
+    "lastKnown": "{{machine}} 离线，这是上次读到的模型",
+    "switchProviderTitle": "切换到 {{to}}？",
+    "switchProviderMessage": "当前工作区的文件改动会完整保留；下一条消息会将与 {{from}} 的历史对话按摘要交接给 {{to}}（不包含完整的工具原始输出）。",
+    "switchProviderBgMessage": "当前工作区的文件改动会完整保留；下一条消息将停止 {{from}} 运行中的后台任务，并将历史对话按摘要交接给 {{to}}。",
+    "switchProviderConfirm": "切换到 {{to}}"
   },
   "composer": {
     "placeholder": "继续追问、中途引导（Steer）或加入排队队列…",

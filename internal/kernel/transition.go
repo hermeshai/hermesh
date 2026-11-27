@@ -2,10 +2,12 @@
 package kernel
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
@@ -156,6 +158,12 @@ const defaultHandoffBudgetChars = 24000
 // token-budgeted structured briefing when switching providers or recovering
 // a non-resumable session.
 func BuildContextHandoff(items []*sessionv1.TurnItem, checkpoints []*sessionv1.Checkpoint, maxChars int) string {
+	return BuildContextHandoffWithDetails(items, checkpoints, nil, nil, maxChars)
+}
+
+// BuildContextHandoffWithDetails extends BuildContextHandoff with resolved
+// RuntimeRequest answers and local attachment blob paths when available.
+func BuildContextHandoffWithDetails(items []*sessionv1.TurnItem, checkpoints []*sessionv1.Checkpoint, requests []*sessionv1.RuntimeRequest, blobPath func(sha string) string, maxChars int) string {
 	if len(items) == 0 {
 		return ""
 	}
@@ -163,13 +171,38 @@ func BuildContextHandoff(items []*sessionv1.TurnItem, checkpoints []*sessionv1.C
 		maxChars = defaultHandoffBudgetChars
 	}
 
+	reqByID := map[string]*sessionv1.RuntimeRequest{}
+	for _, r := range requests {
+		if r != nil && r.RequestId != "" {
+			reqByID[r.RequestId] = r
+		}
+	}
+
 	var latestPlan string
 	var entries []string
 	for _, it := range items {
 		switch it.Kind {
 		case sessionv1.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE:
+			var parts []string
 			if strings.TrimSpace(it.Text) != "" {
-				entries = append(entries, fmt.Sprintf("[User]: %s", truncateMiddle(strings.TrimSpace(it.Text), 2500)))
+				parts = append(parts, truncateMiddle(strings.TrimSpace(it.Text), 2500))
+			}
+			for _, a := range it.Attachments {
+				if a == nil {
+					continue
+				}
+				p := ""
+				if blobPath != nil && a.BlobSha256 != "" {
+					p = blobPath(a.BlobSha256)
+				}
+				if p != "" {
+					parts = append(parts, fmt.Sprintf("[Attached file: %s (%s)]", a.Name, p))
+				} else if a.Name != "" {
+					parts = append(parts, fmt.Sprintf("[Attached file: %s]", a.Name))
+				}
+			}
+			if len(parts) > 0 {
+				entries = append(entries, "[User]: "+strings.Join(parts, "\n"))
 			}
 		case sessionv1.TurnItemKind_TURN_ITEM_KIND_MESSAGE_RECEIVED:
 			if strings.TrimSpace(it.Text) != "" {
@@ -187,7 +220,19 @@ func BuildContextHandoff(items []*sessionv1.TurnItem, checkpoints []*sessionv1.C
 			}
 		case sessionv1.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION:
 			if it.Command != "" {
-				entries = append(entries, fmt.Sprintf("[Ran Command]: %s (exit %d)", it.Command, it.ExitCode))
+				line := fmt.Sprintf("[Ran Command]: %s (exit %d)", it.Command, it.ExitCode)
+				if it.ExitCode != 0 && strings.TrimSpace(it.Output) != "" {
+					line += "\n" + truncateMiddle(strings.TrimSpace(it.Output), 800)
+				}
+				entries = append(entries, line)
+			}
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST:
+			if req := reqByID[it.RequestId]; req != nil &&
+				req.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT &&
+				req.QuestionResolution == sessionv1.QuestionResolution_QUESTION_RESOLUTION_ANSWERED {
+				if qa := formatAnsweredRequest(req); qa != "" {
+					entries = append(entries, qa)
+				}
 			}
 		}
 	}
@@ -231,13 +276,58 @@ func BuildContextHandoff(items []*sessionv1.TurnItem, checkpoints []*sessionv1.C
 	b.WriteString("Conversation & action history:\n")
 	b.WriteString(strings.Join(kept, "\n"))
 	b.WriteString("\n</context_handoff>")
-	return b.String()
+	return strings.ToValidUTF8(b.String(), "")
+}
+
+func formatAnsweredRequest(req *sessionv1.RuntimeRequest) string {
+	var lines []string
+	qs := req.GetUserInput().GetQuestions()
+	qByID := map[string]string{}
+	for _, q := range qs {
+		label := cmp.Or(strings.TrimSpace(q.Text), strings.TrimSpace(q.Header), q.Id)
+		qByID[q.Id] = label
+		if a := req.ResolvedAnswers[q.Id]; a != nil {
+			vals := slices.Clone(a.SelectedOptions)
+			if a.CustomText != "" {
+				vals = append(vals, a.CustomText)
+			}
+			if len(vals) > 0 {
+				lines = append(lines, fmt.Sprintf("[Q&A]: %s -> %s", truncateMiddle(label, 300), truncateMiddle(strings.Join(vals, ", "), 500)))
+			}
+		}
+	}
+	for qid, a := range req.ResolvedAnswers {
+		if _, seen := qByID[qid]; seen || a == nil {
+			continue
+		}
+		vals := slices.Clone(a.SelectedOptions)
+		if a.CustomText != "" {
+			vals = append(vals, a.CustomText)
+		}
+		if len(vals) > 0 {
+			label := qid
+			if len(qs) == 1 && len(req.ResolvedAnswers) == 1 {
+				label = cmp.Or(strings.TrimSpace(qs[0].Text), strings.TrimSpace(qs[0].Header), qid)
+			}
+			lines = append(lines, fmt.Sprintf("[Q&A]: %s -> %s", truncateMiddle(label, 300), truncateMiddle(strings.Join(vals, ", "), 500)))
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func truncateMiddle(s string, maxLen int) string {
+	s = strings.ToValidUTF8(s, "")
 	if len(s) <= maxLen || maxLen < 64 {
 		return s
 	}
 	half := (maxLen - 24) / 2
-	return s[:half] + "\n...[truncated]...\n" + s[len(s)-half:]
+	head := half
+	for head > 0 && !utf8.RuneStart(s[head]) {
+		head--
+	}
+	tail := len(s) - half
+	for tail < len(s) && !utf8.RuneStart(s[tail]) {
+		tail++
+	}
+	return s[:head] + "\n...[truncated]...\n" + s[tail:]
 }

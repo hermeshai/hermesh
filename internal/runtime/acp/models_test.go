@@ -159,6 +159,31 @@ func TestSessionModelAndEffort(t *testing.T) {
 			t.Fatalf("%+v: native %+v, msg %q", c, native, msg)
 		}
 	}
+	// UI/manifest "thought_level" and CLI "effort" option keys must also apply initial effort cleanly.
+	for _, optKey := range []string{"thought_level", "effort"} {
+		evs, err := runRuntimeTurn(t, p, runtime.StartSpec{
+			Workdir: t.TempDir(),
+			Selection: &sessionv1.ModelSelection{
+				Model: "large",
+				Options: map[string]*sessionv1.OptionValue{
+					optKey:  {Kind: &sessionv1.OptionValue_StringValue{StringValue: "low"}},
+					"speed": {Kind: &sessionv1.OptionValue_StringValue{StringValue: "fast"}},
+				},
+			},
+		}, "settings")
+		if err != nil {
+			t.Fatalf("option key %s: %v", optKey, err)
+		}
+		var got string
+		for _, ev := range evs {
+			if ev.Kind == runtime.EventAssistantMessage {
+				got = ev.Text
+			}
+		}
+		if !strings.Contains(got, "settings: large low") {
+			t.Fatalf("option key %s: got %q, want large low", optKey, got)
+		}
+	}
 	for _, c := range []struct{ model, effort, refusal string }{
 		{"huge", "", `model "huge": not offered by the agent (available: small, large)`},
 		{"small", "xhigh", `reasoning effort "xhigh": not offered by the agent (available: low, high)`},

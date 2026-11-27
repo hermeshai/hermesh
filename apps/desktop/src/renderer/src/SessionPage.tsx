@@ -31,6 +31,7 @@ import {
   backgroundTasksOf,
   clampRuntimeMode,
   clockText,
+  crossProviderSwitchFrom,
   cycleReasoningSelection,
   dateOf,
   defaultModelSelectionFor,
@@ -781,6 +782,28 @@ export function SessionPage() {
     }
     setPlace(next);
   };
+  const handlePickModel = (next: ModelSelection, afterApply?: () => void) => {
+    const fromId = activeSessionId ? crossProviderSwitchFrom(activeProjection, modelSel, next) : undefined;
+    if (fromId) {
+      const fromName = findProviderInstance(providers, fromId)?.displayName || fromId;
+      const toName = findProviderInstance(providers, next.instanceId)?.displayName || next.instanceId;
+      st.set({
+        sheet: {
+          kind: "confirm",
+          safe: true,
+          title: t("picker.switchProviderTitle", { to: toName }),
+          message: t(activeBgTasks.length > 0 ? "picker.switchProviderBgMessage" : "picker.switchProviderMessage", { from: fromName, to: toName }),
+          button: t("picker.switchProviderConfirm", { to: toName }),
+          run: async () => {
+            await applyConfigUpdate({ sel: next });
+            afterApply?.();
+          },
+        },
+      });
+      return;
+    }
+    void applyConfigUpdate({ sel: next }).then(() => afterApply?.());
+  };
   const choice = { machineId: effectiveMachineId, projectId: effectiveProjectId, worktree: place.worktree, sel: modelSel, mode: clampedMode, plan: false };
   const forHer = !activeSessionId && !!herAt && who === "her";
   const modelButtons = (
@@ -790,7 +813,7 @@ export function SessionPage() {
       stale={providersStale}
       machineName={targetMachine?.machineName ?? effectiveMachineId}
       projectAgents={forHer ? [] : project?.agents ?? []}
-      onModel={(next) => applyConfigUpdate({ sel: next })}
+      onModel={handlePickModel}
       onNotice={(text) => st.show(text)}
     />
   );

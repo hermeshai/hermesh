@@ -827,3 +827,113 @@ func TestPostTurnArtifactPlanReviewReviseApproveAndSupersede(t *testing.T) {
 		t.Fatalf("expected superseded request %s to be DISMISSED, got %+v", req5ID, req5After)
 	}
 }
+
+func TestCrossProviderHandoffUTF8MultibyteQACommandAndStateReset(t *testing.T) {
+	ctx := context.Background()
+	eng, _, _ := openTestEngine(t, t.TempDir(), 5*time.Minute)
+	defer eng.Close()
+
+	repo := initGitProject(t)
+	_ = eng.SyncWorkspace("repo", repo, "main", identityv1.Workspace_WORKSPACE_IN_PLACE, "", nil)
+	owner := OwnerPrincipal("dev_owner", "Owner")
+
+	// Upload a blob attachment on Turn 1 so we verify attachment path preservation in handoff.
+	blobRes, err := eng.Store().PutBlob("mockup.png", "image/png", []byte("PNGDATA"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Long multibyte Chinese prompt (> 2500 UTF-8 bytes) + question + failing command + long Chinese reply (> 3000 bytes).
+	longZhPrompt := strings.Repeat("请检查跨模型切换时的多字节中文字符截断边界是否安全。", 40) // > 3000 bytes
+	longZhReply := strings.Repeat("已完成第一阶段架构梳理，所有编码边界均需保持合法。", 45)    // > 3200 bytes
+
+	launched, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ProjectId:      "repo",
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "scripted", Model: "scripted-fast"},
+		Attachments:    []*sessionv1.AttachmentRef{blobRes},
+		InitialPrompt: strings.Join([]string{
+			"ask Runtime|Which target runtime?|Go,Rust",
+			"say " + longZhReply + " " + longZhPrompt,
+		}, "\n"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid := launched.Session.SessionId
+
+	// Answer the LIVE_RPC question during Turn 1:
+	waiting := waitForSessionStatus(t, eng, owner, sid, sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT)
+	_, err = eng.RespondRuntimeRequest(ctx, owner, &sessionv1.RespondRuntimeRequestRequest{
+		SessionId: sid,
+		RequestId: waiting.Session.PendingRequestId,
+		Answers: map[string]*sessionv1.QuestionAnswer{
+			"q1": {SelectedOptions: []string{"Go"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("RespondRuntimeRequest: %v", err)
+	}
+
+	p1 := waitForSessionStatus(t, eng, owner, sid, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+	if p1.Session.GetContextUsage().GetContextUsedTokens() == 0 {
+		t.Fatalf("expected non-zero ContextUsage after Turn 1")
+	}
+
+	// Run a failing owner shell shortcut (!...) so a failed COMMAND_EXECUTION with error output is in history:
+	_, err = eng.DispatchMessage(ctx, owner, &sessionv1.DispatchMessageRequest{
+		SessionId: sid,
+		Text:      "!sh -c 'echo undefined symbol foo_bar in module_x.go:42; exit 1'",
+	})
+	if err != nil {
+		t.Fatalf("DispatchMessage failing shell: %v", err)
+	}
+	waitForSessionStatus(t, eng, owner, sid, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+
+	// UpdateSession to alt-agent WITHOUT specifying Model: clears stale Model & ContextUsage!
+	upd, err := eng.UpdateSession(ctx, owner, &sessionv1.UpdateSessionRequest{
+		SessionId:      sid,
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "alt-agent"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateSession cross-provider: %v", err)
+	}
+	if upd.Session.Agent != "alt-agent" || upd.Session.Model != "" {
+		t.Fatalf("expected Agent=alt-agent and cleared Model, got agent=%q model=%q", upd.Session.Agent, upd.Session.Model)
+	}
+	if upd.Session.ContextUsage != nil {
+		t.Fatalf("expected ContextUsage cleared on cross-provider switch, got %+v", upd.Session.ContextUsage)
+	}
+
+	// Turn 3 on alt-agent: must build valid UTF-8 handoff, persist ProviderSessionId on Run 3, and persist HANDOFF item!
+	_, err = eng.DispatchMessage(ctx, owner, &sessionv1.DispatchMessageRequest{
+		SessionId:      sid,
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "alt-agent", Model: "alt-1"},
+		Text:           "inspect",
+	})
+	if err != nil {
+		t.Fatalf("DispatchMessage cross-provider: %v", err)
+	}
+	p2 := waitForSessionStatus(t, eng, owner, sid, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+	lastRun := p2.Runs[len(p2.Runs)-1]
+	if lastRun.ProviderSessionId == "" || lastRun.HandoffSummary == "" {
+		t.Fatalf("expected final Run to persist ProviderSessionId and HandoffSummary, got %+v", lastRun)
+	}
+	var handoffItem *sessionv1.TurnItem
+	for _, it := range p2.Items {
+		if it.Kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_HANDOFF {
+			handoffItem = it
+		}
+	}
+	if handoffItem == nil {
+		t.Fatalf("expected persisted TURN_ITEM_KIND_HANDOFF item on UTF-8 multibyte history")
+	}
+	for _, want := range []string{
+		"mockup.png",
+		"[Q&A]: Which target runtime? -> Go",
+		"undefined symbol foo_bar",
+		"...[truncated]...",
+	} {
+		if !strings.Contains(handoffItem.Text, want) {
+			t.Fatalf("handoff summary missing %q:\n%s", want, handoffItem.Text)
+		}
+	}
+}

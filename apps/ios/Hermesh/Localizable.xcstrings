@@ -15950,6 +15950,26 @@
         }
       }
     },
+    "Switch to %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换到 %@"
+          }
+        }
+      }
+    },
+    "Switch to %@?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换到 %@？"
+          }
+        }
+      }
+    },
     "Switched to manual entry": {
       "localizations": {
         "zh-Hans": {
@@ -19367,6 +19387,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "不加密钥也能用。加了之后限额更高。"
+          }
+        }
+      }
+    },
+    "Workspace file changes are kept. On your next message, earlier conversation with %@ will be summarized for %@ without full raw tool outputs.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前工作区的文件改动会完整保留；下一条消息会将与 %1$@ 的历史对话按摘要交接给 %2$@（不包含完整的工具原始输出）。"
+          }
+        }
+      }
+    },
+    "Workspace file changes are kept. On your next message, running background tasks in %@ will stop and earlier conversation will be summarized for %@.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前工作区的文件改动会完整保留；下一条消息将停止 %1$@ 运行中的后台任务，并将历史对话按摘要交接给 %2$@。"
           }
         }
       }

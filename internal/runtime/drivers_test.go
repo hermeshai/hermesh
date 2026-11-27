@@ -3850,3 +3850,26 @@ func TestACPSessionStartReliabilityE2E(t *testing.T) {
 		t.Fatalf("expected interrupted run when stopped mid-startup, got %+v", pInt.GetRuns()[0])
 	}
 }
+
+func TestSelectionEffortAndFastModeAliases(t *testing.T) {
+	for _, key := range []string{"reasoningEffort", "thought_level", "effort"} {
+		sel := &sessionv1.ModelSelection{
+			Model: "claude-opus-4-7",
+			Options: map[string]*sessionv1.OptionValue{
+				key:         {Kind: &sessionv1.OptionValue_StringValue{StringValue: "high"}},
+				"fast_mode": {Kind: &sessionv1.OptionValue_BoolValue{BoolValue: true}},
+			},
+		}
+		if got := runtime.SelectionEffort(sel); got != "high" {
+			t.Fatalf("SelectionEffort(%s) = %q, want high", key, got)
+		}
+		if fast, ok := runtime.SelectionFastMode(sel); !ok || !fast {
+			t.Fatalf("SelectionFastMode(%s) = (%v, %v), want (true, true)", key, fast, ok)
+		}
+		args := claude.BuildArgs(runtime.StartSpec{Selection: sel})
+		joined := strings.Join(args, " ")
+		if !strings.Contains(joined, "--effort high") || !strings.Contains(joined, `{"fastMode":true}`) {
+			t.Fatalf("claude.BuildArgs(%s) missing effort/fastMode: %v", key, args)
+		}
+	}
+}

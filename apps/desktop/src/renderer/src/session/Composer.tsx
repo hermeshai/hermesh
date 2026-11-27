@@ -547,7 +547,7 @@ export function ModelButtons({ providers, sel, stale, machineName, projectAgents
   stale?: boolean;
   machineName: string;
   projectAgents: string[];
-  onModel: (sel: ModelSelection) => void;
+  onModel: (sel: ModelSelection, afterApply?: () => void) => void;
   onNotice: (text: string) => void;
 }) {
   const { t } = useTranslation("thread");
@@ -581,8 +581,12 @@ export function ModelButtons({ providers, sel, stale, machineName, projectAgents
           onLevel={(id) => reasoning && onModel(withReasoning(sel, reasoning.id, id))}
           onSel={(next, changed) => {
             close();
-            onModel(next);
-            if (changed) onNotice(t("picker.thinkingChanged", { model: selectionTitle(providers, next), from: levelTitle(changed.from, changed.from), to: levelTitle(changed.to, changed.to) }));
+            onModel(
+              next,
+              changed
+                ? () => onNotice(t("picker.thinkingChanged", { model: selectionTitle(providers, next), from: levelTitle(changed.from, changed.from), to: levelTitle(changed.to, changed.to) }))
+                : undefined,
+            );
           }}
         />
       )}

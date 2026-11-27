@@ -5,10 +5,12 @@ import {
   ModelSelectionSchema,
   OptionDescriptorType,
   OptionValueSchema,
+  RunStatus,
   type ModelCatalogEntry,
   type ModelSelection,
   type OptionChoice,
   type ProviderInstance,
+  type SessionProjection,
 } from "@hermesh/proto/session";
 import { activeOptionDescriptors, findModelEntry, findProviderInstance } from "./threads";
 
@@ -72,6 +74,34 @@ export function selectModel(
 export function selectionTitle(providers: readonly ProviderInstance[], sel: ModelSelection): string {
   const m = findModelEntry(providers, sel);
   return m?.shortName || m?.name || sel.model || "";
+}
+
+/**
+ * When picking nextSel on an existing session will summarize prior conversation
+ * across providers on the next message, returns the bound provider's instanceId
+ * being switched away from; otherwise undefined (new session, same provider, or
+ * switching back to the still-bound provider before sending).
+ */
+export function crossProviderSwitchFrom(
+  proj: SessionProjection | null | undefined,
+  currentSel: ModelSelection,
+  nextSel: ModelSelection,
+): string | undefined {
+  const s = proj?.session;
+  if (!s || !nextSel.instanceId || nextSel.instanceId === currentSel.instanceId) return undefined;
+  const hasHistory = s.activeProviderSessionId !== "" || (s.progress?.turnCount ?? 0) > 0;
+  if (!hasHistory) return undefined;
+  let bound = "";
+  for (let i = proj.runs.length - 1; i >= 0; i--) {
+    const r = proj.runs[i];
+    if (r.status !== RunStatus.QUEUED && r.status !== RunStatus.ROLLED_BACK && r.modelSelection?.instanceId) {
+      bound = r.modelSelection.instanceId;
+      break;
+    }
+  }
+  if (!bound) bound = currentSel.instanceId || s.modelSelection?.instanceId || s.agent;
+  if (!bound || nextSel.instanceId === bound) return undefined;
+  return bound;
 }
 
 /** Why a provider can't be chosen here, or "" when it can. */

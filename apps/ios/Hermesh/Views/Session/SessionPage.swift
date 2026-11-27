@@ -361,7 +361,9 @@ struct SessionPage: View {
                     }
                     if !isNew { update { $0.modelSelection = next } }
                 }
-            ), stale: providersStale, machineName: machine?.machineName ?? "",
+            ), projection: isNew ? nil : activeProjection,
+            hasActiveBackgroundTasks: !activeBgTasks.isEmpty,
+            stale: providersStale, machineName: machine?.machineName ?? "",
             projectAgents: who == .her ? [] : projects(on: effectiveMachineID).list.first { $0.projectID == effectiveProjectID }?.agents ?? [],
             levelTitle: levelTitle) { changed in
                 model.show(String(localized: "\(modelTitle) has no “\(levelTitle(changed.from))” level; thinking is now “\(levelTitle(changed.to))”"))
@@ -2274,16 +2276,43 @@ private struct BranchSheet: View {
     }
 }
 
+func crossProviderSwitchFrom(_ proj: Hermesh_Session_V1_SessionProjection?, current: Hermesh_Session_V1_ModelSelection, next: Hermesh_Session_V1_ModelSelection) -> String? {
+    guard let proj, proj.hasSession, !next.instanceID.isEmpty, next.instanceID != current.instanceID else { return nil }
+    let s = proj.session
+    let hasHistory = !s.activeProviderSessionID.isEmpty || s.progress.turnCount > 0
+    guard hasHistory else { return nil }
+    var bound = ""
+    for r in proj.runs.reversed() where r.status != .queued && r.status != .rolledBack && !r.modelSelection.instanceID.isEmpty {
+        bound = r.modelSelection.instanceID
+        break
+    }
+    if bound.isEmpty {
+        bound = !current.instanceID.isEmpty ? current.instanceID : (!s.modelSelection.instanceID.isEmpty ? s.modelSelection.instanceID : s.agent)
+    }
+    guard !bound.isEmpty, next.instanceID != bound else { return nil }
+    return bound
+}
+
+private struct PendingProviderSwitch {
+    let fromName: String
+    let toName: String
+    let selection: Hermesh_Session_V1_ModelSelection
+    let changed: (from: String, to: String)?
+}
+
 private struct ModelSheet: View {
     @Environment(\.dismiss) private var dismiss
     let providers: [Hermesh_Session_V1_ProviderInstance]
     @Binding var selection: Hermesh_Session_V1_ModelSelection
+    let projection: Hermesh_Session_V1_SessionProjection?
+    let hasActiveBackgroundTasks: Bool
     let stale: Bool
     let machineName: String
     let projectAgents: [String]
     let levelTitle: (String, String) -> String
     let changed: ((from: String, to: String)) -> Void
     @State private var query = ""
+    @State private var pendingSwitch: PendingProviderSwitch?
 
     var body: some View {
         let usable = providers
@@ -2324,11 +2353,35 @@ private struct ModelSheet: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("model-done") } }
         }
         .presentationDetents([.medium, .large])
+        .alert(pendingSwitch.map { String(localized: "Switch to \($0.toName)?") } ?? "", isPresented: Binding(
+            get: { pendingSwitch != nil },
+            set: { if !$0 { pendingSwitch = nil } }
+        ), presenting: pendingSwitch) { sw in
+            Button(String(localized: "Switch to \(sw.toName)")) {
+                pendingSwitch = nil
+                selection = sw.selection
+                if let c = sw.changed { changed(c) }
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) { pendingSwitch = nil }
+        } message: { sw in
+            if hasActiveBackgroundTasks {
+                Text("Workspace file changes are kept. On your next message, running background tasks in \(sw.fromName) will stop and earlier conversation will be summarized for \(sw.toName).")
+            } else {
+                Text("Workspace file changes are kept. On your next message, earlier conversation with \(sw.fromName) will be summarized for \(sw.toName) without full raw tool outputs.")
+            }
+        }
     }
 
     private func row(_ p: Hermesh_Session_V1_ProviderInstance, _ m: Hermesh_Session_V1_ModelCatalogEntry) -> some View {
         Button {
             let r = selectModel(providers, from: selection, instanceID: p.instanceID, slug: m.slug)
+            if let fromID = crossProviderSwitchFrom(projection, current: selection, next: r.selection) {
+                let fromName = providers.first { $0.instanceID == fromID }.map { $0.displayName.isEmpty ? fromID : $0.displayName } ?? fromID
+                let toName = p.displayName.isEmpty ? p.instanceID : p.displayName
+                pendingSwitch = PendingProviderSwitch(fromName: fromName, toName: toName, selection: r.selection, changed: r.changed)
+                return
+            }
             selection = r.selection
             if let c = r.changed { changed(c) }
             dismiss()

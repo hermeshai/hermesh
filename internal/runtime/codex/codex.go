@@ -460,11 +460,11 @@ func applyThreadSelectionParams(params map[string]any, sel *sessionv1.ModelSelec
 		if sel.Model != "" && sel.Model != "default" {
 			params["model"] = sel.Model
 		}
-		if eff := sel.Options["reasoningEffort"].GetStringValue(); eff != "" {
+		if eff := runtime.SelectionEffort(sel); eff != "" {
 			config["model_reasoning_effort"] = eff
 		}
-		if opt, ok := sel.Options["fastMode"]; ok {
-			if opt.GetBoolValue() {
+		if fast, ok := runtime.SelectionFastMode(sel); ok {
+			if fast {
 				params["serviceTier"] = "fast"
 			} else {
 				params["serviceTier"] = nil
@@ -490,11 +490,11 @@ func applyTurnSelectionParams(params map[string]any, sel *sessionv1.ModelSelecti
 	if sel.Model != "" && sel.Model != "default" {
 		params["model"] = sel.Model
 	}
-	if eff := sel.Options["reasoningEffort"].GetStringValue(); eff != "" {
+	if eff := runtime.SelectionEffort(sel); eff != "" {
 		params["effort"] = eff
 	}
-	if opt, ok := sel.Options["fastMode"]; ok {
-		if opt.GetBoolValue() {
+	if fast, ok := runtime.SelectionFastMode(sel); ok {
+		if fast {
 			params["serviceTier"] = "fast"
 		} else {
 			params["serviceTier"] = nil

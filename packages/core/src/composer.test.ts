@@ -10,8 +10,14 @@ import {
   OptionDescriptorType,
   OptionValueSchema,
   ProviderInstanceSchema,
+  RunSchema,
+  RunStatus,
+  SessionProgressSchema,
+  SessionProjectionSchema,
+  SessionSchema,
 } from "@hermesh/proto/session";
 import {
+  crossProviderSwitchFrom,
   findModels,
   grantsReaching,
   projectOnMachine,
@@ -130,5 +136,67 @@ describe("the unified session composer", () => {
     expect(projectWorktree(repoInPlace, true)).toBe(true);
     expect(projectWorktree(plainFolder, true)).toBe(false);
     expect(projectWorktree(undefined, true)).toBe(false);
+  });
+
+  it("asks to confirm cross-provider switches only on sessions with history and not when reverting before sending", () => {
+    const claudeSel = create(ModelSelectionSchema, { instanceId: "claude", model: "sonnet" });
+    const claudeOpus = create(ModelSelectionSchema, { instanceId: "claude", model: "opus" });
+    const codexSel = create(ModelSelectionSchema, { instanceId: "codex", model: "gpt-5.4" });
+    const codexMini = create(ModelSelectionSchema, { instanceId: "codex", model: "gpt-5.4-mini" });
+    const geminiSel = create(ModelSelectionSchema, { instanceId: "gemini", model: "gemini-3-pro" });
+
+    // Brand-new or unstarted session: never prompts.
+    expect(crossProviderSwitchFrom(null, claudeSel, codexSel)).toBeUndefined();
+    const unstarted = create(SessionProjectionSchema, {
+      session: create(SessionSchema, { sessionId: "s_0", agent: "claude", modelSelection: claudeSel }),
+    });
+    expect(crossProviderSwitchFrom(unstarted, claudeSel, codexSel)).toBeUndefined();
+
+    // Active Claude session with 1 completed turn:
+    const active = create(SessionProjectionSchema, {
+      session: create(SessionSchema, {
+        sessionId: "s_1",
+        agent: "claude",
+        activeProviderSessionId: "ps_claude",
+        modelSelection: claudeSel,
+        progress: create(SessionProgressSchema, { turnCount: 1 }),
+      }),
+      runs: [
+        create(RunSchema, {
+          runId: "r_1",
+          ordinal: 1,
+          status: RunStatus.COMPLETED,
+          modelSelection: claudeSel,
+        }),
+      ],
+    });
+    // Same-provider model switch -> no confirmation.
+    expect(crossProviderSwitchFrom(active, claudeSel, claudeOpus)).toBeUndefined();
+    // Cross-provider switch -> confirms from "claude".
+    expect(crossProviderSwitchFrom(active, claudeSel, codexSel)).toBe("claude");
+
+    // User confirmed Codex, hasn't sent Turn 2 yet:
+    // - picking another Codex model needs no 2nd confirmation;
+    // - reverting back to still-bound Claude is lossless -> no confirmation;
+    // - picking a 3rd provider (Gemini) confirms from bound "claude".
+    expect(crossProviderSwitchFrom(active, codexSel, codexMini)).toBeUndefined();
+    expect(crossProviderSwitchFrom(active, codexSel, claudeOpus)).toBeUndefined();
+    expect(crossProviderSwitchFrom(active, codexSel, geminiSel)).toBe("claude");
+
+    // Once Turn 2 actually runs on Codex, switching back to Claude DOES confirm from "codex".
+    const afterCodexTurn = create(SessionProjectionSchema, {
+      session: create(SessionSchema, {
+        sessionId: "s_1",
+        agent: "codex",
+        activeProviderSessionId: "ps_codex",
+        modelSelection: codexSel,
+        progress: create(SessionProgressSchema, { turnCount: 2 }),
+      }),
+      runs: [
+        ...active.runs,
+        create(RunSchema, { runId: "r_2", ordinal: 2, status: RunStatus.COMPLETED, modelSelection: codexSel }),
+      ],
+    });
+    expect(crossProviderSwitchFrom(afterCodexTurn, codexSel, claudeSel)).toBe("codex");
   });
 });

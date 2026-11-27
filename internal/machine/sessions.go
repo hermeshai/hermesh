@@ -298,10 +298,7 @@ func (n *Machine) resolveModelSelection(instanceID string, sel *sessionv1.ModelS
 	}
 	info := n.providerInfo(instanceID)
 	reqModel := sel.Model
-	reqEffort := ""
-	if sel.Options != nil {
-		reqEffort = sel.Options["effort"].GetStringValue()
-	}
+	reqEffort := rt.SelectionEffort(sel)
 	def := n.agentDefaults(instanceID)
 	runs := cmp.Or(reqModel, def.Model, info.Own.Model)
 	if len(info.Models) > 0 || info.AllModels || reqEffort != "" {

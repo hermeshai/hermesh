@@ -371,12 +371,10 @@ func BuildArgs(spec runtime.StartSpec) []string {
 		if m := strings.TrimSpace(spec.Selection.Model); m != "" && m != "default" {
 			args = append(args, "--model", m)
 		}
-		if opt := spec.Selection.Options["reasoningEffort"]; opt != nil {
-			if sv := opt.GetStringValue(); sv != "" {
-				args = append(args, "--effort", sv)
-			}
+		if sv := runtime.SelectionEffort(spec.Selection); sv != "" {
+			args = append(args, "--effort", sv)
 		}
-		if opt := spec.Selection.Options["fastMode"]; opt != nil && opt.GetBoolValue() {
+		if fast, ok := runtime.SelectionFastMode(spec.Selection); ok && fast {
 			args = append(args, "--settings", `{"fastMode":true}`)
 		}
 	}
@@ -618,8 +616,9 @@ func (s *session) SetSelection(_ context.Context, sel *sessionv1.ModelSelection)
 	prev := s.selection
 	s.mu.Unlock()
 	if prev != nil {
-		if prev.Options["reasoningEffort"].GetStringValue() != sel.Options["reasoningEffort"].GetStringValue() ||
-			prev.Options["fastMode"].GetBoolValue() != sel.Options["fastMode"].GetBoolValue() {
+		prevFast, _ := runtime.SelectionFastMode(prev)
+		nextFast, _ := runtime.SelectionFastMode(sel)
+		if runtime.SelectionEffort(prev) != runtime.SelectionEffort(sel) || prevFast != nextFast {
 			return runtime.ErrHotSwitchUnsupported
 		}
 	}

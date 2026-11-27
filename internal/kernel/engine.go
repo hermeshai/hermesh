@@ -581,11 +581,14 @@ func syncSessionSummary(s *sessionv1.Session) {
 		s.Progress = &sessionv1.SessionProgress{}
 	}
 	if sel := s.ModelSelection; sel != nil {
+		prevAgent := s.Agent
 		if sel.InstanceId != "" {
 			s.Agent = sel.InstanceId
 		}
 		if sel.Model != "" {
 			s.Model = sel.Model
+		} else if prevAgent != "" && s.Agent != prevAgent {
+			s.Model = ""
 		}
 		s.Effort = extractEffort(sel.Options)
 	}
@@ -2183,6 +2186,9 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *session
 			}
 		}
 		if sNow.ActiveRunId == "" {
+			if prev := sNow.GetModelSelection().GetInstanceId(); prev != "" && sel.GetInstanceId() != "" && prev != sel.GetInstanceId() {
+				sNow.ContextUsage = nil
+			}
 			sNow.ModelSelection = sel
 			sNow.RuntimeMode = reqMode
 			sNow.EffectiveRuntimeMode = effMode
@@ -3158,7 +3164,8 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 					historyItems = append(historyItems, it)
 				}
 			}
-			return BuildContextHandoff(historyItems, existingCkpts, defaultHandoffBudgetChars)
+			priorReqs, _ := e.st.RuntimeRequests(sessionID)
+			return BuildContextHandoffWithDetails(historyItems, existingCkpts, priorReqs, e.st.BlobPath, defaultHandoffBudgetChars)
 		}
 
 		isPriorUnstarted := func(pr *sessionv1.Run) bool {
@@ -7178,6 +7185,9 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 		sNow, err := tx.GetSession(req.SessionId)
 		if err != nil {
 			return err
+		}
+		if prev := sNow.GetModelSelection().GetInstanceId(); prev != "" && nextSel.GetInstanceId() != "" && prev != nextSel.GetInstanceId() {
+			sNow.ContextUsage = nil
 		}
 		sNow.ModelSelection = nextSel
 		sNow.RuntimeMode = nextReqMode
