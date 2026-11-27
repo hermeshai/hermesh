@@ -44,6 +44,8 @@ struct ProviderMaintenanceView: View {
         List {
             if let m = model.machines.first(where: { $0.machineID == machineID }).map(model.providerMachine) {
                 if !m.online { Label("Offline", systemImage: "wifi.slash") }
+                let runsAsRoot = m.status.providerMaintenance.contains { $0.account == "root" }
+                    && m.status.providerMaintenance.allSatisfy { $0.package.isEmpty }
                 Section {
                     ForEach(m.status.providerMaintenance.filter { cap in
                         !cap.package.isEmpty || !cap.managedVersion.isEmpty || m.status.agents.contains { $0.name == cap.provider && $0.available }
@@ -60,7 +62,11 @@ struct ProviderMaintenanceView: View {
                         }
                         .accessibilityIdentifier("maintain-\(cap.provider)")
                     }
-                } header: { Text(m.machineName) }
+                } header: { Text(m.machineName) } footer: {
+                    if runsAsRoot {
+                        Text("Hermesh runs as root in this environment, so remote tool installation is off. Install one in a terminal or reinstall Hermesh for a non-root user (--user), then Check Again.")
+                    }
+                }
                 Section("Task History") {
                     if m.status.providerOperations.isEmpty { Text("No provider tasks yet.").foregroundStyle(.secondary) }
                     ForEach(m.status.providerOperations.sorted { $0.updatedUnixMs > $1.updatedUnixMs }, id: \.request.requestID) { job in

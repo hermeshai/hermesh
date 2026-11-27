@@ -141,7 +141,7 @@ func TestLinuxFirstInstall(t *testing.T) {
 		t.Fatalf("pairing with claude signed in from ~/.profile:\n%s", out)
 	}
 	eventually(t, 30*time.Second, "srv-1 online", func() bool { return online(id) })
-	if doctor := sh("/root/.local/bin/hermeshd doctor"); !strings.Contains(doctor, "claude     2.1.0, signed in") {
+	if doctor := sh("/root/.local/bin/hermeshd doctor && echo DOCTOR_OK"); !strings.Contains(doctor, "claude     2.1.0, signed in") || !strings.Contains(doctor, "DOCTOR_OK") {
 		t.Errorf("doctor, from the service:\n%s", doctor)
 	}
 

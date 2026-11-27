@@ -313,6 +313,7 @@
     "modelReply": "Model reply ({{ms}} ms): {{reply}}",
     "modelFailed": "Session failed: {{reply}}",
     "external": "This tool is updated through its original installation channel.",
+    "rootAccount": "Hermesh runs as root in this environment, so remote CLI installation is off. Install tools in a terminal, or reinstall Hermesh for a non-root user (--user).",
     "cancel": "Cancel",
     "cancelled": "Cancelled",
     "install": "Install",

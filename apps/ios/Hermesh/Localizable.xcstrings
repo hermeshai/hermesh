@@ -8082,6 +8082,16 @@
         }
       }
     },
+    "Hermesh runs as root in this environment, so remote tool installation is off. Install one in a terminal or reinstall Hermesh for a non-root user (--user), then Check Again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个环境以 root 运行 Hermesh，不开启远程安装命令行工具。请在终端安装，或用非 root 账号重新安装 Hermesh（--user），再点“重新检查”。"
+          }
+        }
+      }
+    },
     "Hermesh runs them on the command line as you do, never reading API keys or tokens.": {
       "localizations": {
         "zh-Hans": {
@@ -9883,7 +9893,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "机器"
+            "value": "环境"
           }
         }
       }
@@ -18947,7 +18957,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "等待机器空闲"
+            "value": "等待环境空闲"
           }
         }
       }

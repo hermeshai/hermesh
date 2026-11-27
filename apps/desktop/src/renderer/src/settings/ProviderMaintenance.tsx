@@ -51,6 +51,7 @@ export function ProviderMaintenance({ machine, agent }: { machine: Machine; agen
     (!info || info.problem === AgentProblem.NOT_FOUND || info.problem === AgentProblem.APP_WITHOUT_CLI);
   return <section>
     {cap.package && (canInstall || cap.managedVersion) && <p className="set-foot">{t("maintenance.source", { machine: machine.machineName, account: cap.account, pkg: cap.package, version: cap.targetVersion })}</p>}
+    {!cap.package && cap.account === "root" && !info?.available && <p className="set-foot">{t("maintenance.rootAccount")}</p>}
     {info?.available && !cap.managedVersion && <p className="set-foot">{t("maintenance.external")}</p>}
     <div className="set-acts">
       {(latest?.phase === "preflight" || latest?.phase === "waiting") && <button type="button" className="btn" disabled={!machine.online || sending} onClick={() => void run("cancel")}>{t("maintenance.cancel")}</button>}

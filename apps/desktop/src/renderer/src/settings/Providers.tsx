@@ -18,6 +18,9 @@ export function Providers({ m, open }: { m: Machine; open: (agent: string) => vo
   const agents = sortAgents(m.status?.agents);
   const { installed, troubled, checking, missing, known } = agents;
   const missingList = useMissingAgentList(agents);
+  const rootAccount = !!m.status?.providerMaintenance.length &&
+    m.status.providerMaintenance.some((c) => c.account === "root") &&
+    m.status.providerMaintenance.every((c) => !c.package);
   useCheckAgents(m.local);
   useEffect(() => {
     if (!m.local && m.online && !known) void local.checkAgents({ machineId: m.machineId }).catch(() => {});
@@ -66,6 +69,7 @@ export function Providers({ m, open }: { m: Machine; open: (agent: string) => vo
             ))}
           </div>
           {missingList.toggle}
+          {rootAccount && <p className="set-foot">{t("maintenance.rootAccount")}</p>}
         </div>
       )}
       {!!m.status?.providerMaintenance.length && <div className="set-acts"><button className="btn" onClick={() => open("history")}>{t("maintenance.history")}</button></div>}

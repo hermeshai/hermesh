@@ -41,11 +41,14 @@ done
 [ -z "${HER_WINDOWS_ARM64:-}" ] || install -m 0644 "$HER_WINDOWS_ARM64" "$OUT/her-windows-arm64.exe"
 [ -z "${SCREEN_LINUX_AMD64:-}" ] || install -m 0755 "$SCREEN_LINUX_AMD64" "$OUT/hermesh-screen-linux-amd64"
 [ -z "${SCREEN_LINUX_ARM64:-}" ] || install -m 0755 "$SCREEN_LINUX_ARM64" "$OUT/hermesh-screen-linux-arm64"
-[ -z "${HER_CONSOLE:-}" ] || COPYFILE_DISABLE=1 tar -czf "$OUT/her-console.tar.gz" -C "$HER_CONSOLE" .
-[ -z "${HER_PDF_LINUX_AMD64:-}" ] || COPYFILE_DISABLE=1 tar -czf "$OUT/her-pdf-linux-amd64.tar.gz" -C "$HER_PDF_LINUX_AMD64" .
-[ -z "${HER_PDF_LINUX_ARM64:-}" ] || COPYFILE_DISABLE=1 tar -czf "$OUT/her-pdf-linux-arm64.tar.gz" -C "$HER_PDF_LINUX_ARM64" .
-[ -z "${HER_COMPUTER_LINUX_AMD64:-}" ] || COPYFILE_DISABLE=1 tar -czf "$OUT/her-computer-linux-amd64.tar.gz" -C "$HER_COMPUTER_LINUX_AMD64" .
-[ -z "${HER_COMPUTER_LINUX_ARM64:-}" ] || COPYFILE_DISABLE=1 tar -czf "$OUT/her-computer-linux-arm64.tar.gz" -C "$HER_COMPUTER_LINUX_ARM64" .
+TAR_FLAGS=()
+tar --no-xattrs --no-mac-metadata -cf /dev/null -T /dev/null 2>/dev/null && TAR_FLAGS=(--no-xattrs --no-mac-metadata)
+pack_tgz() { COPYFILE_DISABLE=1 tar ${TAR_FLAGS[@]+"${TAR_FLAGS[@]}"} -czf "$1" -C "$2" .; }
+[ -z "${HER_CONSOLE:-}" ] || pack_tgz "$OUT/her-console.tar.gz" "$HER_CONSOLE"
+[ -z "${HER_PDF_LINUX_AMD64:-}" ] || pack_tgz "$OUT/her-pdf-linux-amd64.tar.gz" "$HER_PDF_LINUX_AMD64"
+[ -z "${HER_PDF_LINUX_ARM64:-}" ] || pack_tgz "$OUT/her-pdf-linux-arm64.tar.gz" "$HER_PDF_LINUX_ARM64"
+[ -z "${HER_COMPUTER_LINUX_AMD64:-}" ] || pack_tgz "$OUT/her-computer-linux-amd64.tar.gz" "$HER_COMPUTER_LINUX_AMD64"
+[ -z "${HER_COMPUTER_LINUX_ARM64:-}" ] || pack_tgz "$OUT/her-computer-linux-arm64.tar.gz" "$HER_COMPUTER_LINUX_ARM64"
 # The version, signed with the programs, for installed ones to update (docs/machine-updates.md).
 printf '%s\n' "${VERSION#v}" > "$OUT/version"
 (cd "$OUT" && (command -v sha256sum >/dev/null && sha256sum her* version || shasum -a 256 her* version) > checksums.txt)

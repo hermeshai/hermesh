@@ -95,7 +95,7 @@ func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error
 	machineLine := "its machine: unpaired, and gone from your devices"
 	herHome, herData := filepath.Join(home, ".her"), false
 	if isMachine {
-		c, running, err := machineCheck(ctx, dataDir, func() (*machine.Machine, error) { return machine.Open(cfg) })
+		c, running, err := machineCheck(ctx, cfg.DataDir, func() (*machine.Machine, error) { return machine.Open(cfg) })
 		if (running || err != nil) && !svc {
 			return errors.New("hermeshd runs here outside its service: stop `hermeshd run`, then uninstall")
 		}

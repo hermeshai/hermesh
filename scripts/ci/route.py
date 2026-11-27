@@ -6,7 +6,7 @@ import re
 import subprocess
 
 
-FLAGS = ("go", "go_macos", "go_e2e", "screen_linux", "windows", "windows_arm",
+FLAGS = ("go", "go_macos", "go_e2e", "linux_docker", "screen_linux", "windows", "windows_arm",
          "windows_e2e", "app", "desktop_e2e", "her_integration", "windows_app",
          "mac_native", "ios", "hermeshkit", "packaging")
 # Unknown files exercise all component smoke tests. Known files in the same diff
@@ -33,7 +33,7 @@ RULES = (
     (("packages/HermeshKit/",), ("ios", "hermeshkit", "mac_native")),
     (("apps/signer/macos/", "apps/screen/macos/"), ("mac_native",)),
     (("apps/screen/linux/",), ("screen_linux",)),
-    (("e2e/harness", "e2e/main_test.go"), ("go", "go_e2e", "go_macos", "app", "desktop_e2e",
+    (("e2e/harness", "e2e/main_test.go"), ("go", "go_e2e", "go_macos", "linux_docker", "app", "desktop_e2e",
                                            "her_integration", "windows", "windows_app", "windows_e2e", "screen_linux")),
     (("e2e/desktop_her", "apps/desktop/e2e/her", "e2e/her_", "e2e/coding_consent", "e2e/push_test"),
      ("go", "go_e2e", "app", "her_integration", "desktop_e2e")),
@@ -49,11 +49,15 @@ RULES = (
     (("cmd/hermesh-signer/",), ("windows", "windows_arm")),
     (("scripts/install.ps1", "e2e/install_windows", "e2e/windows_signer"), ("windows",)),
     (("e2e/linux_screen",), ("screen_linux",)),
+    (("e2e/linux_docker", "e2e/linux_firstinstall", "e2e/linux_uninstall", "e2e/linux_update",
+      "e2e/linux_provider_e2e"), ("go", "linux_docker")),
     (("e2e/iphone", "e2e/mcp_iphone"), ("go", "go_macos", "ios")),
     (("e2e/", "bench/"), ("go", "go_e2e")),
-    (("internal/paths/", "internal/flock/", "internal/localipc/", "internal/service/",
+    (("internal/service/",), ("go", "go_macos", "windows", "linux_docker")),
+    (("internal/paths/", "internal/flock/", "internal/localipc/",
       "internal/peercred/", "internal/spawn/"), ("go", "go_macos", "windows")),
-    (("cmd/", "internal/", "pkg/", "deploy/", "scripts/install.sh", "scripts/test_install.py"), ("go",)),
+    (("scripts/install.sh", "cmd/hermeshd/", "internal/update/"), ("go", "linux_docker")),
+    (("cmd/", "internal/", "pkg/", "deploy/", "scripts/test_install.py"), ("go",)),
 )
 
 

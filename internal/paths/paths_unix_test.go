@@ -49,3 +49,21 @@ func TestLinkSocket(t *testing.T) {
 		t.Fatalf("DesktopPerf(%q) = %q", long, p)
 	}
 }
+
+func TestLongTMPDIRStaysUnderSocketLimit(t *testing.T) {
+	t.Setenv("TMPDIR", "/tmp/"+strings.Repeat("t", 100))
+	long := "/tmp/" + strings.Repeat("d", 120)
+	for _, got := range []string{
+		LocalAPI(long),
+		DesktopPerf(long),
+		Control(long),
+		Tools(long, "m_abcdefghijklmnopqrstuvwx"),
+		Her(long),
+		Link(long),
+		Local("m_abcdefghijklmnopqrstuvwx"),
+	} {
+		if len(got) > 100 {
+			t.Fatalf("socket path exceeds limit (%d bytes): %s", len(got), got)
+		}
+	}
+}

@@ -23,7 +23,8 @@ import unittest
 
 class InstallerTest(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
+        tmp_base = "/tmp" if Path("/tmp").is_dir() else None
+        self.temp = tempfile.TemporaryDirectory(dir=tmp_base)
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
         self.home = self.root / "home"
@@ -272,6 +273,38 @@ class InstallerTest(unittest.TestCase):
         self.assertEqual(code, 0, output)
         self.assertNotIn("Where should Hermesh", output)
         self.assertFalse(self.entry.exists())
+
+    def test_root_installs_for_named_user_without_root_env_leaks(self):
+        dev_home = self.root / "devhome"
+        dev_home.mkdir()
+        self.command("id", 'case "$*" in "-u dev") echo 1001;; "-gn dev") echo dev;; "dev") exit 0;; "-u") echo 0;; *) echo 0;; esac')
+        self.command("getent", f'echo "dev:x:1001:1001::"{dev_home}":/bin/bash"')
+        self.command("loginctl", 'exit 0')
+        self.command("install", 'cp "$7" "$8" && chmod 0755 "$8"')
+        self.command("chown", 'exit 0')
+        self.command("su", 'exit 0')
+        self.command("runuser", 'shift; shift; shift; exec "$@"')
+        self.publish("hermeshd-linux-amd64",
+                     b'#!/bin/sh\nprintf "PAIR_ENV HOME=%s USER=%s SHELL=%s XDG=%s DBUS=%s PWD=%s ARGS=%s\\n" '
+                     b'"$HOME" "$USER" "$SHELL" "${XDG_DATA_HOME:-unset}" "${DBUS_SESSION_BUS_ADDRESS:-unset}" "$(pwd -P)" "$*"\n')
+        self.env.update(
+            XDG_DATA_HOME="/root/.local/share",
+            DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/0/bus",
+            SHELL="/usr/bin/zsh",
+        )
+        code, output = self.run_install(
+            [("type another user to install for", "dev"), ("Data location [", "")],
+            args="connect.hermesh.io/o_abcdefghijklmnopqrstuvwx",
+        )
+        self.assertEqual(code, 0, output)
+        self.assertIn("Remote CLI install from the Hermesh app requires a non-root user", output)
+        self.assertTrue((dev_home / ".local/share/hermesh").is_dir(), output)
+        self.assertFalse(self.entry.exists())
+        self.assertIn(
+            f"PAIR_ENV HOME={dev_home} USER=dev SHELL=/bin/bash XDG=unset DBUS=unset PWD={dev_home.resolve()} "
+            f"ARGS=pair connect.hermesh.io/o_abcdefghijklmnopqrstuvwx",
+            output,
+        )
 
 
 if __name__ == "__main__":

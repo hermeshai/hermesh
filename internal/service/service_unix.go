@@ -54,8 +54,8 @@ func Install(bin, dataDir, logDir string, args ...string) error {
 		// opened with su lacks, and keeps it running after logout.
 		lingerErr := enableLinger()
 		if err := userBus(); err != nil {
-			if lingerErr != nil {
-				return fmt.Errorf("%w; turn lingering on with `sudo loginctl enable-linger %s` and try again", err, userName())
+			if lingerErr != nil && systemdBooted() {
+				return fmt.Errorf("no user systemd manager for %s; turn lingering on with `sudo loginctl enable-linger %s` and try again", userName(), userName())
 			}
 			return err
 		}
@@ -123,6 +123,11 @@ func userName() string {
 		return u.Username
 	}
 	return ""
+}
+
+func systemdBooted() bool {
+	_, err := os.Stat("/run/systemd/system")
+	return err == nil
 }
 
 // enableLinger turns lingering on for this user, unless it is on already

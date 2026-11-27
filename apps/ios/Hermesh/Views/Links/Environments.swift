@@ -406,7 +406,10 @@ struct ProvidersView: View {
                 } header: {
                     Text("Not Installed")
                 } footer: {
-                    if m?.status.providerMaintenance.isEmpty != false {
+                    if m?.status.providerMaintenance.contains(where: { $0.account == "root" }) == true,
+                       m?.status.providerMaintenance.allSatisfy({ $0.package.isEmpty }) == true {
+                        Text("Hermesh runs as root in this environment, so remote tool installation is off. Install one in a terminal or reinstall Hermesh for a non-root user (--user), then Check Again.")
+                    } else if m?.status.providerMaintenance.contains(where: { !$0.package.isEmpty }) != true {
                         Text("Install one on \(m?.machineName ?? ""), then Check Again.")
                     }
                 }
