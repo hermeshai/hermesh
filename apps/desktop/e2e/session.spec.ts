@@ -1281,8 +1281,9 @@ test("a message an agent writes to the session shows as a card that says who wro
 test("a live ACP session shows its floating step checklist and focus while running, animates only on the compositor, and auto-collapses when all steps finish", async () => {
   const { app, page } = await launch();
   try {
+    const longFocus = "检查现有动效与测试约束，并完整验证 Run HermeshKit tests and iOS Simulator UI tests 不在单行被截断";
     const prompt = [
-      "focus 检查现有动效与测试约束",
+      `focus ${longFocus}`,
       "steps 检查现有动效实现=in_progress|重写侧边栏光环=pending|运行桌面端基准验证=skipped",
       "sleep 5s",
       "steps 检查现有动效实现=done|重写侧边栏光环=done|运行桌面端基准验证=skipped",
@@ -1299,15 +1300,19 @@ test("a live ACP session shows its floating step checklist and focus while runni
     await expect(page.getByTestId("thread-todo-step-1")).toHaveAttribute("data-status", "pending");
     await expect(page.getByTestId("thread-todo-step-2")).toHaveAttribute("data-status", "skipped");
 
-    // Floating above the composer box, never leaked as tool rows in the transcript:
+    // Floating above the composer box, never leaked as tool rows (neither bare nor "Run update_steps") in the transcript:
     const [cardBox, cmpBox] = [(await todoCard.boundingBox())!, (await page.locator(".th-cmp").boundingBox())!];
     expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(cmpBox.y);
     await expect(log).not.toContainText("update_steps");
+    await expect(log).not.toContainText("Run update_steps");
     await expect(log).not.toContainText("update_focus");
     await expect(log).not.toContainText("使用了");
 
-    // Bottom working line displays native update_focus text:
-    await expect(page.getByTestId("thread-working")).toContainText("检查现有动效与测试约束");
+    // Bottom working line displays native update_focus text with two-line clamp support:
+    const working = page.getByTestId("thread-working");
+    await expect(working).toContainText(longFocus);
+    const clamp = await working.locator(".th-work-t").evaluate((el) => getComputedStyle(el).webkitLineClamp);
+    expect(clamp).toBe("2");
 
     // Every animation inside the checklist card runs strictly on the compositor (transform / opacity only):
     const animProps = await todoCard.evaluate((el) =>

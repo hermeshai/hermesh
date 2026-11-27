@@ -461,6 +461,13 @@ func (b *claudeBgTask) stopTail() {
 	}
 }
 
+type claudeTodoTask struct {
+	id         string
+	content    string
+	activeForm string
+	status     string
+}
+
 type session struct {
 	proc      *runtime.Proc
 	spec      runtime.StartSpec
@@ -473,20 +480,25 @@ type session struct {
 	emitMu       sync.RWMutex
 	eventsClosed bool
 
-	mu              sync.Mutex
-	selection       *sessionv1.ModelSelection
-	sessionCtx      context.Context
-	sessionCancel   context.CancelFunc
-	turnCtx         context.Context
-	inTurn          bool
-	sent            int
-	seen            int
-	msgItemID       string
-	msgUsed         bool
-	thinking        bool // a thinking block is open; only readLoop touches it
-	skipToolResult  map[string]bool
-	asyncToolInputs map[string]claudeAsyncInput // tool_use_id -> async launch metadata
-	bgTasks         map[string]*claudeBgTask    // task_id -> background task state
+	mu                 sync.Mutex
+	selection          *sessionv1.ModelSelection
+	sessionCtx         context.Context
+	sessionCancel      context.CancelFunc
+	turnCtx            context.Context
+	inTurn             bool
+	sent               int
+	seen               int
+	msgItemID          string
+	msgUsed            bool
+	thinking           bool // a thinking block is open; only readLoop touches it
+	skipToolResult     map[string]bool
+	asyncToolInputs    map[string]claudeAsyncInput // tool_use_id -> async launch metadata
+	bgTasks            map[string]*claudeBgTask    // task_id -> background task state
+	todoTasks          map[string]*claudeTodoTask  // task_id -> task item (Claude Code 2.1 TaskCreate/TaskUpdate)
+	todoOrder          []string
+	pendingTodoCreates map[string]*claudeTodoTask // tool_use_id -> pending TaskCreate item
+	pendingTodoOrder   []string
+	lastTodoSig        string
 }
 
 func (s *session) gateCtx() context.Context {
@@ -520,6 +532,7 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 	s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
 	s.msgUsed = false
 	s.skipToolResult = map[string]bool{}
+	s.resetCompletedTodosLocked()
 	s.mu.Unlock()
 	return s.writeUserMessage(in.Prompt, in.Attachments)
 }
@@ -782,6 +795,10 @@ type wireLine struct {
 		TaskType    string `json:"task_type"`
 		Description string `json:"description"`
 	} `json:"tasks"`
+	Statuses []struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	} `json:"statuses"`
 	Message        json.RawMessage `json:"message"`
 	RequestID      string          `json:"request_id"`
 	Request        json.RawMessage `json:"request"`
@@ -840,6 +857,10 @@ func (s *session) readLoop() {
 				s.handleTaskSystemLine(l)
 			case "background_tasks_changed":
 				s.handleBackgroundTasksChanged(l)
+			case "task_list_statuses":
+				if ev, ok := s.applyClaudeTaskStatuses(l.Statuses); ok {
+					s.emit(ev)
+				}
 			}
 
 		case "stream_event":
@@ -923,19 +944,14 @@ func (s *session) readLoop() {
 							s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
 							s.msgUsed = false
 						}
-						if c.Name == "TodoWrite" {
+						if isClaudeProgressTool(c.Name) {
 							if c.ID != "" {
 								s.skipToolResult[c.ID] = true
 							}
+							ev, ok := s.applyClaudeProgressToolLocked(c.ID, c.Name, c.Input)
 							s.mu.Unlock()
-							if steps, focus, ok := parseClaudeTodoWrite(c.Input); ok {
-								s.emit(runtime.Event{
-									Kind:      runtime.EventTodoUpdated,
-									ItemID:    "todo",
-									Text:      focus,
-									HasFocus:  true,
-									TodoSteps: steps,
-								})
+							if ok {
+								s.emit(ev)
 							}
 							continue
 						}
@@ -1023,6 +1039,7 @@ func (s *session) readLoop() {
 					if c.Type == "tool_result" && c.ToolUseID != "" {
 						s.mu.Lock()
 						skip := s.skipToolResult[c.ToolUseID]
+						_, hasPendingTodo := s.pendingTodoCreates[c.ToolUseID]
 						asyncMeta, wasAsyncLaunch := s.asyncToolInputs[c.ToolUseID]
 						hasRunningBg := false
 						for _, bg := range s.bgTasks {
@@ -1032,6 +1049,12 @@ func (s *session) readLoop() {
 							}
 						}
 						s.mu.Unlock()
+						if hasPendingTodo {
+							resText := extractToolResultText(c.Content)
+							if ev, ok := s.settleClaudePendingTaskCreate(c.ToolUseID, resText, c.IsError); ok {
+								s.emit(ev)
+							}
+						}
 						if skip {
 							continue
 						}
@@ -1215,6 +1238,341 @@ func toolDescription(raw json.RawMessage) string {
 	return ""
 }
 
+var claudeTaskCreatedRe = regexp.MustCompile(`^Task #(\S+)\s+created`)
+
+func isClaudeProgressTool(name string) bool {
+	switch name {
+	case "TodoWrite", "TodoRead", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet":
+		return true
+	}
+	return strings.HasSuffix(name, "__update_plan") || strings.HasSuffix(name, "__update_steps")
+}
+
+func (s *session) resetCompletedTodosLocked() {
+	for _, id := range s.todoOrder {
+		if t := s.todoTasks[id]; t != nil && t.status != "completed" && t.status != "skipped" {
+			return
+		}
+	}
+	if len(s.pendingTodoOrder) > 0 {
+		return
+	}
+	clear(s.todoTasks)
+	s.todoOrder = nil
+	s.lastTodoSig = ""
+}
+
+func (s *session) snapshotClaudeTodosLocked() (runtime.Event, bool) {
+	var steps []*sessionv1.TodoStep
+	var focus string
+	var sigBuf strings.Builder
+	sigBuf.WriteString("tasks")
+	appendTask := func(t *claudeTodoTask) {
+		if t == nil || t.content == "" {
+			return
+		}
+		st := runtime.NormalizeTodoStatus(t.status)
+		steps = append(steps, &sessionv1.TodoStep{Text: t.content, Status: st})
+		if st == "in_progress" && focus == "" && t.activeForm != "" {
+			focus = t.activeForm
+		}
+		sigBuf.WriteByte(0)
+		sigBuf.WriteString(st)
+		sigBuf.WriteByte(':')
+		sigBuf.WriteString(t.content)
+	}
+	for _, id := range s.todoOrder {
+		appendTask(s.todoTasks[id])
+	}
+	for _, uid := range s.pendingTodoOrder {
+		appendTask(s.pendingTodoCreates[uid])
+	}
+	sigBuf.WriteByte(0)
+	sigBuf.WriteString(focus)
+	sig := sigBuf.String()
+	if sig == s.lastTodoSig {
+		return runtime.Event{}, false
+	}
+	s.lastTodoSig = sig
+	return runtime.Event{
+		Kind:      runtime.EventTodoUpdated,
+		ItemID:    "todo",
+		Text:      focus,
+		HasFocus:  true,
+		TodoSteps: steps,
+	}, true
+}
+
+func (s *session) applyClaudeProgressToolLocked(toolUseID, name string, raw json.RawMessage) (runtime.Event, bool) {
+	switch name {
+	case "TodoRead", "TaskList", "TaskGet":
+		return runtime.Event{}, false
+	case "TodoWrite":
+		steps, focus, ok := parseClaudeTodoWrite(raw)
+		if !ok {
+			return runtime.Event{}, false
+		}
+		clear(s.todoTasks)
+		s.todoOrder = nil
+		clear(s.pendingTodoCreates)
+		s.pendingTodoOrder = nil
+		s.lastTodoSig = ""
+		return runtime.Event{
+			Kind:      runtime.EventTodoUpdated,
+			ItemID:    "todo",
+			Text:      focus,
+			HasFocus:  true,
+			TodoSteps: steps,
+		}, true
+	case "TaskCreate":
+		subject, activeForm, ok := parseClaudeTaskCreate(raw)
+		if !ok {
+			return runtime.Event{}, false
+		}
+		if s.pendingTodoCreates == nil {
+			s.pendingTodoCreates = map[string]*claudeTodoTask{}
+		}
+		key := toolUseID
+		if key == "" {
+			key = fmt.Sprintf("pending_%d", len(s.pendingTodoOrder)+1)
+		}
+		if _, exists := s.pendingTodoCreates[key]; !exists {
+			s.pendingTodoOrder = append(s.pendingTodoOrder, key)
+		}
+		s.pendingTodoCreates[key] = &claudeTodoTask{
+			content:    subject,
+			activeForm: activeForm,
+			status:     "pending",
+		}
+		return s.snapshotClaudeTodosLocked()
+	case "TaskUpdate":
+		taskID, status, subject, activeForm, ok := parseClaudeTaskUpdate(raw)
+		if !ok {
+			return runtime.Event{}, false
+		}
+		if strings.EqualFold(status, "deleted") {
+			delete(s.todoTasks, taskID)
+			s.todoOrder = slices.DeleteFunc(s.todoOrder, func(id string) bool { return id == taskID })
+			return s.snapshotClaudeTodosLocked()
+		}
+		if s.todoTasks == nil {
+			s.todoTasks = map[string]*claudeTodoTask{}
+		}
+		t := s.todoTasks[taskID]
+		if t == nil {
+			if subject == "" {
+				return runtime.Event{}, false
+			}
+			t = &claudeTodoTask{id: taskID, content: subject, status: "pending"}
+			s.todoTasks[taskID] = t
+			s.todoOrder = append(s.todoOrder, taskID)
+		}
+		if subject != "" {
+			t.content = subject
+		}
+		if activeForm != "" {
+			t.activeForm = activeForm
+		}
+		if status != "" {
+			t.status = runtime.NormalizeTodoStatus(status)
+		}
+		return s.snapshotClaudeTodosLocked()
+	default:
+		steps, focus, hasFocus, ok := parseClaudePlanItems(raw)
+		if !ok {
+			return runtime.Event{}, false
+		}
+		return runtime.Event{
+			Kind:      runtime.EventTodoUpdated,
+			ItemID:    "todo",
+			Text:      focus,
+			HasFocus:  hasFocus,
+			TodoSteps: steps,
+		}, true
+	}
+}
+
+func (s *session) settleClaudePendingTaskCreate(toolUseID, resText string, isErr bool) (runtime.Event, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pending := s.pendingTodoCreates[toolUseID]
+	if pending == nil {
+		return runtime.Event{}, false
+	}
+	delete(s.pendingTodoCreates, toolUseID)
+	s.pendingTodoOrder = slices.DeleteFunc(s.pendingTodoOrder, func(id string) bool { return id == toolUseID })
+	if isErr {
+		return s.snapshotClaudeTodosLocked()
+	}
+	m := claudeTaskCreatedRe.FindStringSubmatch(strings.TrimSpace(resText))
+	if len(m) < 2 || m[1] == "" {
+		return s.snapshotClaudeTodosLocked()
+	}
+	taskID := m[1]
+	if s.todoTasks == nil {
+		s.todoTasks = map[string]*claudeTodoTask{}
+	}
+	if _, exists := s.todoTasks[taskID]; !exists {
+		pending.id = taskID
+		s.todoTasks[taskID] = pending
+		s.todoOrder = append(s.todoOrder, taskID)
+	}
+	return s.snapshotClaudeTodosLocked()
+}
+
+func (s *session) applyClaudeTaskStatuses(statuses []struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}) (runtime.Event, bool) {
+	if len(statuses) == 0 {
+		return runtime.Event{}, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := false
+	for _, st := range statuses {
+		id := strings.TrimSpace(st.ID)
+		if id == "" {
+			continue
+		}
+		if t := s.todoTasks[id]; t != nil && st.Status != "" {
+			t.status = runtime.NormalizeTodoStatus(st.Status)
+			changed = true
+		}
+	}
+	if !changed {
+		return runtime.Event{}, false
+	}
+	return s.snapshotClaudeTodosLocked()
+}
+
+func parseClaudeTaskCreate(raw json.RawMessage) (subject, activeForm string, ok bool) {
+	if len(raw) == 0 {
+		return "", "", false
+	}
+	type fields struct {
+		Subject     string `json:"subject"`
+		Description string `json:"description"`
+		ActiveForm  string `json:"activeForm"`
+		ActiveSnake string `json:"active_form"`
+	}
+	var in struct {
+		fields
+		Task *fields `json:"task"`
+	}
+	if json.Unmarshal(raw, &in) != nil {
+		return "", "", false
+	}
+	f := in.fields
+	if in.Task != nil {
+		f = *in.Task
+	}
+	subject = strings.TrimSpace(f.Subject)
+	if subject == "" {
+		first, _, _ := strings.Cut(strings.TrimSpace(f.Description), "\n")
+		subject = strings.TrimSpace(first)
+	}
+	if subject == "" {
+		return "", "", false
+	}
+	activeForm = strings.TrimSpace(f.ActiveForm)
+	if activeForm == "" {
+		activeForm = strings.TrimSpace(f.ActiveSnake)
+	}
+	return subject, activeForm, true
+}
+
+func parseClaudeTaskUpdate(raw json.RawMessage) (taskID, status, subject, activeForm string, ok bool) {
+	if len(raw) == 0 {
+		return "", "", "", "", false
+	}
+	var in struct {
+		TaskID      string `json:"taskId"`
+		TaskIDSnake string `json:"task_id"`
+		ID          string `json:"id"`
+		Status      string `json:"status"`
+		Subject     string `json:"subject"`
+		ActiveForm  string `json:"activeForm"`
+		ActiveSnake string `json:"active_form"`
+	}
+	if json.Unmarshal(raw, &in) != nil {
+		return "", "", "", "", false
+	}
+	for _, cand := range []string{in.TaskID, in.TaskIDSnake, in.ID} {
+		if trimmed := strings.TrimSpace(cand); trimmed != "" {
+			taskID = trimmed
+			break
+		}
+	}
+	if taskID == "" {
+		return "", "", "", "", false
+	}
+	status = strings.TrimSpace(in.Status)
+	subject = strings.TrimSpace(in.Subject)
+	activeForm = strings.TrimSpace(in.ActiveForm)
+	if activeForm == "" {
+		activeForm = strings.TrimSpace(in.ActiveSnake)
+	}
+	return taskID, status, subject, activeForm, true
+}
+
+func parseClaudePlanItems(raw json.RawMessage) (steps []*sessionv1.TodoStep, focus string, hasFocus bool, ok bool) {
+	if len(raw) == 0 {
+		return nil, "", false, false
+	}
+	type rawStep struct {
+		Content    string `json:"content"`
+		Title      string `json:"title"`
+		Step       string `json:"step"`
+		Status     string `json:"status"`
+		ActiveForm string `json:"activeForm"`
+	}
+	var in struct {
+		Explanation string    `json:"explanation"`
+		Items       []rawStep `json:"items"`
+		Steps       []rawStep `json:"steps"`
+		Plan        []rawStep `json:"plan"`
+	}
+	if json.Unmarshal(raw, &in) != nil {
+		return nil, "", false, false
+	}
+	list := in.Items
+	if list == nil {
+		list = in.Steps
+	}
+	if list == nil {
+		list = in.Plan
+	}
+	if list == nil {
+		return nil, "", false, false
+	}
+	focus = strings.TrimSpace(in.Explanation)
+	if focus != "" {
+		hasFocus = true
+	}
+	for _, item := range list {
+		txt := strings.TrimSpace(item.Content)
+		if txt == "" {
+			txt = strings.TrimSpace(item.Title)
+		}
+		if txt == "" {
+			txt = strings.TrimSpace(item.Step)
+		}
+		if txt == "" {
+			continue
+		}
+		st := runtime.NormalizeTodoStatus(item.Status)
+		steps = append(steps, &sessionv1.TodoStep{Text: txt, Status: st})
+		if af := strings.TrimSpace(item.ActiveForm); af != "" {
+			hasFocus = true
+			if st == "in_progress" && focus == "" {
+				focus = af
+			}
+		}
+	}
+	return steps, focus, hasFocus, true
+}
+
 func parseClaudeTodoWrite(raw json.RawMessage) (steps []*sessionv1.TodoStep, focus string, ok bool) {
 	if len(raw) == 0 {
 		return nil, "", false
@@ -1285,10 +1643,12 @@ func (s *session) handleControlRequest(reqID string, raw json.RawMessage) {
 		return
 	}
 
-	switch cr.ToolName {
-	case "TodoWrite":
+	if isClaudeProgressTool(cr.ToolName) {
 		reply(map[string]any{"behavior": "allow", "updatedInput": inputMap})
 		return
+	}
+
+	switch cr.ToolName {
 
 	case "ExitPlanMode":
 		planMD, _ := inputMap["plan"].(string)

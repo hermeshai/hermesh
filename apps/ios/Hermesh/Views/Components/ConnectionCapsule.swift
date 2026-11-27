@@ -104,12 +104,21 @@ struct ConnectionLine: View {
                         .frame(maxWidth: centered ? nil : .infinity, alignment: centered ? .center : .leading)
                 }
             } else if let work {
-                HStack(spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
                     MovingMark(size: 18, motion: .seq)
-                    Text(verbatim: work.text).foregroundStyle(.secondary)
-                    if let since = work.since { Text(since, style: .timer).monospacedDigit().foregroundStyle(.tertiary) }
+                    Text(verbatim: work.text)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(centered ? .center : .leading)
+                    if let since = work.since {
+                        Text(since, style: .timer)
+                            .monospacedDigit()
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
                 }
-                .font(.footnote).lineLimit(1)
+                .font(.footnote)
                 .frame(maxWidth: centered ? nil : .infinity, alignment: centered ? .center : .leading)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("thread-working")
@@ -119,7 +128,7 @@ struct ConnectionLine: View {
 
     private func noticeButton(_ notice: ConnectionNotice, workText: String?, openDiagnostics: @escaping () -> Void) -> some View {
         Button(action: openDiagnostics) {
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
                 connectionGlyph(notice, markSize: 18)
                 Group {
                     if let workText, notice.retrying {
@@ -131,8 +140,10 @@ struct ConnectionLine: View {
                     }
                 }
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .lineLimit(workText == nil ? 1 : 2)
+                .multilineTextAlignment(centered ? .center : .leading)
                 Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+                    .padding(.top, 3)
             }
             .font(.footnote)
             .padding(.vertical, 3)

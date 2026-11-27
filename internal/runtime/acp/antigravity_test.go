@@ -607,12 +607,12 @@ func TestAntigravityStepsFocusAndToolSummary(t *testing.T) {
 		case runtime.EventTodoUpdated:
 			todoEvents = append(todoEvents, ev)
 		case runtime.EventToolStarted:
-			if ev.ToolName == "update_steps" || ev.ToolName == "update_focus" {
+			if strings.Contains(ev.ToolName, "update_steps") || strings.Contains(ev.ToolName, "update_focus") {
 				t.Fatalf("meta progress tool leaked as EventToolStarted: %+v", ev)
 			}
 			toolStarts = append(toolStarts, ev)
 		case runtime.EventToolCompleted:
-			if ev.ToolName == "update_steps" || ev.ToolName == "update_focus" {
+			if strings.Contains(ev.ToolName, "update_steps") || strings.Contains(ev.ToolName, "update_focus") {
 				t.Fatalf("meta progress tool leaked as EventToolCompleted: %+v", ev)
 			}
 		}
@@ -632,6 +632,14 @@ func TestAntigravityStepsFocusAndToolSummary(t *testing.T) {
 	}
 	if len(toolStarts) != 1 || toolStarts[0].Text != "Benchmark CALayer orbit" || toolStarts[0].Command != "printf bench-ok" {
 		t.Fatalf("expected run-summary tool start with Text and Command, got %+v", toolStarts)
+	}
+
+	// Verify bare, MCP-namespaced, and shell-kind collision cases directly:
+	if ev, _, isMeta := parseACPProgressTool("mcp__ccd_turn__update_plan", "other", json.RawMessage(`{"items":[{"content":"Audit ACP","status":"in_progress"}]}`)); !isMeta || ev == nil || len(ev.TodoSteps) != 1 || ev.TodoSteps[0].Text != "Audit ACP" {
+		t.Fatalf("expected MCP update_plan parsed as TodoUpdated, got isMeta=%v ev=%+v", isMeta, ev)
+	}
+	if _, _, isMeta := parseACPProgressTool("Run update_steps", "execute", json.RawMessage(`{"command":"echo hi"}`)); isMeta {
+		t.Fatal("shell execute tool must never be misclassified as meta progress tool")
 	}
 }
 

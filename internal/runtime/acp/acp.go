@@ -2779,7 +2779,10 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		toolName, cmd, filePath := mapACPToolFields(st, s.spec.Workdir)
 		inText := formatACPToolInput(st, cmd, filePath)
 		wasStarted := st.started
-		st.started = true
+		hasToolIdentity := st.asyncLaunch || toolName != "" || cmd != "" || filePath != "" || inText != "" || st.summary != ""
+		if hasToolIdentity {
+			st.started = true
+		}
 		status := st.status
 		outText := st.output
 		stSnap := *st
@@ -2952,7 +2955,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		if startPoller[0] != "" {
 			s.startTaskLogPoller(startPoller[0], startPoller[1])
 		}
-		if metaEv, sig, isMeta := parseACPProgressTool(stSnap.title, stSnap.rawInput); isMeta {
+		if metaEv, sig, isMeta := parseACPProgressTool(stSnap.title, stSnap.kind, stSnap.rawInput); isMeta {
 			if metaEv != nil && sig != stSnap.lastArtifactSig {
 				s.mu.Lock()
 				if cur := s.tools[id]; cur != nil {
@@ -2963,7 +2966,8 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			}
 			return
 		}
-		if status != "completed" && status != "failed" && (!wasStarted || u.SessionUpdate == "tool_call" || isLaunchAck || toolName != "" || cmd != "" || filePath != "" || inText != "") {
+		hasEmitIdentity := isLaunchAck || toolName != "" || cmd != "" || filePath != "" || inText != "" || stSnap.summary != ""
+		if status != "completed" && status != "failed" && hasEmitIdentity && (!wasStarted || u.SessionUpdate == "tool_call" || isLaunchAck || toolName != "" || cmd != "" || filePath != "" || inText != "") {
 			s.emit(runtime.Event{
 				Kind:     runtime.EventToolStarted,
 				ItemID:   id,
@@ -3442,8 +3446,35 @@ func extractACPRawInput(raw json.RawMessage) (cmd, path, summary string) {
 	return cmd, path, summary
 }
 
-func parseACPProgressTool(title string, rawInput json.RawMessage) (ev *runtime.Event, sig string, isMeta bool) {
+func normalizeACPProgressToolName(title, kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "execute", "command", "bash", "read", "edit", "write", "delete", "move", "search", "fetch":
+		return ""
+	}
 	norm := strings.ToLower(strings.TrimSpace(title))
+	for _, pfx := range []string{"run ", "call ", "tool: ", "tool "} {
+		if strings.HasPrefix(norm, pfx) {
+			norm = strings.TrimSpace(norm[len(pfx):])
+			break
+		}
+	}
+	if idx := strings.LastIndex(norm, "__"); idx >= 0 {
+		norm = norm[idx+2:]
+	} else if idx := strings.LastIndex(norm, "/"); idx >= 0 {
+		norm = norm[idx+1:]
+	} else if idx := strings.LastIndex(norm, "."); idx >= 0 {
+		norm = norm[idx+1:]
+	}
+	for _, sfx := range []string{"update_focus", "update_steps", "todowrite", "todo_write", "update_plan"} {
+		if norm == sfx || (strings.HasPrefix(norm, "mcp_") && strings.HasSuffix(norm, "_"+sfx)) {
+			return sfx
+		}
+	}
+	return ""
+}
+
+func parseACPProgressTool(title, kind string, rawInput json.RawMessage) (ev *runtime.Event, sig string, isMeta bool) {
+	norm := normalizeACPProgressToolName(title, kind)
 	switch norm {
 	case "update_focus":
 		if len(rawInput) == 0 {
@@ -3464,7 +3495,7 @@ func parseACPProgressTool(title string, rawInput json.RawMessage) (ev *runtime.E
 			Text: focus,
 		}, "focus\x00" + focus, true
 
-	case "update_steps", "todowrite", "todo_write":
+	case "update_steps", "todowrite", "todo_write", "update_plan":
 		if len(rawInput) == 0 {
 			return nil, "", true
 		}
@@ -3477,20 +3508,39 @@ func parseACPProgressTool(title string, rawInput json.RawMessage) (ev *runtime.E
 			ActiveForm string `json:"activeForm"`
 		}
 		var in struct {
-			Steps []rawStep `json:"steps"`
-			Todos []rawStep `json:"todos"`
+			Focus       string    `json:"focus"`
+			Explanation string    `json:"explanation"`
+			Steps       []rawStep `json:"steps"`
+			Todos       []rawStep `json:"todos"`
+			Plan        []rawStep `json:"plan"`
+			Items       []rawStep `json:"items"`
 		}
-		if json.Unmarshal(rawInput, &in) != nil || (in.Steps == nil && in.Todos == nil) {
+		if json.Unmarshal(rawInput, &in) != nil {
 			return nil, "", true
 		}
-		list := in.Steps
-		hasActiveForm := false
-		if list == nil {
+		var list []rawStep
+		hasFocus := false
+		switch {
+		case in.Steps != nil:
+			list = in.Steps
+		case in.Todos != nil:
 			list = in.Todos
-			hasActiveForm = true
+			hasFocus = true
+		case in.Plan != nil:
+			list = in.Plan
+		case in.Items != nil:
+			list = in.Items
+		default:
+			return nil, "", true
+		}
+		focus := strings.TrimSpace(in.Focus)
+		if focus == "" {
+			focus = strings.TrimSpace(in.Explanation)
+		}
+		if focus != "" {
+			hasFocus = true
 		}
 		var steps []*sessionv1.TodoStep
-		var focus string
 		var sigBuf strings.Builder
 		sigBuf.WriteString("steps")
 		for _, item := range list {
@@ -3507,7 +3557,7 @@ func parseACPProgressTool(title string, rawInput json.RawMessage) (ev *runtime.E
 			st := runtime.NormalizeTodoStatus(item.Status)
 			steps = append(steps, &sessionv1.TodoStep{Text: label, Status: st})
 			if af := strings.TrimSpace(item.ActiveForm); af != "" {
-				hasActiveForm = true
+				hasFocus = true
 				if st == "in_progress" && focus == "" {
 					focus = af
 				}
@@ -3517,7 +3567,7 @@ func parseACPProgressTool(title string, rawInput json.RawMessage) (ev *runtime.E
 			sigBuf.WriteByte(':')
 			sigBuf.WriteString(label)
 		}
-		if hasActiveForm {
+		if hasFocus {
 			sigBuf.WriteByte(0)
 			sigBuf.WriteString(focus)
 		}
@@ -3525,7 +3575,7 @@ func parseACPProgressTool(title string, rawInput json.RawMessage) (ev *runtime.E
 			Kind:      runtime.EventTodoUpdated,
 			ItemID:    "todo",
 			Text:      focus,
-			HasFocus:  hasActiveForm,
+			HasFocus:  hasFocus,
 			TodoSteps: steps,
 		}, sigBuf.String(), true
 
