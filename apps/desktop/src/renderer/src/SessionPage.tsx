@@ -70,6 +70,7 @@ import { stripTerminalEscapes } from "./session/terminalText";
 import { FilesHomeContext, type FilesHome } from "./session/files/files";
 import { SidePanel } from "./session/files/SidePanel";
 import { setOpen as setPanelOpen, usePanel } from "./session/files/panel";
+import { Aurora, HerAsk, herMachine, Presence, rememberedWho, rememberWho, type Who } from "./session/Presence";
 import "./session/composer.css";
 
 /**
@@ -77,6 +78,26 @@ import "./session/composer.css";
  * unless another was chosen; from origin when asked), or the project's own folder, switched first when another branch
  * was chosen there. The temporary workspace has none to choose.
  */
+const HER = "her";
+
+/** A new conversation with Her: the model chosen when it is one of hers, else her default (first in her list); none known yet, hers to pick. */
+function herSelection(providers: ProviderInstance[] = [], prev?: ModelSelection): ModelSelection {
+  const her = providers.find((p) => p.instanceId === HER && providerUnusable(p, []) === "");
+  if (prev && her?.models.some((m) => m.slug === prev.model)) return prev;
+  return her ? defaultModelSelectionFor(her) : create(ModelSelectionSchema, { instanceId: HER, model: "", options: {} });
+}
+
+/** An agent for a new session on the machine: as last time there, else the one already chosen, else Claude, Codex, Gemini, or the first that works. */
+function agentSelection(providers: ProviderInstance[], machineId: string, prev?: ModelSelection): ModelSelection | undefined {
+  const usable = providers.filter((p) => providerUnusable(p, []) === "" && p.instanceId !== HER);
+  const last = remembered().byMachine[machineId]?.sel;
+  const lastInst = last && last.instanceId !== HER && usable.find((p) => p.instanceId === last.instanceId);
+  if (lastInst && lastInst.models.some((m) => m.slug === last.model)) return create(ModelSelectionSchema, last);
+  if (prev?.instanceId && usable.some((p) => p.instanceId === prev.instanceId)) return prev;
+  const first = ["claude", "codex", "gemini"].map((id) => usable.find((p) => p.instanceId === id)).find(Boolean) ?? usable[0] ?? findProviderInstance(providers.filter((p) => p.instanceId !== HER));
+  return first ? defaultModelSelectionFor(first) : undefined;
+}
+
 function workspaceFor(place: Place | undefined, branches: Branches | undefined) {
   if (!place) return { mode: Workspace.IN_PLACE };
   if (place.worktree) return { mode: Workspace.WORKTREE, baseRef: place.base || branches?.default || "", fromRemote: place.fromRemote };
@@ -186,8 +207,10 @@ export function SessionPage() {
     const known = (id?: string) => !!id && st.machines.some((m) => m.machineId === id);
     const mid = [askedMachine, last.machineId].find(known) ?? st.machines.find((m) => m.local)?.machineId ?? st.machines[0]!.machineId;
     const pid = askedProject ?? projectOnMachine(projectsOn(mid).list, mid, "", last.byMachine[mid]?.projectId);
-    setMachineId(mid);
-    pickProject(mid, pid);
+    const her = !askedMachine && !askedProject && rememberedWho() === "her" ? herMachine(st.machines) : undefined;
+    setMachineId(her?.machineId ?? mid);
+    pickProject(her?.machineId ?? mid, her ? SCRATCH_PROJECT : pid);
+    if (her) setModelSel(herSelection());
     const mine = last.byMachine[mid];
     if (mine?.mode) setRuntimeMode(mine.mode);
     setInteractionMode(InteractionMode.CODE);
@@ -204,6 +227,48 @@ export function SessionPage() {
     setMachineId(mid);
     pickProject(mid, projectOnMachine(projectsOn(mid).list, mid, projectId, remembered().byMachine[mid]?.projectId));
   };
+
+  // Who a new session goes to (docs/her-conversations.md §3.1): Her while her model is chosen, else an agent. Her is
+  // there to choose while she is on somewhere.
+  const herAt = herMachine(st.machines);
+  const who: Who = !activeSessionId && modelSel.instanceId === HER ? "her" : "agent";
+  // The headline rises once the owner switched, not as the page opens.
+  const [rise, setRise] = useState(false);
+  const chooseWho = (next: Who) => {
+    if (activeSessionId || next === who || (next === "her" && !herAt)) return;
+    rememberWho(next);
+    setRise(true);
+    if (next === "her") {
+      setMachineId(herAt!.machineId);
+      pickProject(herAt!.machineId, SCRATCH_PROJECT);
+      setModelSel(herSelection(herAt!.machineId === effectiveMachineId ? providers : []));
+      return;
+    }
+    const last = remembered();
+    const known = (id?: string) => !!id && st.machines.some((m) => m.machineId === id);
+    const mid = [last.machineId].find(known) ?? st.machines.find((m) => m.local)?.machineId ?? st.machines[0]!.machineId;
+    setMachineId(mid);
+    pickProject(mid, projectOnMachine(projectsOn(mid).list, mid, "", last.byMachine[mid]?.projectId));
+    setModelSel((mid === effectiveMachineId && agentSelection(providers, mid)) || create(ModelSelectionSchema, { instanceId: "", model: "", options: {} }));
+  };
+  const whoNow = useRef(chooseWho);
+  whoNow.current = chooseWho;
+  // ⌘N on the new session's page gives it to the other one (D20).
+  const canSwitch = !activeSessionId && !!herAt;
+  useEffect(() => {
+    if (!canSwitch) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        e.stopPropagation();
+        whoNow.current(modelSelNow.current.instanceId === HER ? "agent" : "her");
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [canSwitch]);
+  const modelSelNow = useRef(modelSel);
+  modelSelNow.current = modelSel;
 
   const projSession = activeSessionId && projection?.session?.sessionId === activeSessionId ? projection.session : undefined;
   const listedAhead =
@@ -262,15 +327,8 @@ export function SessionPage() {
           setMaxCeiling(res.maxRuntimeMode);
         }
         if (activeSessionId) return; // an existing session keeps its own (from GetSession)
-        const usable = res.providers.filter((p) => providerUnusable(p, []) === "");
-        const last = remembered().byMachine[effectiveMachineId]?.sel;
-        const lastInst = last && usable.find((p) => p.instanceId === last.instanceId);
-        setModelSel((prev) => {
-          if (lastInst && lastInst.models.some((m) => m.slug === last.model)) return create(ModelSelectionSchema, last);
-          if (prev.instanceId && usable.some((p) => p.instanceId === prev.instanceId)) return prev;
-          const first = ["claude", "codex", "gemini"].map((id) => usable.find((p) => p.instanceId === id)).find(Boolean) ?? usable[0] ?? findProviderInstance(res.providers);
-          return first ? defaultModelSelectionFor(first) : prev;
-        });
+        // To Her: her model, her default unless one of hers was chosen; else an agent's.
+        setModelSel((prev) => (prev.instanceId === HER ? herSelection(res.providers, prev) : agentSelection(res.providers, effectiveMachineId, prev) ?? prev));
       });
     return () => {
       cancelled = true;
@@ -479,7 +537,8 @@ export function SessionPage() {
     const began = Date.now();
     try {
       const res = await sessionApi.startSession(start.req);
-      remember(start.req.machineId ?? "", { projectId: start.req.projectId ?? "", sel: modelSel, mode: clampedMode });
+      // An agent's choices are kept for the next session; Her's stay hers (rememberWho).
+      if (start.req.modelSelection?.instanceId !== HER) remember(start.req.machineId ?? "", { projectId: start.req.projectId ?? "", sel: modelSel, mode: clampedMode });
       // "Sending…", once shown (at 400 ms), stays half a second.
       const took = Date.now() - began;
       if (took > 400 && took < 900) await new Promise((r) => setTimeout(r, 900 - took));
@@ -575,12 +634,21 @@ export function SessionPage() {
   const choice = { machineId: effectiveMachineId, projectId: effectiveProjectId, worktree: place.worktree, sel: modelSel, mode: clampedMode, plan: false };
   const modelButtons = (
     <ModelButtons
-      providers={providers}
+      providers={activeSessionId || !herAt ? providers.filter((p) => p.instanceId !== HER) : providers}
       sel={modelSel}
       stale={providersStale}
       machineName={targetMachine?.machineName ?? effectiveMachineId}
       projectAgents={project?.agents ?? []}
-      onModel={(next) => applyConfigUpdate({ sel: next })}
+      onModel={(next) => {
+        // Her's model in the panel gives the new session to Her, an agent's to the agent (§3.1).
+        const to: Who = next.instanceId === HER ? "her" : "agent";
+        if (!activeSessionId && to !== who) {
+          rememberWho(to);
+          setRise(true);
+          if (to === "her") pickProject(effectiveMachineId, SCRATCH_PROJECT);
+        }
+        applyConfigUpdate({ sel: next });
+      }}
       onNotice={(text) => st.show(text)}
     />
   );
@@ -591,8 +659,13 @@ export function SessionPage() {
     model: modelButtons,
   };
   const placeRow = !activeSessionId && (project?.repo || project?.workspace === Workspace.WORKTREE) && <ComposerPlace place={place} branches={branches} onPlace={setPlace} />;
-  const ask = (
+  const presence = herAt && !activeSessionId ? <Presence who={who} onWho={chooseWho} /> : undefined;
+  const ask = who === "her" && herAt ? (
+    <HerAsk top={presence} machine={st.machines.find((m) => m.machineId === effectiveMachineId) ?? herAt} rise={rise} />
+  ) : (
     <LaunchAsk
+      top={presence}
+      rise={rise}
       machines={st.machines}
       projects={projectsHere}
       projectsStale={projectsOn(effectiveMachineId).stale}
@@ -895,7 +968,8 @@ export function SessionPage() {
     return (
       <>
         <div className="ctool drag">{header}</div>
-        <div className="dwrap th" data-testid="thread-page">
+        <div className={`dwrap th ${herAt ? "th-new" : ""}`} data-who={who} data-testid="thread-page">
+          {herAt && <Aurora />}
           <div className="dmain" data-testid="thread-launch-card">
             {ask}
             <div className="cmp-zone">
@@ -912,7 +986,7 @@ export function SessionPage() {
                   onSend={() => submitMessage()}
                   running={false}
                   sending={busySend}
-                  placeholder={t("launch.promptPlaceholder")}
+                  placeholder={who === "her" ? t("chat.placeholder", { ns: "her", name: "Her" }) : t("launch.promptPlaceholder")}
                   attachments={attachments}
                   onAttach={handleAttachFiles}
                   onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}

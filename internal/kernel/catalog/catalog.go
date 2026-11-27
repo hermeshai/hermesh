@@ -223,7 +223,8 @@ func bundledModelsFor(key string) (displayName string, models []*sessionv1.Model
 
 func (s *Service) ResolveInstance(ctx context.Context, cfg *sessionv1.ProviderInstanceConfig, workdir string, refresh bool) *sessionv1.ProviderInstance {
 	cacheKey := cfg.InstanceId + "\x00" + workdir
-	if !refresh {
+	// Her may be turned on or given models at any moment, and probing her is an IPC read, not a subprocess.
+	if !refresh && cfg.Driver != "her" {
 		s.mu.Lock()
 		if hit, ok := s.cache[cacheKey]; ok && time.Since(hit.at) < cacheTTL {
 			cloned := proto.Clone(hit.inst).(*sessionv1.ProviderInstance)

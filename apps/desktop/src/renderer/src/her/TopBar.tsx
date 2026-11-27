@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { botWorking, herStatus, routineDot, type SessionView } from "@hermesh/her-client";
+import type { Session } from "@hermesh/proto/session";
+import { displayTitle } from "@hermesh/core";
+import { AgentLogo } from "@hermesh/ui";
 import { Icon } from "../icons";
 import { Avatar, BotAvatar } from "./Avatar";
 import { useHer } from "./context";
@@ -56,6 +59,38 @@ export function TopBar({ view }: { view?: SessionView | null } = {}) {
       {teamOpen && <TeamPanel onClose={closeTeam} />}
       <span className="bhead-gap" />
       {bot && <ProgressButton />}
+      <MoreMenu />
+    </div>
+  );
+}
+
+/**
+ * A conversation with Her opened from the task list (docs/her-conversations.md §3.2): the task's title, then Her and
+ * where she is, and the model when it is not her default; on the right her status and ⋯, as on her page.
+ */
+export function ConversationBar({ task, view }: { task: Session; view: SessionView | null }) {
+  const { t } = useTranslation("her");
+  const her = useHer();
+  const now = useNow(view?.live?.retry ? 1000 : 60_000).getTime();
+  const status = view ? herStatus(view, now) : null;
+  const model = view?.info.model ?? task.modelSelection?.model ?? "";
+  const named = model && model !== her.env.models.defaults?.model ? her.env.models.models.find((m) => m.id === model)?.name ?? model : "";
+  return (
+    <div className="ctool drag">
+      <div className="ctitle">
+        <h2 data-testid="thread-title" title={displayTitle(task)}>
+          {displayTitle(task)}
+        </h2>
+        <span className="th-where" data-testid="session-where">
+          <AgentLogo agent="her" size={14} />
+          {[her.bot?.name ?? "Her", her.machine.machineName, named].filter(Boolean).join(" · ")}
+        </span>
+      </div>
+      {status && (
+        <span className="th-where her-conv-st" role="status">
+          <span className="wb-sweep">{t(`line.${status}`)}</span>
+        </span>
+      )}
       <MoreMenu />
     </div>
   );
@@ -141,7 +176,7 @@ function MoreMenu() {
       </button>
       {menu.open && (
         <div {...menu.props(t("page.more"))}>
-          {her.envs.length > 1 && (
+          {her.envs.length > 1 && !her.conversation && (
             <>
               {her.envs.map((e) => (
                 <button key={e.machineId} className="mi" role="menuitemradio" aria-checked={e.machineId === m.machineId} tabIndex={-1} onMouseMove={(ev) => ev.currentTarget.focus()} onClick={() => (menu.close(), her.choose(e.machineId))}>
@@ -159,9 +194,11 @@ function MoreMenu() {
           <Item icon="gear" onClick={() => (menu.close(), her.openConsole())}>
             {t("page.manage", { name: m.machineName })}
           </Item>
-          <Item icon="plus" onClick={() => (menu.close(), her.setSheet({ kind: "add" }))}>
-            {t("page.addEnvironment")}
-          </Item>
+          {!her.conversation && (
+            <Item icon="plus" onClick={() => (menu.close(), her.setSheet({ kind: "add" }))}>
+              {t("page.addEnvironment")}
+            </Item>
+          )}
         </div>
       )}
     </>

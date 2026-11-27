@@ -28,7 +28,14 @@
     "ask": "What should we build in <project/>?",
     "workingCopy": "Working copy",
     "checkout": "Current checkout",
-    "checkoutHint": "Works on the project's own folder"
+    "checkoutHint": "Works on the project's own folder",
+    "roleAgent": "Agent",
+    "roleHer": "Her",
+    "toHer": "Give it to Her · {{keys}}",
+    "toAgent": "Give it to an agent · {{keys}}",
+    "herAsk": "What should Her do?",
+    "herWhere": "Her on {{machine}}",
+    "defaultModel": "Default"
   },
   "header": {
     "archive": "Archive",

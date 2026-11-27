@@ -21,6 +21,7 @@ use serde_json::Value;
 use serde_json::value::RawValue;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -140,6 +141,8 @@ impl MeshHosts {
 pub(crate) struct BotMesh {
     pub(crate) hosts: Arc<MeshHosts>,
     pub(crate) bot: String,
+    /// The conversation's session, known once it started.
+    pub(crate) conversation: Arc<OnceLock<String>>,
 }
 
 #[async_trait]
@@ -154,24 +157,32 @@ impl MeshHost for BotMesh {
     }
 
     async fn call(&self, call_id: &str, name: &str, arguments: Value) -> Result<MeshCallResult, String> {
-        let params = MeshCallParams { bot: self.bot.clone(), call_id: call_id.to_string(), name: name.to_string(), arguments };
+        let params = MeshCallParams {
+            bot: self.bot.clone(),
+            conversation: self.conversation.get().cloned(),
+            call_id: call_id.to_string(),
+            name: name.to_string(),
+            arguments,
+        };
         self.hosts.request(method::MESH_CALL, &params, CALL_TIMEOUT).await
     }
 }
 
 impl Server {
-    /// The mesh host for the conversation of the bot `id`.
-    pub(crate) fn bot_mesh(&self, id: &str) -> Arc<dyn MeshHost> {
-        Arc::new(BotMesh { hosts: self.0.mesh.clone(), bot: id.to_string() })
+    /// The mesh host for a conversation of the bot `id`, whose session `conversation` holds once
+    /// it is known.
+    pub(crate) fn bot_mesh(&self, id: &str, conversation: Arc<OnceLock<String>>) -> Arc<dyn MeshHost> {
+        Arc::new(BotMesh { hosts: self.0.mesh.clone(), bot: id.to_string(), conversation })
     }
 
-    /// `mesh/news`: puts the news into the bot's conversation, loaded for it if need be, as a
-    /// routine's run reaches it. Answers once the conversation has it in its history.
+    /// `mesh/news`: puts the news into the bot's conversation that `mesh/call` named, or its main
+    /// one, loaded for it if need be, as a routine's run reaches it. Answers once the
+    /// conversation has it in its history.
     pub(crate) async fn mesh_news(&self, news: MeshNewsParams) -> Result<(), RpcError> {
         self.bot_exists(&news.bot)?;
         // A conversation unloading just now cannot take it, and the next attempt loads it again.
         for _ in 0..2 {
-            let hub = self.load_bot_session(&news.bot).await?;
+            let hub = self.load_bot_conversation(&news.bot, news.conversation.as_deref()).await?;
             let (reply, taken) = oneshot::channel();
             if hub.send(HubCmd::News { news: Box::new(news.clone()), reply }).await.is_ok()
                 && let Ok(Some(recorded)) = taken.await
@@ -245,7 +256,7 @@ mod tests {
     }
 
     fn call(server: &Server) -> tokio::task::JoinHandle<Result<MeshCallResult, String>> {
-        let mesh = server.bot_mesh("b1");
+        let mesh = server.bot_mesh("b1", Arc::default());
         tokio::spawn(async move { mesh.call("c7", "start", json!({"workshop": "shed"})).await })
     }
 
@@ -298,7 +309,7 @@ mod tests {
         send(&mut writes, json!({"jsonrpc": "2.0", "id": request["id"], "result": {"output": "{\"ok\":true}", "details": {"session": {"session_id": "s_1"}}}})).await;
         assert_eq!(waiting.await.unwrap(), Ok(MeshCallResult { output: "{\"ok\":true}".into(), is_error: false, details: Some(json!({"session": {"session_id": "s_1"}})) }));
 
-        let mesh = server.bot_mesh("b1");
+        let mesh = server.bot_mesh("b1", Arc::default());
         let waiting = tokio::spawn(async move { mesh.describe("start", &json!({"workshop": "shed"})).await });
         let request = next(&mut lines).await;
         assert_eq!(request["method"], "mesh/describe");

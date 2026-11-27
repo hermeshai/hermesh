@@ -498,7 +498,7 @@ func (o *Owner) SetHerAssistantMode(ctx context.Context, machineID, botID, mode 
 	if err != nil {
 		return err
 	}
-	return onBot(ctx, h, botID, func(conn, session string) error {
+	return onBot(ctx, h, botID, "", func(conn, session string) error {
 		return herOp(ctx, h, conn, session, "", map[string]any{"type": "set_permission_mode", "mode": mode})
 	})
 }
@@ -612,8 +612,12 @@ func herOp(ctx context.Context, h herMachine, conn, session, locale string, op a
 // conversation (bots/open, without its history or the events of herQuiet)
 // and runs fn with the connection and the conversation; the connection
 // closes after.
-func onBot(ctx context.Context, h herMachine, botID string, fn func(conn, session string) error) error {
-	params, err := json.Marshal(map[string]any{"bot_id": botID, "events": map[string]any{"exclude": herQuiet}, "history_limit": 0})
+func onBot(ctx context.Context, h herMachine, botID, conversation string, fn func(conn, session string) error) error {
+	open := map[string]any{"bot_id": botID, "events": map[string]any{"exclude": herQuiet}, "history_limit": 0}
+	if conversation != "" {
+		open["conversation"] = conversation
+	}
+	params, err := json.Marshal(open)
 	if err != nil {
 		return err
 	}
@@ -712,7 +716,7 @@ func (o *Owner) HerSend(ctx context.Context, req *localv1.HerSendRequest) (*loca
 	fresh := w == nil
 	if fresh { // else a send tried again: the one kept goes
 		w = &localv1.HerWaiting{Id: id, MachineId: req.MachineId, BotId: req.BotId, Text: req.Text,
-			LocalPaths: slices.Clone(req.LocalPaths), CreatedAt: timestamppb.Now(), Reply: req.Reply, Locale: req.Locale}
+			LocalPaths: slices.Clone(req.LocalPaths), CreatedAt: timestamppb.Now(), Reply: req.Reply, Locale: req.Locale, Conversation: req.Conversation}
 		if err := o.keepPictures(w, req.Pictures); err != nil {
 			return nil, err
 		}
@@ -874,7 +878,7 @@ func (o *Owner) herDeliver(ctx context.Context, w *localv1.HerWaiting, on herCon
 		// Not on the way: that connection is gone, or no longer on the
 		// conversation. One of its own says.
 	}
-	err = onBot(octx, h, w.BotId, func(conn, session string) error {
+	err = onBot(octx, h, w.BotId, w.Conversation, func(conn, session string) error {
 		return herOp(octx, h, conn, session, w.Locale, op)
 	})
 	return o.herLate(ctx, octx, h, err)

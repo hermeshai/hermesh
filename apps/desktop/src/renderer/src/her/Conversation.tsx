@@ -157,7 +157,8 @@ function useMarkRead(bot: BotSummary) {
   const connected = her.env.rpc !== null;
   useEffect(() => {
     const read = () => {
-      if ((bot.unread ?? 0) === 0 || document.documentElement.classList.contains("blurred") || !connected) return;
+      // Unread is her main conversation's.
+      if (her.conversation || (bot.unread ?? 0) === 0 || document.documentElement.classList.contains("blurred") || !connected) return;
       her.call("bots/read", { bot_id: bot.id }).catch(() => {});
     };
     read();
@@ -198,7 +199,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
   const her = useHer();
   const { view, session } = conv;
   const chat = useMemo(() => (view ? botChat(view).filter((i) => i.kind !== "deck_edit") : []), [view]);
-  const sent = useOutbox(her.machine.machineId);
+  const sent = useOutbox(her.key);
   const owners = useMemo(() => chat.flatMap((i) => (i.kind === "user" ? [{ key: i.key, text: i.text, ts: i.ts }] : [])), [chat]);
   const kept = useMemo(() => outboxFor(waiting, bot.id, owners, sent.filter((m) => m.botId === bot.id)), [waiting, bot.id, owners, sent]);
   // What was sent goes once the conversation has it, and what her took that it doesn't have and won't: it would by
@@ -209,7 +210,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
     opened.current = conv.connectionId;
     const mine = sent.filter((m) => m.botId === bot.id);
     const left = new Set(stillSending(mine, owners, (m) => fresh || (!!m.due && conv.rpc !== null)).map((m) => m.id));
-    outbox.drop(her.machine.machineId, mine.flatMap((m) => (left.has(m.id) ? [] : [m.id])));
+    outbox.drop(her.key, mine.flatMap((m) => (left.has(m.id) ? [] : [m.id])));
   }, [owners, sent, conv.connectionId, conv.rpc]);
   const said = useMemo(() => [...chat, ...kept], [chat, kept]);
   // No model works there: Her's onboarding, the app speaking for Her, until the conversation opens on one.
@@ -336,7 +337,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
   const held = useRef(0);
   held.current = rows.length;
   useEffect(() => () => void (held.current >= HEAVY_ROWS && releaseAfterLeaving()), []);
-  const key = her.machine.machineId;
+  const key = her.key;
   const { scrollToKey } = virtual;
   useEffect(() => {
     const show = (run: string) => {
@@ -620,7 +621,7 @@ function OwnBubble({ text, reply }: { text: string; reply?: ReplyQuote }) {
 function SendingBubble({ item, line }: { item: SendingItem; line: ReactNode }) {
   const { t } = useTranslation("her");
   const her = useHer();
-  const machineId = her.machine.machineId;
+  const machineId = her.key;
   return (
     <>
       {line}
@@ -797,7 +798,7 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight, onSpoken }: {
   const st = useStore();
   const her = useHer();
   const view = conv.view;
-  const key = her.machine.machineId;
+  const key = her.key;
   const asking = view && conv.rpc ? pendingApproval(view) : null;
   const waitsForChrome = useWaitsForChrome(conv.rpc, conv.session);
   const [draft, setDraft] = useState<Draft>(() => drafts.get(key) ?? { text: "", attachments: [] });
@@ -869,7 +870,8 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight, onSpoken }: {
       try {
         const r = await local.herSend({
           id,
-          machineId: key,
+          machineId: her.machine.machineId,
+          conversation: her.conversation ?? "",
           botId: m.botId,
           text: m.draft.text.trim(),
           localPaths: paths,

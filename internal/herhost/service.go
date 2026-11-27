@@ -119,11 +119,28 @@ func (h *Host) Call(ctx context.Context, req *herv1.CallRequest) (*herv1.CallRes
 		}
 		defer c.Close()
 	}
+	h.prompting(r.GetMethod(), params)
 	res, err := c.call(ctx, r.GetMethod(), params)
 	if err != nil {
 		return nil, h.lost(ctx, err)
 	}
 	return &herv1.CallResponse{Response: res}, nil
+}
+
+// prompting tells Config.Prompting of a prompt about to reach a conversation.
+func (h *Host) prompting(method string, params json.RawMessage) {
+	if h.cfg.Prompting == nil || method != "session/op" {
+		return
+	}
+	var p struct {
+		SessionID string `json:"session_id"`
+		Op        struct {
+			Type string `json:"type"`
+		} `json:"op"`
+	}
+	if json.Unmarshal(params, &p) == nil && p.Op.Type == "prompt" && p.SessionID != "" {
+		h.cfg.Prompting(p.SessionID)
+	}
 }
 
 // AssistantMode sets how freely an assistant acts (SetHerAssistantMode):

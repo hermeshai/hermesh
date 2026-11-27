@@ -393,3 +393,72 @@ func TestHerMesh(t *testing.T) {
 		return strings.HasPrefix(said, "mesh done")
 	})
 }
+
+// TestHerMeshNewsToItsConversation: in another conversation of hers
+// (bots/conversation_new), opened as a device opens it, Her starts a coding
+// agent on the owner's Mac; the news of its turn wakes that conversation,
+// and her main one never hears of it.
+func TestHerMeshNewsToItsConversation(t *testing.T) {
+	env := newHerEnvironment(t)
+	eventually(t, time.Minute, "Her on the mesh", func() bool {
+		return herClient(t, env) != nil && listedMachine(t, env.c, env.machine).GetHer().GetMesh()
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	stream, op := herOpen(t, ctx, env.c, env.machine, herSetup("bots/conversation_new", map[string]any{"bot_id": env.bot.ID}))
+	defer stream.Close()
+	var started struct {
+		SessionID string `json:"session_id"`
+	}
+	if json.Unmarshal(op.Responses[0].Result, &started); started.SessionID == "" {
+		t.Fatalf("bots/conversation_new: %s", op.Responses[0].Result)
+	}
+	other := started.SessionID
+	herCall(t, env, op.ConnectionId, "bots/open", map[string]any{"bot_id": env.bot.ID, "conversation": other,
+		"events": map[string]any{"exclude": []string{"text_delta", "thinking_delta", "tool_call_delta", "tool_progress"}}})
+	herCall(t, env, op.ConnectionId, "session/op", map[string]any{"session_id": other, "op": map[string]any{"type": "prompt",
+		"input": []map[string]string{{"type": "text", "text": meshCall("session_start", map[string]any{"project": "owner-mac/demo", "prompt": "sleep 4s\nsay built it"})}}}})
+
+	// She asks first, starts it, and then its news wakes this conversation.
+	var coding string
+	var seen []string
+	for stream.Receive() {
+		n := stream.Msg().GetNotification()
+		if n.GetMethod() != "session/event" {
+			continue
+		}
+		var p struct {
+			SessionID string    `json:"session_id"`
+			Event     meshEvent `json:"event"`
+		}
+		if json.Unmarshal(n.Params, &p) != nil || p.SessionID != other {
+			continue
+		}
+		e := p.Event
+		seen = append(seen, e.Type+" "+e.Name)
+		if e.Type == "approval_requested" {
+			herCall(t, env, op.ConnectionId, "session/op", map[string]any{"session_id": other,
+				"op": map[string]any{"type": "approval", "call_id": e.CallID, "decision": map[string]string{"type": "approve"}}})
+		}
+		if e.Type != "tool_started" || e.Name != "send_to_user" {
+			continue
+		}
+		seen = append(seen, e.Args.Text)
+		if coding == "" && strings.HasPrefix(e.Args.Text, "mesh done") {
+			coding = sessionID.FindString(e.Args.Text)
+		}
+		if coding != "" && strings.Contains(e.Args.Text, `<session_news`) && strings.Contains(e.Args.Text, `kind="turn_done"`) && strings.Contains(e.Args.Text, coding) {
+			break
+		}
+	}
+	if coding == "" || ctx.Err() != nil {
+		t.Fatalf("no news in the other conversation: %v\nit meanwhile: %q", stream.Err(), seen)
+	}
+
+	// The main conversation has none of it.
+	main, opened, _ := openAssistant(t, ctx, env)
+	main.Close()
+	if strings.Contains(string(opened.Responses[0].Result), coding) {
+		t.Fatalf("the main conversation heard of %s: %s", coding, opened.Responses[0].Result)
+	}
+}

@@ -28,7 +28,14 @@
     "ask": "要在 <project/> 里做什么？",
     "workingCopy": "工作目录",
     "checkout": "当前目录",
-    "checkoutHint": "直接在项目目录里修改"
+    "checkoutHint": "直接在项目目录里修改",
+    "roleAgent": "Agent",
+    "roleHer": "Her",
+    "toHer": "交给 Her · {{keys}}",
+    "toAgent": "交给 Agent · {{keys}}",
+    "herAsk": "要 Her 做什么？",
+    "herWhere": "Her 在 {{machine}}",
+    "defaultModel": "默认"
   },
   "header": {
     "archive": "归档",

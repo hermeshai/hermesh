@@ -922,7 +922,7 @@ impl NativeProtocol {
                     let attach = Self::attach_request_with_resume(conn, id, p.events, p.history_limit, true, resume);
                     let reply_id = id.clone();
                     self.spawn(id.clone(), conn, async move {
-                        match server.bots_open(&p.bot_id, attach).await {
+                        match server.bots_open(&p.bot_id, p.conversation.as_deref(), attach).await {
                             Ok(()) => None,
                             Err(err) => Some(her_rpc::error_response(Some(&reply_id), &err)),
                         }
@@ -936,6 +936,34 @@ impl NativeProtocol {
                     tokio::spawn(async move {
                         let result = if read { server.bots_memory(&p.bot_id).await.map(|r| json!(r)) } else { server.bots_memory_clear(&p.bot_id).await.map(|()| json!({})) };
                         conn.send(reply(&id, result));
+                    });
+                }
+                Err(err) => conn.send_error(Some(id), &err),
+            },
+            method::BOTS_CONVERSATION_NEW => match her_rpc::params::<her_protocol::bot::BotConversationNewParams>(params) {
+                Ok(p) => {
+                    let (conn, id) = (conn.clone(), id.clone());
+                    tokio::spawn(async move {
+                        let result = server.bots_conversation_new(&p.bot_id, p.model, p.thinking).await.map(|r| json!(r));
+                        conn.send(reply(&id, result));
+                    });
+                }
+                Err(err) => conn.send_error(Some(id), &err),
+            },
+            method::BOTS_CONVERSATIONS => match her_rpc::params::<BotIdParams>(params) {
+                Ok(p) => {
+                    let (conn, id) = (conn.clone(), id.clone());
+                    tokio::spawn(async move {
+                        conn.send(reply(&id, server.bots_conversations(&p.bot_id).await.map(|r| json!(r))));
+                    });
+                }
+                Err(err) => conn.send_error(Some(id), &err),
+            },
+            method::BOTS_CONVERSATION_DELETE => match her_rpc::params::<her_protocol::bot::BotConversationParams>(params) {
+                Ok(p) => {
+                    let (conn, id) = (conn.clone(), id.clone());
+                    tokio::spawn(async move {
+                        conn.send(reply(&id, server.bots_conversation_delete(&p.bot_id, &p.session_id).await.map(|()| json!({}))));
                     });
                 }
                 Err(err) => conn.send_error(Some(id), &err),

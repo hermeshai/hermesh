@@ -250,6 +250,13 @@ pub mod method {
     pub const BOTS_MEMORY: &str = "bots/memory";
     /// Moves a bot's memory to the trash; its conversation stays.
     pub const BOTS_MEMORY_CLEAR: &str = "bots/memory_clear";
+    /// Starts another conversation of a bot besides its main one, as able and as remembering
+    /// as it. The bot's row stays its main conversation's.
+    pub const BOTS_CONVERSATION_NEW: &str = "bots/conversation_new";
+    /// A bot's conversations besides its main one.
+    pub const BOTS_CONVERSATIONS: &str = "bots/conversations";
+    /// Moves one of those conversations to the trash.
+    pub const BOTS_CONVERSATION_DELETE: &str = "bots/conversation_delete";
     /// Server notification to `bots/subscribe`rs.
     pub const BOTS_CHANGED: &str = "bots/changed";
     /// The files a bot sent its owner, newest first (docs/her-deliverables.md §4.3).
@@ -496,6 +503,10 @@ pub struct MeshDescribeResult {
 pub struct MeshCallParams {
     /// The bot whose conversation makes the call.
     pub bot: String,
+    /// That conversation's session. The host gives it back with the news of what the call
+    /// started, for the news to reach the same conversation (`mesh/news`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation: Option<String>,
     /// The model's tool call.
     pub call_id: String,
     /// The tool.
@@ -527,6 +538,10 @@ pub struct MeshNewsParams {
     pub from: AgentRef,
     /// What the model reads.
     pub text: String,
+    /// The bot's conversation that takes it, as `mesh/call` named it; none, or one that is no
+    /// longer the bot's: its main conversation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation: Option<String>,
 }
 
 /// The result of methods that return nothing: `{}`.

@@ -20,6 +20,8 @@ use her_protocol::api::method;
 use her_protocol::bot::Avatar;
 use her_protocol::bot::AvatarInput;
 use her_protocol::bot::BotAvatarResult;
+use her_protocol::bot::BotConversationNewResult;
+use her_protocol::bot::BotConversationsResult;
 use her_protocol::bot::BotCreateParams;
 use her_protocol::bot::BotMemoryPage;
 use her_protocol::bot::BotMemoryResult;
@@ -77,6 +79,9 @@ struct BotFile {
     created_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     session_id: Option<String>,
+    /// Its other conversations (`bots/conversation_new`), oldest first. Its row is its main one's.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    conversations: Vec<String>,
     /// What its next conversation starts with: what `bots/create` was told, then what the last one
     /// had when it was cleared. While one runs, it keeps its own (`set_model`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -241,9 +246,24 @@ impl Registry {
         self.with(|_| ());
     }
 
-    /// The conversations of the bots that have one.
+    /// The conversations of the bots: their main ones and the others.
     pub(crate) fn session_ids(&self) -> std::collections::HashSet<String> {
-        self.with(|bots| bots.values().filter_map(|b| b.file.session_id.clone()).collect())
+        self.with(|bots| bots.values().flat_map(|b| b.file.session_id.iter().chain(&b.file.conversations)).cloned().collect())
+    }
+
+    /// The bot's conversations: its main one, then the others.
+    fn conversations_of(&self, id: &str) -> Vec<String> {
+        self.with(|bots| bots.get(id).map(|b| b.file.session_id.iter().chain(&b.file.conversations).cloned().collect()).unwrap_or_default())
+    }
+
+    /// Whether `session` is the bot's main conversation.
+    pub(crate) fn is_main(&self, id: &str, session: &str) -> bool {
+        self.with(|bots| bots.get(id).is_some_and(|b| b.file.session_id.as_deref() == Some(session)))
+    }
+
+    /// Whether `session` is one of the bot's other conversations.
+    fn is_other(&self, id: &str, session: &str) -> bool {
+        self.with(|bots| bots.get(id).is_some_and(|b| b.file.conversations.iter().any(|c| c == session)))
     }
 
     /// Every bot's id.
@@ -563,16 +583,16 @@ impl Server {
             match name {
                 Some(name) if name != bot.file.name => {
                     bot.file.name = name.clone();
-                    bot.file.session_id.clone().map(|session| (session, name))
+                    Some(name)
                 }
                 _ => None,
             }
         })?;
         registry.save(&params.bot_id)?;
-        if let Some((session, name)) = renamed
-            && let Some(hub) = self.hub(&session)
-        {
-            let _ = hub.tx.try_send(Box::new(HubCmd::BotName { name }));
+        if let Some(name) = renamed {
+            for hub in self.bot_hubs(&params.bot_id) {
+                let _ = hub.tx.try_send(Box::new(HubCmd::BotName { name: name.clone() }));
+            }
         }
         registry.announce(&[&params.bot_id], Vec::new());
         Ok(BotResult { bot: registry.row(&params.bot_id)? })
@@ -600,9 +620,82 @@ impl Server {
     }
 
     /// `bots/open`: attaches the bot's conversation, loading it, or starting it when there is
-    /// none (bot-design §5.4).
-    pub async fn bots_open(&self, id: &str, attach: AttachRequest) -> Result<(), RpcError> {
-        self.open_bot(id, Some(attach)).await.map(|_| ())
+    /// none (bot-design §5.4); or another of its conversations, which must be there.
+    pub async fn bots_open(&self, id: &str, conversation: Option<&str>, attach: AttachRequest) -> Result<(), RpcError> {
+        self.bot_exists(id)?;
+        match conversation.filter(|c| !self.bots().is_main(id, c)) {
+            None => self.open_bot(id, Some(attach)).await.map(|_| ()),
+            Some(session) if self.bots().is_other(id, session) => self.load_session(session, ResumeOverrides::default(), Some(attach)).await,
+            Some(session) => Err(errors::session_not_found(session)),
+        }
+    }
+
+    /// `bots/conversation_new`: another conversation of the bot, as its main one would start now:
+    /// the same assistant, memory, tools and settings, but for the model and thinking asked for.
+    /// It is loaded and nobody is attached.
+    pub async fn bots_conversation_new(&self, id: &str, model: Option<String>, thinking: Option<ThinkingLevel>) -> Result<BotConversationNewResult, RpcError> {
+        let registry = self.bots().clone();
+        let (main, name, defaults) = {
+            let (registry, id) = (registry.clone(), id.to_string());
+            tokio::task::spawn_blocking(move || registry.with_bot(&id, |b| (b.file.session_id.clone(), b.file.name.clone(), (b.file.model.clone(), b.file.thinking, b.file.permission_mode))))
+                .await
+                .map_err(|e| RpcError::internal(e.to_string()))??
+        };
+        // The main conversation's settings are the bot's, as its settings show them.
+        let settings = match &main {
+            Some(session) => self.conversation_settings(session).await.map(|info| (Some(info.model), Some(info.thinking), Some(info.permission_mode))),
+            None => None,
+        };
+        let (main_model, main_thinking, permission_mode) = settings.unwrap_or(defaults);
+        let start = (model.or(main_model), thinking.or(main_thinking), permission_mode);
+        let session = self.start_bot_session(id, name, start, None, false).await?;
+        registry.with_bot(id, |bot| bot.file.conversations.push(session.clone()))?;
+        let (saving, bot) = (registry.clone(), id.to_string());
+        tokio::task::spawn_blocking(move || saving.save(&bot)).await.map_err(|e| RpcError::internal(e.to_string()))??;
+        Ok(BotConversationNewResult { session_id: session })
+    }
+
+    /// `bots/conversations`: the bot's other conversations, as the session list shows a session,
+    /// newest first. One whose log is gone is left out.
+    pub async fn bots_conversations(&self, id: &str) -> Result<BotConversationsResult, RpcError> {
+        let server = self.clone();
+        let id = id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let others = server.bots().with_bot(&id, |b| b.file.conversations.clone())?;
+            let mut conversations: Vec<_> = others.iter().filter_map(|session| server.session_summary(session)).collect();
+            conversations.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+            Ok(BotConversationsResult { conversations })
+        })
+        .await
+        .map_err(|e| RpcError::internal(e.to_string()))?
+    }
+
+    /// `bots/conversation_delete`: one of the bot's other conversations goes to the trash.
+    pub async fn bots_conversation_delete(&self, id: &str, session: &str) -> Result<(), RpcError> {
+        let registry = self.bots().clone();
+        let found = registry.with_bot(id, |bot| {
+            let before = bot.file.conversations.len();
+            bot.file.conversations.retain(|c| c != session);
+            before != bot.file.conversations.len()
+        })?;
+        if !found {
+            return Err(errors::session_not_found(session));
+        }
+        let (saving, bot) = (registry.clone(), id.to_string());
+        tokio::task::spawn_blocking(move || saving.save(&bot)).await.map_err(|e| RpcError::internal(e.to_string()))??;
+        self.drop_conversation(Some(session.to_string())).await
+    }
+
+    /// The bot's conversation `conversation` names when it is one of its others, or else its
+    /// main one, loaded for what the service itself does with it.
+    pub(crate) async fn load_bot_conversation(&self, id: &str, conversation: Option<&str>) -> Result<HubHandle, RpcError> {
+        match conversation.filter(|c| self.bots().is_other(id, c)) {
+            Some(session) => {
+                self.load_session(session, ResumeOverrides::default(), None).await?;
+                self.hub(session).ok_or_else(|| errors::session_closed(session))
+            }
+            None => self.load_bot_session(id).await,
+        }
     }
 
     /// The bot's conversation loaded for what the service itself does with it: nothing
@@ -612,10 +705,9 @@ impl Server {
         self.hub(&session).ok_or_else(|| errors::session_closed(&session))
     }
 
-    /// The bot's conversation if it is loaded.
-    pub(crate) fn bot_hub(&self, id: &str) -> Option<HubHandle> {
-        let session = self.bots().with_bot(id, |bot| bot.file.session_id.clone()).ok()??;
-        self.hub(&session)
+    /// The bot's conversations that are loaded, its main one first.
+    pub(crate) fn bot_hubs(&self, id: &str) -> Vec<HubHandle> {
+        self.bots().conversations_of(id).iter().filter_map(|session| self.hub(session)).collect()
     }
 
     pub(crate) fn bot_exists(&self, id: &str) -> Result<(), RpcError> {
@@ -639,7 +731,7 @@ impl Server {
                 return Ok(session);
             }
         }
-        let session = self.start_bot_session(id, name, start, attach).await?;
+        let session = self.start_bot_session(id, name, start, attach, true).await?;
         registry.with_bot(id, |bot| bot.file.session_id = Some(session.clone()))?;
         let saved = {
             let (registry, id) = (registry.clone(), id.to_string());
@@ -649,8 +741,8 @@ impl Server {
         saved.map(|()| session)
     }
 
-    /// Starts a bot's conversation in its folder.
-    async fn start_bot_session(&self, id: &str, name: String, (model, thinking, permission_mode): (Option<String>, Option<ThinkingLevel>, Option<PermissionMode>), attach: Option<AttachRequest>) -> Result<String, RpcError> {
+    /// Starts a bot's conversation in its folder: its main one, or another.
+    async fn start_bot_session(&self, id: &str, name: String, (model, thinking, permission_mode): (Option<String>, Option<ThinkingLevel>, Option<PermissionMode>), attach: Option<AttachRequest>, main: bool) -> Result<String, RpcError> {
         self.make_room().await?;
         let folder = self.0.home.bot_files_dir(id);
         std::fs::create_dir_all(&folder).map_err(|e| RpcError::internal(format!("cannot create {}: {e}", folder.display())))?;
@@ -665,7 +757,8 @@ impl Server {
         deps.mcp_servers = self.session_mcp_servers(&workspace, &[]);
         deps.routines = Some(self.0.routines.clone());
         deps.connectors = Some(self.0.connectors.clone());
-        deps.mesh = Some(self.bot_mesh(id));
+        let conversation = Arc::new(std::sync::OnceLock::new());
+        deps.mesh = Some(self.bot_mesh(id, conversation.clone()));
         let options = StartOptions {
             model,
             thinking: thinking.unwrap_or(workspace.config.thinking),
@@ -679,6 +772,7 @@ impl Server {
             bot: Some(BotIdentity { id: id.to_string(), name }),
         };
         let kernel = her_core::Kernel::start(options, deps).await.map_err(|e| errors::from_kernel(e, "new"))?;
+        let _ = conversation.set(kernel.session_id().to_string());
         if let Some(text) = self.0.routines.listing_of(id) {
             kernel.set_routines(text);
         }
@@ -689,7 +783,7 @@ impl Server {
             updated_at: now,
             no_project: true,
         };
-        Ok(self.register(kernel, Vec::new(), attach, base, Some(id.to_string())))
+        Ok(self.register(kernel, Vec::new(), attach, base, Some((id.to_string(), main))))
     }
 
     /// `bots/clear`: the conversation goes to the trash; the next `bots/open` starts another, with
@@ -748,10 +842,16 @@ impl Server {
         .await
         .map_err(|e| RpcError::internal(e.to_string()))?
         .map_err(|e| RpcError::internal(format!("cannot move the memory to the trash: {e}")))?;
-        let has_conversation = self.bots().with_bot(id, |bot| bot.file.session_id.is_some())?;
-        if has_conversation {
+        let (main, others) = self.bots().with_bot(id, |bot| (bot.file.session_id.is_some(), bot.file.conversations.clone()))?;
+        if main {
             let hub = self.load_bot_session(id).await?;
             hub.send(HubCmd::Memory).await?;
+        }
+        // One that will not load has no prompt to drop it from.
+        for session in others {
+            if let Ok(hub) = self.load_bot_conversation(id, Some(&session)).await {
+                let _ = hub.send(HubCmd::Memory).await;
+            }
         }
         Ok(())
     }
@@ -762,10 +862,13 @@ impl Server {
         if registry.with_bot(id, |bot| bot.file.default)? {
             return Err(errors::bot_default("the default bot cannot be deleted"));
         }
-        let session = registry.with_bot(id, |bot| bot.file.session_id.take())?;
+        let (session, others) = registry.with_bot(id, |bot| (bot.file.session_id.take(), std::mem::take(&mut bot.file.conversations)))?;
         self.0.routines.bot_deleted(id).await;
         self.0.deliveries.bot_deleted(id).await;
         self.drop_conversation(session).await?;
+        for other in others {
+            self.drop_conversation(Some(other)).await?;
+        }
         let (home, dir_id) = (self.0.home.clone(), id.to_string());
         tokio::task::spawn_blocking(move || {
             // Ids are never reused, so its name there is free.
@@ -817,6 +920,7 @@ fn new_file(name: String, avatar: Avatar, default: bool) -> BotFile {
         muted: false,
         created_at: list::now(),
         session_id: None,
+        conversations: Vec::new(),
         model: None,
         thinking: None,
         permission_mode: None,

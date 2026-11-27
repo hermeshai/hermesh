@@ -148,6 +148,8 @@ button{font:inherit;color:inherit}
 .btn .ic{width:14px;height:14px}
 /* Pointers, as macOS has them: the pointing hand for text links (and buttons drawn as one, like "+ Add Project"); controls (buttons, rows, cards, headings) keep the arrow. */
 .link,.ag-add,.ag-back,a[href]{cursor:pointer}
+/* What can be clicked shows the hand (docs/her-conversations.md D17); without weight, so a rule of its own wins. */
+:where(button:not(:disabled),[role=button],[role^=menuitem]:not([aria-disabled=true]),[role=tab],[role=option],[role=switch],summary,select,.srow,input[type=checkbox],input[type=radio]){cursor:pointer}
 .link:disabled,.ag-add:disabled{cursor:default}
 .link{border:0;background:none;padding:0;color:var(--accent-t);font-size:inherit}
 .link:hover{text-decoration:underline}
@@ -282,6 +284,18 @@ html.vibrant .grp-hrow{position:static;background:transparent}
 .srow.sel{background:var(--side-sel);color:var(--side-sel-fg);font-weight:500}
 .srow.arch .stitle{color:var(--l2)}
 .srow.dragging-src{opacity:.26;background:var(--fill)}
+.stree.dragging-src{opacity:.26}
+.stree.drag-ghost .srow.dragging-src{opacity:1}
+/* A conversation with Her and the work it sent (docs/her-conversations.md §3.4): the work indented under a line, a little tighter. */
+.srow.tree{position:relative}
+.twist{position:absolute;left:-6px;top:9px;width:14px;height:16px;border:0;padding:0;background:none;color:var(--l2);display:grid;place-items:center}
+.twist:hover{color:var(--l1)}
+.twist .ic{width:12px;height:12px;transition:transform .12s}
+.twist.shut .ic{transform:rotate(-90deg)}
+.kids{margin-left:17px;border-left:1px solid var(--sep)}
+.kids .srow{padding-top:4px;padding-bottom:4px}
+.kids .stitle{font-size:13.5px}
+.kids .grp-more{padding-left:33px}
 .rowacts{display:none;align-items:center;gap:1px;flex:none;margin:-2px -4px -2px 0}
 .rowact{display:inline-flex;border:0;background:none;width:20px;height:18px;border-radius:5px;align-items:center;justify-content:center;color:var(--l2);padding:0;flex:none}
 .rowact:hover{background:var(--fill2);color:var(--l1)}

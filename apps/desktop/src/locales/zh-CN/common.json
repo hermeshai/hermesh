@@ -74,7 +74,11 @@
     "sentByYou": "你派的",
     "signedIn": "已登录",
     "signedOut": "未登录",
-    "pinDrop": "拖到这里置顶"
+    "pinDrop": "拖到这里置顶",
+    "sentToHer": "你 → Her",
+    "expand": "展开",
+    "collapse": "收起",
+    "herSection": "Her"
   },
   "accountMenu": {
     "settings": "设置…",
@@ -99,7 +103,9 @@
     "deleteMessageNoBranch": "任务记录和对话会被永久删除，无法恢复。",
     "deleteRunning": "这一轮还在进行，会先被打断。",
     "deleteButton": "删除",
-    "deleted": "已删除「{{title}}」"
+    "deleted": "已删除「{{title}}」",
+    "stillRunning": "还有任务在进行",
+    "deleteKeepsChildren": "它派出的任务会保留。"
   },
   "filter": {
     "grant": "授权",
@@ -125,7 +131,10 @@
     "oldestFirst": "最早在前",
     "metadata": "元数据",
     "titleOnly": "仅标题",
-    "bySender": "按派活的人"
+    "bySender": "按派活的人",
+    "nest": "嵌套子任务",
+    "metadataNested": "元数据、嵌套",
+    "nestedOnly": "嵌套"
   },
   "search": {
     "openSettings": "打开设置",
