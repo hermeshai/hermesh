@@ -8,6 +8,8 @@ const scratchProject = "scratch";
 export interface MachineChoice {
   projectId?: string;
   sel?: Pick<ModelSelection, "instanceId" | "model" | "options">;
+  /** Last explicit model/effort chosen for Her on this machine, kept separate from coding agents' `sel`. */
+  herSel?: Pick<ModelSelection, "instanceId" | "model" | "options">;
   mode?: RuntimeMode;
   /** Per-project working copy choice on this machine: true = separate worktree, false = current checkout. */
   worktrees?: Record<string, boolean>;
@@ -87,5 +89,29 @@ export function remember(machineId: string, choice: Omit<MachineChoice, "worktre
     mode: choice.mode ?? prev?.mode,
     worktrees: Object.keys(worktrees).length > 0 ? worktrees : undefined,
   };
+  writeRemembered(r, store);
+}
+
+export function rememberedHer(machineId: string, store = defaultStore()): MachineChoice["herSel"] {
+  if (!machineId) return undefined;
+  return remembered(store).byMachine[machineId]?.herSel;
+}
+
+export function rememberHer(machineId: string, sel: Pick<ModelSelection, "instanceId" | "model" | "options">, store = defaultStore()) {
+  if (!machineId || !sel.model) return;
+  const r = remembered(store);
+  const prev = r.byMachine[machineId];
+  r.byMachine[machineId] = { ...prev, herSel: { instanceId: sel.instanceId, model: sel.model, options: sel.options } };
+  writeRemembered(r, store);
+}
+
+export function forgetHer(machineId: string, store = defaultStore()) {
+  if (!machineId) return;
+  const r = remembered(store);
+  const prev = r.byMachine[machineId];
+  if (!prev?.herSel) return;
+  const next = { ...prev };
+  delete next.herSel;
+  r.byMachine[machineId] = next;
   writeRemembered(r, store);
 }

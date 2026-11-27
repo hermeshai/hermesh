@@ -15,7 +15,7 @@ func TestHerModels(t *testing.T) {
 		{"id":"gpt/x","name":"No key","available":false,"shown":true},
 		{"id":"tc/old","name":"Old","available":true,"shown":true,"deprecated":true}],
 		"defaults":{"model":"tc/auto"}}`)
-	got := herModels(raw)
+	got := herModels(raw, "", "")
 	if len(got) != 2 || got[0].Slug != "tc/auto" || !got[0].IsDefault || got[1].Slug != "tc/glm" {
 		t.Fatalf("models: %v", got)
 	}
@@ -25,6 +25,33 @@ func TestHerModels(t *testing.T) {
 	opt := got[1].OptionDescriptors
 	if len(opt) != 1 || opt[0].Id != "effort" || len(opt[0].Choices) != 2 || opt[0].CurrentValue.GetStringValue() != "high" {
 		t.Fatalf("effort: %v", opt)
+	}
+
+	// Her's main conversation model and thinking override models/list's generic fallback default.
+	gotBot := herModels(raw, "tc/glm", "low")
+	if len(gotBot) != 2 || gotBot[0].Slug != "tc/glm" || !gotBot[0].IsDefault || gotBot[1].IsDefault {
+		t.Fatalf("bot default models: %v", gotBot)
+	}
+	if cur := gotBot[0].OptionDescriptors[0].CurrentValue.GetStringValue(); cur != "low" {
+		t.Fatalf("bot default thinking = %q, want low", cur)
+	}
+
+	// Even a hidden model configured on Her's main conversation stays visible as her default; an unavailable one falls back.
+	gotHidden := herModels(raw, "tc/hidden", "")
+	if len(gotHidden) != 3 || gotHidden[0].Slug != "tc/hidden" || !gotHidden[0].IsDefault {
+		t.Fatalf("hidden bot default: %v", gotHidden)
+	}
+	gotUnavailable := herModels(raw, "gpt/x", "")
+	if len(gotUnavailable) != 2 || gotUnavailable[0].Slug != "tc/auto" || !gotUnavailable[0].IsDefault {
+		t.Fatalf("unavailable bot default fallback: %v", gotUnavailable)
+	}
+}
+
+func TestMainSessionSettings(t *testing.T) {
+	raw := json.RawMessage(`{"session_id":"s_main","snapshot":{"session":{"model":"chatgpt/gpt-6.2-sol","thinking":"high"}}}`)
+	model, thinking := mainSessionSettings(raw)
+	if model != "chatgpt/gpt-6.2-sol" || thinking != "high" {
+		t.Fatalf("got (%q, %q), want (chatgpt/gpt-6.2-sol, high)", model, thinking)
 	}
 }
 

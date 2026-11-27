@@ -102,11 +102,35 @@ func TestHerConversationIsATask(t *testing.T) {
 	}
 
 	// Her's main conversation never heard of it.
-	stream, opened, _ := openAssistant(t, ctx, env)
-	stream.Close()
+	stream, opened, mainID := openAssistant(t, ctx, env)
 	if strings.Contains(string(opened.Responses[0].Result), child.SessionId) {
+		stream.Close()
 		t.Fatalf("the main conversation heard of %s", child.SessionId)
 	}
+
+	// Changing Her's main conversation model & thinking updates the default offered by ListProviders
+	// even though config.toml still names mock/mock-1.
+	herCall(t, env, opened.ConnectionId, "session/op", map[string]any{
+		"session_id": mainID,
+		"op":         map[string]any{"type": "set_model", "model": "mock/mock-2", "thinking": "high"},
+	})
+	stream.Close()
+	eventually(t, 20*time.Second, "ListProviders reflects Her's main conversation model and thinking", func() bool {
+		res, err := sc.ListProviders(ctx, &sessionv1.ListProvidersRequest{MachineId: env.machine})
+		if err != nil {
+			return false
+		}
+		for _, p := range res.Providers {
+			if p.InstanceId == "her" && len(p.Models) > 0 && p.Models[0].Slug == "mock/mock-2" && p.Models[0].IsDefault {
+				for _, opt := range p.Models[0].OptionDescriptors {
+					if opt.Id == "effort" && opt.GetCurrentValue().GetStringValue() == "high" {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	})
 
 	// A question she ends her turn on waits for the owner; the answer reaches her as their words.
 	if _, err := sc.DispatchMessage(ctx, &sessionv1.DispatchMessageRequest{

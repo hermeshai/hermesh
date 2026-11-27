@@ -193,12 +193,25 @@ test("Her conversations: given to Her from a new session, the work she sends nes
   await expect(page.getByText(/^你好，我是 .+，在 .+ 上为你做事/)).toBeVisible();
   await expect(page.getByRole("log", { name: "对话" })).toHaveCount(0);
 
-  // The next new session goes to Her again, and after the app restarts too.
+  // The next new session goes to Her again, and remembers an explicit Her model/effort choice across restarts.
   await newSession();
   await expect(her).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("model-picker-trigger").click();
+  await page.getByTestId("picker-model-mock/mock-2").click();
+  await page.getByTestId("model-picker-trigger").click();
+  await page.getByTestId("picker-level-high").click();
+  await page.keyboard.press("Escape");
+  const modelBtn = page.getByRole("button", { name: "模型" });
+  await expect(modelBtn).toContainText("Mock Pro");
+  await expect(modelBtn).toContainText("高");
   await app.close();
   ({ app, page } = await launch(fixture.socket, { profile }));
   await page.getByTestId("nav-new-thread").click();
   await expect(page.getByTestId("presence").getByRole("button", { name: "Her" })).toHaveAttribute("aria-pressed", "true");
+  const modelBtnAfter = page.getByRole("button", { name: "模型" });
+  await expect(modelBtnAfter).toContainText("Mock Pro");
+  await expect(modelBtnAfter).toContainText("高");
+  await modelBtnAfter.click();
+  await expect(page.getByTestId("picker-model-mock/mock-1")).toContainText("默认");
   await app.close();
 });

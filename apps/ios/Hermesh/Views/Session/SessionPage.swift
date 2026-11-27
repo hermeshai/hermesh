@@ -15,6 +15,7 @@ enum SessionChoices {
     struct Mine: Codable {
         var projectID: String?
         var selection: Data?
+        var herSelection: Data?
         var mode: Int?
         var worktrees: [String: Bool]?
     }
@@ -37,6 +38,28 @@ enum SessionChoices {
     static func mine(_ machine: String) -> Mine? { kept.byMachine[machine] }
     static func lastSelection(_ machine: String) -> Hermesh_Session_V1_ModelSelection? {
         mine(machine)?.selection.flatMap { try? Hermesh_Session_V1_ModelSelection(serializedBytes: $0) }
+    }
+
+    static func lastHerSelection(_ machine: String) -> Hermesh_Session_V1_ModelSelection? {
+        mine(machine)?.herSelection.flatMap { try? Hermesh_Session_V1_ModelSelection(serializedBytes: $0) }
+    }
+
+    static func rememberHer(machine: String, selection: Hermesh_Session_V1_ModelSelection) {
+        guard !machine.isEmpty, !selection.model.isEmpty else { return }
+        var k = kept
+        var m = k.byMachine[machine] ?? Mine()
+        m.herSelection = try? selection.serializedData()
+        k.byMachine[machine] = m
+        kept = k
+    }
+
+    static func forgetHer(machine: String) {
+        guard !machine.isEmpty else { return }
+        var k = kept
+        guard var m = k.byMachine[machine], m.herSelection != nil else { return }
+        m.herSelection = nil
+        k.byMachine[machine] = m
+        kept = k
     }
 
     static func worktree(machine: String, project: String) -> Bool? {
@@ -315,6 +338,13 @@ struct SessionPage: View {
                 get: { selection },
                 set: { next in
                     selection = next
+                    if isNew, next.instanceID == herAgent, !effectiveMachineID.isEmpty, !model.isDemo {
+                        if let her = providers.first(where: { $0.instanceID == herAgent }), isDefaultHerSelection(her, next) {
+                            SessionChoices.forgetHer(machine: effectiveMachineID)
+                        } else {
+                            SessionChoices.rememberHer(machine: effectiveMachineID, selection: next)
+                        }
+                    }
                     if !isNew { update { $0.modelSelection = next } }
                 }
             ), stale: providersStale, machineName: machine?.machineName ?? "",
@@ -492,7 +522,7 @@ struct SessionPage: View {
         if next == .her, let herAt {
             machineID = herAt.machineID
             projectID = scratchProject
-            selection = herSelection(providers: herAt.machineID == effectiveMachineID ? providers : [])
+            selection = herSelection(providers: herAt.machineID == effectiveMachineID ? providers : [], machineID: herAt.machineID)
             return
         }
         let known = { (id: String) in !id.isEmpty && model.machines.contains { $0.machineID == id } }
@@ -1377,9 +1407,9 @@ struct SessionPage: View {
         providers = res.providers
         if res.maxRuntimeMode != .unspecified { ceiling = res.maxRuntimeMode }
         guard isNew else { return }
-        // To Her: her model, her default unless one of hers was chosen; else an agent's.
+        // To Her: the model chosen on this page, else the last Her model chosen on this machine, else Her's default.
         if selection.instanceID == herAgent && herAt != nil {
-            selection = herSelection(providers: res.providers, prev: selection)
+            selection = herSelection(providers: res.providers, machineID: mid, prev: selection)
         } else if let next = agentSelection(providers: res.providers, machineID: mid, prev: selection) {
             selection = next
         }

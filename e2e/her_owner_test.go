@@ -81,6 +81,9 @@ func startHerMock(t *testing.T, bin string) *herMock {
 func herHome(t *testing.T, models string) string {
 	t.Helper()
 	home := t.TempDir()
+	if strings.Contains(models, "[providers.mock]") && !strings.Contains(models, `id = "mock-2"`) {
+		models += "\n[[providers.mock.models]]\nid = \"mock-2\"\nname = \"Mock Pro\"\ncontext_window = 200000\nmax_output_tokens = 32000\nreasoning = true\nthinking = [\"low\", \"medium\", \"high\"]\ndefault_thinking = \"medium\"\ninput = [\"text\", \"image\"]\ncost = { input = 1.0, output = 2.0, cache_read = 0.1 }\n"
+	}
 	// .her-home: her marks a home she makes as hers alone (her-core paths.rs),
 	// as she would have made this one, so erasing her data may delete it.
 	for name, content := range map[string]string{"models.toml": models, "config.toml": "model = \"mock/mock-1\"\n", ".her-home": ""} {

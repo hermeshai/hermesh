@@ -46,6 +46,7 @@ import {
   providersForRole,
   providerUnusable,
   queuedRunsOf,
+  reasoningOf,
   replyEnds,
   sessionFailure,
   sessionFocusText,
@@ -87,7 +88,7 @@ import {
 import { ComposerPlace, LaunchAsk, ModelButtons, ThreadComposer, type Branches, type Place } from "./session/Composer";
 import { Inspector } from "./session/Inspector";
 import { SessionRequest } from "./session/Request";
-import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, rememberedWorktree, remember, rememberWorktree } from "./session/choices";
+import { forgetHer, keepProjects, keepProviders, lastProjects, lastProviders, remembered, rememberedHer, rememberedWorktree, remember, rememberHer, rememberWorktree } from "./session/choices";
 import { ContentScope, SessionRunContext, type SessionCodeActions } from "./session/scope";
 import { stripTerminalEscapes } from "./session/terminalText";
 import { FilesHomeContext, type FilesHome } from "./session/files/files";
@@ -103,11 +104,18 @@ import "./session/composer.css";
  */
 const HER = "her";
 
-/** A new conversation with Her: the model chosen when it is one of hers, else her default (first in her list); none known yet, hers to pick. */
-function herSelection(providers: ProviderInstance[] = [], prev?: ModelSelection): ModelSelection {
+/** A new conversation with Her: the model chosen on this page, else the last Her model chosen on this machine, else Her's configured default; none known yet, hers to pick. */
+function herSelection(providers: ProviderInstance[] = [], machineId = "", prev?: ModelSelection): ModelSelection {
   const her = providers.find((p) => p.instanceId === HER && providerUnusable(p, []) === "");
-  if (prev && her?.models.some((m) => m.slug === prev.model)) return prev;
+  if (prev?.instanceId === HER && prev.model && her?.models.some((m) => m.slug === prev.model)) return prev;
+  const last = machineId ? rememberedHer(machineId) : undefined;
+  if (last?.model && her?.models.some((m) => m.slug === last.model)) return create(ModelSelectionSchema, last);
   return her ? defaultModelSelectionFor(her) : create(ModelSelectionSchema, { instanceId: HER, model: "", options: {} });
+}
+
+function isDefaultHerSelection(her: ProviderInstance, sel: ModelSelection): boolean {
+  const def = defaultModelSelectionFor(her);
+  return sel.model === def.model && (reasoningOf([her], sel)?.value ?? "") === (reasoningOf([her], def)?.value ?? "");
 }
 
 /** An agent for a new session on the machine: as last time there, else the one already chosen, else Claude, Codex, Gemini, or the first that works. */
@@ -285,7 +293,7 @@ export function SessionPage() {
     if (next === "her") {
       setMachineId(herAt!.machineId);
       pickProject(herAt!.machineId, SCRATCH_PROJECT);
-      setModelSel(herSelection(herAt!.machineId === effectiveMachineId ? providers : []));
+      setModelSel(herSelection(herAt!.machineId === effectiveMachineId ? providers : [], herAt!.machineId));
       return;
     }
     const last = remembered();
@@ -383,8 +391,8 @@ export function SessionPage() {
           setMaxCeiling(res.maxRuntimeMode);
         }
         if (activeSessionId) return; // an existing session keeps its own (from GetSession)
-        // To Her: her model, her default unless one of hers was chosen; else an agent's.
-        setModelSel((prev) => (prev.instanceId === HER ? herSelection(res.providers, prev) : agentSelection(res.providers, effectiveMachineId, prev) ?? prev));
+        // To Her: the model chosen on this page, else the last Her model chosen on this machine, else Her's default.
+        setModelSel((prev) => (prev.instanceId === HER ? herSelection(res.providers, effectiveMachineId, prev) : agentSelection(res.providers, effectiveMachineId, prev) ?? prev));
       });
     return () => {
       cancelled = true;
@@ -514,7 +522,14 @@ export function SessionPage() {
     const nextSel = patch.sel ?? modelSel;
     const nextRm = patch.rm ?? runtimeMode;
     const nextIm = patch.im ?? interactionMode;
-    if (patch.sel) setModelSel(patch.sel);
+    if (patch.sel) {
+      setModelSel(patch.sel);
+      if (!activeSessionId && patch.sel.instanceId === HER && effectiveMachineId) {
+        const her = providers.find((p) => p.instanceId === HER);
+        if (her && isDefaultHerSelection(her, patch.sel)) forgetHer(effectiveMachineId);
+        else rememberHer(effectiveMachineId, patch.sel);
+      }
+    }
     if (patch.rm) setRuntimeMode(patch.rm);
     if (patch.im) setInteractionMode(patch.im);
     if (activeSessionId) {
