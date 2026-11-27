@@ -28,6 +28,9 @@
 
 /* ---------- The composer (docs/thread-composer.md §4): Her's box (her.css .cmp), the line under it ---------- */
 .th{--pill:var(--win);--pill-bd:var(--menu-bd)}
+@media (prefers-color-scheme:light){
+  :root[data-light-style="soft"] .th{--pill:#ffffff;--pill-bd:rgba(32,33,39,.10)}
+}
 @media (prefers-color-scheme:dark){
   .th{--pill:var(--win2)}
   :root[data-dark-style="black"] .th{--pill:#15151a;--pill-bd:rgba(255,255,255,.08)}

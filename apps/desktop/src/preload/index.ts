@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import type { DaemonInfo } from "../shared/daemon";
 import type { Language } from "../shared/i18n";
-import type { Appearance, Bridge, Command, ComputerPermission, MenuItem, MenuState, Preferences, TerminalCommand, TrayAction, TrayView } from "../shared/bridge";
+import type { Appearance, Bridge, Command, ComputerPermission, DarkPalette, LightPalette, MenuItem, MenuState, Preferences, TerminalCommand, TrayAction, TrayView } from "../shared/bridge";
 import type { UpdateInfo } from "../shared/update";
 
 // The only things the page gets from outside its sandbox. Data comes from
@@ -30,6 +30,8 @@ const bridge: Bridge = {
   version: arg("version"),
   language: arg("lang") as Language,
   appearance: (arg("appearance") || "system") as Appearance,
+  preferredLight: (arg("preferred-light") || "light") as LightPalette,
+  preferredDark: (arg("preferred-dark") || "dark") as DarkPalette,
   macos: process.platform === "darwin" ? Number.parseInt(process.getSystemVersion(), 10) : 0,
   openComputerPermission: (kind: ComputerPermission) => ipcRenderer.send("open-computer-permission", kind),
   openSettings: (tab?: string) => ipcRenderer.send("open-settings", tab),
@@ -95,6 +97,8 @@ const bridge: Bridge = {
   getPreferences: () => ipcRenderer.invoke("preferences"),
   setPreferences: (p: Partial<Preferences>) => ipcRenderer.invoke("set-preferences", p),
   onPreferences: (cb: (p: Preferences) => void) => listen("preferences", cb),
+  previewAppearance: (a: Appearance | null) => ipcRenderer.send("preview-appearance", a),
+  onAppearancePreview: (cb: (a: Appearance | null) => void) => listen("appearance-preview", cb),
   relaunch: () => ipcRenderer.send("relaunch"),
   loginItem: () => ipcRenderer.invoke("login-item"),
   setLoginItem: (on: boolean) => ipcRenderer.invoke("set-login-item", on),

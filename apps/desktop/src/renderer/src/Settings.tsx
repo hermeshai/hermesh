@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Machine } from "@hermesh/proto/local";
 import { dateOf } from "@hermesh/core";
+import { useSidebarVibrant } from "./appearance";
 import { Icon } from "./icons";
 import { ToastView } from "./MainWindow";
 import { openPairing } from "./sheets/Pairing";
@@ -69,12 +70,8 @@ export function SettingsWindow() {
   useEffect(() => {
     document.title = label;
   }, [label]);
-  // The window's material shows through the sidebar, as in the main window.
-  useEffect(() => {
-    if (!window.hermesh?.material) return;
-    document.documentElement.classList.add("vibrant");
-    return () => document.documentElement.classList.remove("vibrant");
-  }, []);
+  // Glass themes ("light", "dark") show the window's material through the sidebar; solid themes stay opaque.
+  useSidebarVibrant();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;

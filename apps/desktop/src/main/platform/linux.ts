@@ -2,16 +2,17 @@ import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { language } from "@hermesh/core";
 import { LocalService } from "@hermesh/proto/local";
-import { app, nativeTheme, shell } from "electron";
+import { app, shell } from "electron";
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { windowBackgroundOf } from "../../shared/appearance";
 import type { TerminalCommand } from "../../shared/bridge";
 import { i18n } from "../../shared/i18n";
-import { preferences } from "../notify";
+import { activePalette } from "../notify";
 import { socketPath, testDataDir } from "../paths";
 import type { Platform, WindowKind } from "./types";
 
@@ -237,7 +238,11 @@ export const linux: Platform = {
 
   frame(_kind: WindowKind) {
     // The desktop draws the frame and its buttons; the page's own background from the first frame.
-    return { backgroundColor: preferences().appearance === "black" ? "#070709" : nativeTheme.shouldUseDarkColors ? "#1e1e21" : "#ffffff", autoHideMenuBar: true };
+    return { backgroundColor: windowBackgroundOf(activePalette()), autoHideMenuBar: true };
+  },
+
+  applyMaterial(win, _glass, backgroundColor) {
+    win.setBackgroundColor(backgroundColor);
   },
 
   // The desktop places the window's buttons.

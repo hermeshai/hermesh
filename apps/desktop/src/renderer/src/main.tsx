@@ -3,29 +3,17 @@ import { I18nextProvider } from "react-i18next";
 import { createRoot } from "react-dom/client";
 import { i18n } from "../../shared/i18n";
 import { App } from "./App";
+import { initAppearance } from "./appearance";
 import { releaseWhileHidden } from "./memory";
 import { platform } from "./platform";
-import { initRunningMotion, syncOrbitStrip } from "./runningMotion";
+import { initRunningMotion } from "./runningMotion";
 import { initWindowVisibility } from "./visibility";
 import "./styles.css";
 
 document.documentElement.dataset.platform = platform;
 
-const applyDarkStyle = (appearance?: string) => {
-  const want = appearance === "black" ? "black" : "dark";
-  if (document.documentElement.dataset.darkStyle !== want) document.documentElement.dataset.darkStyle = want;
-  syncOrbitStrip();
-};
-applyDarkStyle(window.hermesh?.appearance);
+initAppearance();
 initRunningMotion();
-let appearanceUpdated = false;
-window.hermesh?.onPreferences((p) => {
-  appearanceUpdated = true;
-  applyDarkStyle(p.appearance);
-});
-window.hermesh?.getPreferences().then((p) => {
-  if (p && !appearanceUpdated) applyDarkStyle(p.appearance);
-}).catch(() => {});
 
 // Titles go grey while another window has the focus (the .blurred rules).
 window.hermesh?.onWindowFocus((focused) => document.documentElement.classList.toggle("blurred", !focused));
