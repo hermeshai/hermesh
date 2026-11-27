@@ -1,4 +1,4 @@
-use nimbleoffice_pptx::{EditCtx, Presentation, TextStyle};
+use betteroffice_pptx::{EditCtx, Presentation, TextStyle};
 use her_slide::Deck;
 
 #[test]
@@ -51,7 +51,7 @@ fn replica_updates_round_trip_through_authority_and_save() {
         .unwrap();
     assert_eq!(
         replica
-            .find_text(&nimbleoffice_pptx::FindRequest {
+            .find_text(&betteroffice_pptx::FindRequest {
                 text: "Approved review".into(),
                 within: None,
                 limit: None
@@ -72,7 +72,7 @@ fn malformed_replica_update_is_rejected() {
     assert_eq!(authority.markdown().unwrap(), before);
 }
 
-// TODO: NimbleOffice's Presentation holds RefCell/Rc (yrs undo, caches), so Deck is not Send + Sync
+// TODO: BetterOffice's Presentation holds RefCell/Rc (yrs undo, caches), so Deck is not Send + Sync
 // yet. Re-enable once the fork makes the edit session thread-safe.
 // #[test]
 // fn authority_can_be_owned_by_server_tasks() {
@@ -81,7 +81,7 @@ fn malformed_replica_update_is_rejected() {
 // }
 
 mod structural {
-    use nimbleoffice_pptx::{EditCtx, PictureDraft, Presentation, ShapeRect};
+    use betteroffice_pptx::{EditCtx, PictureDraft, Presentation, ShapeRect};
     use her_slide::Deck;
 
     /// 1×1 transparent PNG.
@@ -161,7 +161,7 @@ mod structural {
 
 #[test]
 fn deleted_slide_saves() {
-    use nimbleoffice_pptx::{EditCtx, Presentation};
+    use betteroffice_pptx::{EditCtx, Presentation};
     let bytes = include_bytes!("fixtures/editor.pptx").to_vec();
     let authority = her_slide::Deck::open(bytes.clone()).unwrap();
     let replica = Presentation::open_from_update(&authority.encode_state(), 42, Some(&bytes)).unwrap();

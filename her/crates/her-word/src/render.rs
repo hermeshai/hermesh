@@ -1,8 +1,8 @@
 //! Pages of saved `.docx` bytes, drawn with the machine's own fonts (her-slide's
 //! `SystemFonts`, the faces PowerPoint decks use too).
 
-use nimbleoffice_docx::fonts::FontSource;
-use nimbleoffice_docx::{Document, OpenOptions, PngTarget, RenderOptions};
+use betteroffice_docx::fonts::FontSource;
+use betteroffice_docx::{Document, OpenOptions, PngTarget, RenderOptions};
 use her_slide::SystemFonts;
 
 use crate::{Result, WordError};
@@ -65,7 +65,7 @@ fn draw(document: &Document, ordinal: u32, scale: f32) -> Result<Option<Vec<u8>>
         &RenderOptions { scale },
     ) {
         Ok(page) => Ok(Some(page.bytes)),
-        Err(nimbleoffice_docx::Error::Render(message)) if message.contains("out of range") => {
+        Err(betteroffice_docx::Error::Render(message)) if message.contains("out of range") => {
             Ok(None)
         }
         Err(e) => Err(e.into()),

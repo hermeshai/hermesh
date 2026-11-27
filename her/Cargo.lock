@@ -58,9 +58,9 @@ dependencies = [
 
 [[package]]
 name = "alloc-no-stdlib"
-version = "2.0.4"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc7bb162ec39d46ab1ca8c77bf72e890535becd1751bb45f64c597edb4c8c6b3"
+checksum = "c2fb6cfd47bf496ff64095c20eaba0c201404ee38714d4142fcfa1dc334fcc7a"
 
 [[package]]
 name = "allocator-api2"
@@ -276,6 +276,279 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
+name = "betteroffice-base-latin"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+
+[[package]]
+name = "betteroffice-docx"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "betteroffice-docx-edit",
+ "betteroffice-docx-layout",
+ "betteroffice-docx-parse",
+ "betteroffice-docx-raster",
+ "betteroffice-fonts",
+ "betteroffice-ooxml-text",
+ "betteroffice-opc",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "betteroffice-docx-edit"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "betteroffice-docx-layout",
+ "betteroffice-docx-parse",
+ "betteroffice-drawingml",
+ "betteroffice-ooxml-diff",
+ "betteroffice-ooxml-text",
+ "betteroffice-opc",
+ "foldhash",
+ "libm",
+ "ryu-js",
+ "serde",
+ "serde_json",
+ "sha2",
+ "unicode-segmentation",
+ "wuff",
+ "yrs",
+]
+
+[[package]]
+name = "betteroffice-docx-layout"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "betteroffice-drawingml",
+ "betteroffice-ooxml-text",
+ "foldhash",
+ "js-sys",
+ "libm",
+ "serde",
+ "serde_json",
+ "unicode-segmentation",
+ "wasm-bindgen",
+ "zmij",
+]
+
+[[package]]
+name = "betteroffice-docx-native-save"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "base64 0.22.1",
+ "betteroffice-docx-edit",
+ "betteroffice-docx-parse",
+ "betteroffice-opc",
+ "foldhash",
+ "indexmap 2.14.2",
+ "ryu-js",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "betteroffice-docx-parse"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "base64 0.22.1",
+ "betteroffice-drawingml",
+ "betteroffice-opc",
+ "indexmap 2.14.2",
+ "libm",
+ "memchr",
+ "quick-xml 0.41.0",
+ "ryu-js",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "betteroffice-docx-raster"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "base64 0.22.1",
+ "betteroffice-docx-layout",
+ "betteroffice-drawingml",
+ "betteroffice-metafile",
+ "betteroffice-ooxml-raster",
+ "betteroffice-ooxml-text",
+ "image",
+ "serde_json",
+ "tiny-skia",
+]
+
+[[package]]
+name = "betteroffice-drawingml"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "crc32fast",
+ "flate2",
+ "indexmap 2.14.2",
+ "libm",
+ "serde",
+ "tiff",
+ "weezl",
+]
+
+[[package]]
+name = "betteroffice-fonts"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "cc",
+ "quick-xml 0.41.0",
+ "ruzstd",
+ "serde",
+ "serde_json",
+ "wuff",
+]
+
+[[package]]
+name = "betteroffice-metafile"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "base64 0.22.1",
+ "betteroffice-drawingml",
+ "libm",
+]
+
+[[package]]
+name = "betteroffice-ooxml-diff"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+
+[[package]]
+name = "betteroffice-ooxml-raster"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "betteroffice-drawingml",
+ "betteroffice-ooxml-text",
+ "image",
+ "jpeg-decoder",
+ "png",
+ "resvg",
+ "simplecss",
+ "svgtypes",
+ "tiny-skia",
+]
+
+[[package]]
+name = "betteroffice-ooxml-text"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "betteroffice-base-latin",
+ "betteroffice-drawingml",
+ "rustybuzz",
+ "serde",
+ "serde_json",
+ "skrifa 0.45.1",
+ "unicode-bidi",
+ "unicode-linebreak",
+ "unicode-script",
+]
+
+[[package]]
+name = "betteroffice-opc"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "js-sys",
+ "quick-xml 0.41.0",
+ "zip",
+]
+
+[[package]]
+name = "betteroffice-pptx"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "betteroffice-fonts",
+ "betteroffice-pptx-edit",
+ "betteroffice-pptx-parse",
+ "betteroffice-pptx-raster",
+ "betteroffice-pptx-render",
+]
+
+[[package]]
+name = "betteroffice-pptx-edit"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "base64 0.22.1",
+ "betteroffice-drawingml",
+ "betteroffice-metafile",
+ "betteroffice-ooxml-diff",
+ "betteroffice-pptx-parse",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "yrs",
+]
+
+[[package]]
+name = "betteroffice-pptx-parse"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "base64 0.22.1",
+ "betteroffice-drawingml",
+ "betteroffice-opc",
+ "libm",
+ "quick-xml 0.41.0",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "betteroffice-pptx-raster"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "betteroffice-drawingml",
+ "betteroffice-metafile",
+ "betteroffice-ooxml-raster",
+ "betteroffice-ooxml-text",
+ "betteroffice-pptx-edit",
+ "betteroffice-pptx-render",
+ "image",
+ "tiny-skia",
+ "unicode-properties",
+]
+
+[[package]]
+name = "betteroffice-pptx-render"
+version = "0.6.0"
+source = "git+https://github.com/Eliseowzy/betteroffice?rev=301ce5473eebc559a2288537ed6bc7d9efe163f9#301ce5473eebc559a2288537ed6bc7d9efe163f9"
+dependencies = [
+ "betteroffice-drawingml",
+ "betteroffice-metafile",
+ "betteroffice-ooxml-text",
+ "betteroffice-pptx-edit",
+ "betteroffice-pptx-parse",
+ "libm",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "unicode-properties",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "bit-set"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -352,9 +625,9 @@ checksum = "dc0b364ead1874514c8c2855ab558056ebfeb775653e7ae45ff72f28f8f3166c"
 
 [[package]]
 name = "brotli-decompressor"
-version = "5.0.3"
+version = "6.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a32acac15fe1967bc3986b2a6347dffc965602354ea6f450ad07e8bfd253583"
+checksum = "664148598c930650998ef56df301329ffe7b4cdb02d49b2a3fca3bcaf2185bcb"
 dependencies = [
  "alloc-no-stdlib",
 ]
@@ -1416,7 +1689,7 @@ checksum = "c03d949a14aa089bbb282f7dd76a498a7f684428e4257202efc119ec010376f9"
 dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
- "read-fonts",
+ "read-fonts 0.41.0",
  "smallvec",
 ]
 
@@ -1608,6 +1881,7 @@ version = "0.2.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
+ "betteroffice-metafile",
  "chrono",
  "dunce",
  "encoding_rs",
@@ -1626,7 +1900,6 @@ dependencies = [
  "her-word",
  "libc",
  "md-5",
- "nimbleoffice-metafile",
  "parking_lot",
  "png",
  "quick-xml 0.42.0",
@@ -1671,14 +1944,14 @@ name = "her-docs"
 version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
+ "betteroffice-docx-edit",
+ "betteroffice-pptx",
  "dunce",
  "her-protocol",
  "her-sheet",
  "her-slide",
  "her-word",
  "md-5",
- "nimbleoffice-docx-edit",
- "nimbleoffice-pptx",
  "parking_lot",
  "pdfium-render",
  "png",
@@ -1857,9 +2130,9 @@ dependencies = [
 name = "her-slide"
 version = "0.2.0"
 dependencies = [
+ "betteroffice-pptx",
  "encoding_rs",
  "her-protocol",
- "nimbleoffice-pptx",
  "png",
  "thiserror",
  "zip",
@@ -1893,10 +2166,10 @@ dependencies = [
 name = "her-word"
 version = "0.2.0"
 dependencies = [
+ "betteroffice-docx",
+ "betteroffice-docx-edit",
+ "betteroffice-docx-native-save",
  "her-slide",
- "nimbleoffice-docx",
- "nimbleoffice-docx-edit",
- "nimbleoffice-docx-native-save",
  "png",
  "ring",
  "schemars 0.8.22",
@@ -2396,6 +2669,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "jpeg-decoder"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00810f1d8b74be64b13dbf3db89ac67740615d6c891f0e7b6179326533011a07"
+
+[[package]]
 name = "js-sys"
 version = "0.3.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2519,9 +2798,9 @@ dependencies = [
 
 [[package]]
 name = "libm"
-version = "0.2.15"
+version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9fbbcab51052fe104eb5e5d351cf728d30a5be1fe14d9be8a3b097481fb97de"
+checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "libsqlite3-sys"
@@ -2663,273 +2942,6 @@ name = "multiversion_no_op"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
-
-[[package]]
-name = "nimbleoffice-base-latin"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-
-[[package]]
-name = "nimbleoffice-docx"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "nimbleoffice-docx-edit",
- "nimbleoffice-docx-layout",
- "nimbleoffice-docx-parse",
- "nimbleoffice-docx-raster",
- "nimbleoffice-fonts",
- "nimbleoffice-ooxml-text",
- "serde_json",
- "sha2",
- "yrs",
-]
-
-[[package]]
-name = "nimbleoffice-docx-edit"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "foldhash",
- "libm",
- "nimbleoffice-docx-layout",
- "nimbleoffice-docx-parse",
- "nimbleoffice-drawingml",
- "nimbleoffice-ooxml-diff",
- "nimbleoffice-ooxml-text",
- "nimbleoffice-opc",
- "ryu-js",
- "serde",
- "serde_json",
- "sha2",
- "unicode-segmentation",
- "wuff",
- "yrs",
-]
-
-[[package]]
-name = "nimbleoffice-docx-layout"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "foldhash",
- "js-sys",
- "libm",
- "nimbleoffice-drawingml",
- "nimbleoffice-ooxml-text",
- "serde",
- "serde_json",
- "unicode-segmentation",
- "wasm-bindgen",
- "zmij",
-]
-
-[[package]]
-name = "nimbleoffice-docx-native-save"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "base64 0.22.1",
- "foldhash",
- "indexmap 2.14.2",
- "nimbleoffice-docx-edit",
- "nimbleoffice-docx-parse",
- "nimbleoffice-opc",
- "ryu-js",
- "serde",
- "serde_json",
- "sha2",
-]
-
-[[package]]
-name = "nimbleoffice-docx-parse"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "base64 0.22.1",
- "indexmap 2.14.2",
- "libm",
- "memchr",
- "nimbleoffice-drawingml",
- "nimbleoffice-opc",
- "quick-xml 0.41.0",
- "ryu-js",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
-]
-
-[[package]]
-name = "nimbleoffice-docx-raster"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "base64 0.22.1",
- "image",
- "nimbleoffice-docx-layout",
- "nimbleoffice-ooxml-raster",
- "nimbleoffice-ooxml-text",
- "serde_json",
- "tiny-skia",
-]
-
-[[package]]
-name = "nimbleoffice-drawingml"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "crc32fast",
- "flate2",
- "indexmap 2.14.2",
- "libm",
- "serde",
- "tiff",
- "weezl",
-]
-
-[[package]]
-name = "nimbleoffice-fonts"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "cc",
- "quick-xml 0.41.0",
- "ruzstd",
- "serde",
- "serde_json",
- "wuff",
-]
-
-[[package]]
-name = "nimbleoffice-metafile"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "base64 0.22.1",
- "libm",
- "nimbleoffice-drawingml",
-]
-
-[[package]]
-name = "nimbleoffice-ooxml-diff"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-
-[[package]]
-name = "nimbleoffice-ooxml-raster"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "nimbleoffice-drawingml",
- "nimbleoffice-ooxml-text",
- "png",
- "tiny-skia",
-]
-
-[[package]]
-name = "nimbleoffice-ooxml-text"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "nimbleoffice-base-latin",
- "nimbleoffice-drawingml",
- "rustybuzz",
- "serde",
- "serde_json",
- "skrifa",
- "unicode-bidi",
- "unicode-linebreak",
-]
-
-[[package]]
-name = "nimbleoffice-opc"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "js-sys",
- "quick-xml 0.41.0",
- "zip",
-]
-
-[[package]]
-name = "nimbleoffice-pptx"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "nimbleoffice-fonts",
- "nimbleoffice-pptx-edit",
- "nimbleoffice-pptx-parse",
- "nimbleoffice-pptx-raster",
- "nimbleoffice-pptx-render",
-]
-
-[[package]]
-name = "nimbleoffice-pptx-edit"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "base64 0.22.1",
- "nimbleoffice-drawingml",
- "nimbleoffice-metafile",
- "nimbleoffice-ooxml-diff",
- "nimbleoffice-pptx-parse",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
- "yrs",
-]
-
-[[package]]
-name = "nimbleoffice-pptx-parse"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "base64 0.22.1",
- "libm",
- "nimbleoffice-drawingml",
- "nimbleoffice-opc",
- "quick-xml 0.41.0",
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "nimbleoffice-pptx-raster"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "image",
- "nimbleoffice-drawingml",
- "nimbleoffice-metafile",
- "nimbleoffice-ooxml-raster",
- "nimbleoffice-ooxml-text",
- "nimbleoffice-pptx-edit",
- "nimbleoffice-pptx-render",
- "resvg",
- "simplecss",
- "svgtypes",
- "tiny-skia",
-]
-
-[[package]]
-name = "nimbleoffice-pptx-render"
-version = "0.5.1"
-source = "git+https://github.com/Eliseowzy/nimbleoffice?rev=65549f0e05e5edf91bd0edc85de94d55345d93c7#65549f0e05e5edf91bd0edc85de94d55345d93c7"
-dependencies = [
- "libm",
- "nimbleoffice-drawingml",
- "nimbleoffice-metafile",
- "nimbleoffice-ooxml-text",
- "nimbleoffice-pptx-edit",
- "nimbleoffice-pptx-parse",
- "serde",
- "serde_json",
- "thiserror",
- "unicode-properties",
- "unicode-segmentation",
-]
 
 [[package]]
 name = "nix"
@@ -3506,6 +3518,17 @@ name = "read-fonts"
 version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "046a7d674daf459825b32f5062056d6882db0d2f5a479fbd76ccfc870ac18709"
+dependencies = [
+ "bytemuck",
+ "font-types",
+ "once_cell",
+]
+
+[[package]]
+name = "read-fonts"
+version = "0.42.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c69341f5f744623061a258e9d06a0213783a89ec23b6efb88a1c0c4ed285559"
 dependencies = [
  "bytemuck",
  "font-types",
@@ -4207,7 +4230,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "819ab7d62b1d3e72d9d9dea5650bac30424f9111364bb94928dbf5ecad1baa68"
 dependencies = [
  "bytemuck",
- "read-fonts",
+ "read-fonts 0.41.0",
+]
+
+[[package]]
+name = "skrifa"
+version = "0.45.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd5b090b1690f1c63a8659574ea987c557f1cc571e24dedcba89458f32d0ccb5"
+dependencies = [
+ "bytemuck",
+ "read-fonts 0.42.1",
 ]
 
 [[package]]
@@ -4337,9 +4370,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "svgtypes"
-version = "0.16.1"
+version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "695b5790b3131dafa99b3bbfd25a216edb3d216dad9ca208d4657bfb8f2abc3d"
+checksum = "9f12b12995e3638c70618c1facb1ce65302f6a6f706b675f07c58a5d7391120e"
 dependencies = [
  "kurbo",
  "siphasher",
@@ -4908,7 +4941,7 @@ dependencies = [
  "roxmltree",
  "simplecss",
  "siphasher",
- "skrifa",
+ "skrifa 0.44.0",
  "strict-num",
  "svgtypes",
  "tiny-skia-path",
@@ -5345,9 +5378,9 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "wuff"
-version = "0.2.9"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "200a7b806377b65f1ff9a985874332f15357c87e5dd7855f35f06dade95b8b3d"
+checksum = "f6a992b57b3d1ee972b2e3fd9225e44793104d49818836dd812d5459187712dd"
 dependencies = [
  "brotli-decompressor",
  "bytes",

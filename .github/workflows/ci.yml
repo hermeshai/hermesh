@@ -240,10 +240,10 @@ jobs:
       - name: Build Her for its end-to-end tests
         shell: bash
         env:
-          NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
+          BETTEROFFICE_TOKEN: ${{ secrets.BETTEROFFICE_TOKEN }}
         run: |
-          if [ -n "$NIMBLEOFFICE_TOKEN" ]; then
-            git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
+          if [ -n "$BETTEROFFICE_TOKEN" ]; then
+            git config --global url."https://x-access-token:${BETTEROFFICE_TOKEN}@github.com/Eliseowzy/betteroffice".insteadOf "https://github.com/Eliseowzy/betteroffice"
             export CARGO_NET_GIT_FETCH_WITH_CLI=true
           fi
           cargo build --manifest-path her/Cargo.toml -p her-cli -p her-mock
@@ -282,10 +282,10 @@ jobs:
       - name: Build Her for its dedicated desktop fixtures
         if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.her_integration == 'true'
         env:
-          NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
+          BETTEROFFICE_TOKEN: ${{ secrets.BETTEROFFICE_TOKEN }}
         run: |
-          if [ -n "$NIMBLEOFFICE_TOKEN" ]; then
-            git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
+          if [ -n "$BETTEROFFICE_TOKEN" ]; then
+            git config --global url."https://x-access-token:${BETTEROFFICE_TOKEN}@github.com/Eliseowzy/betteroffice".insteadOf "https://github.com/Eliseowzy/betteroffice"
             export CARGO_NET_GIT_FETCH_WITH_CLI=true
           fi
           cargo build --manifest-path her/Cargo.toml -p her-cli -p her-mock
