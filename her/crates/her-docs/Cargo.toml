@@ -26,7 +26,7 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-nimbleoffice-pptx.workspace = true
+betteroffice-pptx.workspace = true
 docx-edit.workspace = true
 md-5.workspace = true
 tempfile.workspace = true
