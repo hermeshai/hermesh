@@ -3,8 +3,8 @@ import HermeshSessions
 import SwiftUI
 
 /// What a session's coding agent waits on, over the bottom of its conversation:
-/// a tool call to allow, or a plan to approve. A question asks via QuestionPanel;
-/// a secret is entered on the Mac.
+/// a tool call to allow, or a secret (entered on the Mac). Questions and plan reviews
+/// render inline in the conversation stream via QuestionPanel and PlanReviewPanel.
 struct SessionRequestPanel: View {
     let session: Session
     let request: Hermesh_Session_V1_RuntimeRequest
@@ -43,10 +43,6 @@ struct SessionRequestPanel: View {
                     Button { give { $0.decision = .acceptOnce } } label: { Text("Allow Once").frame(maxWidth: .infinity) }
                         .buttonStyle(.glassProminent)
                         .accessibilityIdentifier("thread-allow-once")
-                case .planReview:
-                    Button { give { $0.approvePlan = true } } label: { Text("Approve Plan").frame(maxWidth: .infinity) }
-                        .buttonStyle(.glassProminent)
-                        .accessibilityIdentifier("thread-approve-plan")
                 default:
                     Text("Answer it on the Mac.").font(.footnote).foregroundStyle(.secondary)
                 }
@@ -68,7 +64,6 @@ struct SessionRequestPanel: View {
             if !a.command.isEmpty { return String(localized: "Run this command?") }
             let file = a.targetPath.split(separator: "/").last.map(String.init) ?? ""
             return String(localized: "Use \(a.toolName.isEmpty ? String(localized: "a tool") : a.toolName) \(file)?")
-        case .planReview: return String(localized: "Start on this plan?")
         case .secretInput: return String(localized: "\(agentTitle(session.agent)) needs \(request.secretInput.label)")
         default: return ""
         }
@@ -77,7 +72,6 @@ struct SessionRequestPanel: View {
     private var reason: String {
         switch request.kind {
         case .toolApproval: request.approval.reason
-        case .planReview: request.planReview.title
         case .secretInput: request.secretInput.reason
         default: ""
         }

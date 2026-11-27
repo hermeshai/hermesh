@@ -513,3 +513,77 @@ final class QuestionFlowUITests: XCTestCase {
         XCTAssertTrue(cleanAnswer.exists, "settled card shows chosen answer with inline Recommended badge")
     }
 }
+
+final class PlanReviewFlowUITests: XCTestCase {
+    let app = XCUIApplication()
+
+    override func setUp() {
+        continueAfterFailure = false
+        app.launchArguments = [
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
+            "-DemoPlanReviewFlow",
+        ]
+        app.launch()
+        let tryDemo = app.buttons["try-demo"]
+        XCTAssertTrue(tryDemo.waitForExistence(timeout: 15), "try-demo")
+        tryDemo.tap()
+        let menu = app.descendants(matching: .any)["menu"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 15), "menu")
+        menu.tap()
+        let sessionRow = app.descendants(matching: .any)["session-Plan review flow session"].firstMatch
+        XCTAssertTrue(sessionRow.waitForExistence(timeout: 15), "drawer row Plan review flow session")
+        sessionRow.tap()
+        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10), "session page")
+    }
+
+    func testInlinePlanReviewScrollsRevisesAndApprovesCleanly() {
+        let panel = app.descendants(matching: .any)["thread-plan-review"].firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 10), "inline plan review panel")
+        XCTAssertTrue(app.staticTexts["Hermesh Internationalized Session Title Design Plan"].exists, "plan title promoted as card headline")
+        XCTAssertTrue(app.staticTexts["Plan → Code"].exists, "Plan -> Code mode badge")
+
+        let approveBtn = app.buttons["thread-approve-plan"]
+        let reviseBtn = app.buttons["thread-revise-plan"]
+        XCTAssertTrue(approveBtn.exists && approveBtn.isHittable, "Approve & Start button")
+        XCTAssertTrue(reviseBtn.exists && reviseBtn.isHittable, "Request Changes button")
+
+        // Scrolling up moves the inline plan card down with the stream and surfaces the "Back to plan" pill.
+        let conv = app.scrollViews.firstMatch
+        for _ in 0..<4 {
+            let start = conv.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30))
+            let finish = conv.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.82))
+            start.press(forDuration: 0.02, thenDragTo: finish)
+        }
+        let backToPlan = app.buttons["to-end"]
+        XCTAssertTrue(backToPlan.waitForExistence(timeout: 5), "Back to plan pill appears when scrolled up")
+        XCTAssertTrue(backToPlan.label.contains("Back to plan"), "pill label: \(backToPlan.label)")
+
+        // Tapping Back to plan smoothly scrolls back down to the confirmation card.
+        backToPlan.tap()
+        XCTAssertTrue(backToPlan.waitForNonExistence(timeout: 5), "pill hides once back at plan")
+        XCTAssertTrue(reviseBtn.isHittable, "Request Changes hittable again at bottom")
+
+        // Tapping Request Changes opens the inline feedback field and hides the bottom composer; Cancel restores both.
+        reviseBtn.tap()
+        let feedbackField = app.textFields["plan-feedback-text"]
+        XCTAssertTrue(feedbackField.waitForExistence(timeout: 5), "inline plan feedback input")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "keyboard opens on plan feedback input")
+        XCTAssertFalse(app.textFields["thread-composer"].exists, "bottom composer hides while typing plan feedback")
+        feedbackField.typeText("Keep last generated title offline")
+        let sendFeedback = app.buttons["thread-send-plan-feedback"]
+        XCTAssertTrue(sendFeedback.wait(for: \.isEnabled, toEqual: true, timeout: 5), "non-empty feedback enables Send Feedback")
+
+        app.buttons["thread-cancel-plan-feedback"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "Cancel dismisses keyboard")
+        XCTAssertTrue(app.textFields["thread-composer"].waitForExistence(timeout: 5), "bottom composer returns after Cancel")
+
+        // Tapping Approve & Start settles into the quiet inline receipt.
+        XCTAssertTrue(approveBtn.waitForExistence(timeout: 5) && approveBtn.isHittable)
+        approveBtn.tap()
+        let settled = app.descendants(matching: .any)["settled-plan-review"].firstMatch
+        XCTAssertTrue(settled.waitForExistence(timeout: 10), "settled inline plan receipt")
+        XCTAssertTrue(panel.waitForNonExistence(timeout: 5), "pending plan review card gone")
+        XCTAssertTrue(app.staticTexts["Plan approved"].exists, "approved receipt copy")
+    }
+}

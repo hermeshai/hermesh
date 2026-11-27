@@ -1,0 +1,1749 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>iPhone 计划确认卡片重设计 · 融入会话流原型</title>
+<style>
+:root {
+  --font-ios: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --dt: 16px;
+}
+
+[data-font="std"] { --dt: 16px; }
+[data-font="lg"]  { --dt: 19px; }
+[data-font="xl"]  { --dt: 22px; }
+
+[data-theme="dark"] {
+  --page: #0b0c10;
+  --page-fg: #ededf2;
+  --page-fg2: #9497a6;
+  --page-bd: rgba(255,255,255,.085);
+  --page-card: #15161c;
+  --page-btn: rgba(255,255,255,.08);
+  --page-bar: rgba(20,21,26,.92);
+
+  --ios-bg: #000000;
+  --ios-bg-rgb: 0,0,0;
+  --win: #18181c;
+  --l1: rgba(255,255,255,.92);
+  --l2: rgba(235,235,245,.58);
+  --l3: rgba(235,235,245,.34);
+  --sep: rgba(255,255,255,.09);
+  --fill: rgba(255,255,255,.05);
+  --fill2: rgba(255,255,255,.09);
+  --fill3: rgba(255,255,255,.14);
+  /* Matches QuestionPanel in-flow card surface on OLED dark */
+  --card-surf: rgba(24,24,28,.94);
+  --card-in: rgba(255,255,255,.06);
+  --settled-in: rgba(255,255,255,.055);
+  --settled-bd: rgba(255,255,255,.095);
+
+  --accent: #4c6ef5;
+  --accent-t: #97a9ff;
+  --accent-bg: rgba(76,110,245,.16);
+  --accent-bd: rgba(102,128,255,.42);
+
+  --ok: #30c988;
+  --ok-bg: rgba(48,201,136,.15);
+  --ok-bd: rgba(48,201,136,.30);
+  --orange: #f09a36;
+
+  --glass: rgba(30,30,34,.82);
+  --glass-sh: 0 0 0 .5px rgba(255,255,255,.14), inset 0 .5px 0 rgba(255,255,255,.12), 0 12px 32px rgba(0,0,0,.55);
+  --kb: #26262a;
+  --key: #525257;
+  --key2: #39393e;
+}
+
+[data-theme="light"] {
+  --page: #e8eaf0;
+  --page-fg: #1b1c22;
+  --page-fg2: #606370;
+  --page-bd: rgba(0,0,0,.085);
+  --page-card: #ffffff;
+  --page-btn: rgba(20,24,40,.065);
+  --page-bar: rgba(246,247,250,.92);
+
+  --ios-bg: #fbfbfc;
+  --ios-bg-rgb: 251,251,252;
+  --win: #ffffff;
+  --l1: rgba(0,0,0,.88);
+  --l2: rgba(60,60,67,.62);
+  --l3: rgba(60,60,67,.36);
+  --sep: rgba(0,0,0,.085);
+  --fill: rgba(118,118,128,.075);
+  --fill2: rgba(118,118,128,.13);
+  --fill3: rgba(118,118,128,.20);
+  --card-surf: #f4f4f7;
+  --card-in: rgba(118,118,128,.075);
+  --settled-in: rgba(255,255,255,.92);
+  --settled-bd: rgba(0,0,0,.085);
+
+  --accent: #3d5bff;
+  --accent-t: #2c49eb;
+  --accent-bg: rgba(61,91,255,.10);
+  --accent-bd: rgba(61,91,255,.28);
+
+  --ok: #159962;
+  --ok-bg: rgba(21,153,98,.11);
+  --ok-bd: rgba(21,153,98,.25);
+  --orange: #d47508;
+
+  --glass: rgba(250,250,252,.86);
+  --glass-sh: 0 0 0 .5px rgba(0,0,0,.09), 0 10px 28px rgba(20,24,40,.11), 0 2px 6px rgba(20,24,40,.05);
+  --kb: #d2d4da;
+  --key: #ffffff;
+  --key2: #adb1ba;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; overflow-x: hidden; }
+body {
+  background: var(--page);
+  color: var(--page-fg);
+  font: 14px/1.5 var(--font-ios);
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: 92px;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+input { font: inherit; color: inherit; }
+svg { display: block; flex: none; }
+
+/* ---------- Desktop Page Header ---------- */
+.desk-top {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 18px 24px 6px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px 20px;
+  flex-wrap: wrap;
+}
+.desk-top h1 { font-size: 18px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+.desk-top .sub { font-size: 13px; color: var(--page-fg2); margin-top: 2px; }
+.variant-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 11px;
+  background: var(--page-card);
+  border: 1px solid var(--page-bd);
+}
+.variant-tabs button {
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--page-fg2);
+  transition: background .15s, color .15s;
+}
+.variant-tabs button.on {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ---------- Rationale Strip (Desktop) ---------- */
+.rationale {
+  max-width: 836px;
+  margin: 6px auto 2px;
+  padding: 10px 15px;
+  border-radius: 13px;
+  background: var(--page-card);
+  border: 1px solid var(--page-bd);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--page-fg2);
+}
+.rationale b { color: var(--page-fg); font-weight: 620; }
+.rationale code {
+  font: .92em var(--mono);
+  background: var(--page-btn);
+  padding: 1px 5px;
+  border-radius: 5px;
+  color: var(--page-fg);
+}
+
+/* ---------- Stage ---------- */
+.stage {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 12px 20px 18px;
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.dev-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.col-head {
+  width: 100%;
+  max-width: 402px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px;
+  font-size: 12.5px;
+  color: var(--page-fg2);
+}
+.col-head b { color: var(--page-fg); font-weight: 650; }
+.badge-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-pill.bad { background: rgba(235,85,85,.15); color: #f27272; }
+[data-theme="light"] .badge-pill.bad { color: #cf3434; }
+.badge-pill.good { background: var(--ok-bg); color: var(--ok); }
+
+/* ---------- iPhone Viewport ---------- */
+.phone {
+  width: 402px;
+  height: 852px;
+  border-radius: 56px;
+  background: var(--ios-bg);
+  position: relative;
+  overflow: hidden;
+  overflow: clip;
+  box-shadow: 0 0 0 10px #1b1b1e, 0 0 0 11.5px #38383f, 0 26px 68px rgba(0,0,0,.45);
+  color: var(--l1);
+  font-size: var(--dt);
+  line-height: 1.44;
+  font-family: var(--font-ios);
+  user-select: none;
+}
+.island {
+  position: absolute;
+  top: 11px; left: 50%;
+  transform: translateX(-50%);
+  width: 122px; height: 35px;
+  border-radius: 20px;
+  background: #000;
+  z-index: 25;
+}
+.ios-sb {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 32px 0 42px;
+  font-weight: 600;
+  font-size: 15.5px;
+  z-index: 24;
+  pointer-events: none;
+}
+.ios-top-fade {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 114px;
+  z-index: 18;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(var(--ios-bg-rgb), .95) 0%,
+    rgba(var(--ios-bg-rgb), .82) 50%,
+    rgba(var(--ios-bg-rgb), 0) 100%
+  );
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+}
+.ios-nav {
+  position: absolute;
+  top: 54px; left: 0; right: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 20;
+  pointer-events: none;
+}
+.ios-nav > * { pointer-events: auto; }
+.glass {
+  background: var(--glass);
+  box-shadow: var(--glass-sh);
+  backdrop-filter: blur(26px) saturate(1.55);
+  -webkit-backdrop-filter: blur(26px) saturate(1.55);
+}
+.ios-orb {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--l1);
+  position: relative;
+  flex: none;
+}
+.ios-orb .dot-org {
+  position: absolute;
+  top: 9px; right: 9px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--orange);
+}
+.ios-tcap {
+  height: 42px;
+  max-width: 226px;
+  min-width: 0;
+  border-radius: 21px;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.18;
+}
+.ios-tcap b {
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ios-tcap small {
+  font-size: 10.5px;
+  color: var(--l2);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.home-bar {
+  position: absolute;
+  bottom: 8px; left: 50%;
+  transform: translateX(-50%);
+  width: 136px; height: 5px;
+  border-radius: 3px;
+  background: var(--l1);
+  opacity: .82;
+  z-index: 30;
+  pointer-events: none;
+}
+
+/* ---------- Conversation Scroll Stream ---------- */
+.ios-scroll {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 110px 20px 98px;
+  display: flex;
+  flex-direction: column;
+  gap: .82em;
+  scrollbar-width: none;
+}
+.ios-scroll::-webkit-scrollbar { display: none; }
+.phone.legacy-pin .ios-scroll { padding-bottom: 274px; }
+.phone.kb .ios-scroll { padding-bottom: 292px; }
+
+.chat-in {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: .82em;
+}
+
+.um {
+  align-self: flex-end;
+  max-width: 84%;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 19px;
+  padding: .56em .88em;
+  font-size: .95em;
+  line-height: 1.44;
+  overflow-wrap: anywhere;
+}
+.am {
+  font-size: .96em;
+  line-height: 1.56;
+  color: var(--l1);
+  display: flex;
+  flex-direction: column;
+  gap: .58em;
+  overflow-wrap: anywhere;
+}
+.am p { margin: 0; }
+.am ol { margin: 0; padding-left: 1.35em; display: flex; flex-direction: column; gap: .52em; }
+.am li::marker { color: var(--l3); font-variant-numeric: tabular-nums; }
+.am code {
+  font: .86em var(--mono);
+  background: var(--fill2);
+  padding: .08em .34em;
+  border-radius: 5px;
+  overflow-wrap: anywhere;
+}
+.am .plan-h {
+  font-size: 1.04em;
+  font-weight: 680;
+  letter-spacing: -.01em;
+  margin-top: .1em;
+}
+
+/* Settled Question Card (real Style A for alignment comparison!) */
+.settled-q {
+  border-radius: 15px;
+  background: var(--fill);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  padding: .75em .85em;
+  display: flex;
+  flex-direction: column;
+  gap: .48em;
+}
+.settled-q .sq-p {
+  font-size: .82em;
+  color: var(--l2);
+  line-height: 1.44;
+}
+.settled-q .sq-a {
+  padding: .56em .74em;
+  border-radius: 11px;
+  background: var(--settled-in);
+  box-shadow: inset 0 0 0 .5px var(--settled-bd);
+  display: flex;
+  align-items: flex-start;
+  gap: .52em;
+}
+.sq-ck {
+  width: 18px; height: 18px;
+  margin-top: 2px;
+  border-radius: 50%;
+  background: var(--ok-bg);
+  color: var(--ok);
+  box-shadow: inset 0 0 0 .5px var(--ok-bd);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.sq-txt {
+  font-size: .88em;
+  font-weight: 520;
+  line-height: 1.44;
+  color: var(--l1);
+}
+.sq-rec {
+  display: inline-block;
+  padding: .08em .4em;
+  margin-left: .3em;
+  border-radius: .34em;
+  font-size: .74em;
+  font-weight: 600;
+  background: var(--accent-bg);
+  color: var(--accent-t);
+}
+
+.work-ln {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .88em;
+  color: var(--l2);
+  padding: 2px 0 4px;
+}
+.work-ln .tm { color: var(--l3); font-variant-numeric: tabular-nums; }
+.hermesh-mark {
+  width: 16px; height: 16px;
+  animation: pulse-mk 1.5s ease-in-out infinite;
+}
+@keyframes pulse-mk { 0%, 100% { opacity: .52; transform: scale(.94); } 50% { opacity: 1; transform: scale(1.04); } }
+.tool-ln {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .86em;
+  color: var(--l2);
+  min-width: 0;
+}
+.tool-ln span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Agent Logo ---------- */
+.ag-logo {
+  width: 1.15em; height: 1.15em;
+  max-width: 22px; max-height: 22px;
+  border-radius: 26%;
+  overflow: hidden;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  box-shadow: 0 0 0 .5px rgba(255,255,255,.14);
+}
+.ag-logo.sm { width: 1.02em; height: 1.02em; max-width: 18px; max-height: 18px; }
+.ag-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ---------- Bottom Dock & Legacy Pinned Glass Panel (1:1 from screenshot) ---------- */
+.ios-dock {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: 24px;
+  padding: 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 22;
+  transition: opacity .2s;
+  pointer-events: none;
+}
+.ios-dock > * { pointer-events: auto; }
+.phone.kb .ios-dock.after-dock { opacity: 0; pointer-events: none; }
+
+/* Exact recreation of current SessionRequestPanel.swift */
+.legacy-plan {
+  border-radius: 36px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+}
+.legacy-plan .lp-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--l1);
+}
+.legacy-plan .lp-sub {
+  font-size: 13px;
+  line-height: 1.38;
+  color: var(--l2);
+}
+.legacy-plan .lp-cta {
+  width: 100%;
+  height: 50px;
+  border-radius: 999px;
+  background: #5371ff;
+  color: #fff;
+  font-size: 16.5px;
+  font-weight: 560;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 .5px 0 rgba(255,255,255,.28);
+  transition: opacity .15s, transform .08s;
+}
+.legacy-plan .lp-cta:active { transform: scale(.985); }
+
+/* Optional diagnostic callouts on BEFORE phone */
+.diag-on .legacy-plan {
+  outline: 1.5px dashed rgba(242,114,114,.7);
+  outline-offset: 2px;
+}
+.diag-tag {
+  display: none;
+  position: absolute;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(235,85,85,.92);
+  color: #fff;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 4;
+}
+.diag-on .diag-tag { display: inline-flex; }
+.diag-tag.t1 { top: -10px; right: 16px; }
+.diag-tag.t2 { bottom: 6px; right: 24px; }
+
+/* ========================================================================
+   SHARED IN-FLOW ANIMATION & INLINE FEEDBACK FIELD
+   ======================================================================== */
+@keyframes flow-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes settle-morph {
+  from { opacity: .55; transform: scale(.985); }
+  to { opacity: 1; transform: none; }
+}
+
+.rev-box {
+  display: flex;
+  flex-direction: column;
+  gap: .5em;
+  animation: flow-in .18s var(--ease);
+}
+.rev-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: .5em;
+  padding: .58em .78em;
+  border-radius: 14px;
+  background: var(--card-in);
+  box-shadow: inset 0 0 0 1.3px var(--accent);
+}
+.rev-input-wrap svg { width: 1em; height: 1em; color: var(--accent-t); }
+.rev-input-wrap input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  font-size: .88em;
+  color: var(--l1);
+}
+.rev-input-wrap input::placeholder { color: var(--l3); }
+
+/* ========================================================================
+   OPTION A: ALIGNED STREAM CARD (Sibling of QuestionPanel.swift)
+   ======================================================================== */
+.plan-a {
+  margin-top: 2px;
+  border-radius: 22px;
+  padding: .88em;
+  background: var(--card-surf);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  display: flex;
+  flex-direction: column;
+  gap: .68em;
+}
+.anim-in .plan-a, .anim-in .plan-b, .anim-in .plan-c {
+  animation: flow-in .2s var(--ease);
+}
+.plan-a .pa-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  font-size: .78em;
+  color: var(--l2);
+}
+.plan-a .pa-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.plan-a .pa-who span { font-weight: 500; }
+.plan-a .pa-mode {
+  font-size: .92em;
+  font-weight: 520;
+  color: var(--l2);
+  background: var(--fill2);
+  padding: .14em .56em;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.plan-a .pa-title {
+  font-size: .98em;
+  font-weight: 650;
+  line-height: 1.4;
+  color: var(--l1);
+  overflow-wrap: anywhere;
+}
+.plan-a .pa-sub {
+  font-size: .8em;
+  line-height: 1.42;
+  color: var(--l2);
+  margin-top: -.35em;
+}
+.plan-a .pa-acts {
+  display: flex;
+  align-items: stretch;
+  gap: .55em;
+  padding-top: .1em;
+}
+[data-font="xl"] .plan-a .pa-acts {
+  flex-direction: column-reverse;
+}
+.btn-pill {
+  min-height: 2.38em;
+  padding: .46em .95em;
+  border-radius: 999px;
+  background: var(--fill2);
+  font-size: .88em;
+  font-weight: 580;
+  line-height: 1.25;
+  color: var(--l1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .36em;
+  text-align: center;
+  transition: opacity .15s, transform .08s, background .15s;
+}
+.btn-pill:active:not(:disabled) { transform: scale(.985); }
+.btn-pill:disabled { opacity: .38; cursor: default; }
+.btn-pill.sec { flex: 1; }
+.btn-pill.pri {
+  flex: 1.35;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: inset 0 .5px 0 rgba(255,255,255,.22);
+}
+[data-font="xl"] .btn-pill.pri { flex: 1; }
+
+/* ========================================================================
+   OPTION B: COMPACT HORIZONTAL STREAM BAR (Ultra-lightweight)
+   ======================================================================== */
+.plan-b {
+  margin-top: 2px;
+  border-radius: 18px;
+  padding: .76em .8em .76em .86em;
+  background: var(--card-surf);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  display: flex;
+  align-items: center;
+  gap: .65em;
+}
+[data-font="xl"] .plan-b {
+  flex-direction: column;
+  align-items: stretch;
+}
+.plan-b .pb-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .22em;
+}
+.plan-b .pb-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .74em;
+  font-weight: 520;
+  color: var(--l2);
+}
+.plan-b .pb-title {
+  font-size: .91em;
+  font-weight: 620;
+  line-height: 1.36;
+  color: var(--l1);
+  overflow-wrap: anywhere;
+}
+.plan-b .pb-cta {
+  flex: none;
+  height: 2.35em;
+  padding: 0 1.05em;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: .86em;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .32em;
+  white-space: nowrap;
+  box-shadow: inset 0 .5px 0 rgba(255,255,255,.22);
+  transition: transform .08s, opacity .15s;
+}
+.plan-b .pb-cta:active { transform: scale(.975); }
+.pb-hint {
+  font-size: .74em;
+  color: var(--l3);
+  padding: 0 6px;
+  margin-top: -.35em;
+}
+
+/* ========================================================================
+   OPTION C: EDITORIAL DOCUMENT SIGN-OFF CARD (Inner Plan Chip + Right CTA)
+   ======================================================================== */
+.plan-c {
+  margin-top: 2px;
+  border-radius: 20px;
+  padding: .82em .88em;
+  background: var(--card-surf);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  display: flex;
+  flex-direction: column;
+  gap: .65em;
+}
+.plan-c .pc-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: .62em;
+  padding: .65em .75em;
+  border-radius: 13px;
+  background: var(--settled-in);
+  box-shadow: inset 0 0 0 .5px var(--settled-bd);
+}
+.plan-c .pc-ic {
+  width: 1.9em; height: 1.9em;
+  border-radius: .56em;
+  background: var(--accent-bg);
+  color: var(--accent-t);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  margin-top: .08em;
+}
+.plan-c .pc-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .16em;
+}
+.plan-c .pc-kicker {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .74em;
+  color: var(--l2);
+}
+.plan-c .pc-title {
+  font-size: .92em;
+  font-weight: 630;
+  line-height: 1.38;
+  color: var(--l1);
+  overflow-wrap: anywhere;
+}
+.plan-c .pc-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6em;
+  padding-top: .05em;
+}
+[data-font="xl"] .plan-c .pc-foot {
+  flex-direction: column-reverse;
+  align-items: stretch;
+}
+.plan-c .pc-rev-link {
+  font-size: .84em;
+  font-weight: 540;
+  color: var(--l2);
+  padding: .4em .5em;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .3em;
+  transition: color .15s, background .15s;
+}
+.plan-c .pc-rev-link:active { background: var(--fill2); color: var(--l1); }
+.plan-c .pc-cta {
+  height: 2.32em;
+  padding: 0 1.15em;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: .86em;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .34em;
+  white-space: nowrap;
+  box-shadow: inset 0 .5px 0 rgba(255,255,255,.22);
+  transition: transform .08s;
+}
+.plan-c .pc-cta:active { transform: scale(.98); }
+
+/* ========================================================================
+   SETTLED PLAN CONFIRMATION (Quiet inline receipt, matches SettledQuestionCard)
+   ======================================================================== */
+.settled-plan {
+  border-radius: 14px;
+  background: var(--fill);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  padding: .62em .78em;
+  display: flex;
+  align-items: flex-start;
+  gap: .56em;
+  animation: settle-morph .22s var(--ease);
+}
+.settled-plan .sp-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .12em;
+}
+.settled-plan .sp-top {
+  font-size: .84em;
+  font-weight: 560;
+  color: var(--l1);
+  display: flex;
+  align-items: center;
+  gap: .4em;
+  flex-wrap: wrap;
+}
+.settled-plan .sp-tag {
+  font-size: .82em;
+  font-weight: 500;
+  color: var(--l2);
+}
+.settled-plan .sp-title {
+  font-size: .78em;
+  color: var(--l2);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Floating "Back to Plan" Pill (matches ToEndButton) ---------- */
+.jump-q {
+  position: absolute;
+  left: 50%;
+  bottom: 84px;
+  transform: translateX(-50%) translateY(10px);
+  z-index: 23;
+  min-height: 36px;
+  max-width: calc(100% - 32px);
+  padding: 5px 10px 5px 9px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 580;
+  color: var(--l1);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s var(--ease), transform .2s var(--ease);
+  white-space: nowrap;
+}
+.jump-q.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+.jump-q .arr {
+  width: 19px; height: 19px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------- Bottom Composer Capsule ---------- */
+.ios-cmp {
+  height: 48px;
+  border-radius: 24px;
+  padding: 6px 6px 6px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 2px;
+  font-size: 15px;
+}
+.cmp-ic {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--fill2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--l1);
+}
+.cmp-send {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: .42;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.cmp-ph {
+  flex: 1;
+  color: var(--l3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Simulated iOS Keyboard ---------- */
+.ios-kbd {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 256px;
+  background: var(--kb);
+  transform: translateY(102%);
+  transition: transform .26s var(--ease);
+  z-index: 26;
+  padding: 9px 4px 0;
+  font-size: 16px;
+}
+.phone.kb .ios-kbd { transform: none; }
+.kr { display: flex; justify-content: center; gap: 5px; margin-bottom: 9px; }
+.kk {
+  height: 39px;
+  flex: 0 0 33px;
+  border-radius: 6px;
+  background: var(--key);
+  box-shadow: 0 1px 0 rgba(0,0,0,.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  color: var(--l1);
+}
+.kk.w { flex-basis: 44px; background: var(--key2); font-size: 13.5px; }
+.kk.sp { flex: 1; max-width: 180px; font-size: 14px; }
+.kk.rt { flex-basis: 82px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; }
+
+/* ---------- Desktop Bottom Control Bar ---------- */
+.desk-ctl {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 90;
+  background: var(--page-bar);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--page-bd);
+  padding: 9px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+}
+.desk-ctl .g { display: flex; gap: 4px; align-items: center; }
+.desk-ctl .g > b { color: var(--page-fg2); font-weight: 500; margin-right: 2px; }
+.desk-ctl button {
+  height: 27px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: var(--page-btn);
+  color: var(--page-fg);
+  font-size: 12px;
+}
+.desk-ctl button.on { background: var(--accent); color: #fff; }
+
+/* ---------- Mobile Full-Screen Mode ---------- */
+.mob-fab, .mob-sheet, .mob-scrim { display: none; }
+@media (max-width: 860px) {
+  html, body { height: 100%; overflow: hidden; padding: 0; background: var(--ios-bg); }
+  .desk-top, .rationale, .col-head, .desk-ctl { display: none !important; }
+  .stage { padding: 0; margin: 0; width: 100vw; height: 100dvh; display: block; }
+  .dev-col { width: 100%; height: 100%; gap: 0; }
+  .stage[data-mob="after"] .col-before { display: none; }
+  .stage[data-mob="before"] .col-after { display: none; }
+  .phone { width: 100vw; height: 100dvh; border-radius: 0; box-shadow: none; }
+  .island, .ios-sb, .ios-nav, .ios-top-fade, .home-bar { display: none !important; }
+  .ios-scroll { padding: 14px 18px calc(86px + env(safe-area-inset-bottom, 0px)); }
+  .phone.legacy-pin .ios-scroll { padding-bottom: calc(262px + env(safe-area-inset-bottom, 0px)); }
+  .phone.kb .ios-scroll { padding-bottom: 280px; }
+  .ios-dock { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .jump-q { bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
+
+  .mob-fab {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    position: fixed;
+    top: 10px;
+    right: 14px;
+    z-index: 95;
+    height: 32px;
+    padding: 0 11px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 560;
+    color: var(--l1);
+  }
+  .mob-scrim.open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.42);
+    z-index: 96;
+  }
+  .mob-sheet.open {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: fixed;
+    left: 12px; right: 12px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    z-index: 97;
+    background: var(--page-card);
+    color: var(--page-fg);
+    border: .5px solid var(--page-bd);
+    border-radius: 22px;
+    padding: 15px 16px;
+    box-shadow: 0 18px 48px rgba(0,0,0,.5);
+    max-height: 78dvh;
+    overflow-y: auto;
+  }
+  .ms-row { display: flex; flex-direction: column; gap: 6px; }
+  .ms-lbl { font-size: 12px; color: var(--page-fg2); font-weight: 550; }
+  .ms-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ms-btns button {
+    flex: 1 1 auto;
+    min-height: 32px;
+    padding: 4px 10px;
+    border-radius: 9px;
+    font-size: 12.5px;
+    font-weight: 520;
+    background: var(--page-btn);
+    color: var(--page-fg);
+  }
+  .ms-btns button.on { background: var(--accent); color: #fff; }
+}
+</style>
+</head>
+<body data-font="std">
+
+<div class="desk-top">
+  <div>
+    <h1>iPhone 计划确认卡片重设计 · 融入会话流原型</h1>
+    <div class="sub">告别底部 36pt 悬浮玻璃砖与 50pt 满宽蓝块 · 对齐选项流（QuestionPanel）的自然滚动、层级比例与回底胶囊</div>
+  </div>
+  <div class="variant-tabs" id="variant-tabs">
+    <button type="button" data-variant="a" class="on">方案 A · 对齐选项卡（推荐）</button>
+    <button type="button" data-variant="b">方案 B · 紧凑单行确认条</button>
+    <button type="button" data-variant="c">方案 C · 文档收口卡</button>
+  </div>
+</div>
+
+<div class="rationale" id="rationale"></div>
+
+<div class="stage" id="stage" data-mob="after">
+  <!-- ================= LEFT: BEFORE (EXACT CURRENT) ================= -->
+  <div class="dev-col col-before">
+    <div class="col-head">
+      <span><b>现状（修改前）</b> · 底部悬浮玻璃弹窗</span>
+      <span class="badge-pill bad">遮挡正文 · 比例失衡</span>
+    </div>
+
+    <div class="phone legacy-pin" id="phone-before">
+      <div class="island"></div>
+      <div class="ios-sb"><span>16:37</span><span style="font-size:12.5px">5G · 92%</span></div>
+      <div class="ios-top-fade"></div>
+      <div class="ios-nav">
+        <button class="ios-orb glass" aria-label="菜单">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h11M4 17h16"/></svg>
+          <span class="dot-org"></span>
+        </button>
+        <div class="ios-tcap glass">
+          <b>https://github.com/ping…</b>
+          <small>yee-homebook/hermesh</small>
+        </div>
+        <button class="ios-orb glass" aria-label="更多">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/></svg>
+        </button>
+      </div>
+
+      <div class="ios-scroll" id="scroll-before">
+        <div class="chat-in" id="chat-before"></div>
+      </div>
+
+      <div class="ios-dock" id="dock-before"></div>
+      <div class="home-bar"></div>
+    </div>
+  </div>
+
+  <!-- ================= RIGHT: AFTER (REDESIGN A / B / C) ================= -->
+  <div class="dev-col col-after">
+    <div class="col-head">
+      <span id="after-head"><b>方案 A（推荐）</b> · 融入会话流 + 对齐选项卡</span>
+      <span class="badge-pill good" id="after-badge">可滑动 · 轻盈克制</span>
+    </div>
+
+    <div class="phone" id="phone-after">
+      <div class="island"></div>
+      <div class="ios-sb"><span>16:37</span><span style="font-size:12.5px">5G · 92%</span></div>
+      <div class="ios-top-fade"></div>
+      <div class="ios-nav">
+        <button class="ios-orb glass" aria-label="菜单">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h11M4 17h16"/></svg>
+          <span class="dot-org"></span>
+        </button>
+        <div class="ios-tcap glass">
+          <b>https://github.com/ping…</b>
+          <small>yee-homebook/hermesh</small>
+        </div>
+        <button class="ios-orb glass" aria-label="更多">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/></svg>
+        </button>
+      </div>
+
+      <div class="ios-scroll" id="scroll-after">
+        <div class="chat-in" id="chat-after"></div>
+      </div>
+
+      <button type="button" class="jump-q glass" id="jump-q">
+        <span id="jump-logo"></span>
+        <span>回到方案确认</span>
+        <span class="arr"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M4.2 8.8L8 12.6l3.8-3.8"/></svg></span>
+      </button>
+
+      <div class="ios-dock after-dock" id="dock-after"></div>
+
+      <div class="ios-kbd" id="ios-kbd">
+        <div class="kr"><span class="kk">Q</span><span class="kk">W</span><span class="kk">E</span><span class="kk">R</span><span class="kk">T</span><span class="kk">Y</span><span class="kk">U</span><span class="kk">I</span><span class="kk">O</span><span class="kk">P</span></div>
+        <div class="kr"><span class="kk">A</span><span class="kk">S</span><span class="kk">D</span><span class="kk">F</span><span class="kk">G</span><span class="kk">H</span><span class="kk">J</span><span class="kk">K</span><span class="kk">L</span></div>
+        <div class="kr"><span class="kk w">⇧</span><span class="kk">Z</span><span class="kk">X</span><span class="kk">C</span><span class="kk">V</span><span class="kk">B</span><span class="kk">N</span><span class="kk">M</span><span class="kk w">⌫</span></div>
+        <div class="kr"><span class="kk w">123</span><span class="kk sp">空格</span><button type="button" class="kk rt" id="kb-done">完成</button></div>
+      </div>
+
+      <div class="home-bar"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile-only Minimal Floating Trigger + Drawer -->
+<button type="button" class="mob-fab glass" id="mob-fab">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"/></svg>
+  <span id="mob-fab-lbl">方案 A · 调试</span>
+</button>
+<div class="mob-scrim" id="mob-scrim"></div>
+<div class="mob-sheet" id="mob-sheet"></div>
+
+<!-- Desktop Bottom Bar -->
+<div class="desk-ctl" id="desk-ctl"></div>
+
+<script>
+const AG_ICON = "data:image/png;base64,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";
+
+const VARIANTS = {
+  a: {
+    name: "方案 A · 对齐选项卡",
+    short: "方案 A",
+    head: "<b>方案 A（推荐）</b> · 融入会话流 + 对齐选项卡",
+    badge: "视觉统一 · 支持修改",
+    rationale: "<b>为什么推荐方案 A：</b> 与现有 <code>QuestionPanel</code> 采用完全一致的流内卡片语法（<code>Palette.reply</code> + 22pt 圆角 + 0.5pt 描边 + 轻巧顶栏 + 标准高度胶囊按钮）。把真正的「方案标题」升为主视觉，把原本 50pt 满宽蓝块收敛成「要求修改 + 批准并开始」双胶囊，既解决比例臃肿，又补齐了手机端反馈修改路径。"
+  },
+  b: {
+    name: "方案 B · 紧凑单行条",
+    short: "方案 B",
+    head: "<b>方案 B</b> · 极简流内确认条",
+    badge: "零压迫 · 高度减半",
+    rationale: "<b>方案 B 思路：</b> 方案正文已经在紧上方完整呈现，收口区只需一条极轻的单行横向确认条（高度约 66pt，比现状矮一半以上）。左侧展示方案名，右侧放一枚克制的「开始编码」胶囊；如需修改，直接用底部输入框回复（占位文案同步提示「输入修改意见，或继续聊…」）。"
+  },
+  c: {
+    name: "方案 C · 文档收口卡",
+    short: "方案 C",
+    head: "<b>方案 C</b> · 内嵌方案条 + 右对齐按钮",
+    badge: "编辑感 · 呼吸克制",
+    rationale: "<b>方案 C 思路：</b> 用内置浅底方案条（呼应已回答问答卡片的层次感）承载文档图标与标题，底部左侧放轻量「要求修改」文字按钮，右侧放自适应宽度的「批准并开始」胶囊（不铺满整行），彻底摆脱居中大蓝块弹窗感。"
+  }
+};
+
+const SCENES = {
+  real: {
+    name: "截图还原",
+    planTitle: "Hermesh 国际化会话标题生成机制设计方案",
+    showSettledQ: false,
+    bodyHtml: `
+      <p>在开始编码落地前，还有两个边界决策请确认是否符合预期：</p>
+      <ol>
+        <li><b>多设备异构语言策略：</b>采用单份权威 <code>Session.title</code> 存储（按发起会话或触发重生成那台客户端当前所选的 UI 语言生成，保证桌面、手机、锁屏通知与底层 CLI 会话名一致），不做按读取端实时多语种翻译；切换客户端语言后可通过右键/长按“重新生成标题”切换为新语言。</li>
+        <li><b>零配置模型选择：</b>不在设置界面新增“标题模型”配置项，由机器端自动路由到本机已登录 Agent 的轻量快速档（配额耗尽时自动跨驱动降级，全离线时保留本地清洗标题）。</li>
+      </ol>
+      <p>确认无误后（或告知需要调整的点），我即可按方案中的分步计划开始实现。</p>
+    `
+  },
+  longtitle: {
+    name: "极长标题",
+    planTitle: "重构跨设备会话流式渲染管线、统一 RuntimeRequest 生命周期与断线重连状态补偿方案",
+    showSettledQ: false,
+    bodyHtml: `
+      <p>已完成架构排查，核心改动分为三个阶段：</p>
+      <ol>
+        <li>将 <code>PlanReview</code> 与 <code>UserInput</code> 统一迁入 <code>ScrollView</code> 会话流底部，避免底部双层玻璃叠加与正文遮挡。</li>
+        <li>扩展 <code>ToEndButton</code> 的等待态，上滑查看前文时浮现「回到方案确认 ↓」玻璃胶囊。</li>
+        <li>为已批准/已要求修改的方案增加轻量流内回执，保持时间线完整可追溯。</li>
+      </ol>
+      <p>确认无误后我将立即切入编码模式开始落地。</p>
+    `
+  },
+  notitle: {
+    name: "无标题",
+    planTitle: "",
+    showSettledQ: false,
+    bodyHtml: `
+      <p>方案已整理完毕，共涉及 3 个文件：</p>
+      <ol>
+        <li><code>SessionPage.swift</code>：将计划确认卡片移入会话滚动流。</li>
+        <li><code>SessionRequestPanel.swift</code>：收紧圆角与按钮比例。</li>
+        <li><code>Components.swift</code>：上滑返回胶囊支持「回到方案确认」。</li>
+      </ol>
+      <p>确认后即可按上述计划开始实现。</p>
+    `
+  },
+  withq: {
+    name: "含前序问答",
+    planTitle: "Hermesh 国际化会话标题生成机制设计方案",
+    showSettledQ: true,
+    bodyHtml: `
+      <p class="plan-h">实施计划</p>
+      <ol>
+        <li><b>权威字段存储：</b>沿用 <code>Session.title</code>，由触发侧客户端 UI 语言生成，避免多端实时翻译抖动。</li>
+        <li><b>零配置路由：</b>机器端自动选择当前登录 Agent 的轻量快速档，配额不足自动降级，全离线回退本地清洗。</li>
+        <li><b>交互入口：</b>桌面端右键菜单与 iOS 长按菜单均提供「重新生成标题」。</li>
+      </ol>
+      <p>确认无误后，我即可按上述分步计划开始实现。</p>
+    `
+  }
+};
+
+const params = new URLSearchParams(location.search);
+const S = {
+  variant: ["a", "b", "c"].includes(params.get("v")) ? params.get("v") : "a",
+  scene: SCENES[params.get("s")] ? params.get("s") : "real",
+  state: ["pending", "revising", "approved", "revised"].includes(params.get("st")) ? params.get("st") : "pending",
+  font: ["std", "lg", "xl"].includes(params.get("f")) ? params.get("f") : "std",
+  theme: ["dark", "light"].includes(params.get("t")) ? params.get("t") : "dark",
+  diag: params.get("diag") === "1",
+  mobTab: "after",
+  sheetOpen: false,
+  revText: "",
+  revSubmitted: "",
+  typing: false
+};
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function agLogo(sm = false) {
+  return `<span class="ag-logo ${sm ? "sm" : ""}"><img src="${AG_ICON}" alt="Antigravity"></span>`;
+}
+
+function checkSvg(sz = 11) {
+  return `<svg width="${sz}" height="${sz}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4l3.1 3.1 6.5-6.8"/></svg>`;
+}
+
+function docSvg(sz = 15) {
+  return `<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>`;
+}
+
+function editSvg(sz = 14) {
+  return `<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+}
+
+function hermeshMarkSvg() {
+  return `<svg class="hermesh-mark" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-width="2.4">
+    <line x1="4" y1="13" x2="18" y2="5" stroke="#2adbc9"/>
+    <line x1="6" y1="4" x2="16" y2="20" stroke="#4a7aff"/>
+    <line x1="5" y1="18" x2="20" y2="14" stroke="#8566ff"/>
+  </svg>`;
+}
+
+function composerHtml(placeholder) {
+  return `
+    <div class="ios-cmp glass">
+      <span class="cmp-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+      <span class="cmp-ph">${esc(placeholder)}</span>
+      <span class="cmp-send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></span>
+    </div>
+  `;
+}
+
+function buildThreadPrefix(sc) {
+  const userIntro = `<div class="um">帮我设计一下 Hermesh 国际化会话标题的生成机制，先出方案给我确认，别急着改代码。</div>`;
+  const settledQ = sc.showSettledQ ? `
+    <div class="settled-q">
+      <div class="sq-p">多设备切换界面语言时，已有会话的标题应该如何处理？</div>
+      <div class="sq-a">
+        <span class="sq-ck">${checkSvg(10)}</span>
+        <div class="sq-txt">保留单份权威标题，需要时手动触发重新生成<span class="sq-rec">推荐</span></div>
+      </div>
+    </div>
+  ` : "";
+  return `${userIntro}${settledQ}<div class="am">${sc.bodyHtml}</div>`;
+}
+
+function buildReviseInlineHtml() {
+  const canSend = S.revText.trim().length > 0;
+  return `
+    <div class="rev-box">
+      <div class="rev-input-wrap">
+        ${editSvg(14)}
+        <input id="rev-input" type="text" value="${esc(S.revText)}" placeholder="告诉 Antigravity 哪里需要调整…">
+      </div>
+      <div style="display:flex;gap:.55em">
+        <button type="button" class="btn-pill sec" data-act="cancel-rev">取消</button>
+        <button type="button" class="btn-pill pri" data-act="send-rev" ${canSend ? "" : "disabled"}>发送修改意见</button>
+      </div>
+    </div>
+  `;
+}
+
+function buildAfterPlanCard(sc) {
+  const title = sc.planTitle || "按这个方案开始实现？";
+  const hasTitle = Boolean(sc.planTitle);
+
+  if (S.state === "approved") {
+    return `
+      <div class="settled-plan">
+        <span class="sq-ck" style="margin-top:2px">${checkSvg(10)}</span>
+        <div class="sp-body">
+          <div class="sp-top">已批准方案 <span class="sp-tag">· 开始编码</span></div>
+          ${hasTitle ? `<div class="sp-title">${esc(sc.planTitle)}</div>` : ""}
+        </div>
+      </div>
+      <div class="tool-ln">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 4.5h10M3 8h7M3 11.5h9"/></svg>
+        <span>已读取 <code>internal/kernel/title.go</code></span>
+      </div>
+      <div class="work-ln">${hermeshMarkSvg()}<span>正在按方案实现…</span><span class="tm">0:04</span></div>
+    `;
+  }
+
+  if (S.state === "revised") {
+    return `
+      <div class="settled-plan">
+        <span class="sq-ck" style="margin-top:2px;background:var(--fill2);color:var(--l2);box-shadow:none">${editSvg(10)}</span>
+        <div class="sp-body">
+          <div class="sp-top" style="color:var(--l2)">已请求调整方案</div>
+          ${hasTitle ? `<div class="sp-title">${esc(sc.planTitle)}</div>` : ""}
+        </div>
+      </div>
+      <div class="um">${esc(S.revSubmitted || "第 2 点离线回退时，希望保留最近一次成功生成的标题而不是覆写。")}</div>
+      <div class="work-ln">${hermeshMarkSvg()}<span>正在更新方案…</span><span class="tm">0:03</span></div>
+    `;
+  }
+
+  // Pending or Revising
+  if (S.variant === "a") {
+    return `
+      <div class="plan-a" id="plan-card-after">
+        <div class="pa-meta">
+          <span class="pa-who">${agLogo(true)}<span>Antigravity · 方案待确认</span></span>
+          <span class="pa-mode">Plan → Code</span>
+        </div>
+        <div class="pa-title">${esc(title)}</div>
+        ${S.state === "revising" ? buildReviseInlineHtml() : `
+          <div class="pa-acts">
+            <button type="button" class="btn-pill sec" data-act="open-rev">要求修改</button>
+            <button type="button" class="btn-pill pri" data-act="approve">批准并开始</button>
+          </div>
+        `}
+      </div>
+    `;
+  }
+
+  if (S.variant === "b") {
+    return `
+      <div class="plan-b" id="plan-card-after">
+        <div class="pb-info">
+          <span class="pb-eyebrow">${agLogo(true)}<span>方案待确认</span></span>
+          <div class="pb-title">${esc(title)}</div>
+        </div>
+        <button type="button" class="pb-cta" data-act="approve">
+          ${checkSvg(13)}<span>开始编码</span>
+        </button>
+      </div>
+      <div class="pb-hint">如需调整方案，直接在下方输入框回复即可</div>
+    `;
+  }
+
+  // Variant C
+  return `
+    <div class="plan-c" id="plan-card-after">
+      <div class="pc-chip">
+        <span class="pc-ic">${docSvg(15)}</span>
+        <div class="pc-meta">
+          <span class="pc-kicker">${agLogo(true)}<span>Antigravity · 方案待确认</span></span>
+          <div class="pc-title">${esc(title)}</div>
+        </div>
+      </div>
+      ${S.state === "revising" ? buildReviseInlineHtml() : `
+        <div class="pc-foot">
+          <button type="button" class="pc-rev-link" data-act="open-rev">${editSvg(13)}<span>要求修改</span></button>
+          <button type="button" class="pc-cta" data-act="approve"><span>批准并开始</span><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8h9M8.8 4.2L12.6 8l-3.8 3.8"/></svg></button>
+        </div>
+      `}
+    </div>
+  `;
+}
+
+function renderBefore(sc) {
+  const phone = document.getElementById("phone-before");
+  phone.classList.toggle("diag-on", S.diag);
+  phone.classList.toggle("legacy-pin", S.state === "pending" || S.state === "revising");
+
+  const chat = document.getElementById("chat-before");
+  const dock = document.getElementById("dock-before");
+  let extra = "";
+  if (S.state === "approved") {
+    extra = `<div class="work-ln">${hermeshMarkSvg()}<span>正在按方案实现…</span><span class="tm">0:04</span></div>`;
+  } else if (S.state === "revised") {
+    extra = `<div class="um">${esc(S.revSubmitted || "第 2 点离线回退时，希望保留最近一次成功生成的标题而不是覆写。")}</div>
+             <div class="work-ln">${hermeshMarkSvg()}<span>正在更新方案…</span><span class="tm">0:03</span></div>`;
+  }
+  chat.innerHTML = buildThreadPrefix(sc) + extra;
+
+  const pinnedCard = (S.state === "pending" || S.state === "revising") ? `
+    <div class="legacy-plan glass">
+      <span class="diag-tag t1">36pt 悬浮玻璃 + 遮挡正文</span>
+      <span class="diag-tag t2">50pt 满宽强蓝块，比例头轻脚重</span>
+      <div class="lp-h">${agLogo(false)}<span>按这个方案开始做？</span></div>
+      ${sc.planTitle ? `<div class="lp-sub">${esc(sc.planTitle)}</div>` : ""}
+      <button type="button" class="lp-cta" data-act="approve">批准并开始编码</button>
+    </div>
+  ` : "";
+
+  dock.innerHTML = pinnedCard + composerHtml("继续聊…");
+}
+
+function renderAfter(sc) {
+  const v = VARIANTS[S.variant];
+  document.getElementById("after-head").innerHTML = v.head;
+  document.getElementById("after-badge").textContent = v.badge;
+  document.getElementById("rationale").innerHTML = v.rationale;
+  document.getElementById("mob-fab-lbl").textContent = `${v.short} · 调试`;
+
+  document.querySelectorAll("#variant-tabs button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.variant === S.variant);
+  });
+
+  const phone = document.getElementById("phone-after");
+  phone.classList.toggle("kb", S.typing);
+
+  const chat = document.getElementById("chat-after");
+  chat.innerHTML = buildThreadPrefix(sc) + buildAfterPlanCard(sc);
+
+  const ph = (S.state === "pending" && S.variant === "b") ? "输入修改意见，或继续聊…" : "继续聊…";
+  document.getElementById("dock-after").innerHTML = composerHtml(ph);
+  document.getElementById("jump-logo").innerHTML = agLogo(true);
+
+  const revInput = document.getElementById("rev-input");
+  if (revInput) {
+    revInput.addEventListener("focus", () => {
+      S.typing = true;
+      phone.classList.add("kb");
+      setTimeout(scrollAfterToBottom, 60);
+    });
+    revInput.addEventListener("input", (e) => {
+      S.revText = e.target.value;
+      const sendBtn = chat.querySelector('[data-act="send-rev"]');
+      if (sendBtn) sendBtn.disabled = S.revText.trim().length === 0;
+    });
+    revInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && S.revText.trim()) {
+        e.preventDefault();
+        submitRevision();
+      }
+    });
+  }
+}
+
+function scrollAfterToBottom(smooth = false) {
+  const el = document.getElementById("scroll-after");
+  el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+  updateJumpPill();
+}
+
+function scrollBeforeToBottom() {
+  const el = document.getElementById("scroll-before");
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateJumpPill() {
+  const el = document.getElementById("scroll-after");
+  const pill = document.getElementById("jump-q");
+  const isWaiting = (S.state === "pending" || S.state === "revising") && !S.typing;
+  const distFromEnd = el.scrollHeight - el.clientHeight - el.scrollTop;
+  pill.classList.toggle("show", isWaiting && distFromEnd > 110);
+}
+
+function submitRevision() {
+  if (!S.revText.trim()) return;
+  S.revSubmitted = S.revText.trim();
+  S.revText = "";
+  S.typing = false;
+  S.state = "revised";
+  render(true);
+}
+
+function renderControls() {
+  const desk = document.getElementById("desk-ctl");
+  desk.innerHTML = `
+    <div class="g">
+      <b>场景</b>
+      ${Object.entries(SCENES).map(([k, v]) => `<button type="button" data-scene="${k}" class="${S.scene === k ? "on" : ""}">${v.name}</button>`).join("")}
+    </div>
+    <div class="g">
+      <b>状态</b>
+      <button type="button" data-state="pending" class="${S.state === "pending" ? "on" : ""}">待确认</button>
+      <button type="button" data-state="revising" class="${S.state === "revising" ? "on" : ""}" ${S.variant === "b" ? "disabled style='opacity:.38'" : ""}>展开修改</button>
+      <button type="button" data-state="approved" class="${S.state === "approved" ? "on" : ""}">已批准</button>
+    </div>
+    <div class="g">
+      <b>字号</b>
+      <button type="button" data-font="std" class="${S.font === "std" ? "on" : ""}">标准</button>
+      <button type="button" data-font="lg" class="${S.font === "lg" ? "on" : ""}">大</button>
+      <button type="button" data-font="xl" class="${S.font === "xl" ? "on" : ""}">超大</button>
+    </div>
+    <div class="g">
+      <b>外观</b>
+      <button type="button" data-theme-toggle="dark" class="${S.theme === "dark" ? "on" : ""}">深色</button>
+      <button type="button" data-theme-toggle="light" class="${S.theme === "light" ? "on" : ""}">浅色</button>
+      <button type="button" data-diag="1" class="${S.diag ? "on" : ""}">标出问题</button>
+    </div>
+  `;
+
+  const sheet = document.getElementById("mob-sheet");
+  sheet.innerHTML = `
+    <div class="ms-row">
+      <div class="ms-lbl">视图</div>
+      <div class="ms-btns">
+        <button type="button" data-mob="after" class="${S.mobTab === "after" ? "on" : ""}">重新设计</button>
+        <button type="button" data-mob="before" class="${S.mobTab === "before" ? "on" : ""}">现状对比</button>
+      </div>
+    </div>
+    <div class="ms-row">
+      <div class="ms-lbl">设计方案</div>
+      <div class="ms-btns">
+        <button type="button" data-variant="a" class="${S.variant === "a" ? "on" : ""}">A · 对齐选项卡</button>
+        <button type="button" data-variant="b" class="${S.variant === "b" ? "on" : ""}">B · 单行条</button>
+        <button type="button" data-variant="c" class="${S.variant === "c" ? "on" : ""}">C · 收口卡</button>
+      </div>
+    </div>
+    <div class="ms-row">
+      <div class="ms-lbl">场景</div>
+      <div class="ms-btns">
+        ${Object.entries(SCENES).map(([k, v]) => `<button type="button" data-scene="${k}" class="${S.scene === k ? "on" : ""}">${v.name}</button>`).join("")}
+      </div>
+    </div>
+    <div class="ms-row">
+      <div class="ms-lbl">状态 & 字号 & 外观</div>
+      <div class="ms-btns">
+        <button type="button" data-state="pending" class="${S.state === "pending" ? "on" : ""}">待确认</button>
+        <button type="button" data-state="approved" class="${S.state === "approved" ? "on" : ""}">已批准</button>
+        <button type="button" data-font="${S.font === "std" ? "lg" : S.font === "lg" ? "xl" : "std"}">字号：${S.font === "std" ? "标准" : S.font === "lg" ? "大" : "超大"}</button>
+        <button type="button" data-theme-toggle="${S.theme === "dark" ? "light" : "dark"}">${S.theme === "dark" ? "切浅色" : "切深色"}</button>
+      </div>
+    </div>
+  `;
+}
+
+function render(scrollBottom = false) {
+  document.documentElement.setAttribute("data-theme", S.theme);
+  document.body.setAttribute("data-font", S.font);
+  document.getElementById("stage").setAttribute("data-mob", S.mobTab);
+
+  const sc = SCENES[S.scene];
+  renderBefore(sc);
+  renderAfter(sc);
+  renderControls();
+
+  if (scrollBottom) {
+    requestAnimationFrame(() => {
+      scrollBeforeToBottom();
+      scrollAfterToBottom(false);
+    });
+  } else {
+    requestAnimationFrame(updateJumpPill);
+  }
+}
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+
+  if (btn.dataset.variant) {
+    S.variant = btn.dataset.variant;
+    if (S.variant === "b" && S.state === "revising") {
+      S.state = "pending";
+      S.typing = false;
+    }
+    render(true);
+    return;
+  }
+  if (btn.dataset.scene) {
+    S.scene = btn.dataset.scene;
+    S.state = "pending";
+    S.typing = false;
+    render(true);
+    return;
+  }
+  if (btn.dataset.state) {
+    S.state = btn.dataset.state;
+    S.typing = S.state === "revising";
+    render(true);
+    if (S.state === "revising") {
+      setTimeout(() => document.getElementById("rev-input")?.focus(), 40);
+    }
+    return;
+  }
+  if (btn.dataset.font) {
+    S.font = btn.dataset.font;
+    render(false);
+    return;
+  }
+  if (btn.dataset.themeToggle) {
+    S.theme = btn.dataset.themeToggle;
+    render(false);
+    return;
+  }
+  if (btn.dataset.diag) {
+    S.diag = !S.diag;
+    render(false);
+    return;
+  }
+  if (btn.dataset.mob) {
+    S.mobTab = btn.dataset.mob;
+    render(true);
+    return;
+  }
+
+  const act = btn.dataset.act;
+  if (act === "approve") {
+    S.typing = false;
+    S.state = "approved";
+    render(true);
+  } else if (act === "open-rev") {
+    S.state = "revising";
+    S.typing = true;
+    render(true);
+    setTimeout(() => document.getElementById("rev-input")?.focus(), 40);
+  } else if (act === "cancel-rev") {
+    S.state = "pending";
+    S.typing = false;
+    S.revText = "";
+    render(true);
+  } else if (act === "send-rev") {
+    submitRevision();
+  }
+});
+
+document.getElementById("scroll-after").addEventListener("scroll", updateJumpPill, { passive: true });
+document.getElementById("jump-q").addEventListener("click", () => scrollAfterToBottom(true));
+document.getElementById("kb-done").addEventListener("click", () => {
+  S.typing = false;
+  document.getElementById("phone-after").classList.remove("kb");
+  document.getElementById("rev-input")?.blur();
+});
+
+const mobFab = document.getElementById("mob-fab");
+const mobScrim = document.getElementById("mob-scrim");
+const mobSheet = document.getElementById("mob-sheet");
+function setSheet(open) {
+  S.sheetOpen = open;
+  mobScrim.classList.toggle("open", open);
+  mobSheet.classList.toggle("open", open);
+}
+mobFab.addEventListener("click", () => setSheet(!S.sheetOpen));
+mobScrim.addEventListener("click", () => setSheet(false));
+
+render(true);
+</script>
+</body>
+</html>
