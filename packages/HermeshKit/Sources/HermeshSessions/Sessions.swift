@@ -59,6 +59,14 @@ public extension Session {
         let ea = progress.lastEventSeq, eb = b.progress.lastEventSeq
         return ea != eb ? ea > eb : updatedDate >= b.updatedDate
     }
+
+    /// A conversation of the owner's with Her, a session of the her provider (docs/her-conversations.md).
+    var isHerConversation: Bool { agent == herAgent || modelSelection.instanceID == herAgent }
+
+    /// The conversation with Her that this work was sent from, if any.
+    var herParentID: String? {
+        lineage.relationship == herAgent && !lineage.parentSessionID.isEmpty ? lineage.parentSessionID : nil
+    }
 }
 
 /// The list with changes applied (a page, or what a watch pushed): each
@@ -166,17 +174,20 @@ public struct SessionListLayout: Equatable, Codable, Sendable {
     public var sort: SessionSort = .default
     public var newestFirst = true
     public var metadata = false
+    /// The work Her sent from a conversation of the owner's with her sits under it (docs/her-conversations.md §3.4).
+    public var nest = true
 
-    /// By status, workbench sort, newest first, titles alone, until the owner picks a view (docs/her-team.md §16).
-    public init(group: SessionGrouping = .status, sort: SessionSort = .default, newestFirst: Bool = true, metadata: Bool = false) {
+    /// By status, workbench sort, newest first, titles alone, nested, until the owner picks a view (docs/her-team.md §16).
+    public init(group: SessionGrouping = .status, sort: SessionSort = .default, newestFirst: Bool = true, metadata: Bool = false, nest: Bool = true) {
         self.group = group
         self.sort = sort
         self.newestFirst = newestFirst
         self.metadata = metadata
+        self.nest = nest
     }
 
     private enum CodingKeys: String, CodingKey {
-        case group, sort, newestFirst, metadata
+        case group, sort, newestFirst, metadata, nest
     }
 
     public init(from decoder: Swift.Decoder) throws {
@@ -185,7 +196,82 @@ public struct SessionListLayout: Equatable, Codable, Sendable {
         sort = try c.decodeIfPresent(SessionSort.self, forKey: .sort) ?? .default
         newestFirst = try c.decodeIfPresent(Bool.self, forKey: .newestFirst) ?? true
         metadata = try c.decodeIfPresent(Bool.self, forKey: .metadata) ?? false
+        nest = try c.decodeIfPresent(Bool.self, forKey: .nest) ?? true
     }
+}
+
+/// The agent of a conversation of the owner's with Her (docs/her-conversations.md).
+public let herAgent = "her"
+
+/// The key of the project section that holds Her's conversations: they belong to no project.
+public let herSection = "her"
+
+/// Work under a conversation shows five at once; what runs or waits always shows (docs/her-conversations.md D11).
+public let childrenInitialLimit = 5
+
+/// The mark a collapsed conversation's row shows: the most pressing of its own and its work's.
+public enum TreeMark: String, Equatable, Sendable {
+    case waiting, failed
+}
+
+/// The work under each conversation with Her, newest first, while the view nests it: only work whose
+/// conversation is in `sessions` too, and only while neither is archived (an archived one is listed
+/// on its own).
+public func childrenOf(_ sessions: [Session], nest: Bool = true) -> [String: [Session]] {
+    guard nest else { return [:] }
+    let parents = Set(sessions.filter { $0.isHerConversation && $0.status != .archived }.map(\.sessionID))
+    var out: [String: [Session]] = [:]
+    for s in sessions {
+        guard let parent = s.herParentID, parents.contains(parent), s.status != .archived else { continue }
+        out[parent, default: []].append(s)
+    }
+    for k in out.keys {
+        out[k]?.sort { $0.updatedDate > $1.updatedDate }
+    }
+    return out
+}
+
+public func childrenOf(_ sessions: [Session], view: SessionListLayout) -> [String: [Session]] {
+    childrenOf(sessions, nest: view.nest)
+}
+
+/// A conversation and the work under it: the most pressing state of them (needs you, runs, done).
+public func treeStatus(_ s: Session, children: [Session] = []) -> SessionBucket {
+    let tree = [s] + children
+    return tree.contains(where: \.needsAttention) ? .attention : tree.contains(where: \.isActive) ? .active : .done
+}
+
+/// A conversation and the work under it: the last time any of them was active.
+public func treeUpdated(_ s: Session, children: [Session] = []) -> Date {
+    ([s] + children).map(\.updatedDate).max() ?? s.updatedDate
+}
+
+/// The mark a collapsed conversation's row shows: the most pressing of its own and its work's (an
+/// orange dot while any waits for the owner, a red one when any failed), else nil.
+public func treeMark(_ s: Session, children: [Session]) -> TreeMark? {
+    let tree = [s] + children
+    if tree.contains(where: { $0.status == .waitingInput }) { return .waiting }
+    if tree.contains(where: \.isFailed) { return .failed }
+    return nil
+}
+
+/// A conversation with Her is archived with its work, so only once all of it can be.
+public func isTreeArchivable(_ s: Session, children: [Session]) -> Bool {
+    s.isArchivable && children.allSatisfy { $0.isArchivable || $0.status == .archived }
+}
+
+/// The work a conversation's row shows, and how much stays behind "Show more".
+public func sliceChildren(_ children: [Session], expanded: Bool, selectedID: String? = nil) -> SectionSlice {
+    if expanded || children.count <= childrenInitialLimit {
+        return SectionSlice(visible: children, hiddenCount: 0)
+    }
+    var keep = Set(children.filter { $0.sessionID == selectedID || $0.needsAttention || $0.isActive }.map(\.sessionID))
+    for c in children {
+        if keep.count >= childrenInitialLimit { break }
+        keep.insert(c.sessionID)
+    }
+    let visible = children.filter { keep.contains($0.sessionID) }
+    return SectionSlice(visible: visible, hiddenCount: children.count - visible.count)
 }
 
 /// Pinned, a state or a day: what a section is called when the list groups by status or date.
@@ -227,8 +313,8 @@ public func reorderIDs(_ currentIDs: [String], movedID: String, slot: Int) -> [S
 }
 
 /// The day it was last active; "week" is the six days before today, not the calendar week.
-public func dayOf(_ s: Session, now: Date, calendar: Calendar = .current) -> SessionBucket {
-    let d = s.updatedDate
+public func dayOf(_ s: Session, now: Date, at: Date? = nil, calendar: Calendar = .current) -> SessionBucket {
+    let d = at ?? s.updatedDate
     if calendar.isDate(d, inSameDayAs: now) { return .today }
     if isYesterday(d, now: now, calendar: calendar) { return .yesterday }
     if withinWeek(d, now: now, calendar: calendar) { return .week }
@@ -313,19 +399,25 @@ public func sessionSections(_ sessions: [Session], view: SessionListLayout, arch
     var by: [String: [Session]] = [:]
     var pinned: [Session] = []
     var gone: [Session] = []
+    // Nested, the work under a conversation with Her goes where the conversation goes, and the
+    // conversation is placed by all of it (docs/her-conversations.md D8, D9).
+    let children = childrenOf(sessions, view: view)
+    let nested = Set(children.values.joined().map(\.sessionID))
+    func kidsOf(_ s: Session) -> [Session] { children[s.sessionID] ?? [] }
     for s in sessions {
         if s.status == .archived {
             if archived { gone.append(s) }
             continue
         }
+        if nested.contains(s.sessionID) { continue }
         if s.pinned {
             pinned.append(s)
             continue
         }
         let k = switch view.group {
-        case .status: statusOf(s).rawValue
-        case .date: dayOf(s, now: now, calendar: calendar).rawValue
-        case .project: s.projectID
+        case .status: treeStatus(s, children: kidsOf(s)).rawValue
+        case .date: dayOf(s, now: now, at: treeUpdated(s, children: kidsOf(s)), calendar: calendar).rawValue
+        case .project: s.isHerConversation ? herSection : s.projectID
         case .agent: s.agent
         case .machine: s.machineID
         }
@@ -335,16 +427,17 @@ public func sessionSections(_ sessions: [Session], view: SessionListLayout, arch
     let order: [String] = switch view.group {
     case .status: [SessionBucket.attention, .active, .done].map(\.rawValue)
     case .date: (view.newestFirst ? days : days.reversed()).map(\.rawValue)
-    case .project: by.keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-    case .agent: by.keys.sorted { agentTitle($0).localizedStandardCompare(agentTitle($1)) == .orderedAscending }
+    case .project: by.keys.sorted { a, b in (a == herSection) != (b == herSection) ? a == herSection : a.localizedStandardCompare(b) == .orderedAscending }
+    case .agent: by.keys.sorted { a, b in (a == herAgent) != (b == herAgent) ? a == herAgent : agentTitle(a).localizedStandardCompare(agentTitle(b)) == .orderedAscending }
     case .machine: by.keys.sorted { (machines.firstIndex(of: $0) ?? .max, $0) < (machines.firstIndex(of: $1) ?? .max, $1) }
     }
     func timeFor(_ s: Session) -> Date {
-        switch view.sort {
-        case .created: s.createdDate
-        case .updated: activityDate(s)
-        case .default: s.isActive && !s.needsAttention ? s.createdDate : s.updatedDate
-        }
+        if view.sort == .created { return s.createdDate }
+        let kids = kidsOf(s)
+        // A conversation with work under it moves with its latest activity, whatever is running.
+        if !kids.isEmpty { return treeUpdated(s, children: kids) }
+        if view.sort == .updated { return activityDate(s) }
+        return s.isActive && !s.needsAttention ? s.createdDate : s.updatedDate
     }
     func sorted(_ list: [Session], isActiveBucket: Bool = false) -> [Session] {
         sortWithManualOrder(list, timeOf: timeFor, newestFirst: view.newestFirst, manualOrder: activeOrder) {

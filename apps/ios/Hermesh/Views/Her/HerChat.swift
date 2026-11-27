@@ -29,16 +29,23 @@ final class HerPlace {
         aiConsentAccepted = persistent ? UserDefaults.standard.bool(forKey: "her-ai-consent") : false
     }
 
-    /// An environment's chat: the one kept, or a new one.
-    func chat(_ machineID: String, model: AppModel) -> HerChat {
-        if let c = chats[machineID] { return c }
-        let c = HerChat(machineID: machineID, model: model)
-        chats[machineID] = c
+    private func key(_ machineID: String, _ conversation: String?) -> String {
+        conversation.map { "\(machineID)#\($0)" } ?? machineID
+    }
+
+    /// An environment's chat (or a specific conversation's on it): the one kept, or a new one.
+    func chat(_ machineID: String, conversation: String? = nil, model: AppModel) -> HerChat {
+        let k = key(machineID, conversation)
+        if let c = chats[k] { return c }
+        let c = HerChat(machineID: machineID, conversation: conversation, model: model)
+        chats[k] = c
         return c
     }
 
     /// Returns an already-created chat without allocating a new one.
-    func existingChat(_ machineID: String) -> HerChat? { chats[machineID] }
+    func existingChat(_ machineID: String, conversation: String? = nil) -> HerChat? {
+        chats[key(machineID, conversation)]
+    }
 
     func stop() {
         for chat in chats.values { chat.stop() }
@@ -71,11 +78,7 @@ final class HerPlace {
 
     /// Wakes every environment chat's (or one machine's) retry backoff sleep after connectivity returns.
     func wakeRetries(for machineID: String? = nil) {
-        if let machineID {
-            chats[machineID]?.wakeRetry()
-            return
-        }
-        for chat in chats.values {
+        for chat in chats.values where machineID == nil || chat.machineID == machineID {
             chat.wakeRetry()
         }
     }
@@ -89,6 +92,8 @@ final class HerPlace {
 @Observable
 final class HerChat {
     let machineID: String
+    /// Nil for Her's main conversation; her session id (or "" before she creates it) for a task conversation (§3.2).
+    let conversation: String?
     @ObservationIgnored private weak var model: AppModel?
 
     var bots: [HerBot] = []
@@ -164,23 +169,26 @@ final class HerChat {
     @ObservationIgnored private var progressMemo: (key: ProgressKey, groups: [HerProgressGroup])?
     @ObservationIgnored private var chatGPT: Task<Void, Never>?
 
-    init(machineID: String, model: AppModel) {
+    init(machineID: String, conversation: String? = nil, model: AppModel) {
         self.machineID = machineID
+        self.conversation = conversation
         self.model = model
     }
 
-    /// Her: the environment's default assistant, as her lists it, else as this iPhone keeps it.
-    var bot: HerBot? { bots.first(where: \.isDefault) ?? kept?.bot }
+    var isMainConversation: Bool { conversation == nil }
 
-    /// The conversation shown: her's live stream, or a newer kept snapshot delivered via encrypted delta sync while disconnected.
+    /// Her: the environment's default assistant, as her lists it, else (for her main conversation) as this iPhone keeps it.
+    var bot: HerBot? { bots.first(where: \.isDefault) ?? (isMainConversation ? kept?.bot : nil) }
+
+    /// The conversation shown: her's live stream, or (for her main conversation) a newer kept snapshot delivered via encrypted delta sync while disconnected.
     var session: HerSession? {
         if let l = live {
-            if !convUp, let k = kept?.session, k.sessionID == l.sessionID, k.lastSeq > l.lastSeq {
+            if isMainConversation, !convUp, let k = kept?.session, k.sessionID == l.sessionID, k.lastSeq > l.lastSeq {
                 return k
             }
             return l
         }
-        return kept?.session
+        return isMainConversation ? kept?.session : nil
     }
 
     private var api: AppAPI? { model?.api }
@@ -298,6 +306,7 @@ final class HerChat {
     struct Following: Hashable {
         var bot: String?
         var session: String?
+        var conversation: String?
         /// The machine is reached and her runs there.
         var running: Bool
         var modelReady: Bool
@@ -427,7 +436,7 @@ final class HerChat {
     /// The conversation's connection, until the task is cancelled: opened with bots/open in its setup, so the
     /// snapshot comes ahead of its events, which never carry words as they are written.
     func followConversation(botID: String) async {
-        guard let transport else { return }
+        guard let transport, conversation != "" else { return }
         var failures = 0
         while !Task.isCancelled && !paused {
             let started = Date()
@@ -444,6 +453,7 @@ final class HerChat {
                 "bot_id": .string(botID),
                 "events": ["exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]],
             ]
+            if let conversation, !conversation.isEmpty { openObj["conversation"] = .string(conversation) }
             if testWindow != .null { openObj["history_limit"] = testWindow }
             if let existing = self.live, let epoch = self.resumeEpoch, !epoch.isEmpty {
                 openObj["session_id"] = .string(existing.sessionID)
@@ -666,16 +676,16 @@ final class HerChat {
         return live?.live != nil ? ["type": "prompt", "input": content, "mode": "steer"] : ["type": "prompt", "input": content]
     }
 
-    /// Nothing is unread while the owner looks (bots/read).
+    /// Nothing is unread while the owner looks (bots/read); unread belongs to her main conversation.
     func markRead() async {
-        guard let bot, bot.unread > 0, envUp else { return }
+        guard isMainConversation, let bot, bot.unread > 0, envUp else { return }
         _ = try? await call("bots/read", ["bot_id": .string(bot.id)])
     }
 
     // MARK: What this iPhone keeps
 
     func loadKept() async {
-        guard let api else { return }
+        guard isMainConversation, let api else { return }
         var r = Hermesh_Local_V1_GetHerConversationRequest()
         r.machineID = machineID
         if let res: Hermesh_Local_V1_GetHerConversationResponse = try? await api.call("GetHerConversation", r) { kept = herKept(res) }
@@ -770,6 +780,7 @@ final class HerChat {
         var r = Hermesh_Local_V1_HerSendRequest()
         r.id = id
         r.machineID = machineID
+        r.conversation = conversation ?? ""
         r.botID = bot.id
         r.text = sent.text
         r.locale = AppLocale.current
@@ -808,7 +819,14 @@ final class HerChat {
     /// What an event brought, felt while the owner looks at the conversation: an approval Her waits on, a card or a
     /// question of hers, her first words since the owner's (once a turn, not each), a task that failed.
     private func feel(_ was: HerSession?, _ now: HerSession?) {
-        guard let was, let now, was != now, model?.root == .her, model?.path.isEmpty == true else { return }
+        let onScreen: Bool = if isMainConversation {
+            model?.root == .her && model?.path.isEmpty == true
+        } else if let conversation, !conversation.isEmpty, let task = model?.sessions.first(where: { $0.providerSessionRef == conversation }) {
+            model?.isShowing(session: task.sessionID) == true
+        } else {
+            false
+        }
+        guard let was, let now, was != now, onScreen else { return }
         if let asked = herPendingApproval(now)?.approval.callID, asked != herPendingApproval(was)?.approval.callID {
             return Haptic.asks.play()
         }
@@ -907,8 +925,9 @@ final class HerChat {
 
     // MARK: The onboarding
 
-    /// No model works there: Her's onboarding begins, once.
+    /// No model works there: Her's onboarding begins, once (main conversation only).
     func beginOnboarding() {
+        guard isMainConversation else { return }
         if flow == nil || flow?.step == .done { flow = HerOnboarding(at: .now) }
     }
 
