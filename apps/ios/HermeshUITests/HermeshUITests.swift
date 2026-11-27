@@ -51,7 +51,7 @@ final class HermeshUITests: XCTestCase {
 
     func testAccountSettingsLayout() throws {
         try join()
-        openMenu(); tap("account")
+        openMenu(); tap("account"); tap("account-settings-open")
         // Settings (docs/settings-environments.md §4.2): the app's own settings, then the environments, then About.
         let notifications = app.buttons["notifications"]
         XCTAssertTrue(notifications.waitForExistence(timeout: 10))
@@ -82,7 +82,7 @@ final class HermeshUITests: XCTestCase {
         try join()
         app.terminate()
         app.launch()
-        openMenu(); tap("account")
+        openMenu(); tap("account"); tap("account-settings-open")
         tap("account-card")
         let deletion = app.buttons["delete-hosted-account"]
         reach("delete-hosted-account")
@@ -213,8 +213,9 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(account.exists)
         XCTAssertEqual(account.frame.width, account.frame.height, accuracy: 1, "round")
         XCTAssertLessThan(account.frame.width, 60, "the picture alone")
-        // Machines and the connected agents are reached from it.
+        // Machines and the connected agents are reached from its menu's Settings item.
         account.tap()
+        tap("account-settings-open")
         reach("account-grants")
         XCTAssertTrue(app.staticTexts["account-machines"].exists && app.buttons["account-grants"].exists, "managed from the account")
         let shot = XCTAttachment(screenshot: app.screenshot())
@@ -727,7 +728,7 @@ final class HermeshUITests: XCTestCase {
 
     func appearance() throws {
         openMenu()
-        tap("account")
+        tap("account"); tap("account-settings-open")
         XCTAssertFalse(app.buttons["web-console"].exists, "a server of one's own has no web console")
         // Three small phones, as Display & Brightness has them, on a page of their own.
         tap("account-appearance")
@@ -946,7 +947,7 @@ final class HermeshUITests: XCTestCase {
         views.buttons["实时"].tap()
         // The account sheet no longer has usage: it is Usage's last card.
         openMenu()
-        tap("account")
+        tap("account"); tap("account-settings-open")
         XCTAssertTrue(app.descendants(matching: .any)["account-card"].firstMatch.waitForExistence(timeout: 20))
         XCTAssertFalse(app.descendants(matching: .any)["account-usage"].exists, "no usage in the account")
         tap("close")
@@ -1289,7 +1290,7 @@ final class HermeshUITests: XCTestCase {
     /// Machines, or the connected agents: from Account and Devices (the menu lists sessions only).
     func openManaged(_ id: String) {
         openMenu()
-        tap("account")
+        tap("account"); tap("account-settings-open")
         reach(id)
         tap(id)
         XCTAssertTrue(app.navigationBars.buttons.element(boundBy: 0).exists, "management has a way back to settings")
@@ -1298,7 +1299,7 @@ final class HermeshUITests: XCTestCase {
     /// Settings, scrolled to its environments (docs/settings-environments.md §4.2).
     func openMachines() {
         openMenu()
-        tap("account")
+        tap("account"); tap("account-settings-open")
         // Its last row, in sight with the rows above it (a section's header is never hittable).
         reach("add-environment")
     }

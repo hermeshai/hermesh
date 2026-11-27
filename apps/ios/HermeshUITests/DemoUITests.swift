@@ -28,7 +28,7 @@ final class DemoUITests: XCTestCase {
 
         openPolicy("welcome-privacy-policy")
         enterWorkDemo()
-        tap("menu"); tap("account")
+        tap("menu"); tap("account"); tap("account-settings-open")
         reachInSheet("account-privacy-policy")
         openPolicy("account-privacy-policy")
         XCTAssertFalse(app.buttons["delete-hosted-account"].exists)
@@ -216,7 +216,7 @@ final class DemoUITests: XCTestCase {
     /// Management pages belong to Account and Devices, including their details and nested sheets.
     func testAccountNavigation() {
         enterWorkDemo()
-        tap("menu"); tap("account")
+        tap("menu"); tap("account"); tap("account-settings-open")
         // Settings (docs/settings-environments.md §4.2): the app's own settings, then the environments.
         let appearance = app.buttons["account-appearance"]
         XCTAssertTrue(appearance.waitForExistence(timeout: 5))
@@ -242,20 +242,20 @@ final class DemoUITests: XCTestCase {
     func testAccountAppearance() {
         enterWorkDemo()
         tap("menu")
-        tap("account")
+        tap("account"); tap("account-settings-open")
         tap("account-appearance")
         reach("appearance-dark"); tap("appearance-dark")
         XCTAssertTrue(app.buttons["appearance-dark"].isSelected)
         back(); tap("close")
         checkpoint("demo-dark-workspace")
-        tap("account")
+        tap("account"); tap("account-settings-open")
         tap("account-appearance")
         reach("appearance-dark")
         XCTAssertTrue(app.buttons["appearance-dark"].isSelected)
         back(); tap("close")
         tap("exit-demo")
         enterWorkDemo()
-        tap("menu"); tap("account")
+        tap("menu"); tap("account"); tap("account-settings-open")
         tap("account-appearance")
         reach("appearance-system")
         XCTAssertTrue(app.buttons["appearance-system"].isSelected)
@@ -956,7 +956,7 @@ final class DemoUITests: XCTestCase {
         reach("add-project"); tap("add-project"); tap("browse-folders")
         tap("folder-menu"); tap("Show Hidden Folders")
         back(); tap("close")
-        place("Overview"); tap("menu"); tap("account"); tap("account-appearance")
+        place("Overview"); tap("menu"); tap("account"); tap("account-settings-open"); tap("account-appearance")
         reach("appearance-dark"); tap("appearance-dark"); back(); tap("close")
         tap("exit-demo")
         XCTAssertTrue(app.buttons["try-demo"].waitForExistence(timeout: 10))
@@ -1231,8 +1231,8 @@ final class DemoUITests: XCTestCase {
         if !app.descendants(matching: .any)["drawer"].firstMatch.waitForExistence(timeout: 3) { tap("menu") }
         switch title {
         case "Overview": tap("overview-place")
-        case "Grants": tap("account"); reachInSheet("account-grants"); tap("account-grants")
-        case "Machines": tap("account"); reachInSheet("account-machines")
+        case "Grants": tap("account"); tap("account-settings-open"); reachInSheet("account-grants"); tap("account-grants")
+        case "Machines": tap("account"); tap("account-settings-open"); reachInSheet("account-machines")
         case "All Sessions": break
         default: tap(title)
         }

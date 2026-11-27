@@ -49,6 +49,56 @@ final class SidebarUITests: XCTestCase {
                       "tapping a row beside the floating account button should open its session")
     }
 
+    /// The avatar button opens a native pull-up menu with the permanent places (reachable even when scrolled to the
+    /// bottom of a long session list), pairing actions (as on the Mac), and Settings.
+    func testAccountMenuPlacesPairingAndSettings() {
+        launchDemo(["-DemoSessions", "24"])
+        openDrawer()
+        let drawer = app.descendants(matching: .any)["drawer"].firstMatch
+        let account = app.buttons["account"]
+        XCTAssertTrue(account.waitForExistence(timeout: 10))
+
+        // Scroll to the very bottom so the top list rows (New / Her / Overview) have scrolled out of sight.
+        let lastRow = app.buttons["session-Sidebar Task 24"]
+        for _ in 0..<8 where !lastRow.exists || !lastRow.isHittable {
+            let start = drawer.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.72))
+            let end = drawer.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.2))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .default, thenHoldForDuration: 0)
+            usleep(300_000)
+        }
+        XCTAssertTrue(lastRow.isHittable, "scrolled to bottom of 24-session list")
+
+        // Open the native pull-up menu from the avatar button and verify all three sections.
+        account.tap()
+        for id in ["account-menu-new", "account-menu-her", "account-menu-overview", "account-settings-open"] {
+            XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5), "expected \(id) in account menu")
+        }
+        for title in ["Connect an Agent…", "Add Environment…", "Scan a Code…", "Enter a Pairing Code…"] {
+            XCTAssertTrue(app.buttons[title].exists, "expected '\(title)' in account menu")
+        }
+        attach(XCUIScreen.main.screenshot(), name: "sidebar-account-menu")
+
+        // Jump straight to Overview from the bottom of the list via the account menu.
+        app.buttons["account-menu-overview"].tap()
+        XCTAssertTrue(app.navigationBars["Overview"].waitForExistence(timeout: 10), "switched to Overview from account menu")
+
+        // Reopen drawer and open Add Environment directly from the account menu (without needing Overview's + button).
+        openDrawer()
+        account.tap()
+        let addEnv = app.buttons["Add Environment…"]
+        XCTAssertTrue(addEnv.waitForExistence(timeout: 5))
+        addEnv.tap()
+        XCTAssertTrue(app.buttons["close"].waitForExistence(timeout: 10), "Add Environment sheet opened from account menu")
+        app.buttons["close"].tap()
+
+        // Reopen drawer if needed and verify New Session from the account menu opens the composer.
+        if !drawer.isHittable { openDrawer() }
+        account.tap()
+        app.buttons["account-menu-new"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["new-session-title"].firstMatch.waitForExistence(timeout: 10),
+                      "account menu New Session opens New Session")
+    }
+
     func testOverviewHidesTaskSpinnerAndKeepsConnectionNotice() {
         launchDemo(["-DemoSidebarActivity", "YES"])
         openDrawer()
@@ -365,6 +415,9 @@ final class SidebarUITests: XCTestCase {
         XCTAssertTrue(account.waitForExistence(timeout: 10), "account button")
         XCTAssertTrue(account.isHittable, "account button hittable")
         account.tap()
+        let openSettings = app.buttons["account-settings-open"]
+        XCTAssertTrue(openSettings.waitForExistence(timeout: 5), "account-settings-open in menu")
+        openSettings.tap()
         // Appearance is a page of the account sheet's own.
         let page = app.descendants(matching: .any)["account-appearance"].firstMatch
         XCTAssertTrue(page.waitForExistence(timeout: 10), "account-appearance")

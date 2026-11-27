@@ -146,7 +146,7 @@ private struct SideMenu: UIViewControllerRepresentable {
     func updateUIViewController(_ c: SideMenuController, context: Context) {
         c.panAnywhere = panAnywhere
         c.onChange = { open = $0 }
-        c.onLayout = { model.wide = $0 }
+        c.onLayout = { model.wide = $0; model.verticalBars = $1 }
         c.onRail = { model.menuRail = $0 }
         c.onWidth = { model.menuWidth = $0 }
         c.set(width: model.menuWidth)
@@ -177,8 +177,8 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
 
     var panAnywhere = true
     var onChange: (Bool) -> Void = { _ in }
-    /// Told how the wide screen is shared, as it changes; nil where the menu does not stand beside the page.
-    var onLayout: (WideLayout?) -> Void = { _ in }
+    /// Told how the wide screen is shared and whether the system stands its bars on the side, as they change.
+    var onLayout: (WideLayout?, Bool) -> Void = { _, _ in }
     /// Told when the owner expands the menu beside the page or shrinks it to its rail, and the width they dragged it to.
     var onRail: (Bool) -> Void = { _ in }
     var onWidth: (Double) -> Void = { _ in }
@@ -201,6 +201,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     private var besideWidth: CGFloat = 322
     private var railChosen = false
     private var layout: WideLayout?
+    private var verticalBars = false
     /// The menu shows over the page, from the rail, where there is no room for it beside the page.
     private var peek = false
     /// The menu moves between expanded and its rail: it stays in view until it rests.
@@ -370,10 +371,12 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         grip.isHidden = wide == nil || railed
         // Out of view, the menu is out of VoiceOver's way too.
         if !railed || peek { menu.view.isHidden = false } else if !sliding { menu.view.isHidden = true }
-        if wide != layout {
+        let bars: Bool = if #available(iOS 27.1, *) { traitCollection.verticalBarEdge != .unspecified } else { false }
+        if wide != layout || bars != verticalBars {
             layout = wide
+            verticalBars = bars
             // After the layout pass: this writes the app's state, which lays views out again.
-            DispatchQueue.main.async { [self] in onLayout(wide) }
+            DispatchQueue.main.async { [self] in onLayout(wide, bars) }
         }
         guard before != (arrangement, travel) else { return }
         // Another arrangement (the device opened or closed, or turned): at rest in it, the menu closed.
@@ -687,16 +690,24 @@ extension UIColor {
     }
 }
 
-/// New: connect an agent, add an environment, or scan or enter a pairing code.
-struct NewMenu: View {
+/// Connect an agent, add an environment, or scan or enter a pairing code: shared by Overview's `+` and the sidebar's
+/// account menu.
+struct NewMenuItems: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        Button("Connect an Agent…", systemImage: "link") { model.sheet = .connectAgent }
+        Button("Add Environment…", systemImage: "desktopcomputer") { model.sheet = .addMachine }
+        Button("Scan a Code…", systemImage: "qrcode.viewfinder") { model.sheet = .scan }
+        Button("Enter a Pairing Code…", systemImage: "number") { model.sheet = .enterCode }
+    }
+}
+
+/// New: connect an agent, add an environment, or scan or enter a pairing code.
+struct NewMenu: View {
+    var body: some View {
         Menu {
-            Button("Connect an Agent…", systemImage: "link") { model.sheet = .connectAgent }
-            Button("Add Environment…", systemImage: "desktopcomputer") { model.sheet = .addMachine }
-            Button("Scan a Code…", systemImage: "qrcode.viewfinder") { model.sheet = .scan }
-            Button("Enter a Pairing Code…", systemImage: "number") { model.sheet = .enterCode }
+            NewMenuItems()
         } label: {
             Image(systemName: "plus")
         }
@@ -759,13 +770,26 @@ struct WidenPageButton: View {
     }
 }
 
-/// In a root page's bar: the menu button; beside the expanded menu, the button that widens the page over it; none
-/// beside the menu's rail.
+/// In a root page's bar: where the system stands the bars on the side (iPhone Duo), the thumb-zone Liquid Glass
+/// capsule at the bottom of the vertical bar (`[ Menu | Her | Overview ]` when closed, `[ Her | Overview ]` when
+/// unfolded beside the menu, with no low-frequency avatar outside the sidebar); elsewhere the menu button at the top
+/// leading end, or the button that widens the page over the expanded menu.
 struct MenuToolbarItem: ToolbarContent {
     @Environment(AppModel.self) private var model
+    @Environment(\.barsOnTheSide) private var sideBars
 
     var body: some ToolbarContent {
-        if !model.menuBeside {
+        if #available(iOS 27.1, *), sideBars {
+            if model.menuBeside && model.menuInView {
+                ToolbarItem(placement: .topBarLeading) { WidenPageButton() }
+            }
+            ToolbarItemGroup(placement: .bottomBar) {
+                if !model.menuBeside { MenuButton() }
+                DuoHerButton()
+                DuoOverviewButton()
+            }
+            .axisBehavior(.verticalPreferred)
+        } else if !model.menuBeside {
             ToolbarItem(placement: .topBarLeading) { MenuButton() }
         } else if model.menuInView {
             ToolbarItem(placement: .topBarLeading) { WidenPageButton() }

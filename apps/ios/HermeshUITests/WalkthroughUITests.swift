@@ -89,7 +89,7 @@ extension HermeshUITests {
         sleep(3)
         shot("session, question")
         openMenu()
-        if go("account"), go("account-machines") {
+        if go("account"), go("account-settings-open"), go("account-machines") {
             shot("machines")
             if go("machine-owner-mac") {
                 sleep(2)
@@ -100,7 +100,7 @@ extension HermeshUITests {
             }
         }
         openMenu()
-        if go("account"), go("account-grants") {
+        if go("account"), go("account-settings-open"), go("account-grants") {
             shot("grants")
             let grant = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'grant-'")).firstMatch
             if grant.waitForExistence(timeout: 10) { press(grant); sleep(2); shot("grant"); app.swipeUp(); shot("grant, further down") }
@@ -111,7 +111,7 @@ extension HermeshUITests {
             if go(app.buttons["添加环境…"]) { sleep(1); shot("add machine"); dismiss() } else { dismiss() }
         }
         openMenu()
-        if go("account") {
+        if go("account"), go("account-settings-open") {
             sleep(2)
             shot("account")
             app.swipeUp()
@@ -227,7 +227,7 @@ extension HermeshUITests {
 
         // Dark appearance.
         openMenu()
-        if go("account") {
+        if go("account"), go("account-settings-open") {
             _ = go("appearance-dark")
             dismiss()
             if go("her-place") || go("her-tag") {

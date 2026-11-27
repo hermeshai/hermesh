@@ -116,7 +116,7 @@ final class DuoUITests: XCTestCase {
         shot("session-info" + suffix)
         tap("close")
         openMenu()
-        tap("account")
+        tap("account"); tap("account-settings-open")
         for _ in 0..<4 where !app.staticTexts["account-machines"].isHittable { app.swipeUp() }
         sleep(1)
         shot("machines" + suffix)
@@ -125,13 +125,13 @@ final class DuoUITests: XCTestCase {
         shot("machine" + suffix)
         back()
         openMenu()
-        tap("account")
+        tap("account"); tap("account-settings-open")
         for _ in 0..<4 where !app.buttons["account-grants"].isHittable { app.swipeUp() }
         tap("account-grants")
         sleep(1)
         shot("grants" + suffix)
         openMenu()
-        tap("account")
+        tap("account"); tap("account-settings-open")
         sleep(1)
         shot("account" + suffix)
         tap("close")
@@ -223,19 +223,29 @@ final class DuoUITests: XCTestCase {
         XCTAssertTrue(frame.width < 600 || frame.height > frame.width, "a menu button at compact width, or upright")
         let button = menu.frame
         let onTheSide = button.midX > frame.midX // in the bar on the trailing side, not at the top's leading end
+        if onTheSide {
+            XCTAssertGreaterThan(button.midY, frame.midY, "menu button in the bottom-right thumb capsule")
+            XCTAssertFalse(app.buttons["account"].exists, "account is shown only while the sidebar is open")
+        }
         menu.tap()
         sleep(1)
         let close = app.buttons["menu-close"]
         if onTheSide {
             XCTAssertTrue(close.isHittable, "the menu's own Close, in the bar on the side")
-            XCTAssertEqual(close.frame.midX, button.midX, accuracy: 2, "where the menu button was")
-            XCTAssertEqual(close.frame.midY, button.midY, accuracy: 2, "where the menu button was")
+            XCTAssertEqual(close.frame.midX, button.midX, accuracy: 4, "in the vertical bar's column")
+            XCTAssertLessThan(close.frame.midY, frame.midY, "Close at the top of the vertical bar")
             XCTAssertFalse(menu.isHittable, "the page gone from view")
-            // The view menu too is the bar's, under Close and Search, not a glass button of the list beside it.
+            // Search and View Options sit under Close; New, Her, Overview and the account menu sit in the thumb zone at the bottom.
             let options = app.buttons["view-options"]
             XCTAssertTrue(options.isHittable, "the view menu, in the bar on the side")
-            XCTAssertEqual(options.frame.midX, close.frame.midX, accuracy: 2, "in the bar's column")
+            XCTAssertEqual(options.frame.midX, close.frame.midX, accuracy: 4, "in the bar's column")
             XCTAssertGreaterThan(options.frame.minY, app.buttons["search"].frame.maxY - 1, "under Search")
+            for id in ["new-session-place", "her-place", "overview-place", "account"] {
+                let item = app.buttons[id]
+                XCTAssertTrue(item.isHittable, "\(id) in the vertical bar's thumb zone")
+                XCTAssertEqual(item.frame.midX, close.frame.midX, accuracy: 4, "\(id) aligned in the vertical bar")
+                XCTAssertGreaterThan(item.frame.minY, options.frame.maxY, "\(id) below the top tools")
+            }
         } else {
             XCTAssertFalse(close.exists)
             XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].isHittable, "the page a card beside the menu")

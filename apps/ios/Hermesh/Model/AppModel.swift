@@ -267,6 +267,8 @@ final class AppModel {
     /// How a wide screen is shared (regular width, wider than tall): the menu stands beside the page, expanded
     /// or as its rail (docs/iphone-app.md). Nil on any other screen.
     var wide: WideLayout?
+    /// Whether the system stands its bars on the side of the screen (iPhone Duo closed, or open and on its side).
+    var verticalBars = false
     /// The menu stands beside the page, or its rail does: no menu button then.
     var menuBeside: Bool { wide != nil }
     /// The owner shrank the menu that stands beside the page to its rail, and how wide they dragged it; kept

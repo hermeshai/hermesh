@@ -12,7 +12,8 @@ struct DrawerView: View {
     private let button: CGFloat = 44
 
     /// Where the system stands the bars on the side (iPhone Duo closed), the menu takes the page's place and the
-    /// bar is the menu's: Close at its top, where the page has the menu button, then Search and the view menu.
+    /// bar is the menu's: Close, Search and View Options at its top; New, Her, Overview and the account menu in the
+    /// thumb zone at its bottom.
     @Environment(\.barsOnTheSide) private var sideBars
 
     var body: some View {
@@ -23,11 +24,31 @@ struct DrawerView: View {
                         Button("Close the menu", systemImage: "xmark") { model.drawerOpen = false }
                             .accessibilityIdentifier("menu-close")
                     }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Search", systemImage: "magnifyingglass") { model.sheet = .search }
-                            .accessibilityIdentifier("search")
+                    if #available(iOS 27.1, *) {
+                        ToolbarItemGroup(placement: .topBarTrailing) {
+                            Button("Search", systemImage: "magnifyingglass") { model.sheet = .search }
+                                .accessibilityIdentifier("search")
+                            ViewMenu(inBar: true)
+                        }
+                        .axisBehavior(.verticalPreferred)
+                        ToolbarItemGroup(placement: .bottomBar) {
+                            DuoNewButton()
+                            DuoHerButton()
+                            DuoOverviewButton()
+                        }
+                        .axisBehavior(.verticalPreferred)
+                        ToolbarSpacer(.fixed, placement: .bottomBar)
+                        ToolbarItem(placement: .bottomBar) {
+                            AccountMenuButton(inBar: true)
+                        }
+                        .axisBehavior(.verticalPreferred)
+                    } else {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Search", systemImage: "magnifyingglass") { model.sheet = .search }
+                                .accessibilityIdentifier("search")
+                        }
+                        ToolbarItem(placement: .topBarTrailing) { ViewMenu(inBar: true) }
                     }
-                    ToolbarItem(placement: .topBarTrailing) { ViewMenu(inBar: true) }
                 }
             }
         } else {
@@ -36,17 +57,24 @@ struct DrawerView: View {
     }
 
     private var menu: some View {
-        ZStack(alignment: .bottomLeading) {
+        let placesInBar = sideBars || model.verticalBars
+        return ZStack(alignment: .bottomLeading) {
             VStack(spacing: 0) {
                 // The top stays: search and the menu's own button whatever the list's length.
                 top
                 List {
-                    newSessionPlace.plainRow()
-                    herPlace.plainRow()
-                    overviewPlace.plainRow()
-                    sessionsHeading.plainRow()
+                    if !placesInBar {
+                        newSessionPlace.plainRow()
+                        herPlace.plainRow()
+                        overviewPlace.plainRow()
+                    }
+                    if !sideBars {
+                        sessionsHeading.plainRow()
+                    }
                     MenuSessions()
-                    Color.clear.frame(height: 90).plainRow() // room under the account's button
+                    if !sideBars {
+                        Color.clear.frame(height: 90).plainRow() // room under the account's button
+                    }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -55,7 +83,9 @@ struct DrawerView: View {
                 .scrollDismissesKeyboard(.immediately)
                 .onScrollPhaseChange { _, phase in if phase == .interacting { hideKeyboard() } }
             }
-            bottomBar
+            if !sideBars {
+                bottomBar
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.menuBackground))
@@ -167,18 +197,153 @@ struct DrawerView: View {
     }
 
     private var bottomBar: some View {
-        Button {
-            model.accountPresented = true
-        } label: {
-            AccountPicture(status: model.status).frame(width: 44, height: 44)
-                .padding(4)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .contentShape(.circle)
+        AccountMenuButton()
+            .padding(.leading, 16).padding(.bottom, 8)
+    }
+}
+
+/// The account menu at the sidebar's foot (or in iPhone Duo's bottom-right vertical bar, shown only while the sidebar
+/// is open): places to switch to from the bottom of a long list, pairing actions as on the Mac, and Settings.
+struct AccountMenuButton: View {
+    @Environment(AppModel.self) private var model
+    var id = "account"
+    var inBar = false
+
+    var body: some View {
+        Group {
+            if inBar {
+                menu
+            } else {
+                menu.buttonStyle(.plain)
+            }
         }
-        .buttonStyle(.plain)
-        .padding(.leading, 16).padding(.bottom, 8)
         .accessibilityLabel("Account and devices")
-        .accessibilityIdentifier("account")
+        .accessibilityIdentifier(id)
+    }
+
+    private var menu: some View {
+        let unread = herUnread(model.machines)
+        let off = herEnvironments(model.machines).isEmpty
+        let team = teamState(model.sessions, requests: model.pairings.count)
+        let waits = team.waiting.count + team.requests
+        let account = model.status.hosted && !model.status.account.isEmpty
+        let who = account ? model.status.account : model.status.hosted ? String(localized: "Hermesh service") : String(localized: "Your own server")
+        let state = model.status.relayConnected ? String(localized: "Connected") : String(localized: "Not connected")
+        return Menu {
+            Section {
+                Button { model.open(.newSession("", "")) } label: {
+                    Label("New Session", systemImage: "square.and.pencil")
+                }
+                .accessibilityIdentifier("account-menu-new")
+                Button { model.open(.her) } label: {
+                    Text("Her")
+                    if off {
+                        Text("Not on")
+                    } else if unread > 0 {
+                        Text("\(unread) unread")
+                    }
+                    Image(systemName: "sparkles")
+                }
+                .accessibilityIdentifier("account-menu-her")
+                Button { model.open(.overview) } label: {
+                    Text("Overview")
+                    if waits > 0 { Text("\(waits) need you") }
+                    Image(systemName: "square.grid.2x2")
+                }
+                .accessibilityIdentifier("account-menu-overview")
+            }
+            Section {
+                NewMenuItems()
+            }
+            Section {
+                Button { model.accountPresented = true } label: {
+                    Text("Settings")
+                    Text("\(who) · \(state)")
+                    Image(systemName: "gearshape")
+                }
+                .accessibilityIdentifier("account-settings-open")
+            }
+        } label: {
+            if inBar {
+                AccountPicture(status: model.status).frame(width: 32, height: 32)
+            } else {
+                AccountPicture(status: model.status).frame(width: 44, height: 44)
+                    .padding(4)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .contentShape(.circle)
+            }
+        }
+    }
+}
+
+/// New Session in iPhone Duo's bottom-right vertical bar capsule.
+struct DuoNewButton: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let current: Bool = if case .newSession = model.root { model.path.isEmpty } else { false }
+        Button {
+            model.open(.newSession("", ""))
+        } label: {
+            Image(systemName: "square.and.pencil")
+                .foregroundStyle(current ? Color.accentColor : .primary)
+        }
+        .accessibilityLabel("New")
+        .accessibilityAddTraits(current ? .isSelected : [])
+        .accessibilityIdentifier("new-session-place")
+    }
+}
+
+/// Her in iPhone Duo's bottom-right vertical bar capsule, with her unread or off mark.
+struct DuoHerButton: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let unread = herUnread(model.machines)
+        let off = herEnvironments(model.machines).isEmpty
+        let current = model.root == .her && model.path.isEmpty
+        Button {
+            model.open(.her)
+        } label: {
+            HerRobot()
+                .stroke(current ? Color.accentColor : .primary, style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
+                .frame(width: 20, height: 20)
+                .overlay(alignment: .topTrailing) {
+                    if off {
+                        Circle().strokeBorder(.tertiary, lineWidth: 1.5).frame(width: 8, height: 8).offset(x: 5, y: -4)
+                    } else if unread > 0 {
+                        Circle().fill(Color.accentColor).frame(width: 8, height: 8).offset(x: 5, y: -4)
+                    }
+                }
+        }
+        .accessibilityLabel(off ? Text("Her, not on") : unread > 0 ? Text("Her, \(unread) unread") : Text("Her"))
+        .accessibilityAddTraits(current ? .isSelected : [])
+        .accessibilityIdentifier("her-place")
+    }
+}
+
+/// Overview in iPhone Duo's bottom-right vertical bar capsule, with an orange dot when something waits on the owner.
+struct DuoOverviewButton: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let team = teamState(model.sessions, requests: model.pairings.count)
+        let waits = !team.waiting.isEmpty || team.requests > 0
+        let current = model.root == .overview && model.path.isEmpty
+        Button {
+            model.open(.overview)
+        } label: {
+            Image(systemName: "square.grid.2x2")
+                .foregroundStyle(current ? Color.accentColor : .primary)
+                .overlay(alignment: .topTrailing) {
+                    if waits {
+                        Circle().fill(.orange).frame(width: 8, height: 8).offset(x: 5, y: -4)
+                    }
+                }
+        }
+        .accessibilityLabel(Text([String(localized: "Overview"), waits ? String(localized: "\(team.waiting.count + team.requests) need you") : "", team.running.isEmpty ? "" : String(localized: "\(team.running.count) working")].filter { !$0.isEmpty }.joined(separator: ", ")))
+        .accessibilityAddTraits(current ? .isSelected : [])
+        .accessibilityIdentifier("overview-place")
     }
 }
 

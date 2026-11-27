@@ -58,10 +58,12 @@ final class WideUITests: XCTestCase {
         XCTAssertTrue(drawer.waitForNonExistence(timeout: 5), "in the menu's place")
         XCTAssertLessThan(rail.frame.width, 160)
         XCTAssertFalse(app.buttons["menu"].exists || element("menu-hide").exists, "the rail expands it, not a button of the page's")
-        for id in ["rail-her", "rail-overview", "rail-search"] { XCTAssertTrue(element(id).exists, id) }
+        for id in ["rail-new", "rail-her", "rail-overview", "rail-search", "rail-account"] { XCTAssertTrue(element(id).exists, id) }
         XCTAssertFalse(element("rail-sessions").exists || element("rail-work").exists, "no places of the old map")
         shot("3-rail")
-        tap("rail-overview")
+        tap("rail-account")
+        XCTAssertTrue(app.buttons["account-settings-open"].waitForExistence(timeout: 5), "rail account opens the native menu")
+        tap("account-menu-overview")
         XCTAssertTrue(app.navigationBars["Overview"].waitForExistence(timeout: 5))
         XCTAssertTrue(rail.exists, "the rail stays from page to page")
         tap("rail-expand")

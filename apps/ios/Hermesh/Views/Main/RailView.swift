@@ -27,18 +27,8 @@ struct RailView: View {
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.immediately)
             .onScrollPhaseChange { _, phase in if phase == .interacting { hideKeyboard() } }
-            Button {
-                model.accountPresented = true
-            } label: {
-                AccountPicture(status: model.status).frame(width: 44, height: 44)
-                    .padding(4)
-                    .glassEffect(.regular.interactive(), in: .circle)
-                    .contentShape(.circle)
-            }
-            .buttonStyle(.plain)
-            .padding(.bottom, 8)
-            .accessibilityLabel("Account and devices")
-            .accessibilityIdentifier("rail-account")
+            AccountMenuButton(id: "rail-account")
+                .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.menuBackground))
@@ -51,6 +41,14 @@ struct RailView: View {
         let off = herEnvironments(model.machines).isEmpty
         let work = teamState(model.sessions, requests: model.pairings.count)
         let waits = work.waiting.count + work.requests
+        let isNew: Bool = if case .newSession = model.root { model.path.isEmpty } else { false }
+        button(Text("New Session"), id: "rail-new", current: isNew) {
+            model.open(.newSession("", ""))
+        } icon: {
+            Image(systemName: "square.and.pencil")
+        } mark: {
+            EmptyView()
+        }
         button(off ? Text("Her, not on") : unread > 0 ? Text("Her, \(unread) unread") : Text("Her"), id: "rail-her", current: model.root == .her && model.path.isEmpty) {
             model.open(.her)
         } icon: {
