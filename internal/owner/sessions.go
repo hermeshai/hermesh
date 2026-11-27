@@ -30,45 +30,7 @@ import (
 	"github.com/hermeshai/hermesh/internal/runtime"
 )
 
-const legacyThreadV2Migrations = `
-CREATE TABLE threads_v2_cache (
-  thread_id TEXT PRIMARY KEY,
-  machine_id TEXT NOT NULL,
-  archived INTEGER NOT NULL DEFAULT 0,
-  updated_at INTEGER NOT NULL,
-  thread_payload BLOB NOT NULL,
-  projection_payload BLOB
-);
-CREATE INDEX idx_threads_v2_cache_updated ON threads_v2_cache(archived, updated_at DESC);
-
-CREATE TABLE threads_v2_outbox (
-  seq INTEGER PRIMARY KEY AUTOINCREMENT,
-  command_id TEXT NOT NULL UNIQUE,
-  machine_id TEXT NOT NULL,
-  thread_id TEXT NOT NULL DEFAULT '',
-  method TEXT NOT NULL,
-  summary TEXT NOT NULL DEFAULT '',
-  req_payload BLOB NOT NULL,
-  attempts INTEGER NOT NULL DEFAULT 0,
-  last_error TEXT NOT NULL DEFAULT '',
-  created_at INTEGER NOT NULL
-);
-CREATE INDEX idx_threads_v2_outbox_machine ON threads_v2_outbox(machine_id, seq ASC);
-
-CREATE TABLE threads_v2_blobs (
-  sha256 TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  mime_type TEXT NOT NULL,
-  data BLOB NOT NULL,
-  created_at INTEGER NOT NULL
-);
-`
-
 const sessionStoreMigrations = `
-DROP TABLE IF EXISTS threads_v2_cache;
-DROP TABLE IF EXISTS threads_v2_outbox;
-DROP TABLE IF EXISTS threads_v2_blobs;
-
 CREATE TABLE IF NOT EXISTS sessions_cache (
   session_id TEXT PRIMARY KEY,
   machine_id TEXT NOT NULL,

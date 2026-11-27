@@ -259,7 +259,9 @@ func mcpAddress(dataDir, public string, renew bool) (string, error) {
 // state in mcp.db and the key that seals the connections' keys in
 // mcp-vault.key.
 func startMCP(srv *relay.Server, log *slog.Logger, dataDir, mcpURL, setupURL string) (*mcpgw.Gateway, error) {
-	db, err := sqlitedb.Open(filepath.Join(dataDir, "mcp.db"), []string{mcpgw.Schema(false)})
+	db, err := sqlitedb.Open(filepath.Join(dataDir, "mcp.db"), []sqlitedb.Migration{
+		{Version: 1, Description: "initial_mcp_gateway_schema", SQL: mcpgw.Schema(false)},
+	})
 	if err != nil {
 		return nil, err
 	}

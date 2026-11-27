@@ -108,7 +108,7 @@ When `s.owner == true` and an asked path resolves outside `s.folder`:
 Files inside `s.folder` are already preserved per turn by `vcs.CaptureCheckpoint`. Screenshots in `/tmp/` or `~/.gemini/.../brain/` are outside Git and could be overwritten by a later turn or cleaned on reboot before an iPhone opens the session:
 
 - When a run finishes (`captureTurnCheckpoint`), scan that run's completed `ASSISTANT_MESSAGE` items for local image paths not present in the checkpoint tree.
-- For each valid raster image (`<= 10 MiB`, `imageMime(data) != ""`, up to 16 images per turn), store the bytes in the engine's existing content-addressed blob store (`e.st.PutBlob` → `blobs/<sha256>`) and record `(session_id, run_id, asked_path, blob_sha256, size)` in `sessions_v2.db` (cleaned up on `DeleteSession` alongside checkpoints).
+- For each valid raster image (`<= 10 MiB`, `imageMime(data) != ""`, up to 16 images per turn), store the bytes in the engine's existing content-addressed blob store (`e.st.PutBlob` → `blobs/<sha256>`) and record `(session_id, run_id, asked_path, blob_sha256, size)` in `sessions.db` (cleaned up on `DeleteSession` alongside checkpoints).
 - Lookup order in `ResolveFiles` / `ReadFile(session, run, path)`:
   1. Turn's Git checkpoint tree (`s.inTree`);
   2. Turn's pinned image blobs (`turn_image_blobs`);

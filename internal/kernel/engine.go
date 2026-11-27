@@ -233,7 +233,7 @@ func Open(cfg Config) (*Engine, error) {
 	if cfg.QuestionTimeout <= 0 {
 		cfg.QuestionTimeout = DefaultQuestionTimeout
 	}
-	st, err := store.Open(filepath.Join(cfg.DataDir, "sessions_v2.db"))
+	st, err := store.Open(filepath.Join(cfg.DataDir, "sessions.db"))
 	if err != nil {
 		return nil, err
 	}

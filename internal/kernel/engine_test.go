@@ -359,9 +359,9 @@ func TestDeclineFeedbackUserInputPlanModeAndZeroPersistenceSecrets(t *testing.T)
 
 	// Verify topSecret NEVER appears anywhere in SQLite DB or WAL files!
 	for _, suffix := range []string{"", "-wal"} {
-		raw, err := os.ReadFile(filepath.Join(dataDir, "sessions_v2.db"+suffix))
+		raw, err := os.ReadFile(filepath.Join(dataDir, "sessions.db"+suffix))
 		if err == nil && strings.Contains(string(raw), topSecret) {
-			t.Fatalf("SECURITY VIOLATION: secret value persisted in sessions_v2.db%s!", suffix)
+			t.Fatalf("SECURITY VIOLATION: secret value persisted in sessions.db%s!", suffix)
 		}
 	}
 }

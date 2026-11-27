@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -26,19 +25,16 @@ import (
 	"github.com/hermeshai/hermesh/internal/sqlitedb"
 )
 
-// What came before this store (docs/data-migrations.md): a machine's
-// sessions were in its hermeshd.db (the V1 sessions, their events a log of
-// protobuf messages), and its threads in threads_v2.db (the V2 threads, the
-// tables this store's grew out of). Both are moved here by steps of the
-// store's ledger, each once. The old files are read, never written: they
-// stay as they are, so a move that went wrong can be mended and run again.
+// What came before this store (docs/data-migrations.md): a machine's V1
+// sessions lived in hermeshd.db (their events a log of protobuf messages).
+// They move into sessions.db once via the store's data_steps ledger. The old
+// file is opened read-only and never modified, so a move that went wrong can
+// be mended and retried.
 //
-// The old messages are not this code's any more: session.proto was rewritten
-// and thread.proto is gone. legacy.binpb is their descriptors as they were
-// (built from the tree at 2ceb85be: `buf build --exclude-source-info`, the
-// paths proto/hermesh/session/v1 and proto/hermesh/thread/v2), so old
-// payloads are read as what they were and carried over by their fields'
-// names.
+// Because session.proto was rewritten after v0.1.9, legacy.binpb embeds the
+// v0.1.9 descriptors (built from v0.1.9: `buf build --exclude-source-info
+// --path proto/hermesh/session/v1 -o legacy.binpb`) so old payloads are
+// decoded as they were written and carried over by field name.
 
 //go:embed legacy.binpb
 var legacyDescriptors []byte
@@ -88,44 +84,12 @@ func fromLegacy(j map[string]any, into proto.Message) error {
 	return protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(b, into)
 }
 
-// threadKeys are the fields of the V2 messages whose names said "thread"
-// where the session messages say "session".
-var threadKeys = map[string]string{"thread_id": "session_id", "provider_thread_id": "provider_session_id", "active_provider_thread_id": "active_provider_session_id", "thread": "session"}
-
-// renameThread renames those fields, at any depth.
-func renameThread(v any) any {
-	switch x := v.(type) {
-	case map[string]any:
-		out := make(map[string]any, len(x))
-		for k, val := range x {
-			if to, ok := threadKeys[k]; ok {
-				k = to
-			}
-			out[k] = renameThread(val)
-		}
-		return out
-	case []any:
-		for i := range x {
-			x[i] = renameThread(x[i])
-		}
-	}
-	return v
-}
-
-// threadStatus is what a V2 thread's status is as a session's. Nothing of an
-// old store is at work when it is moved, so what was at work then is idle
-// now; what failed is idle with its error (as a session whose turn failed).
-var threadStatus = map[string]sessionv1.SessionStatus{
-	"THREAD_STATUS_ARCHIVED": sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED,
-}
-
-// legacySteps are the moves into this store, in the order they came to be.
-// A step's name is its place in the ledger: it is never changed, and a step
-// is never taken out (a store that never ran it would then never run it).
+// legacySteps are the cross-store moves into sessions.db, in the order they
+// came to be. A step's name is its place in data_steps: never rename or remove
+// one that shipped.
 func (s *Store) legacySteps(dataDir string) []sqlitedb.Step {
 	return []sqlitedb.Step{
 		{Name: "v1-sessions", Run: func() (int64, error) { return s.importV1Sessions(filepath.Join(dataDir, "hermeshd.db")) }},
-		{Name: "v2-threads", Run: func() (int64, error) { return s.importV2Threads(filepath.Join(dataDir, "threads_v2.db")) }},
 	}
 }
 
@@ -404,214 +368,4 @@ func v1Conversation(old *sql.DB, sess *sessionv1.Session) ([]*sessionv1.Run, []*
 		begin(waiting[0].CreatedAt, "")
 	}
 	return runs, items, nil
-}
-
-// importV2Threads moves the V2 threads of a machine's threads_v2.db (its
-// schema 4): each thread as a session, with its runs, items, provider
-// threads and checkpoints, read as the messages they were and carried over
-// by their fields' names. Their log of events is not moved: a session's
-// page is made of what it holds, and its log goes on from where the thread's
-// was. A session already here is left as it is.
-func (s *Store) importV2Threads(path string) (int64, error) {
-	old, err := openLegacy(path, "threads")
-	if old == nil || err != nil {
-		return 0, err
-	}
-	defer old.Close()
-	rows, err := old.Query(`SELECT thread_id, last_seq, payload FROM threads ORDER BY created_at`)
-	if err != nil {
-		return 0, err
-	}
-	type thread struct {
-		id      string
-		lastSeq uint64
-		payload []byte
-	}
-	var all []thread
-	for rows.Next() {
-		var t thread
-		if err := rows.Scan(&t.id, &t.lastSeq, &t.payload); err != nil {
-			rows.Close()
-			return 0, err
-		}
-		all = append(all, t)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return 0, err
-	}
-	// payloads reads a table's messages of one thread as new ones.
-	payloads := func(query, name, id string, each func(map[string]any) error) error {
-		rows, err := old.Query(query, id)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var b []byte
-			if err := rows.Scan(&b); err != nil {
-				return err
-			}
-			j, err := legacyJSON(name, b)
-			if err != nil {
-				return err
-			}
-			if err := each(renameThread(j).(map[string]any)); err != nil {
-				return err
-			}
-		}
-		return rows.Err()
-	}
-	var moved int64
-	for _, t := range all {
-		if _, err := s.Session(t.id); err == nil {
-			continue // here already
-		} else if !errors.Is(err, ErrNotFound) {
-			return moved, err
-		}
-		sess, err := v2Session(t.payload, t.lastSeq)
-		if err != nil {
-			return moved, fmt.Errorf("thread %s: %w", t.id, err)
-		}
-		var runs []*sessionv1.Run
-		var items []*sessionv1.TurnItem
-		var providers []*sessionv1.ProviderSession
-		var checkpoints []*sessionv1.Checkpoint
-		err = errors.Join(
-			payloads(`SELECT payload FROM runs WHERE thread_id = ? ORDER BY ordinal`, "hermesh.thread.v2.Run", t.id, func(j map[string]any) error {
-				r := &sessionv1.Run{}
-				runs = append(runs, r)
-				return fromLegacy(j, r)
-			}),
-			payloads(`SELECT payload FROM turn_items WHERE thread_id = ? ORDER BY seq`, "hermesh.thread.v2.TurnItem", t.id, func(j map[string]any) error {
-				it := &sessionv1.TurnItem{}
-				items = append(items, it)
-				return fromLegacy(j, it)
-			}),
-			payloads(`SELECT payload FROM provider_threads WHERE thread_id = ? ORDER BY created_at`, "hermesh.thread.v2.ProviderThread", t.id, func(j map[string]any) error {
-				p := &sessionv1.ProviderSession{}
-				providers = append(providers, p)
-				return fromLegacy(j, p)
-			}),
-			payloads(`SELECT payload FROM checkpoints WHERE thread_id = ? ORDER BY run_ordinal`, "hermesh.thread.v2.Checkpoint", t.id, func(j map[string]any) error {
-				c := &sessionv1.Checkpoint{}
-				checkpoints = append(checkpoints, c)
-				return fromLegacy(j, c)
-			}),
-		)
-		if err != nil {
-			return moved, fmt.Errorf("thread %s: %w", t.id, err)
-		}
-		// What ran or waited when the old store was last written is over.
-		for _, r := range runs {
-			switch r.Status {
-			case sessionv1.RunStatus_RUN_STATUS_PREPARING, sessionv1.RunStatus_RUN_STATUS_QUEUED, sessionv1.RunStatus_RUN_STATUS_RUNNING, sessionv1.RunStatus_RUN_STATUS_WAITING_REQUEST:
-				r.Status = sessionv1.RunStatus_RUN_STATUS_INTERRUPTED
-			}
-		}
-		for _, it := range items {
-			it.Streaming = false
-			if it.Status == "running" || it.Status == "waiting" {
-				it.Status = "interrupted"
-			}
-		}
-		if _, err := s.Mutate(func(tx *Tx) error {
-			if err := tx.PutSessionPreserveUpdatedAt(sess); err != nil {
-				return err
-			}
-			for _, r := range runs {
-				if err := tx.PutRun(r); err != nil {
-					return err
-				}
-			}
-			for _, it := range items {
-				if err := tx.putLegacyItem(it); err != nil {
-					return err
-				}
-			}
-			for _, p := range providers {
-				if err := tx.PutProviderSession(p); err != nil {
-					return err
-				}
-			}
-			for _, c := range checkpoints {
-				if err := tx.PutCheckpoint(c); err != nil {
-					return err
-				}
-			}
-			return nil
-		}); err != nil {
-			return moved, fmt.Errorf("thread %s: %w", t.id, err)
-		}
-		moved++
-	}
-	// The files its messages name are in the blobs folder already (migrateLegacyDirs); what they are is here.
-	blobs, err := old.Query(`SELECT sha256, name, mime_type, size_bytes, created_at FROM blobs`)
-	if err != nil {
-		return moved, err
-	}
-	defer blobs.Close()
-	for blobs.Next() {
-		var sha, name, mime string
-		var size, created int64
-		if err := blobs.Scan(&sha, &name, &mime, &size, &created); err != nil {
-			return moved, err
-		}
-		s.writeMu.Lock()
-		_, err := s.writer.Exec(`INSERT OR IGNORE INTO blobs(sha256, name, mime_type, size_bytes, created_at) VALUES(?, ?, ?, ?, ?)`, sha, name, mime, size, created)
-		s.writeMu.Unlock()
-		if err != nil {
-			return moved, err
-		}
-	}
-	return moved, blobs.Err()
-}
-
-// v2Session is a V2 thread as the session it is now: its fields by their
-// names, and those the session says otherwise (its strategy for the work
-// tree, who made it, its use of the context window, its last error, how many
-// runs it had and where its log was).
-func v2Session(payload []byte, lastSeq uint64) (*sessionv1.Session, error) {
-	j, err := legacyJSON("hermesh.thread.v2.Thread", payload)
-	if err != nil {
-		return nil, err
-	}
-	status, _ := j["status"].(string)
-	turns, _ := j["run_count"].(float64)
-	failed, _ := j["last_error"].(string)
-	strategy, actor, usage := j["workspace"], j["created_by"], j["usage"]
-	for _, k := range []string{"status", "run_count", "last_error", "last_seq", "workspace", "created_by", "usage"} {
-		delete(j, k)
-	}
-	j = renameThread(j).(map[string]any)
-	if strategy != nil {
-		j["workspace_strategy"] = strategy
-	}
-	if actor != nil {
-		j["actor"] = actor
-	}
-	if usage != nil {
-		j["context_usage"] = usage
-	}
-	s := &sessionv1.Session{}
-	if err := fromLegacy(j, s); err != nil {
-		return nil, err
-	}
-	s.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
-	if st, ok := threadStatus[status]; ok {
-		s.Status = st
-	}
-	s.Error = failed
-	s.Agent, s.Model = s.GetModelSelection().GetInstanceId(), s.GetModelSelection().GetModel()
-	s.Workspace, s.Branch = s.GetWorkspaceStrategy().GetMode(), s.GetWorkspaceStrategy().GetBranch()
-	s.CreatedBy = s.GetActor().GetId()
-	if s.GetActor().GetKind() == sessionv1.ActorKind_ACTOR_KIND_OWNER || s.CreatedBy == "" {
-		s.CreatedBy = "owner"
-	}
-	s.ActiveRunId, s.PendingRequestId, s.QueuedRunCount, s.ActiveBackgroundCount, s.ActiveDaemonCount = "", "", 0, 0, 0
-	s.Progress = &sessionv1.SessionProgress{TurnCount: uint32(turns), LastEventSeq: lastSeq}
-	if strings.TrimSpace(failed) != "" {
-		s.Progress.LastFailure = &sessionv1.Failure{Message: failed}
-	}
-	return s, nil
 }

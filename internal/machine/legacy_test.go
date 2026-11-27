@@ -101,3 +101,39 @@ func TestAMoveThatFailsIsTheMachinesProblem(t *testing.T) {
 		}
 	}
 }
+
+// A very early v0.1.1 machine store at schema 1 (still holding the preset
+// column dropped in V6 and missing columns added in V2..V16) upgrades
+// hermeshd.db all the way to V18 first, and sessions.db then imports the
+// session cleanly.
+func TestVeryEarlySchema1MachineUpgradesEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	raw, err := sqlitedb.OpenRaw(filepath.Join(dir, "hermeshd.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(migrations[0].SQL + `; PRAGMA user_version = 1;`); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC).Unix()
+	if _, err := raw.Exec(`INSERT INTO sessions(session_id, project_id, agent, preset, status, created_by, grant_id, model, provider_ref, base_commit, branch, worktree, pgid, progress, error, created_at, updated_at)
+		VALUES ('s_v1_earliest', 'app', 'claude', 1, 4, 'owner', '', 'sonnet', '', '', 'main', '', 0, x'', '', ?, ?)`, at, at); err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
+
+	n, err := Open(Config{DataDir: dir, Discoverers: map[string]AgentDiscoverer{}})
+	if err != nil {
+		t.Fatalf("Open from schema-1 hermeshd.db: %v", err)
+	}
+	defer n.Close()
+
+	s, err := n.GetSessionFor(context.Background(), &Principal{Kind: PrincipalOwner}, "s_v1_earliest")
+	if err != nil || s.Model != "sonnet" || s.Status != sessionv1.SessionStatus_SESSION_STATUS_IDLE {
+		t.Fatalf("expected s_v1_earliest imported after V1->V18 upgrade, got %+v (%v)", s, err)
+	}
+	hist, err := sqlitedb.History(n.st.db)
+	if err != nil || len(hist) != len(migrations) {
+		t.Fatalf("expected %d schema_history entries in hermeshd.db, got %d (%v)", len(migrations), len(hist), err)
+	}
+}

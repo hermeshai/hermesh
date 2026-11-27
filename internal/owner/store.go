@@ -3,6 +3,7 @@ package owner
 import (
 	"database/sql"
 	"errors"
+	"os"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -12,7 +13,8 @@ import (
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
-var migrations = []string{`
+var migrations = []sqlitedb.Migration{
+	{Version: 1, Description: "create_kv_and_grants", SQL: `
 CREATE TABLE kv (key TEXT PRIMARY KEY, value BLOB NOT NULL);
 CREATE TABLE grants (
   grant_id TEXT PRIMARY KEY,
@@ -22,16 +24,69 @@ CREATE TABLE grants (
   revoked INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL
 );
-`, workMigrations, herMigrations, herKeptMigrations, herDeliveriesMigrations, deltaMigrations, legacyThreadV2Migrations, sessionStoreMigrations, sessionFilesMigrations}
+`},
+	{Version: 2, Description: "create_work_tables", SQL: workMigrations},
+	{Version: 3, Description: "create_her_tables", SQL: herMigrations},
+	{Version: 4, Description: "create_her_kept_conversations", SQL: herKeptMigrations},
+	{Version: 5, Description: "create_her_deliveries", SQL: herDeliveriesMigrations},
+	{Version: 6, Description: "create_delta_cursors", SQL: deltaMigrations},
+	{Version: 7, Description: "create_session_caches_and_files", SQL: sessionStoreMigrations + "\n" + sessionFilesMigrations},
+}
 
 type store struct{ db *sql.DB }
 
 func openStore(path string) (*store, error) {
+	if err := migrateDevOwnerStore(path); err != nil {
+		return nil, err
+	}
 	db, err := sqlitedb.Open(path, migrations)
 	if err != nil {
 		return nil, err
 	}
 	return &store{db: db}, nil
+}
+
+// migrateDevOwnerStore collapses pre-release owner.db schemas (7..9, before
+// schema_history existed) onto squashed version 7.
+func migrateDevOwnerStore(path string) error {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	raw, err := sqlitedb.OpenRaw(path)
+	if err != nil {
+		return err
+	}
+	defer raw.Close()
+	var one int
+	if err := raw.QueryRow(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_history'`).Scan(&one); err == nil {
+		return nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	var uv int
+	if err := raw.QueryRow(`PRAGMA user_version`).Scan(&uv); err != nil || uv < 7 || uv > 9 {
+		return err
+	}
+	tx, err := raw.Begin()
+	if err != nil {
+		return err
+	}
+	for _, q := range []string{
+		`DROP TABLE IF EXISTS threads_v2_cache`,
+		`DROP TABLE IF EXISTS threads_v2_outbox`,
+		`DROP TABLE IF EXISTS threads_v2_blobs`,
+		sessionStoreMigrations,
+		sessionFilesMigrations,
+		`PRAGMA user_version = 7`,
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *store) get(key string) ([]byte, error) {
