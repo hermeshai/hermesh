@@ -434,6 +434,9 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 	}
 	h.Turns = append(h.Turns, text)
 	save(sid, h)
+	if _, after, ok := strings.Cut(text, "</context_handoff>\n\n"); ok {
+		text = after
+	}
 	for _, line := range strings.Split(text, "\n") {
 		cmd, arg, _ := strings.Cut(strings.TrimSpace(line), " ")
 		switch cmd {

@@ -987,9 +987,11 @@ func (s *session) readLoop() {
 						if isAsyncLaunch && asyncMeta.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE && c.ID != "" {
 							schedID := "claude-schedule-" + c.ID
 							s.mu.Lock()
+							var superseded []*claudeBgTask
 							for _, prev := range s.bgTasks {
 								if prev.running && prev.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE {
 									prev.running = false
+									superseded = append(superseded, prev)
 								}
 							}
 							s.bgTasks[schedID] = &claudeBgTask{
@@ -1000,6 +1002,28 @@ func (s *session) readLoop() {
 								running: true,
 							}
 							s.mu.Unlock()
+							for _, prev := range superseded {
+								s.emit(runtime.Event{
+									Kind:                runtime.EventBackgroundTask,
+									TaskID:              prev.taskID,
+									ItemID:              prev.itemID,
+									ToolName:            prev.title,
+									BackgroundKind:      prev.kind,
+									BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+									BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+									BackgroundAwaited:   true,
+									Text:                "superseded",
+								})
+								if prev.itemID != "" {
+									s.emit(runtime.Event{
+										Kind:        runtime.EventToolCompleted,
+										ItemID:      prev.itemID,
+										ToolName:    prev.title,
+										ExitCode:    0,
+										HasExitCode: true,
+									})
+								}
+							}
 							s.emit(runtime.Event{
 								Kind:                runtime.EventBackgroundTask,
 								TaskID:              schedID,
@@ -1986,11 +2010,18 @@ func (s *session) handleTaskSystemLine(l wireLine) {
 	outTail := readOutputFileTail(outFile, 16384)
 
 	s.mu.Lock()
+	var supersededSynth *claudeBgTask
 	bg := s.bgTasks[taskID]
 	if bg == nil {
-		// Remove any synthesized placeholder created from tool_result before task_started arrived.
+		// Settle any synthesized placeholder created from tool_result before task_started arrived.
 		if l.ToolUseID != "" {
-			delete(s.bgTasks, "claude-bg-"+l.ToolUseID)
+			synthKey := "claude-bg-" + l.ToolUseID
+			if prev := s.bgTasks[synthKey]; prev != nil {
+				prev.running = false
+				prev.stopTail()
+				supersededSynth = prev
+				delete(s.bgTasks, synthKey)
+			}
 		}
 		bg = &claudeBgTask{
 			taskID:  taskID,
@@ -2044,6 +2075,19 @@ func (s *session) handleTaskSystemLine(l wireLine) {
 
 	if shouldStartTailer {
 		s.startClaudeOutputTailer(bg)
+	}
+	if supersededSynth != nil {
+		s.emit(runtime.Event{
+			Kind:                runtime.EventBackgroundTask,
+			TaskID:              supersededSynth.taskID,
+			ItemID:              supersededSynth.itemID,
+			ToolName:            supersededSynth.title,
+			Command:             supersededSynth.command,
+			BackgroundKind:      supersededSynth.kind,
+			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
+			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundAwaited:   true,
+		})
 	}
 
 	switch l.Subtype {

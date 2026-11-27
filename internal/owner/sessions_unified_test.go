@@ -187,3 +187,67 @@ func TestOfflineUpdateSessionArchivesAndPreservesSeq(t *testing.T) {
 		t.Fatalf("recordOutboxFailure clobbered LastEventSeq: %+v", afterFail)
 	}
 }
+
+func TestOfflineQueueManageEditReorderCancelAndSteerError(t *testing.T) {
+	ctx := context.Background()
+	d, err := Open(Config{DataDir: filepath.Join(t.TempDir(), "owner"), NoLocalMachine: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+
+	svc := &ownerSessionService{d: d}
+	started, err := svc.StartSession(ctx, &sessionv1.StartSessionRequest{
+		MachineId:     "m_remote_offline",
+		ProjectId:     "demo",
+		Title:         "Offline queue ops",
+		InitialPrompt: "initial offline prompt",
+	})
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	sid := started.Session.SessionId
+
+	q1, _ := svc.DispatchMessage(ctx, &sessionv1.DispatchMessageRequest{SessionId: sid, Text: "follow 1"})
+	q2, _ := svc.DispatchMessage(ctx, &sessionv1.DispatchMessageRequest{SessionId: sid, Text: "follow 2 cancel"})
+	q3, _ := svc.DispatchMessage(ctx, &sessionv1.DispatchMessageRequest{SessionId: sid, Text: "follow 3 move first"})
+
+	// Steer Now while machine is offline must fail loudly with CodeUnavailable instead of silently succeeding.
+	_, steerErr := svc.ManageQueue(ctx, &sessionv1.ManageQueueRequest{
+		SessionId: sid,
+		Operation: sessionv1.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER,
+		RunId:     q1.Run.RunId,
+	})
+	if connect.CodeOf(steerErr) != connect.CodeUnavailable {
+		t.Fatalf("expected CodeUnavailable when steering offline, got %v", steerErr)
+	}
+
+	// Edit q1, Cancel q2, Reorder q3 before q1 locally while offline.
+	if _, err := svc.ManageQueue(ctx, &sessionv1.ManageQueueRequest{
+		SessionId: sid, Operation: sessionv1.QueueOperation_QUEUE_OPERATION_EDIT, RunId: q1.Run.RunId, Text: "follow 1 edited",
+	}); err != nil {
+		t.Fatalf("offline EDIT: %v", err)
+	}
+	if _, err := svc.ManageQueue(ctx, &sessionv1.ManageQueueRequest{
+		SessionId: sid, Operation: sessionv1.QueueOperation_QUEUE_OPERATION_CANCEL, RunId: q2.Run.RunId,
+	}); err != nil {
+		t.Fatalf("offline CANCEL: %v", err)
+	}
+	reordered, err := svc.ManageQueue(ctx, &sessionv1.ManageQueueRequest{
+		SessionId: sid, Operation: sessionv1.QueueOperation_QUEUE_OPERATION_REORDER, RunId: q3.Run.RunId, BeforeRunId: q1.Run.RunId,
+	})
+	if err != nil {
+		t.Fatalf("offline REORDER: %v", err)
+	}
+	if len(reordered.QueuedRuns) != 2 || reordered.QueuedRuns[0].Prompt != "follow 3 move first" || reordered.QueuedRuns[1].Prompt != "follow 1 edited" {
+		t.Fatalf("unexpected cached queued runs after offline ops: %+v", reordered.QueuedRuns)
+	}
+
+	outbox, err := svc.ListOutbox(ctx, &sessionv1.ListOutboxRequest{MachineId: "m_remote_offline"})
+	if err != nil {
+		t.Fatalf("ListOutbox: %v", err)
+	}
+	if len(outbox.Entries) != 3 || outbox.Entries[1].Summary != "follow 3 move first" || outbox.Entries[2].Summary != "follow 1 edited" {
+		t.Fatalf("unexpected outbox entries after offline edit/cancel/reorder: %+v", outbox.Entries)
+	}
+}

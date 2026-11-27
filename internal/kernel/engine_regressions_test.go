@@ -18,6 +18,8 @@ import (
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/kernel/store"
 	"github.com/hermeshai/hermesh/internal/runtime"
+	rtacp "github.com/hermeshai/hermesh/internal/runtime/acp"
+	"github.com/hermeshai/hermesh/internal/runtime/scripted"
 	"github.com/hermeshai/hermesh/internal/sqlitedb"
 )
 
@@ -920,5 +922,230 @@ func TestUnresumableCursorSelfHealsWithTranscriptHandoff(t *testing.T) {
 	mu.Unlock()
 	if !strings.Contains(secondPrompt, "remember_secret_42") || !strings.Contains(secondPrompt, "answer_1") {
 		t.Fatalf("self-healed session did not receive transcript handoff: %q", secondPrompt)
+	}
+}
+
+func TestPromoteToSteerFallsBackToInterruptAndFrontWhenSteerUnsupported(t *testing.T) {
+	ctx := context.Background()
+	acpLike := &scripted.Driver{DisableSteer: true}
+	liveDrv := scripted.NewDriver()
+	eng, err := Open(Config{
+		DataDir:         t.TempDir(),
+		MachineID:       "m_steer_fallback",
+		Drivers:         map[string]runtime.Driver{"acp": acpLike, "live": liveDrv},
+		IncludeScripted: true,
+		IdleTTL:         time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+
+	owner := OwnerPrincipal("dev_owner", "Owner")
+	_, _ = eng.UpsertProviderInstance(ctx, owner, &sessionv1.ProviderInstanceConfig{
+		InstanceId: "antigravity", Driver: "acp", AcpFlavor: "antigravity", DisplayName: "Antigravity", Enabled: true,
+	})
+	_, _ = eng.UpsertProviderInstance(ctx, owner, &sessionv1.ProviderInstanceConfig{
+		InstanceId: "claude", Driver: "live", DisplayName: "Claude", Enabled: true,
+	})
+
+	// 1. ACP provider (DisableSteer: true): promoting the 2nd queued run interrupts the slow turn
+	// and runs the promoted run FIRST, followed by the remaining queued run.
+	launched, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "antigravity", Model: "gemini-3.1-pro"},
+		InitialPrompt:  "think pondering\nsleep 15s\nsay never_reaches_slow_end",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid := launched.Session.SessionId
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		p, _ := eng.GetSession(ctx, owner, sid)
+		if p.GetSession().GetActiveProviderSessionId() != "" && len(p.GetItems()) >= 2 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	q1, err := eng.DispatchMessage(ctx, owner, &sessionv1.DispatchMessageRequest{
+		SessionId: sid, Text: "say acp_queued_second", Intent: sessionv1.DispatchIntent_DISPATCH_INTENT_QUEUE,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	q2, err := eng.DispatchMessage(ctx, owner, &sessionv1.DispatchMessageRequest{
+		SessionId: sid, Text: "say acp_steered_first", Intent: sessionv1.DispatchIntent_DISPATCH_INTENT_QUEUE,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := eng.ManageQueue(ctx, owner, &sessionv1.ManageQueueRequest{
+		SessionId: sid,
+		Operation: sessionv1.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER,
+		RunId:     q2.Run.RunId,
+	}); err != nil {
+		t.Fatalf("ManageQueue(PROMOTE_TO_STEER) on ACP failed: %v", err)
+	}
+
+	settled := waitForSessionStatus(t, eng, owner, sid, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+	var completedPrompts []string
+	var run1Status sessionv1.RunStatus
+	for _, r := range settled.Runs {
+		if r.RunId == launched.InitialRun.RunId {
+			run1Status = r.Status
+		}
+		if r.Status == sessionv1.RunStatus_RUN_STATUS_COMPLETED {
+			completedPrompts = append(completedPrompts, r.Prompt)
+		}
+	}
+	if run1Status != sessionv1.RunStatus_RUN_STATUS_INTERRUPTED {
+		t.Fatalf("expected initial ACP run to be INTERRUPTED by promote-to-steer, got %v", run1Status)
+	}
+	if len(completedPrompts) != 2 || completedPrompts[0] != "say acp_steered_first" || completedPrompts[1] != "say acp_queued_second" {
+		t.Fatalf("expected [acp_steered_first, acp_queued_second], got %v (q1=%s)", completedPrompts, q1.Run.RunId)
+	}
+
+	// 2. Promoting when the run is no longer queued returns FailedPrecondition instead of silent 200 OK.
+	_, staleErr := eng.ManageQueue(ctx, owner, &sessionv1.ManageQueueRequest{
+		SessionId: sid,
+		Operation: sessionv1.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER,
+		RunId:     q2.Run.RunId,
+	})
+	if connect.CodeOf(staleErr) != connect.CodeFailedPrecondition {
+		t.Fatalf("expected FailedPrecondition for already-finished run, got %v", staleErr)
+	}
+
+	// 3. Even on a live-steer provider, if the queued run switched model/provider, PROMOTE_TO_STEER
+	// interrupts and switches rather than injecting into the old model's turn.
+	l2, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "claude", Model: "scripted-pro"},
+		InitialPrompt:  "hang",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid2 := l2.Session.SessionId
+	deadline = time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		p, _ := eng.GetSession(ctx, owner, sid2)
+		if p.GetSession().GetActiveProviderSessionId() != "" && p.GetSession().GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_RUNNING {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	switchedQ, err := eng.DispatchMessage(ctx, owner, &sessionv1.DispatchMessageRequest{
+		SessionId:      sid2,
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "antigravity", Model: "gemini-3.1-pro"},
+		Text:           "say switched_provider_steered",
+		Intent:         sessionv1.DispatchIntent_DISPATCH_INTENT_QUEUE,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.ManageQueue(ctx, owner, &sessionv1.ManageQueueRequest{
+		SessionId: sid2,
+		Operation: sessionv1.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER,
+		RunId:     switchedQ.Run.RunId,
+	}); err != nil {
+		t.Fatalf("ManageQueue(PROMOTE_TO_STEER) across provider switch failed: %v", err)
+	}
+	settled2 := waitForSessionStatus(t, eng, owner, sid2, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+	if settled2.Session.GetModelSelection().GetInstanceId() != "antigravity" {
+		t.Fatalf("expected session switched to antigravity, got %+v", settled2.Session.GetModelSelection())
+	}
+}
+
+func TestPromoteToSteerRealACPDriver(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+	fakeBin := filepath.Join(tmp, "fakeacp")
+	build := exec.Command("go", "build", "-o", fakeBin, "../runtime/acp/fakeacp")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build fakeacp: %v\n%s", err, out)
+	}
+	t.Setenv("FAKE_ACP_STATE", filepath.Join(tmp, "state"))
+	t.Setenv("FAKE_ACP_MODELS", "gemini-3-pro")
+
+	eng, err := Open(Config{
+		DataDir:   filepath.Join(tmp, "data"),
+		MachineID: "m_real_acp",
+		Drivers:   map[string]runtime.Driver{"acp": rtacp.NewDriver("")},
+		IdleTTL:   time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+
+	owner := OwnerPrincipal("dev_owner", "Owner")
+	repo := initGitProject(t)
+	_ = eng.SyncWorkspace("demo", repo, "main", identityv1.Workspace_WORKSPACE_WORKTREE, "", nil)
+	_, _ = eng.UpsertProviderInstance(ctx, owner, &sessionv1.ProviderInstanceConfig{
+		InstanceId:  "gemini",
+		Driver:      "acp",
+		AcpFlavor:   "gemini",
+		BinaryPath:  fakeBin,
+		DisplayName: "Gemini CLI",
+		Enabled:     true,
+	})
+
+	sel := &sessionv1.ModelSelection{InstanceId: "gemini", Model: "gemini-3-pro"}
+	launched, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ProjectId:      "demo",
+		Workspace:      &sessionv1.WorkspaceStrategy{Mode: identityv1.Workspace_WORKSPACE_WORKTREE},
+		ModelSelection: sel,
+		RuntimeMode:    identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS,
+		InitialPrompt:  "focus Checking ACP state\nsleep 20s",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid := launched.Session.SessionId
+
+	// Test BOTH immediate promote during worktree/process startup AND mid-turn promote!
+	q1, _ := eng.DispatchMessage(ctx, owner, &sessionv1.DispatchMessageRequest{
+		SessionId: sid, ModelSelection: sel, RuntimeMode: identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS, Text: "say acp_queued_second", Intent: sessionv1.DispatchIntent_DISPATCH_INTENT_QUEUE,
+	})
+	q2, _ := eng.DispatchMessage(ctx, owner, &sessionv1.DispatchMessageRequest{
+		SessionId: sid, ModelSelection: sel, RuntimeMode: identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS, Text: "say acp_steered_first", Intent: sessionv1.DispatchIntent_DISPATCH_INTENT_QUEUE,
+	})
+
+	if _, err := eng.ManageQueue(ctx, owner, &sessionv1.ManageQueueRequest{
+		SessionId: sid,
+		Operation: sessionv1.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER,
+		RunId:     q2.Run.RunId,
+	}); err != nil {
+		t.Fatalf("ManageQueue(PROMOTE_TO_STEER): %v", err)
+	}
+
+	deadline := time.Now().Add(6 * time.Second)
+	for time.Now().Before(deadline) {
+		p, _ := eng.GetSession(ctx, owner, sid)
+		if p.GetSession().GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_IDLE {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	p, _ := eng.GetSession(ctx, owner, sid)
+	if p.GetSession().GetStatus() != sessionv1.SessionStatus_SESSION_STATUS_IDLE {
+		for _, r := range p.GetRuns() {
+			t.Logf("run %s ord=%d status=%v err=%q ps=%s prompt=%q", r.RunId, r.Ordinal, r.Status, r.ErrorMessage, r.ProviderSessionId, r.Prompt)
+		}
+		for _, it := range p.GetItems() {
+			t.Logf("item %s run=%s kind=%v status=%s text=%q", it.ItemId, it.RunId, it.Kind, it.Status, it.Text)
+		}
+		t.Fatalf("session stuck on %v (err=%q)", p.GetSession().GetStatus(), p.GetSession().GetError())
+	}
+	var replies []string
+	for _, it := range p.GetItems() {
+		if it.Kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE {
+			replies = append(replies, it.Text)
+		}
+	}
+	if len(replies) != 2 || replies[0] != "acp_steered_first" || replies[1] != "acp_queued_second" {
+		t.Fatalf("expected replies [acp_steered_first, acp_queued_second], got %v (q1=%s)", replies, q1.Run.RunId)
 	}
 }

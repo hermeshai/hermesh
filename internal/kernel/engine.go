@@ -316,12 +316,22 @@ func (e *Engine) onLeaseReaped(lease *runtime.LeaseEntry) {
 	if lease == nil || e.bgCtx.Err() != nil {
 		return
 	}
+	e.settleSessionBackgroundTasks(lease.SessionID, lease.ProviderSessionID, "session closed after inactivity")
+}
+
+func (e *Engine) settleSessionBackgroundTasks(sessionID, matchPSID, summary string) {
+	if sessionID == "" || e.bgCtx.Err() != nil {
+		return
+	}
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
-		sess, err := tx.GetSession(lease.SessionID)
+		sess, err := tx.GetSession(sessionID)
 		if err != nil {
 			return nil
 		}
-		stopped, items, err := tx.StopRunningBackgroundTasks(lease.SessionID, "", "session closed after inactivity")
+		if matchPSID != "" && sess.ActiveProviderSessionId != "" && sess.ActiveProviderSessionId != matchPSID {
+			return nil
+		}
+		stopped, items, err := tx.StopRunningBackgroundTasks(sessionID, "", summary)
 		if err != nil || len(stopped) == 0 {
 			return err
 		}
@@ -337,7 +347,7 @@ func (e *Engine) onLeaseReaped(lease *runtime.LeaseEntry) {
 		}
 		return nil
 	})
-	if err == nil {
+	if err == nil && len(events) > 0 {
 		e.publish(events, nil)
 	}
 }
@@ -2630,7 +2640,9 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 		}
 		if liveLease != nil && plan.ModeChanged {
 			if err := liveLease.Session.SetModes(runCtx, curRun.RuntimeMode, curRun.InteractionMode); err != nil {
+				e.stopLeasePump(currentPS.ProviderSessionId, liveLease)
 				e.sup.Detach(currentPS.ProviderSessionId, false)
+				e.settleSessionBackgroundTasks(sessionID, currentPS.ProviderSessionId, "provider session replaced")
 				liveLease = nil
 			} else {
 				liveLease.RuntimeMode = curRun.RuntimeMode
@@ -2654,8 +2666,10 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 			return
 		}
 		if currentPS != nil {
+			e.stopLeasePump(currentPS.ProviderSessionId, nil)
 			e.sup.Detach(currentPS.ProviderSessionId, false)
 		}
+		e.settleSessionBackgroundTasks(sessionID, "", "provider session replaced")
 		buildHandoff := func() string {
 			if freshContext {
 				return ""
@@ -2670,11 +2684,24 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 			return BuildContextHandoff(historyItems, existingCkpts, defaultHandoffBudgetChars)
 		}
 
+		isPriorUnstarted := func(pr *sessionv1.Run) bool {
+			if pr.RunId == runID || pr.ProviderSessionId != "" || strings.TrimSpace(pr.Prompt) == "" {
+				return false
+			}
+			if pr.Ordinal == 0 || pr.Ordinal >= curRun.Ordinal {
+				return false
+			}
+			if pr.Status == sessionv1.RunStatus_RUN_STATUS_FAILED {
+				return true
+			}
+			return pr.Status == sessionv1.RunStatus_RUN_STATUS_INTERRUPTED && !strings.HasPrefix(pr.ErrorMessage, "steered by ")
+		}
+
 		resumeCursor := ""
 		var unstartedPrompts []string
 		if currentPS == nil && !freshContext {
 			for _, pr := range runs {
-				if pr.RunId != runID && pr.ProviderSessionId == "" && strings.TrimSpace(pr.Prompt) != "" {
+				if isPriorUnstarted(pr) {
 					unstartedPrompts = append(unstartedPrompts, pr.Prompt)
 				}
 			}
@@ -2756,7 +2783,9 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 					}
 				}
 			}
-			e.recordSwitchItem(sessionID, runID, fromSel, curRun.ModelSelection, plan.HandoffStrategy, handoffPrefix)
+			if (fromSel != nil && !SelectionsEqual(fromSel, curRun.ModelSelection)) || plan.HandoffStrategy != "" || (currentPS != nil && currentPS.ProviderSessionId != activePS.ProviderSessionId) {
+				e.recordSwitchItem(sessionID, runID, fromSel, curRun.ModelSelection, plan.HandoffStrategy, handoffPrefix)
+			}
 		}
 
 		activeLease = &runtime.LeaseEntry{
@@ -2793,7 +2822,10 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 	if currentPS == nil && !freshContext {
 		var priorUnexecuted []string
 		for _, pr := range runs {
-			if pr.RunId != runID && pr.ProviderSessionId == "" && strings.TrimSpace(pr.Prompt) != "" {
+			if pr.RunId != runID && pr.ProviderSessionId == "" && strings.TrimSpace(pr.Prompt) != "" &&
+				pr.Ordinal > 0 && pr.Ordinal < curRun.Ordinal &&
+				(pr.Status == sessionv1.RunStatus_RUN_STATUS_FAILED ||
+					(pr.Status == sessionv1.RunStatus_RUN_STATUS_INTERRUPTED && !strings.HasPrefix(pr.ErrorMessage, "steered by "))) {
 				priorUnexecuted = append(priorUnexecuted, pr.Prompt)
 			}
 		}
@@ -2816,7 +2848,9 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 	}); err != nil {
 		pump.clearActiveIf(runID)
 		activeLease.SetInTurn(false)
+		e.stopLeasePump(activePS.ProviderSessionId, activeLease)
 		e.sup.DetachSession(activePS.ProviderSessionId, activeLease.Session, false)
+		e.settleSessionBackgroundTasks(sessionID, activePS.ProviderSessionId, "turn failed to start")
 		e.finishRunFailed(sessionID, runID, "turn_start_failed", err.Error(), runtime.FailureOf(err, sessionv1.FailureKind_FAILURE_KIND_UNKNOWN))
 		return
 	}
@@ -3240,28 +3274,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			e.sup.DetachSession(psID, pumpSess, false)
 
 			// Settle any background tasks tied to this closed process.
-			bgEvs, _ := e.st.Mutate(func(tx *store.Tx) error {
-				sess, err := tx.GetSession(sessionID)
-				if err != nil {
-					return nil
-				}
-				stopped, items, err := tx.StopRunningBackgroundTasks(sessionID, "", "provider session exited")
-				if err != nil || len(stopped) == 0 {
-					return err
-				}
-				_, _, _ = tx.RefreshSessionBackgroundCounts(sess)
-				if err := putSessionSynced(tx, sess); err != nil {
-					return err
-				}
-				for _, it := range items {
-					_ = tx.AppendEvent(&sessionv1.SessionEvent{SessionId: sessionID, Type: "item.updated", Session: sess, Item: it})
-				}
-				for _, bt := range stopped {
-					_ = tx.AppendEvent(&sessionv1.SessionEvent{SessionId: sessionID, Type: "background_task.updated", Session: sess, BackgroundTask: bt})
-				}
-				return nil
-			})
-			e.publish(bgEvs, nil)
+			e.settleSessionBackgroundTasks(sessionID, psID, "provider session exited")
 
 			if cur := pump.takeActive(); cur != nil {
 				resetTurnBuffers()
@@ -5150,6 +5163,7 @@ func (e *Engine) InterruptSession(ctx context.Context, p *Principal, req *sessio
 			e.stopLeasePump(psID, lease)
 			e.sup.DetachSession(psID, lease.Session, true)
 		}
+		e.settleSessionBackgroundTasks(req.SessionId, psID, intReason)
 		if activeRunID != "" {
 			e.mu.Lock()
 			cancel := e.runCancels[activeRunID]
@@ -5179,10 +5193,10 @@ func (e *Engine) InterruptSession(ctx context.Context, p *Principal, req *sessio
 				}
 				e.stopLeasePump(psID, lease)
 				e.sup.DetachSession(psID, targetSession, true)
+				e.settleSessionBackgroundTasks(sid, psID, "session force-stopped")
 				if cancel != nil {
 					cancel()
 				}
-				_ = sid
 			})
 		}
 	}
@@ -5317,6 +5331,16 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *sessionv1.M
 
 	// Promote-to-steer while an active run is running:
 	if req.Operation == sessionv1.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER && sess.ActiveRunId != "" {
+		if sess.ActiveRunId == req.RunId {
+			var res *sessionv1.ManageQueueResponse
+			_, _ = e.st.Mutate(func(tx *store.Tx) error {
+				rem, _ := tx.QueuedRuns(req.SessionId)
+				res = &sessionv1.ManageQueueResponse{Session: proto.Clone(sess).(*sessionv1.Session), QueuedRuns: rem}
+				return tx.PutReceipt(req.CommandId, "ManageQueue", res)
+			})
+			unlock()
+			return res, nil
+		}
 		runs, _ := e.st.Runs(req.SessionId)
 		var qRun *sessionv1.Run
 		for _, r := range runs {
@@ -5329,13 +5353,22 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *sessionv1.M
 			unlock()
 			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("run is no longer queued"))
 		}
+		_, isShellShortcut := ParseShellShortcut(qRun.GetAuthor(), qRun.Prompt)
 		lease := e.sup.Get(sess.ActiveProviderSessionId)
-		if lease != nil {
+		canLiveSteer := !isShellShortcut &&
+			qRun.Intent != sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT &&
+			sess.Status == sessionv1.SessionStatus_SESSION_STATUS_RUNNING &&
+			sess.PendingRequestId == "" &&
+			lease != nil &&
+			(qRun.ModelSelection == nil || SelectionsEqual(lease.Selection, qRun.ModelSelection))
+		if canLiveSteer {
 			if err := lease.Session.Steer(ctx, qRun.Prompt, e.loadTurnAttachments(qRun.Attachments)); err == nil {
 				var res *sessionv1.ManageQueueResponse
 				events, mErr := e.st.Mutate(func(tx *store.Tx) error {
 					sNow, _ := tx.GetSession(req.SessionId)
+					sNow.QueueHeld = false
 					qRun.Status = sessionv1.RunStatus_RUN_STATUS_CANCELLED
+					qRun.CompletedAt = timestamppb.Now()
 					_ = tx.PutRun(qRun)
 					item := &sessionv1.TurnItem{
 						ItemId:      newID("itm"),
@@ -5372,6 +5405,7 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *sessionv1.M
 	}
 
 	var startNow *sessionv1.Run
+	var interruptRunID, interruptPSID, interruptPendingReqID string
 	var res *sessionv1.ManageQueueResponse
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
 		sNow, err := tx.GetSession(req.SessionId)
@@ -5453,8 +5487,43 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *sessionv1.M
 			}
 			updatedRuns = reordered
 
-		case sessionv1.QueueOperation_QUEUE_OPERATION_RESUME_QUEUE,
-			sessionv1.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER:
+		case sessionv1.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER:
+			sNow.QueueHeld = false
+			if sNow.ActiveRunId != "" {
+				if sNow.ActiveRunId != req.RunId {
+					idx := slices.IndexFunc(queued, func(r *sessionv1.Run) bool { return r.RunId == req.RunId })
+					if idx < 0 {
+						return connect.NewError(connect.CodeFailedPrecondition, errors.New("run is no longer queued"))
+					}
+					if idx > 0 {
+						moving := queued[idx]
+						rest := slices.Delete(slices.Clone(queued), idx, idx+1)
+						reordered := slices.Insert(rest, 0, moving)
+						for i, r := range reordered {
+							r.QueueOrder = float64((i + 1) * 1000)
+							if err := tx.PutRun(r); err != nil {
+								return err
+							}
+						}
+						updatedRuns = reordered
+					} else {
+						updatedRuns = []*sessionv1.Run{queued[0]}
+					}
+					interruptRunID = sNow.ActiveRunId
+					interruptPSID = sNow.ActiveProviderSessionId
+					interruptPendingReqID = sNow.PendingRequestId
+				}
+				break
+			}
+			if len(queued) == 0 {
+				return connect.NewError(connect.CodeFailedPrecondition, errors.New("run is no longer queued"))
+			}
+			if req.RunId != "" && !slices.ContainsFunc(queued, func(r *sessionv1.Run) bool { return r.RunId == req.RunId }) {
+				return connect.NewError(connect.CodeFailedPrecondition, errors.New("run is no longer queued"))
+			}
+			fallthrough
+
+		case sessionv1.QueueOperation_QUEUE_OPERATION_RESUME_QUEUE:
 			sNow.QueueHeld = false
 			if sNow.ActiveRunId == "" && len(queued) > 0 {
 				supReq, supItem, dErr := dismissPendingRequestTx(tx, sNow, p.Actor)
@@ -5558,10 +5627,67 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *sessionv1.M
 		return nil, err
 	}
 	e.publish(events, nil)
+	if interruptRunID != "" {
+		who := "owner"
+		if p.Actor != nil && p.Actor.Kind != sessionv1.ActorKind_ACTOR_KIND_OWNER && p.Actor.Id != "" {
+			who = p.Actor.Id
+		}
+		e.interruptActiveRunForSteer(ctx, req.SessionId, interruptRunID, interruptPSID, interruptPendingReqID, "steered by "+who)
+	}
 	if startNow != nil {
 		e.spawnRun(req.SessionId, startNow.RunId, startNow.Intent == sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT)
 	}
 	return res, nil
+}
+
+func (e *Engine) interruptActiveRunForSteer(ctx context.Context, sessionID, activeRunID, psID, pendingReqID, reason string) {
+	if cur, err := e.st.Session(sessionID); err != nil || cur.ActiveRunId != activeRunID {
+		return
+	}
+	e.mu.Lock()
+	cancel, stillActive := e.runCancels[activeRunID]
+	if !stillActive {
+		e.mu.Unlock()
+		return
+	}
+	e.runInterruptedBy[activeRunID] = reason
+	var waitCh chan runtime.ToolGateResult
+	if pendingReqID != "" {
+		waitCh = e.waiters[pendingReqID]
+	}
+	e.mu.Unlock()
+
+	if waitCh != nil {
+		select {
+		case waitCh <- runtime.ToolGateResult{CancelTurn: true}:
+		default:
+		}
+	}
+	lease := e.sup.Get(psID)
+	if lease == nil {
+		if cancel != nil {
+			cancel()
+		}
+		return
+	}
+	_ = lease.Session.Interrupt(ctx)
+	targetSession := lease.Session
+	time.AfterFunc(2*time.Second, func() {
+		if e.bgCtx.Err() != nil {
+			return
+		}
+		e.mu.Lock()
+		cancelNow, activeNow := e.runCancels[activeRunID]
+		e.mu.Unlock()
+		if !activeNow {
+			return
+		}
+		e.stopLeasePump(psID, lease)
+		e.sup.DetachSession(psID, targetSession, true)
+		if cancelNow != nil {
+			cancelNow()
+		}
+	})
 }
 
 func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1.UpdateSessionRequest) (*sessionv1.UpdateSessionResponse, error) {

@@ -9,6 +9,7 @@ import {
   InteractionMode,
   ModelSelectionSchema,
   QueueOperation,
+  RunStatus,
   SessionProjectionSchema,
   SessionSchema,
   SessionStatus,
@@ -168,9 +169,10 @@ export function SessionPage() {
   const [stopRequestedRun, setStopRequestedRun] = useState<string>("");
   const [spoken, setSpoken] = useState<number>(0);
 
-  // Queue edit state
+  // Queue edit & in-flight action state
   const [editingRunId, setEditingRunId] = useState<string>("");
   const [editingText, setEditingText] = useState<string>("");
+  const [managingRunId, setManagingRunId] = useState<string>("");
   // Top-bar session title inline rename state
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
   const [pendingTitle, setPendingTitle] = useState<{ id: string; title: string } | null>(null);
@@ -514,7 +516,32 @@ export function SessionPage() {
   const handleStopBackgroundTask = async (taskId = "") => {
     if (!activeSessionId) return;
     try {
-      await sessionApi.stopBackgroundTask({ sessionId: activeSessionId, taskId });
+      const res = await sessionApi.stopBackgroundTask({ sessionId: activeSessionId, taskId });
+      setProjection((prev) => {
+        if (!prev) return prev;
+        const stoppedById = new Map(res.stoppedTasks.map((t) => [t.taskId, t]));
+        const stoppedItems = new Set(res.stoppedTasks.map((t) => t.itemId).filter(Boolean));
+        const mergedTasks = prev.backgroundTasks.map((t) => {
+          const hit = stoppedById.get(t.taskId);
+          if (hit) {
+            stoppedById.delete(t.taskId);
+            return hit;
+          }
+          return t;
+        });
+        for (const t of stoppedById.values()) mergedTasks.push(t);
+        const mergedItems = stoppedItems.size > 0
+          ? prev.items.map((it) => (stoppedItems.has(it.itemId) && it.status === "running" ? { ...it, streaming: false, status: "interrupted" } : it))
+          : prev.items;
+        const next = create(SessionProjectionSchema, {
+          ...prev,
+          session: res.session ?? prev.session,
+          backgroundTasks: mergedTasks,
+          items: mergedItems,
+        });
+        rememberProjection(activeSessionId, next);
+        return next;
+      });
     } catch (e) {
       st.show(errorText(e));
     }
@@ -631,6 +658,50 @@ export function SessionPage() {
   // The background card keeps the conversation clear of it as the info card does, when there is room for one.
   const dock = (info && card === "docked") || (background && layoutOf({ ...st, inspector: true, peek: null }).card === "docked");
 
+  const runQueueOp = async (req: Parameters<typeof sessionApi.manageQueue>[0]): Promise<boolean> => {
+    const busyKey = req.runId || "resume";
+    setManagingRunId(busyKey);
+    try {
+      const res = await sessionApi.manageQueue(req);
+      setProjection((prev) => {
+        if (!prev) return prev;
+        const prevSeq = prev.session?.progress?.lastEventSeq ?? 0n;
+        const resSeq = res.session?.progress?.lastEventSeq ?? 0n;
+        if (resSeq > 0n && prevSeq >= resSeq && !res.session?.offlineQueued && !prev.session?.offlineQueued) {
+          return prev;
+        }
+        const stillQueued = new Map(res.queuedRuns.map((r) => [r.runId, r]));
+        const shown = new Set(prev.items.filter((it) => it.kind === TurnItemKind.USER_MESSAGE).map((it) => it.runId));
+        const activeId = res.session?.activeRunId ?? prev.session?.activeRunId ?? "";
+        const mergedRuns = prev.runs.map((r) => {
+          const q = stillQueued.get(r.runId);
+          if (q) {
+            stillQueued.delete(r.runId);
+            return q;
+          }
+          if (r.status === RunStatus.QUEUED && !shown.has(r.runId) && r.runId !== activeId) {
+            return { ...r, status: RunStatus.CANCELLED };
+          }
+          return r;
+        });
+        for (const q of stillQueued.values()) mergedRuns.push(q);
+        const next = create(SessionProjectionSchema, {
+          ...prev,
+          session: res.session ?? prev.session,
+          runs: mergedRuns,
+        });
+        if (req.sessionId) rememberProjection(req.sessionId, next);
+        return next;
+      });
+      return true;
+    } catch (e) {
+      st.show(errorText(e));
+      return false;
+    } finally {
+      setManagingRunId((cur) => (cur === busyKey ? "" : cur));
+    }
+  };
+
   const requestCard = activeSessionId && session && pendingReq && (
     <SessionRequest key={pendingReq.requestId} s={session} req={pendingReq} onResponded={() => setSpoken((n) => n + 1)} />
   );
@@ -643,65 +714,87 @@ export function SessionPage() {
           <>
             <span className="qx-tag">{t("queue.held")}</span>
             <span className="appr-sp" />
-            <button className="btn th-qbtn" data-testid="queue-resume-btn" onClick={() => sessionApi.manageQueue({ sessionId: activeSessionId, operation: QueueOperation.RESUME_QUEUE })}>
+            <button
+              className="btn th-qbtn"
+              data-testid="queue-resume-btn"
+              disabled={managingRunId === "resume"}
+              onClick={() => void runQueueOp({ sessionId: activeSessionId, operation: QueueOperation.RESUME_QUEUE })}
+            >
               {t("queue.resume")}
             </button>
           </>
         )}
       </div>
-      {queuedRuns.map((qr, idx) => (
-        <div key={qr.runId} className="th-qrow" data-testid={`queued-run-${idx}`}>
-          {editingRunId === qr.runId ? (
-            <>
-              <input className="field" value={editingText} onChange={(e) => setEditingText(e.target.value)} data-testid="queue-edit-input" />
-              <button
-                className="btn primary th-qbtn"
-                data-testid="queue-edit-save"
-                onClick={async () => {
-                  await sessionApi.manageQueue({ sessionId: activeSessionId, operation: QueueOperation.EDIT, runId: qr.runId, text: editingText });
-                  setEditingRunId("");
-                }}
-              >
-                {t("queue.save")}
-              </button>
-            </>
-          ) : (
-            <>
-              <span className="th-qtext sel-text" title={qr.prompt || qr.attachments.map((a) => a.name).join(", ")}>
-                {qr.prompt || qr.attachments.map((a) => a.name).join(", ")}
-              </span>
-              <button
-                className="btn th-qbtn"
-                data-testid={`queue-promote-${idx}`}
-                onClick={() => {
-                  setSpoken((n) => n + 1);
-                  void sessionApi.manageQueue({ sessionId: activeSessionId, operation: QueueOperation.PROMOTE_TO_STEER, runId: qr.runId });
-                }}
-              >
-                {t("queue.steerNow")}
-              </button>
-              {idx > 0 && (
-                <button className="btn th-qbtn" onClick={() => sessionApi.manageQueue({ sessionId: activeSessionId, operation: QueueOperation.REORDER, runId: qr.runId, beforeRunId: queuedRuns[idx - 1]!.runId })}>
-                  {t("queue.moveUp")}
+      {queuedRuns.map((qr, idx) => {
+        const rowBusy = managingRunId === qr.runId;
+        return (
+          <div key={qr.runId} className="th-qrow" data-testid={`queued-run-${idx}`}>
+            {editingRunId === qr.runId ? (
+              <>
+                <input className="field" value={editingText} onChange={(e) => setEditingText(e.target.value)} data-testid="queue-edit-input" />
+                <button
+                  className="btn primary th-qbtn"
+                  data-testid="queue-edit-save"
+                  disabled={rowBusy}
+                  onClick={async () => {
+                    if (await runQueueOp({ sessionId: activeSessionId, operation: QueueOperation.EDIT, runId: qr.runId, text: editingText })) {
+                      setEditingRunId("");
+                    }
+                  }}
+                >
+                  {t("queue.save")}
                 </button>
-              )}
-              <button
-                className="btn th-qbtn"
-                data-testid={`queue-edit-${idx}`}
-                onClick={() => {
-                  setEditingRunId(qr.runId);
-                  setEditingText(qr.prompt);
-                }}
-              >
-                {t("queue.edit")}
-              </button>
-              <button className="btn th-qbtn" data-testid={`queue-cancel-${idx}`} onClick={() => sessionApi.manageQueue({ sessionId: activeSessionId, operation: QueueOperation.CANCEL, runId: qr.runId })}>
-                {t("queue.cancel")}
-              </button>
-            </>
-          )}
-        </div>
-      ))}
+              </>
+            ) : (
+              <>
+                <span className="th-qtext sel-text" title={qr.prompt || qr.attachments.map((a) => a.name).join(", ")}>
+                  {qr.prompt || qr.attachments.map((a) => a.name).join(", ")}
+                </span>
+                <button
+                  className="btn th-qbtn"
+                  data-testid={`queue-promote-${idx}`}
+                  disabled={rowBusy}
+                  onClick={async () => {
+                    if (await runQueueOp({ sessionId: activeSessionId, operation: QueueOperation.PROMOTE_TO_STEER, runId: qr.runId })) {
+                      setSpoken((n) => n + 1);
+                    }
+                  }}
+                >
+                  {t("queue.steerNow")}
+                </button>
+                {idx > 0 && (
+                  <button
+                    className="btn th-qbtn"
+                    disabled={rowBusy}
+                    onClick={() => void runQueueOp({ sessionId: activeSessionId, operation: QueueOperation.REORDER, runId: qr.runId, beforeRunId: queuedRuns[idx - 1]!.runId })}
+                  >
+                    {t("queue.moveUp")}
+                  </button>
+                )}
+                <button
+                  className="btn th-qbtn"
+                  data-testid={`queue-edit-${idx}`}
+                  disabled={rowBusy}
+                  onClick={() => {
+                    setEditingRunId(qr.runId);
+                    setEditingText(qr.prompt);
+                  }}
+                >
+                  {t("queue.edit")}
+                </button>
+                <button
+                  className="btn th-qbtn"
+                  data-testid={`queue-cancel-${idx}`}
+                  disabled={rowBusy}
+                  onClick={() => void runQueueOp({ sessionId: activeSessionId, operation: QueueOperation.CANCEL, runId: qr.runId })}
+                >
+                  {t("queue.cancel")}
+                </button>
+              </>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 
