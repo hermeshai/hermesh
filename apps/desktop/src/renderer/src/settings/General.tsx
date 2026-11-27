@@ -1,37 +1,123 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { pickLanguage } from "@hermesh/core";
+import { isDarkPalette, isLightPalette, type Palette } from "../../../shared/appearance";
 import type { Appearance, Preferences } from "../../../shared/bridge";
 import { languages, resolveLanguage, type LanguageChoice } from "../../../shared/i18n";
+import { useIsDark } from "../appearance";
 import { useUpdate } from "../update";
 import { SRow, Switch } from "./common";
 
 /** The preferences that are switches. */
-type Flag = { [K in keyof Preferences]: Preferences[K] extends boolean ? K : never }[keyof Preferences];
+type Flag = { [K in keyof Preferences]-?: Preferences[K] extends boolean ? K : never }[keyof Preferences];
+
+const appearances: Appearance[] = ["system", "light", "soft", "dark", "black"];
+
+function MiniAnatomy() {
+  return (
+    <>
+      <span className="mw-side">
+        <span className="mw-dots"><i /><i /><i /></span>
+        <span className="mw-nav sel" />
+        <span className="mw-nav" />
+        <span className="mw-nav short" />
+      </span>
+      <span className="mw-body">
+        <span className="mw-bub" />
+        <span className="mw-l1" />
+        <span className="mw-code" />
+        <span className="mw-pill"><i /></span>
+      </span>
+    </>
+  );
+}
 
 /** General: the appearance and language, and updates (docs/settings-environments.md §5.8). */
 export function General() {
   const { t } = useTranslation("settings");
+  const isDark = useIsDark();
   // Kept by the main process, which acts on them while no window is open.
   const [prefs, setPrefs] = useState<Preferences>();
+  const [peek, setPeek] = useState<Appearance | null>(null);
+  const peekTimer = useRef<number>(0);
+
   useEffect(() => {
     window.hermesh?.getPreferences().then(setPrefs);
     return window.hermesh?.onPreferences(setPrefs);
   }, []);
-  const look = (a: Appearance) => (
-    <button key={a} type="button" className={prefs?.appearance === a ? "on" : ""} aria-pressed={prefs?.appearance === a} disabled={!prefs} onClick={() => window.hermesh?.setPreferences({ appearance: a }).then(setPrefs)}>
-      <i className={`look-${a}`} />
-      {t(`appearance.${a}`)}
-    </button>
-  );
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(peekTimer.current);
+      window.hermesh?.previewAppearance?.(null);
+    };
+  }, []);
+
+  const startPeek = (a: Appearance) => {
+    window.clearTimeout(peekTimer.current);
+    peekTimer.current = window.setTimeout(() => {
+      setPeek(a);
+      window.hermesh?.previewAppearance?.(a);
+    }, 110);
+  };
+
+  const endPeek = () => {
+    window.clearTimeout(peekTimer.current);
+    setPeek(null);
+    window.hermesh?.previewAppearance?.(null);
+  };
+
+  const choose = (a: Appearance) => {
+    window.clearTimeout(peekTimer.current);
+    setPeek(null);
+    window.hermesh?.setPreferences({ appearance: a }).then(setPrefs);
+  };
+
+  const prefLight = prefs?.preferredLight ?? "light";
+  const prefDark = prefs?.preferredDark ?? "dark";
+  const dayPair: Palette = peek && isLightPalette(peek) ? peek : prefLight;
+  const nightPair: Palette = peek && isDarkPalette(peek) ? peek : prefDark;
+
+  const look = (a: Appearance) => {
+    const active = prefs?.appearance === a;
+    const paired = prefs?.appearance === "system" && (a === prefLight || a === prefDark);
+    return (
+      <button
+        key={a}
+        type="button"
+        className={`look-card ${active ? "on" : ""} ${paired ? "paired" : ""}`}
+        aria-pressed={active}
+        disabled={!prefs}
+        onPointerEnter={() => prefs && startPeek(a)}
+        onClick={() => choose(a)}
+      >
+        {a === "system" ? (
+          <span className={`look-stage sys-stage ${isDark ? "night-now" : ""}`} aria-hidden="true">
+            <span className={`sys-win day m-${dayPair}`}><MiniAnatomy /></span>
+            <span className={`sys-win night m-${nightPair}`}><MiniAnatomy /></span>
+          </span>
+        ) : (
+          <span className="look-stage" aria-hidden="true">
+            <span className={`mini-win m-${a}`}><MiniAnatomy /></span>
+          </span>
+        )}
+        <span className="look-cap">
+          <span>{t(`appearance.${a}`)}</span>
+          <i className="look-pair-dot" aria-hidden="true" />
+        </span>
+      </button>
+    );
+  };
+
   return (
     <div className="form">
       <div className="fgroup">
-        <SRow title={t("appearance.title")}>
-          <div className="set-look" role="group" aria-label={t("appearance.title")}>
-            {(["system", "light", "dark", "black"] as Appearance[]).map(look)}
+        <div className="look-block">
+          <div className="look-head">{t("appearance.title")}</div>
+          <div className="set-look" role="group" aria-label={t("appearance.title")} onPointerLeave={endPeek}>
+            {appearances.map(look)}
           </div>
-        </SRow>
+        </div>
         <Language prefs={prefs} setPrefs={setPrefs} />
       </div>
       <Updates />

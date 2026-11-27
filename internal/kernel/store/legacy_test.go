@@ -18,10 +18,9 @@ import (
 	"github.com/hermeshai/hermesh/internal/sqlitedb"
 )
 
-// The stores this one took over from, as they were on a machine: their
-// tables are testdata's (the schemas of a real hermeshd.db at version 18 and
-// a real threads_v2.db at version 4, no rows), and the rows are written here
-// as the old Hermesh wrote them, in the old messages.
+// The store sessions.db took over from on v0.1.9 machines: hermeshd.db at
+// schema 18 (testdata/hermeshd-v18.schema.sql, no rows), with rows written as
+// the old Hermesh wrote them in the old protobuf messages.
 
 // oldMessage is a message of the old definitions, from its JSON.
 func oldMessage(t *testing.T, name, json string) []byte {
@@ -52,7 +51,7 @@ func oldStore(t *testing.T, dir, file, schema string, version int) *sql.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, file))
+	db, err := sqlitedb.OpenRaw(filepath.Join(dir, file))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,41 +115,6 @@ func v1Machine(t *testing.T, dir string) {
 	event("s_cut", `{"agent_message":{"text":"On it"}}`)
 }
 
-// v2Machine is a machine's threads_v2.db with one V2 thread at work when it
-// was last written: a run that ended, one that ran, their items, its
-// provider thread and a checkpoint.
-func v2Machine(t *testing.T, dir string) {
-	t.Helper()
-	db := oldStore(t, dir, "threads_v2.db", "threads_v2-v4.schema.sql", 4)
-	defer db.Close()
-	thread := oldMessage(t, "hermesh.thread.v2.Thread", `{"thread_id":"t_1","machine_id":"m1","project_id":"app","title":"Ship the overview","title_renamed":true,
-		"status":"THREAD_STATUS_RUNNING","model_selection":{"instance_id":"codex","model":"gpt-6"},"runtime_mode":"RUNTIME_MODE_AUTO",
-		"workspace":{"mode":"WORKSPACE_WORKTREE","branch":"hermesh/t_1","worktree_path":"/w/t_1"},"active_provider_thread_id":"p_1",
-		"created_by":{"kind":"ACTOR_KIND_OWNER","id":"owner","label":"Yi"},"lineage":{"relationship":"root","controllable":true},
-		"active_run_id":"r_2","last_seq":"41","run_count":2,"usage":{"context_used_tokens":"1200"},"last_error":"","pinned":true,
-		"created_at":"2026-11-21T09:00:00Z","updated_at":"2026-11-21T10:00:00Z"}`)
-	exec(t, db, `INSERT INTO threads(thread_id, project_id, status, archived, pinned, last_seq, created_at, updated_at, payload) VALUES('t_1', 'app', 4, 0, 1, 41, 1, 2, ?)`, thread)
-	run := func(id string, ordinal int, status string) {
-		exec(t, db, `INSERT INTO runs(run_id, thread_id, ordinal, status, queue_order, created_at, updated_at, payload) VALUES(?, 't_1', ?, 0, 0, 1, 2, ?)`, id, ordinal,
-			oldMessage(t, "hermesh.thread.v2.Run", `{"run_id":"`+id+`","thread_id":"t_1","ordinal":`+string(rune('0'+ordinal))+`,"status":"`+status+`","prompt":"do it",
-				"provider_thread_id":"p_1","model_selection":{"instance_id":"codex","model":"gpt-6"},"created_at":"2026-11-21T09:00:00Z"}`))
-	}
-	run("r_1", 1, "RUN_STATUS_COMPLETED")
-	run("r_2", 2, "RUN_STATUS_RUNNING")
-	item := func(id, runID string, seq int, json string) {
-		exec(t, db, `INSERT INTO turn_items(thread_id, item_id, run_id, seq, kind, payload) VALUES('t_1', ?, ?, ?, 0, ?)`, id, runID, seq,
-			oldMessage(t, "hermesh.thread.v2.TurnItem", `{"item_id":"`+id+`","thread_id":"t_1","run_id":"`+runID+`","seq":"`+string(rune('0'+seq))+`",`+json[1:]))
-	}
-	item("i_1", "r_1", 1, `{"kind":"TURN_ITEM_KIND_USER_MESSAGE","status":"completed","text":"do it"}`)
-	item("i_2", "r_1", 2, `{"kind":"TURN_ITEM_KIND_FILE_CHANGE","status":"completed","file_path":"a.go","diff":"+x","additions":3,"deletions":1}`)
-	item("i_3", "r_2", 3, `{"kind":"TURN_ITEM_KIND_ASSISTANT_MESSAGE","status":"running","text":"work","streaming":true}`)
-	exec(t, db, `INSERT INTO provider_threads(provider_thread_id, thread_id, instance_id, created_at, updated_at, payload) VALUES('p_1', 't_1', 'codex', 1, 2, ?)`,
-		oldMessage(t, "hermesh.thread.v2.ProviderThread", `{"provider_thread_id":"p_1","thread_id":"t_1","instance_id":"codex"}`))
-	exec(t, db, `INSERT INTO checkpoints(checkpoint_id, thread_id, run_ordinal, created_at, payload) VALUES('c_1', 't_1', 1, 1, ?)`,
-		oldMessage(t, "hermesh.thread.v2.Checkpoint", `{"checkpoint_id":"c_1","thread_id":"t_1","run_ordinal":1}`))
-	exec(t, db, `INSERT INTO blobs(sha256, name, mime_type, size_bytes, created_at) VALUES('abc', 'a.png', 'image/png', 12, 1)`)
-}
-
 func items(t *testing.T, st *Store, id string) []*sessionv1.TurnItem {
 	t.Helper()
 	rows, err := st.reader.Query(`SELECT payload FROM turn_items WHERE session_id = ? ORDER BY seq`, id)
@@ -209,7 +173,7 @@ func TestV1SessionsMoveInWithTheirConversations(t *testing.T) {
 	dir := t.TempDir()
 	v1Machine(t, dir)
 	before, _ := os.ReadFile(filepath.Join(dir, "hermeshd.db"))
-	st, err := Open(filepath.Join(dir, "sessions_v2.db"))
+	st, err := Open(filepath.Join(dir, "sessions.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,11 +194,9 @@ func TestV1SessionsMoveInWithTheirConversations(t *testing.T) {
 	if !done.CreatedAt.AsTime().Equal(time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)) || !done.UpdatedAt.AsTime().Equal(time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)) {
 		t.Fatalf("its times (the old store's are seconds): %v, %v", done.CreatedAt.AsTime(), done.UpdatedAt.AsTime())
 	}
-	// Its progress as it was, less what it was doing then; its log goes on after its last item.
 	if p := done.Progress; p.TurnCount != 1 || p.LastMessageExcerpt != "Fixed it." || p.Usage.GetInputTokens() != 900 || p.Phase != "" || p.CurrentTool != "" || p.LastEventSeq != 6 {
 		t.Fatalf("its progress: %v", p)
 	}
-	// One turn, started by Her's message, which the log has before the turn's start: the run's prompt and first item.
 	runs := runsOf(t, st, "s_done")
 	if len(runs) != 1 || runs[0].Ordinal != 1 || runs[0].Status != sessionv1.RunStatus_RUN_STATUS_COMPLETED || runs[0].Prompt != "Fix the login form" ||
 		runs[0].Author.GetId() != "c_her" || runs[0].CompletedAt == nil {
@@ -261,8 +223,6 @@ func TestV1SessionsMoveInWithTheirConversations(t *testing.T) {
 		t.Fatalf("the message sent: %v", m)
 	}
 
-	// Archived stays archived; a failed turn is a failed run with why, a tool refused a failed item; the next turn
-	// another run, by who asked for it.
 	failed, _ := st.Session("s_failed")
 	if failed.Status != sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED || failed.Error != "rate limited" || failed.CreatedBy != "owner" || failed.Actor.GetKind() != sessionv1.ActorKind_ACTOR_KIND_OWNER {
 		t.Fatalf("the archived one: %v", failed)
@@ -279,7 +239,6 @@ func TestV1SessionsMoveInWithTheirConversations(t *testing.T) {
 		t.Fatalf("its items: %v", its)
 	}
 
-	// At work when the old store was last written: idle now, its turn interrupted.
 	cut, _ := st.Session("s_cut")
 	if runs = runsOf(t, st, "s_cut"); cut.Status != sessionv1.SessionStatus_SESSION_STATUS_IDLE || len(runs) != 1 || runs[0].Status != sessionv1.RunStatus_RUN_STATUS_INTERRUPTED {
 		t.Fatalf("the one cut off: %v, %v", cut, runs)
@@ -290,7 +249,7 @@ func TestV1SessionsMoveInWithTheirConversations(t *testing.T) {
 	if after, _ := os.ReadFile(filepath.Join(dir, "hermeshd.db")); string(after) != string(before) {
 		t.Fatal("the old store was written")
 	}
-	st, err = Open(filepath.Join(dir, "sessions_v2.db"))
+	st, err = Open(filepath.Join(dir, "sessions.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,82 +262,18 @@ func TestV1SessionsMoveInWithTheirConversations(t *testing.T) {
 	}
 }
 
-// A machine that ran the V2 threads: each thread is a session, read as the
-// message it was and carried over by its fields' names, with its runs, items,
-// provider thread and checkpoint; what was at work is over.
-func TestV2ThreadsMoveInAsSessions(t *testing.T) {
-	dir := t.TempDir()
-	v2Machine(t, dir)
-	st, err := Open(filepath.Join(dir, "sessions_v2.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
-	if r := step(t, st, "v2-threads"); !r.Ran || r.Moved != 1 || r.Err != nil {
-		t.Fatalf("the move: %+v", r)
-	}
-	if r := step(t, st, "v1-sessions"); r.Err != nil || r.Moved != 0 {
-		t.Fatalf("no V1 store here: %+v", r)
-	}
-	s, err := st.Session("t_1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if s.Title != "Ship the overview" || !s.TitleRenamed || s.MachineId != "m1" || s.ProjectId != "app" || !s.Pinned ||
-		s.Status != sessionv1.SessionStatus_SESSION_STATUS_IDLE || s.ActiveRunId != "" ||
-		s.Agent != "codex" || s.Model != "gpt-6" || s.ModelSelection.GetModel() != "gpt-6" || s.RuntimeMode != identityv1.RuntimeMode_RUNTIME_MODE_AUTO ||
-		s.WorkspaceStrategy.GetBranch() != "hermesh/t_1" || s.WorkspaceStrategy.GetWorktreePath() != "/w/t_1" || s.Branch != "hermesh/t_1" || s.Workspace != identityv1.Workspace_WORKSPACE_WORKTREE ||
-		s.ActiveProviderSessionId != "p_1" || s.Actor.GetLabel() != "Yi" || s.CreatedBy != "owner" || s.Lineage.GetRelationship() != "root" ||
-		s.ContextUsage.GetContextUsedTokens() != 1200 || s.Progress.TurnCount != 2 || s.Progress.LastEventSeq != 41 {
-		t.Fatalf("the session: %v", s)
-	}
-	if !s.CreatedAt.AsTime().Equal(time.Date(2026, 11, 21, 9, 0, 0, 0, time.UTC)) || !s.UpdatedAt.AsTime().Equal(time.Date(2026, 11, 21, 10, 0, 0, 0, time.UTC)) {
-		t.Fatalf("its times: %v, %v", s.CreatedAt.AsTime(), s.UpdatedAt.AsTime())
-	}
-	runs := runsOf(t, st, "t_1")
-	if len(runs) != 2 || runs[0].Status != sessionv1.RunStatus_RUN_STATUS_COMPLETED || runs[1].Status != sessionv1.RunStatus_RUN_STATUS_INTERRUPTED ||
-		runs[0].Prompt != "do it" || runs[0].ProviderSessionId != "p_1" || runs[0].SessionId != "t_1" || runs[1].Ordinal != 2 {
-		t.Fatalf("its runs: %v", runs)
-	}
-	its := items(t, st, "t_1")
-	if len(its) != 3 || its[0].Kind != sessionv1.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE || its[0].Text != "do it" || its[0].SessionId != "t_1" ||
-		its[1].Kind != sessionv1.TurnItemKind_TURN_ITEM_KIND_FILE_CHANGE || its[1].FilePath != "a.go" || its[1].Diff != "+x" || its[1].Additions != 3 || its[1].Deletions != 1 ||
-		its[2].Status != "interrupted" || its[2].Streaming || its[2].Seq != 3 {
-		t.Fatalf("its items (a file change's fields moved numbers between the messages): %v", its)
-	}
-	var n int
-	for q, want := range map[string]int{
-		`SELECT count(*) FROM provider_sessions WHERE session_id = 't_1' AND provider_session_id = 'p_1'`: 1,
-		`SELECT count(*) FROM checkpoints WHERE session_id = 't_1' AND checkpoint_id = 'c_1'`:             1,
-		`SELECT count(*) FROM blobs WHERE sha256 = 'abc' AND name = 'a.png'`:                              1,
-	} {
-		if st.reader.QueryRow(q).Scan(&n); n != want {
-			t.Fatalf("%s: %d", q, n)
-		}
-	}
-}
-
-// A move that fails says so, is kept in the ledger and does not keep the
-// store from opening or the other move from running; once what was wrong is
-// mended, the next start moves the rest, and what had moved is not moved
-// twice.
 func TestAMoveThatFailsIsSaidKeptAndTriedAgain(t *testing.T) {
 	dir := t.TempDir()
 	v1Machine(t, dir)
-	v2Machine(t, dir)
-	// The second session's log has an event that is no message of the old kind.
-	old, _ := sql.Open("sqlite", "file:"+filepath.Join(dir, "hermeshd.db"))
+	old, _ := sqlitedb.OpenRaw(filepath.Join(dir, "hermeshd.db"))
 	exec(t, old, `UPDATE session_events SET payload = x'ffffffff' WHERE session_id = 's_failed' AND seq = 3`)
-	st, err := Open(filepath.Join(dir, "sessions_v2.db"))
+	st, err := Open(filepath.Join(dir, "sessions.db"))
 	if err != nil {
 		t.Fatalf("the store did not open: %v", err)
 	}
 	r := step(t, st, "v1-sessions")
 	if r.Err == nil || !strings.Contains(r.Err.Error(), "s_failed") || !strings.Contains(r.Err.Error(), "event 3") || r.Moved != 1 {
 		t.Fatalf("the move that failed says which session and event, and what it moved before: %+v", r)
-	}
-	if r := step(t, st, "v2-threads"); r.Err != nil || r.Moved != 1 {
-		t.Fatalf("the other move: %+v", r)
 	}
 	if _, err := st.Session("s_done"); err != nil {
 		t.Fatalf("what moved before the failure is here: %v", err)
@@ -397,16 +292,13 @@ func TestAMoveThatFailsIsSaidKeptAndTriedAgain(t *testing.T) {
 	// Mended: the next start moves the two that were left, and the one that was here is as it was.
 	exec(t, old, `DELETE FROM session_events WHERE session_id = 's_failed' AND seq = 3`)
 	old.Close()
-	st, err = Open(filepath.Join(dir, "sessions_v2.db"))
+	st, err = Open(filepath.Join(dir, "sessions.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer st.Close()
 	if r := step(t, st, "v1-sessions"); !r.Ran || r.Err != nil || r.Moved != 2 {
 		t.Fatalf("mended: %+v", r)
-	}
-	if r := step(t, st, "v2-threads"); r.Ran || r.Moved != 1 {
-		t.Fatalf("the move that was done ran again: %+v", r)
 	}
 	if n := len(items(t, st, "s_done")); n != 4 {
 		t.Fatalf("moved twice: %d items", n)
@@ -416,9 +308,8 @@ func TestAMoveThatFailsIsSaidKeptAndTriedAgain(t *testing.T) {
 	}
 }
 
-// A machine with no old store: nothing to move, and that is done too.
 func TestNoOldStoreIsNothingToMove(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "sessions_v2.db"))
+	st, err := Open(filepath.Join(t.TempDir(), "sessions.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,4 +319,237 @@ func TestNoOldStoreIsNothingToMove(t *testing.T) {
 			t.Fatalf("%+v", r)
 		}
 	}
+}
+
+func TestDevSessionsV2StoreTransitionsToSessionsDB(t *testing.T) {
+	dir := t.TempDir()
+	// Create a pre-release sessions_v2.db at schema 4 (with active WAL and dead threads_v2.db).
+	if err := os.WriteFile(filepath.Join(dir, "threads_v2.db"), []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "threads_v2.db-wal"), []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := sqlitedb.OpenRaw(filepath.Join(dir, "sessions_v2.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(t, raw, migrations[0].SQL)
+	exec(t, raw, `CREATE TABLE data_steps (name TEXT PRIMARY KEY, started_at INTEGER NOT NULL, finished_at INTEGER NOT NULL DEFAULT 0, moved INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '')`)
+	exec(t, raw, `INSERT INTO data_steps VALUES ('v1-sessions', 1, 2, 235, 1, ''), ('v2-threads', 2, 3, 3, 1, '')`)
+	sessBytes, err := proto.Marshal(&sessionv1.Session{SessionId: "s_keep_39", ProjectId: "app", Title: "Recent session"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(t, raw, `INSERT INTO sessions(session_id, project_id, status, archived, pinned, last_seq, created_at, updated_at, payload) VALUES ('s_keep_39', 'app', 1, 0, 0, 0, 100, 200, ?)`, sessBytes)
+	exec(t, raw, `PRAGMA user_version = 4`)
+	raw.Close()
+
+	st, err := Open(filepath.Join(dir, "sessions.db"))
+	if err != nil {
+		t.Fatalf("Open(sessions.db) after dev v2 transition: %v", err)
+	}
+	defer st.Close()
+
+	got, err := st.Session("s_keep_39")
+	if err != nil || got.Title != "Recent session" {
+		t.Fatalf("expected s_keep_39 preserved across rename, got %+v (%v)", got, err)
+	}
+	for _, gone := range []string{"sessions_v2.db", "sessions_v2.db-wal", "threads_v2.db", "threads_v2.db-wal"} {
+		if _, err := os.Stat(filepath.Join(dir, gone)); !os.IsNotExist(err) {
+			t.Fatalf("expected %s to be removed, stat err = %v", gone, err)
+		}
+	}
+	hist, err := sqlitedb.History(st.writer)
+	if err != nil || len(hist) != 1 || hist[0].Version != 1 || hist[0].Description != "initial_sessions_schema" {
+		t.Fatalf("unexpected schema_history after dev transition: %+v (%v)", hist, err)
+	}
+	if r := step(t, st, "v1-sessions"); r.Ran || r.Moved != 235 {
+		t.Fatalf("expected existing v1-sessions ledger entry preserved without re-running, got %+v", r)
+	}
+}
+
+func TestDevSessionsV2EdgeCases(t *testing.T) {
+	t.Run("empty 0-byte sessions_v2.db is cleaned up and sessions.db initializes full V1", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "sessions_v2.db"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		st, err := Open(filepath.Join(dir, "sessions.db"))
+		if err != nil {
+			t.Fatalf("Open with 0-byte sessions_v2.db: %v", err)
+		}
+		defer st.Close()
+		if _, err := st.Mutate(func(tx *Tx) error {
+			return tx.PutSession(&sessionv1.Session{SessionId: "s_new", ProjectId: "app"})
+		}); err != nil {
+			t.Fatalf("expected full V1 schema after cleaning 0-byte sessions_v2.db: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "sessions_v2.db")); !os.IsNotExist(err) {
+			t.Fatalf("expected 0-byte sessions_v2.db removed, got %v", err)
+		}
+	})
+
+	t.Run("0-byte placeholder sessions.db does not orphan populated sessions_v2.db", func(t *testing.T) {
+		dir := t.TempDir()
+		raw, err := sqlitedb.OpenRaw(filepath.Join(dir, "sessions_v2.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		exec(t, raw, migrations[0].SQL)
+		sessBytes, _ := proto.Marshal(&sessionv1.Session{SessionId: "s_saved", ProjectId: "app", Title: "Saved"})
+		exec(t, raw, `INSERT INTO sessions(session_id, project_id, status, archived, pinned, last_seq, created_at, updated_at, payload) VALUES ('s_saved', 'app', 1, 0, 0, 0, 1, 2, ?)`, sessBytes)
+		exec(t, raw, `PRAGMA user_version = 4`)
+		raw.Close()
+
+		// Create an empty 0-byte sessions.db alongside populated sessions_v2.db.
+		if err := os.WriteFile(filepath.Join(dir, "sessions.db"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		st, err := Open(filepath.Join(dir, "sessions.db"))
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+		defer st.Close()
+		if got, err := st.Session("s_saved"); err != nil || got.Title != "Saved" {
+			t.Fatalf("expected s_saved recovered from sessions_v2.db, got %+v (%v)", got, err)
+		}
+	})
+
+	t.Run("populated sessions.db wins if stray sessions_v2.db also exists", func(t *testing.T) {
+		dir := t.TempDir()
+		st1, err := Open(filepath.Join(dir, "sessions.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = st1.Mutate(func(tx *Tx) error {
+			return tx.PutSession(&sessionv1.Session{SessionId: "s_primary", ProjectId: "app"})
+		})
+		st1.Close()
+
+		_ = os.WriteFile(filepath.Join(dir, "sessions_v2.db"), []byte("stray"), 0o600)
+		st2, err := Open(filepath.Join(dir, "sessions.db"))
+		if err != nil {
+			t.Fatalf("re-open sessions.db with stray sessions_v2.db: %v", err)
+		}
+		defer st2.Close()
+		if _, err := st2.Session("s_primary"); err != nil {
+			t.Fatalf("expected s_primary intact: %v", err)
+		}
+	})
+
+	t.Run("early schema-1 sessions_v2.db backfills v2..v4 tables and uncheckpointed WAL frames", func(t *testing.T) {
+		dir := t.TempDir()
+		oldPath := filepath.Join(dir, "sessions_v2.db")
+		raw, err := sqlitedb.OpenRaw(oldPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Old schema 1: deleted_sessions had NO project_id/created_by, and background_tasks / turn_image_blobs did not exist.
+		exec(t, raw, `
+CREATE TABLE workspaces (project_id TEXT PRIMARY KEY, path TEXT NOT NULL, default_base_ref TEXT NOT NULL, workspace_mode INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '', agents TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL);
+CREATE TABLE provider_instances (instance_id TEXT PRIMARY KEY, driver TEXT NOT NULL, enabled INTEGER NOT NULL, payload BLOB NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE sessions (session_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, status INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0, pinned INTEGER NOT NULL DEFAULT 0, last_seq INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, payload BLOB NOT NULL);
+CREATE TABLE deleted_sessions (session_id TEXT PRIMARY KEY, deleted_at INTEGER NOT NULL);
+CREATE TABLE provider_sessions (provider_session_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, instance_id TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, payload BLOB NOT NULL);
+CREATE TABLE runs (run_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, ordinal INTEGER NOT NULL, status INTEGER NOT NULL, queue_order REAL NOT NULL DEFAULT 0, grant_ceiling INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, payload BLOB NOT NULL);
+CREATE TABLE turn_items (session_id TEXT NOT NULL, item_id TEXT NOT NULL, run_id TEXT NOT NULL, seq INTEGER NOT NULL, kind INTEGER NOT NULL, payload BLOB NOT NULL, PRIMARY KEY (session_id, item_id));
+CREATE TABLE runtime_requests (request_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, run_id TEXT NOT NULL, status INTEGER NOT NULL, created_at INTEGER NOT NULL, payload BLOB NOT NULL);
+CREATE TABLE checkpoints (checkpoint_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, run_ordinal INTEGER NOT NULL, created_at INTEGER NOT NULL, payload BLOB NOT NULL);
+CREATE TABLE session_allow_rules (session_id TEXT NOT NULL, rule_key TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (session_id, rule_key));
+CREATE TABLE blobs (sha256 TEXT PRIMARY KEY, name TEXT NOT NULL, mime_type TEXT NOT NULL, size_bytes INTEGER NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE command_receipts (command_id TEXT PRIMARY KEY, method TEXT NOT NULL, payload BLOB NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE session_events (session_id TEXT NOT NULL, seq INTEGER NOT NULL, occurred_at INTEGER NOT NULL, payload BLOB NOT NULL, PRIMARY KEY (session_id, seq));
+PRAGMA wal_autocheckpoint = 0;
+PRAGMA user_version = 1;
+`)
+		sessBytes, _ := proto.Marshal(&sessionv1.Session{SessionId: "s_wal_only", ProjectId: "app", CreatedBy: "owner"})
+		exec(t, raw, `INSERT INTO sessions(session_id, project_id, status, archived, pinned, last_seq, created_at, updated_at, payload) VALUES ('s_wal_only', 'app', 1, 0, 0, 0, 10, 20, ?)`, sessBytes)
+		raw.Close()
+
+		st, err := Open(filepath.Join(dir, "sessions.db"))
+		if err != nil {
+			t.Fatalf("Open from schema-1 sessions_v2.db: %v", err)
+		}
+		defer st.Close()
+		if _, err := st.Session("s_wal_only"); err != nil {
+			t.Fatalf("expected WAL row s_wal_only preserved: %v", err)
+		}
+		// Verify backfilled deleted_sessions columns and turn_image_blobs table work!
+		if _, err := st.Mutate(func(tx *Tx) error { return tx.DeleteSession("s_wal_only") }); err != nil {
+			t.Fatalf("DeleteSession failed on backfilled deleted_sessions columns: %v", err)
+		}
+		if err := st.PutTurnImageBlob("s_other", "r1", "/tmp/a.png", "abc", 10, 1); err != nil {
+			t.Fatalf("PutTurnImageBlob failed on backfilled table: %v", err)
+		}
+	})
+
+	t.Run("busy external reader on sessions_v2.db aborts rename without deleting WAL", func(t *testing.T) {
+		dir := t.TempDir()
+		oldPath := filepath.Join(dir, "sessions_v2.db")
+		raw, err := sqlitedb.OpenRaw(oldPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		exec(t, raw, migrations[0].SQL)
+		exec(t, raw, `PRAGMA wal_autocheckpoint = 0; PRAGMA user_version = 4;`)
+		sess1, _ := proto.Marshal(&sessionv1.Session{SessionId: "s_before_lock", ProjectId: "app"})
+		exec(t, raw, `INSERT INTO sessions(session_id, project_id, status, archived, pinned, last_seq, created_at, updated_at, payload) VALUES ('s_before_lock', 'app', 1, 0, 0, 0, 1, 2, ?)`, sess1)
+
+		// Hold an active read snapshot on an older WAL point while another commit lands in WAL.
+		extReader, err := sqlitedb.OpenReader(oldPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		readTx, err := extReader.BeginTx(t.Context(), &sql.TxOptions{ReadOnly: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var cnt int
+		_ = readTx.QueryRow(`SELECT count(*) FROM sessions`).Scan(&cnt)
+
+		sess2, _ := proto.Marshal(&sessionv1.Session{SessionId: "s_in_wal", ProjectId: "app"})
+		exec(t, raw, `INSERT INTO sessions(session_id, project_id, status, archived, pinned, last_seq, created_at, updated_at, payload) VALUES ('s_in_wal', 'app', 1, 0, 0, 0, 3, 4, ?)`, sess2)
+		raw.Close()
+
+		// Because readTx holds a snapshot before s_in_wal, wal_checkpoint(TRUNCATE) reports busy != 0 and Open MUST abort safely!
+		if _, err := Open(filepath.Join(dir, "sessions.db")); err == nil || !strings.Contains(err.Error(), "busy") {
+			readTx.Rollback()
+			extReader.Close()
+			t.Fatalf("expected busy checkpoint error while external reader holds snapshot, got: %v", err)
+		}
+		if _, err := os.Stat(oldPath); err != nil {
+			t.Fatalf("sessions_v2.db must remain untouched when busy: %v", err)
+		}
+
+		// Release external reader -> retry succeeds with BOTH s_before_lock and s_in_wal preserved!
+		_ = readTx.Rollback()
+		_ = extReader.Close()
+
+		st, err := Open(filepath.Join(dir, "sessions.db"))
+		if err != nil {
+			t.Fatalf("Open after releasing external reader: %v", err)
+		}
+		defer st.Close()
+		for _, id := range []string{"s_before_lock", "s_in_wal"} {
+			if _, err := st.Session(id); err != nil {
+				t.Fatalf("expected %s preserved after WAL recovery, got %v", id, err)
+			}
+		}
+	})
+
+	t.Run("sessions_v2.db with unexpected future schema > 4 returns ErrNewer", func(t *testing.T) {
+		dir := t.TempDir()
+		raw, err := sqlitedb.OpenRaw(filepath.Join(dir, "sessions_v2.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		exec(t, raw, migrations[0].SQL)
+		exec(t, raw, `PRAGMA user_version = 5`)
+		raw.Close()
+
+		if _, err := Open(filepath.Join(dir, "sessions.db")); err == nil || !strings.Contains(err.Error(), "written by a newer Hermesh") {
+			t.Fatalf("expected ErrNewer for schema 5 sessions_v2.db, got %v", err)
+		}
+	})
 }

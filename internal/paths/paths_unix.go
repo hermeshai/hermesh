@@ -42,6 +42,16 @@ func LocalAPI(dataDir string) string {
 	return p
 }
 
+// DesktopPerf is where the running Hermesh desktop app serves on-demand
+// performance snapshots to the same user.
+func DesktopPerf(dataDir string) string {
+	p := filepath.Join(dataDir, "run", "desktop-perf.sock")
+	if len(p) > 100 {
+		p = filepath.Join(os.TempDir(), fmt.Sprintf("hermesh-%d", os.Getuid()), "desktop-perf.sock")
+	}
+	return p
+}
+
 // Control is where a machine with this data directory takes its own
 // user's commands; a long path's is named after the directory, so two
 // machines of one user never share it.

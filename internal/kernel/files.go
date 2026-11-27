@@ -241,7 +241,7 @@ func (e *Engine) ResolveFiles(ctx context.Context, p *Principal, req *sessionv1.
 					}
 				}
 			}
-			if _, size, ok := outsideImage(f.Path); ok {
+			if _, size, ok := outsideReadable(f.Path); ok {
 				f.Kind, f.Size = sessionv1.FileRefKind_FILE_REF_KIND_FILE, uint64(size)
 			}
 			continue
@@ -408,6 +408,57 @@ func outsideImage(abs string) (string, int64, bool) {
 	return real, st.Size(), true
 }
 
+func isMarkdownExt(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".md", ".markdown":
+		return true
+	}
+	return false
+}
+
+func isOutsideArtifactPath(real string) bool {
+	if st, err := os.Stat(real + ".metadata.json"); err == nil && st.Mode().IsRegular() {
+		return true
+	}
+	slash := filepath.ToSlash(real)
+	return strings.Contains(slash, "/.gemini/") && strings.Contains(slash, "/brain/")
+}
+
+// outsideArtifactMarkdown allows the owner to open Markdown artifacts written outside the
+// worktree (such as Antigravity ~/.gemini/.../brain/*.md files or files with a .metadata.json
+// sidecar), after resolving symlinks so links cannot escape to arbitrary files.
+func outsideArtifactMarkdown(abs string) (string, int64, bool) {
+	if !isMarkdownExt(abs) {
+		return "", 0, false
+	}
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil || !isMarkdownExt(real) || !isOutsideArtifactPath(real) {
+		return "", 0, false
+	}
+	st, err := os.Stat(real)
+	if err != nil || !st.Mode().IsRegular() || st.Size() <= 0 || st.Size() > maxFileText {
+		return "", 0, false
+	}
+	return real, st.Size(), true
+}
+
+func outsideReadable(abs string) (string, int64, bool) {
+	if real, size, ok := outsideImage(abs); ok {
+		return real, size, true
+	}
+	return outsideArtifactMarkdown(abs)
+}
+
+func validOutsideBytes(real string, data []byte) bool {
+	if len(data) == 0 {
+		return false
+	}
+	if len(data) <= maxFileImage && imageMime(data) != "" {
+		return true
+	}
+	return isMarkdownExt(real) && isOutsideArtifactPath(real) && len(data) <= maxFileText && utf8.Valid(data)
+}
+
 func (e *Engine) fileSource(ctx context.Context, s *filesScope, asked string) (*fileSource, error) {
 	rel, abs, ok := s.rel(asked)
 	if !ok {
@@ -421,7 +472,7 @@ func (e *Engine) fileSource(ctx context.Context, s *filesScope, asked string) (*
 				}
 			}
 		}
-		if real, size, ok := outsideImage(abs); ok {
+		if real, size, ok := outsideReadable(abs); ok {
 			return &fileSource{path: abs, size: size, real: real}, nil
 		}
 		return nil, errFileOutside
@@ -470,7 +521,7 @@ func (f *fileSource) bytes(ctx context.Context, e *Engine, s *filesScope) ([]byt
 		}
 		return nil, err
 	}
-	if !f.inside && (len(data) == 0 || len(data) > maxFileImage || imageMime(data) == "") {
+	if !f.inside && !validOutsideBytes(f.real, data) {
 		return nil, errFileOutside
 	}
 	return data, nil
@@ -553,7 +604,7 @@ func compareNow(ctx context.Context, s *filesScope, rel string, data []byte) ses
 }
 
 func compareOutsideNow(abs string, data []byte) sessionv1.FileNow {
-	real, size, ok := outsideImage(abs)
+	real, size, ok := outsideReadable(abs)
 	if !ok {
 		return sessionv1.FileNow_FILE_NOW_GONE
 	}
@@ -632,7 +683,8 @@ func (e *Engine) pinTurnImages(ctx context.Context, sessionID, runID string, ord
 	}
 	var raw []string
 	for _, it := range items {
-		if it.GetRunId() == runID && it.GetKind() == sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE && it.GetText() != "" {
+		kind := it.GetKind()
+		if it.GetRunId() == runID && (kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE || kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_PROPOSED_PLAN) && it.GetText() != "" {
 			raw = append(raw, replyImageCandidates(it.GetText())...)
 		}
 	}

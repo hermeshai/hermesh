@@ -3,6 +3,8 @@
 // its allocators keep after a long conversation was read. Only then, and while the window is hidden: the caches refill
 // at a cost, so never while a page is in use.
 
+import { isWindowHidden, onWindowHiddenChange } from "./visibility";
+
 /** After the last move away from a heavy page: what follows has drawn, and the person stopped moving between pages. */
 const SETTLE = 3000;
 /** Hidden this long (minimized, on another desktop): the window is not being looked at. */
@@ -23,8 +25,10 @@ export function releaseAfterLeaving() {
 
 /** Gives memory back once the window has been hidden a while; called once, when the window starts. */
 export function releaseWhileHidden() {
-  document.addEventListener("visibilitychange", () => {
+  const sync = (isHidden: boolean) => {
     clearTimeout(hidden);
-    if (document.visibilityState === "hidden") hidden = setTimeout(release, HIDDEN);
-  });
+    if (isHidden) hidden = setTimeout(release, HIDDEN);
+  };
+  onWindowHiddenChange(sync);
+  sync(isWindowHidden());
 }

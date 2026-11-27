@@ -371,28 +371,37 @@ export interface Place {
 export function ComposerPlace({ place, branches, onPlace }: { place: Place; branches?: Branches; onPlace: (p: Place) => void }) {
   const { t } = useTranslation("thread");
   const [find, setFind] = useState("");
+  const [turns, setTurns] = useState(0);
   const chosen = branches ? (place.worktree ? place.base || branches.default || branches.current : place.on || branches.current) : "";
+  const modeLabel = t(place.worktree ? "launch.worktree" : "launch.checkout");
+  const modeHint = t(place.worktree ? "launch.worktreeHint" : "launch.checkoutHint");
+  const switchHint = t(place.worktree ? "launch.switchToCheckout" : "launch.switchToWorktree");
   return (
     <div className="th-place">
-      <MenuButton
-        className="mb"
-        title={t("launch.workingCopy")}
-        label={
-          <>
+      <div className="th-wt-wrap">
+        <button
+          type="button"
+          className="mb th-wtbtn"
+          aria-label={`${t("launch.workingCopy")}: ${modeLabel}`}
+          aria-pressed={place.worktree}
+          onClick={() => {
+            setTurns((n) => n + 1);
+            onPlace({ ...place, worktree: !place.worktree });
+          }}
+        >
+          <span key={String(place.worktree)} className="th-wt-slot">
             <Icon name={place.worktree ? "branch" : "folder"} />
-            <span className="lbl" data-testid="launch-worktree">{t(place.worktree ? "launch.worktree" : "launch.checkout")}</span>
-            <Icon name="chevD" />
-          </>
-        }
-      >
-        {(close) => (
-          <>
-            <div className="mgh">{t("launch.workingCopy")}</div>
-            <Item checked={!place.worktree} icon={<Icon name="folder" />} label={t("launch.checkout")} desc={t("launch.checkoutHint")} testId="worktree-off" onClick={() => (close(), onPlace({ ...place, worktree: false }))} />
-            <Item checked={place.worktree} icon={<Icon name="branch" />} label={t("launch.worktree")} desc={t("launch.worktreeHint")} testId="worktree-on" onClick={() => (close(), onPlace({ ...place, worktree: true }))} />
-          </>
-        )}
-      </MenuButton>
+            <span className="lbl" data-testid="launch-worktree">{modeLabel}</span>
+          </span>
+          <span className="th-swap" style={{ transform: `rotate(${turns * 180}deg)` }} aria-hidden="true">
+            <Icon name="swap" />
+          </span>
+        </button>
+        <div className="th-wttip" role="tooltip" aria-hidden="true">
+          <b>{modeHint}</b>
+          <span>· {switchHint}</span>
+        </div>
+      </div>
       {branches && (
         <MenuButton
           className="mb"

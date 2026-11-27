@@ -19,15 +19,15 @@ import (
 // with the machine away. A turn's bytes never change, so those are served from here.
 
 const sessionFilesMigrations = `
-CREATE TABLE session_files_kept (
+CREATE TABLE IF NOT EXISTS session_files_kept (
   key TEXT PRIMARY KEY,
   session_id TEXT NOT NULL,
   payload BLOB NOT NULL,
   size INTEGER NOT NULL,
   used_at INTEGER NOT NULL
 );
-CREATE INDEX idx_session_files_kept_used ON session_files_kept(used_at);
-CREATE INDEX idx_session_files_kept_session ON session_files_kept(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_files_kept_used ON session_files_kept(used_at);
+CREATE INDEX IF NOT EXISTS idx_session_files_kept_session ON session_files_kept(session_id);
 `
 
 // What this device keeps of sessions' files at most; the least recently opened go first.

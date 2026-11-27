@@ -38,6 +38,7 @@ import {
   language,
   pendingRequestOf,
   projectOnMachine,
+  projectWorktree,
   providerUnusable,
   queuedRunsOf,
   replyEnds,
@@ -64,7 +65,7 @@ import { keepAttachmentBlob } from "./session/attachments";
 import { ComposerPlace, LaunchAsk, ModelButtons, ThreadComposer, type Branches, type Place } from "./session/Composer";
 import { Inspector } from "./session/Inspector";
 import { SessionRequest } from "./session/Request";
-import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, remember } from "./session/choices";
+import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, rememberedWorktree, remember, rememberWorktree } from "./session/choices";
 import { ContentScope, SessionRunContext, type SessionCodeActions } from "./session/scope";
 import { stripTerminalEscapes } from "./session/terminalText";
 import { FilesHomeContext, type FilesHome } from "./session/files/files";
@@ -171,8 +172,9 @@ export function SessionPage() {
   // A new session's where: as the entry asked (a project group's ＋), else as last time (choices.ts).
   const [machineId, setMachineId] = useState<string>("");
   const [projectId, setProjectId] = useState<string>(SCRATCH_PROJECT);
-  // Where it works and on which branch (§16): only this session's, never remembered.
+  // Working copy is remembered per (machine, project); branch selection applies only to this session.
   const [place, setPlace] = useState<Place>({ worktree: true, base: "", on: "", fromRemote: false });
+  const placeEdited = useRef(false);
   const [branches, setBranches] = useState<Branches | undefined>();
 
   // Composer controls
@@ -217,11 +219,14 @@ export function SessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel.kind, askedMachine, askedProject, machinesKnown]);
 
-  /** A project, and whether a session of it gets its own worktree: as the project works. */
+  /** A project, and whether a session of it gets its own worktree: as last chosen for this project, else as the project works. */
+  const findProject = (mid: string, pid: string) =>
+    projectsOn(mid).list.find((p) => p.projectId === pid) ?? lastProjects(mid).find((p) => p.projectId === pid);
   const pickProject = (mid: string, pid: string) => {
     setProjectId(pid);
-    const pr = projectsOn(mid).list.find((p) => p.projectId === pid);
-    setPlace({ worktree: pr?.workspace === Workspace.WORKTREE, base: "", on: "", fromRemote: false });
+    placeEdited.current = false;
+    const pr = findProject(mid, pid);
+    setPlace({ worktree: projectWorktree(pr, rememberedWorktree(mid, pid)), base: "", on: "", fromRemote: false });
   };
   const pickMachine = (mid: string) => {
     setMachineId(mid);
@@ -538,7 +543,18 @@ export function SessionPage() {
     try {
       const res = await sessionApi.startSession(start.req);
       // An agent's choices are kept for the next session; Her's stay hers (rememberWho).
-      if (start.req.modelSelection?.instanceId !== HER) remember(start.req.machineId ?? "", { projectId: start.req.projectId ?? "", sel: modelSel, mode: clampedMode });
+      if (start.req.modelSelection?.instanceId !== HER) {
+        const mid = start.req.machineId ?? "";
+        const pid = start.req.projectId ?? "";
+        const pr = findProject(mid, pid);
+        const canWorktree = Boolean(pr?.repo || pr?.workspace === Workspace.WORKTREE);
+        remember(mid, {
+          projectId: pid,
+          sel: modelSel,
+          mode: clampedMode,
+          worktree: canWorktree ? start.req.workspace?.mode === Workspace.WORKTREE : undefined,
+        });
+      }
       // "Sending…", once shown (at 400 ms), stays half a second.
       const took = Date.now() - began;
       if (took > 400 && took < 900) await new Promise((r) => setTimeout(r, 900 - took));
@@ -631,6 +647,18 @@ export function SessionPage() {
   // working copy and branch over it (for a repository).
   const projectsHere = [...st.projects.filter((p) => p.machineId !== effectiveMachineId), ...projectsOn(effectiveMachineId).list];
   const project = projectsHere.find((p) => p.machineId === effectiveMachineId && p.projectId === effectiveProjectId);
+  useEffect(() => {
+    if (activeSessionId || !project || placeEdited.current) return;
+    const want = projectWorktree(project, rememberedWorktree(effectiveMachineId, effectiveProjectId));
+    setPlace((prev) => (prev.worktree === want ? prev : { ...prev, worktree: want }));
+  }, [activeSessionId, effectiveMachineId, effectiveProjectId, project?.repo, project?.workspace]);
+  const handlePlace = (next: Place) => {
+    placeEdited.current = true;
+    if (next.worktree !== place.worktree) {
+      rememberWorktree(effectiveMachineId, effectiveProjectId, next.worktree);
+    }
+    setPlace(next);
+  };
   const choice = { machineId: effectiveMachineId, projectId: effectiveProjectId, worktree: place.worktree, sel: modelSel, mode: clampedMode, plan: false };
   const modelButtons = (
     <ModelButtons
@@ -658,7 +686,7 @@ export function SessionPage() {
     onMode: (rm: RuntimeMode) => applyConfigUpdate({ rm }),
     model: modelButtons,
   };
-  const placeRow = !activeSessionId && (project?.repo || project?.workspace === Workspace.WORKTREE) && <ComposerPlace place={place} branches={branches} onPlace={setPlace} />;
+  const placeRow = !activeSessionId && who === "agent" && (project?.repo || project?.workspace === Workspace.WORKTREE) && <ComposerPlace place={place} branches={branches} onPlace={handlePlace} />;
   const presence = herAt && !activeSessionId ? <Presence who={who} onWho={chooseWho} /> : undefined;
   const ask = who === "her" && herAt ? (
     <HerAsk top={presence} machine={st.machines.find((m) => m.machineId === effectiveMachineId) ?? herAt} rise={rise} />
@@ -679,6 +707,7 @@ export function SessionPage() {
             kind: "addProject",
             machineId,
             then: (pid, wt) => {
+              placeEdited.current = true;
               setProjectId(pid);
               setPlace({ worktree: wt, base: "", on: "", fromRemote: false });
             },
@@ -949,14 +978,14 @@ export function SessionPage() {
           <Icon name="info" />
         </button>
       )}
-      {activeSessionId && (
+      {activeSessionId && !filesOpen && (
         <button
-          className={`tb ${filesOpen ? "on" : ""}`}
-          title={ts(filesOpen ? "page.hidePanel" : "page.showPanel")}
+          className="tb"
+          title={ts("page.showPanel")}
           aria-label={ts("panel.title")}
-          aria-pressed={filesOpen}
+          aria-pressed={false}
           data-testid="toolbar-panel-btn"
-          onClick={() => setPanelOpen(filePanel, !filesOpen)}
+          onClick={() => setPanelOpen(filePanel, true)}
         >
           <Icon name="panelRight" />
         </button>
@@ -1147,12 +1176,14 @@ function TodoStepGlyph({ status }: { status: TodoStepStatus }) {
   switch (status) {
     case "in_progress":
       return (
-        <svg className="th-todo-ic th-todo-spin" viewBox="0 0 14 14" aria-hidden="true">
-          <circle cx="4.6" cy="4.6" r="1.35" fill="currentColor" />
-          <circle cx="9.4" cy="4.6" r="1.35" fill="currentColor" opacity="0.55" />
-          <circle cx="9.4" cy="9.4" r="1.35" fill="currentColor" />
-          <circle cx="4.6" cy="9.4" r="1.35" fill="currentColor" opacity="0.55" />
-        </svg>
+        <span className="th-todo-ic th-todo-spin" aria-hidden="true">
+          <svg viewBox="0 0 14 14" width="14" height="14">
+            <circle cx="4.6" cy="4.6" r="1.35" fill="currentColor" />
+            <circle cx="9.4" cy="4.6" r="1.35" fill="currentColor" opacity="0.55" />
+            <circle cx="9.4" cy="9.4" r="1.35" fill="currentColor" />
+            <circle cx="4.6" cy="9.4" r="1.35" fill="currentColor" opacity="0.55" />
+          </svg>
+        </span>
       );
     case "completed":
       return <Icon name="check" className="th-todo-ic" />;

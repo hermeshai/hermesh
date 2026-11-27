@@ -531,6 +531,100 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(map.waitForExistence(timeout: 10))
     }
 
+    /// Where the screen has side safe-area insets (iPhone Duo's side bar, or an iPhone turned on its side),
+    /// the deck clips at the column's edge and pages by the card's width, never bleeding the next card into the margin.
+    func testOverviewDeckSafeAreaClipping() {
+        app.terminate()
+        app.launchArguments += ["-HermeshTestTurns", "YES"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        addTeardownBlock { XCUIDevice.shared.orientation = .portrait }
+
+        enterWorkDemo()
+        let any = app.descendants(matching: .any)
+        let views = any["overview-views"].firstMatch
+        let deck = any["needs"].firstMatch
+        let front = any["needs-place"].firstMatch
+        let answer = any["quick-answer-Hello, world!"].firstMatch
+        let verify = any["verify-pairing"].firstMatch
+        XCTAssertTrue(views.waitForExistence(timeout: 15) && front.waitForExistence(timeout: 5))
+
+        for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
+            XCUIDevice.shared.orientation = orientation
+            sleep(2)
+            XCTAssertTrue(front.label.hasPrefix("1 / "), front.label)
+            let column = views.frame
+            // The deck's scroller stays inside the safe-area column rather than bleeding into side bars or margins.
+            XCTAssertEqual(deck.frame.minX, column.minX, accuracy: 2, "deck leading edge matches column (\(orientation.rawValue))")
+            XCTAssertEqual(deck.frame.maxX, column.maxX, accuracy: 2, "deck trailing edge matches column (\(orientation.rawValue))")
+            XCTAssertGreaterThanOrEqual(answer.frame.minX, column.minX - 1)
+            XCTAssertLessThanOrEqual(answer.frame.maxX, column.maxX + 1)
+            XCTAssertGreaterThan(verify.frame.minX, column.maxX, "next card clipped outside column (\(orientation.rawValue))")
+
+            if !answer.isHittable || answer.frame.maxY > app.frame.height - 65 {
+                let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
+                let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+                from.press(forDuration: 0.05, thenDragTo: to)
+            }
+            checkpoint("overview-deck-1-\(orientation.rawValue)")
+            deck.swipeLeft()
+            XCTAssertTrue(wait { front.label.hasPrefix("2 / ") }, front.label)
+            XCTAssertTrue(verify.waitForExistence(timeout: 5) && verify.isHittable)
+            XCTAssertGreaterThanOrEqual(verify.frame.minX, column.minX - 1, "second card aligned with column leading edge (\(orientation.rawValue))")
+            XCTAssertLessThanOrEqual(verify.frame.maxX, column.maxX + 1, "second card aligned with column trailing edge (\(orientation.rawValue))")
+            checkpoint("overview-deck-2-\(orientation.rawValue)")
+
+            deck.swipeRight()
+            XCTAssertTrue(wait { front.label.hasPrefix("1 / ") }, front.label)
+            if orientation == .portrait {
+                // Keep the scroll at the top before turning sideways.
+                app.swipeDown()
+            }
+        }
+    }
+
+    /// Multiple concurrent sessions between the same nodes merge into one weighted line, hosted MCP labels show
+    /// their short app names, and picking a node filters the overview to its sessions.
+    func testLinkMapMergedLinesAndShortNames() {
+        app.terminate()
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-DemoLinkMap"]
+        app.launch()
+        enterWorkDemo()
+        let any = app.descendants(matching: .any)
+        let map = any["link-map"].firstMatch
+        XCTAssertTrue(map.waitForExistence(timeout: 15), "the link map")
+
+        // Hosted MCP domains are stripped to clean short names; owner and environments all appear.
+        for node in ["map-You", "map-Claude", "map-Her", "map-Muse", "map-yee-homebook", "map-yi-mac-mini"] {
+            XCTAssertTrue(any[node].firstMatch.waitForExistence(timeout: 5), node)
+        }
+        XCTAssertFalse(any["map-Claude (claude.ai)"].exists)
+        XCTAssertFalse(any["map-Muse (agent.meta.ai)"].exists)
+
+        // Scroll past the demo banner so the link map sits at the top above the 2-column In Progress tiles.
+        let bar = app.navigationBars.firstMatch
+        if bar.exists {
+            let targetY = bar.frame.maxY + 14
+            let dy = map.frame.minY - targetY
+            if dy > 10 {
+                let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
+                let end = start.withOffset(CGVector(dx: 0, dy: -dy))
+                start.press(forDuration: 0.08, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.3)
+                RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+            }
+        }
+        checkpoint("linkmap-multi-overview")
+
+        // Picking "You" dims unrelated nodes and lists the owner's five sessions underneath.
+        tap("map-You")
+        XCTAssertTrue(any["through"].firstMatch.waitForExistence(timeout: 5))
+        checkpoint("linkmap-picked-owner")
+
+        // Tapping the central Hermesh hub clears the selection.
+        tap("map-hub")
+        XCTAssertFalse(any["through"].firstMatch.waitForExistence(timeout: 1))
+    }
+
     private func wait(_ timeout: TimeInterval = 5, _ done: () -> Bool) -> Bool {
         let end = Date().addingTimeInterval(timeout)
         while !done() && Date() < end { RunLoop.current.run(until: Date().addingTimeInterval(0.2)) }
@@ -802,6 +896,74 @@ final class DemoUITests: XCTestCase {
         tap("exit-demo")
         XCTAssertTrue(app.buttons["try-demo"].waitForExistence(timeout: 10))
         app.terminate()
+    }
+
+    func testNewSessionAskFadesWhenCrowded() {
+        enterWorkDemo()
+        tap("menu")
+        tap("new-session-place")
+
+        let title = app.descendants(matching: .any)["new-session-title"].firstMatch
+        let machine = app.buttons["thread-machine"]
+        let worktree = app.buttons["thread-worktree"]
+        let composer = app.descendants(matching: .any)["thread-composer"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        tap("thread-project")
+        tap("project-hello-world")
+        XCTAssertTrue(worktree.waitForExistence(timeout: 5))
+        XCTAssertTrue(machine.exists && composer.exists)
+        XCTAssertLessThan(machine.frame.maxY, worktree.frame.minY, "ask sits cleanly above the working-copy bar")
+
+        composer.tap()
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        composer.typeText("https://github.com/pingdotgg/t3code\nstudy how session titles are generated\nand summarize the approach")
+        sleep(1)
+        if app.frame.height <= 700 {
+            XCTAssertTrue(title.waitForNonExistence(timeout: 5), "compact height: ask fades out when composer expands")
+            XCTAssertFalse(machine.exists)
+        } else if title.exists {
+            XCTAssertLessThan(machine.frame.maxY, worktree.frame.minY, "never overlaps working-copy bar")
+        }
+        checkpoint("new-session-composer-default")
+
+        // When vertical room cannot hold ask above the expanded multi-line composer and keyboard, ask fades out
+        // cleanly and comes back once the keyboard is dismissed.
+        app.terminate()
+        app.launchArguments = [
+            "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityMedium",
+        ]
+        app.launch()
+        enterWorkDemo()
+        tap("menu")
+        tap("new-session-place")
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        tap("thread-project")
+        tap("project-hello-world")
+        XCTAssertTrue(worktree.waitForExistence(timeout: 5))
+        XCTAssertTrue(machine.exists)
+        XCTAssertLessThan(machine.frame.maxY, worktree.frame.minY, "with keyboard down, ask fits above working-copy bar")
+
+        composer.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        composer.typeText("line 1\nline 2\nline 3\nline 4\nline 5")
+        XCTAssertTrue(title.waitForNonExistence(timeout: 5), "crowded: ask fades out")
+        XCTAssertFalse(machine.exists, "crowded: machine picker hides with ask")
+        XCTAssertTrue(worktree.isHittable && composer.isHittable)
+        checkpoint("new-session-composer-crowded-hidden")
+
+        let topClearY = (app.navigationBars.firstMatch.frame.maxY + worktree.frame.minY) / 2
+        if worktree.frame.minY - app.navigationBars.firstMatch.frame.maxY >= 24 {
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.midX, dy: topClearY)).tap()
+        } else {
+            composer.swipeDown()
+        }
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 10), "empty area above composer or flick dismisses keyboard")
+        XCTAssertTrue(title.waitForExistence(timeout: 5), "keyboard dismissed: ask fades back in")
+        XCTAssertTrue(machine.exists)
+        XCTAssertLessThan(machine.frame.maxY, worktree.frame.minY, "restored cleanly above working-copy bar")
+        checkpoint("new-session-composer-restored")
     }
 
     private func cancelSearch() {

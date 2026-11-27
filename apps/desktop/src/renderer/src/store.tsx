@@ -70,6 +70,7 @@ type UI = {
   collapsed: string[];
   pinnedOrder: string[];
   activeOrder: string[];
+  sectionOrder: Record<string, string[]>;
   searching: boolean;
   renaming: string | null;
   searchFor: Partial<SessionFilter>;
@@ -141,7 +142,15 @@ export function save(key: string, v: boolean) {
   }
 }
 
-type SavedView = Pick<UI, "selection" | "sidebar" | "view" | "viewChosen" | "archived" | "collapsed" | "pinnedOrder" | "activeOrder">;
+type SavedView = Pick<UI, "selection" | "sidebar" | "view" | "viewChosen" | "archived" | "collapsed" | "pinnedOrder" | "activeOrder" | "sectionOrder">;
+function parseSectionOrder(raw: unknown): Record<string, string[]> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (Array.isArray(v)) out[k] = v.filter((x): x is string => typeof x === "string");
+  }
+  return out;
+}
 function savedView(): Partial<SavedView> {
   if (location.hash.startsWith("#settings")) return {};
   try {
@@ -168,6 +177,7 @@ function savedView(): Partial<SavedView> {
       collapsed: Array.isArray(v.collapsed) ? v.collapsed : undefined,
       pinnedOrder: Array.isArray(v.pinnedOrder) ? v.pinnedOrder.filter((x): x is string => typeof x === "string") : undefined,
       activeOrder: Array.isArray(v.activeOrder) ? v.activeOrder.filter((x): x is string => typeof x === "string") : undefined,
+      sectionOrder: parseSectionOrder(v.sectionOrder),
     };
   } catch {
     return {};
@@ -201,6 +211,7 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     collapsed: [],
     pinnedOrder: [],
     activeOrder: [],
+    sectionOrder: {},
     searching: false,
     renaming: null,
     searchFor: {},
@@ -243,10 +254,11 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
           collapsed: ui.collapsed,
           pinnedOrder: ui.pinnedOrder,
           activeOrder: ui.activeOrder,
+          sectionOrder: ui.sectionOrder,
         }),
       );
     } catch { /* Main-window context is optional when storage is unavailable. */ }
-  }, [ui.selection, ui.sidebar, ui.view, ui.viewChosen, ui.archived, ui.collapsed, ui.pinnedOrder, ui.activeOrder]);
+  }, [ui.selection, ui.sidebar, ui.view, ui.viewChosen, ui.archived, ui.collapsed, ui.pinnedOrder, ui.activeOrder, ui.sectionOrder]);
   const [width, setWidth] = useState(() => window.innerWidth);
   useEffect(() => {
     const resize = () => setWidth(window.innerWidth);

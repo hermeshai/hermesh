@@ -5,6 +5,7 @@ import type { Session } from "@hermesh/proto/session";
 import { displayTitle } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
 import { Icon } from "../icons";
+import { TitleShine } from "../runningMotion";
 import { Avatar, BotAvatar } from "./Avatar";
 import { useHer } from "./context";
 import { reachable } from "./environments";
@@ -52,7 +53,7 @@ export function TopBar({ view }: { view?: SessionView | null } = {}) {
         )}
         {/* The capsule is the team's name tag (docs/her-team.md §14.3): Her's name (or live status while she answers) and what the team does; it opens the team panel. */}
         <button ref={capsule} className={`her-cap ${teamOpen ? "on" : ""}`} aria-expanded={teamOpen} aria-haspopup="dialog" aria-label={t("head.team")} onClick={() => setTeamOpen(!teamOpen)}>
-          {statusText ? <span className="her-id-n her-id-st"><span className="wb-sweep">{statusText}</span></span> : <span className="her-id-n">{bot?.name ?? "Her"}</span>}
+          {statusText ? <span className="her-id-n her-id-st stitle run" title={statusText}>{statusText}<TitleShine text={statusText} /></span> : <span className="her-id-n">{bot?.name ?? "Her"}</span>}
           <TagWords team={team} />
         </button>
       </div>

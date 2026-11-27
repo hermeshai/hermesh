@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { isHerConversation, parseAppLink } from "@hermesh/core";
 import { agentName } from "@hermesh/ui";
 import { local } from "./api";
+import { useSidebarVibrant } from "./appearance";
 import { Overview } from "./Overview";
 import { RequestCards } from "./RequestCards";
 import { SearchPalette } from "./Search";
@@ -24,11 +25,7 @@ const HerConversationPage = lazy(() => import("./her/HerPage").then((m) => ({ de
 export function MainWindow() {
   const st = useStore();
   useCommands();
-  useEffect(() => {
-    if (!window.hermesh?.material) return;
-    document.documentElement.classList.add("vibrant");
-    return () => document.documentElement.classList.remove("vibrant");
-  }, []);
+  useSidebarVibrant();
   const { set } = st;
   useEffect(
     () =>

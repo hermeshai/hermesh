@@ -9,11 +9,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -26,7 +28,10 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
-var migrations = []string{`
+var migrations = []sqlitedb.Migration{{
+	Version:     1,
+	Description: "initial_sessions_schema",
+	SQL: `
 CREATE TABLE workspaces (
   project_id TEXT PRIMARY KEY,
   path TEXT NOT NULL,
@@ -60,7 +65,9 @@ CREATE INDEX idx_sessions_updated ON sessions(archived, pinned DESC, updated_at 
 
 CREATE TABLE deleted_sessions (
   session_id TEXT PRIMARY KEY,
-  deleted_at INTEGER NOT NULL
+  deleted_at INTEGER NOT NULL,
+  project_id TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX idx_deleted_sessions_at ON deleted_sessions(deleted_at ASC);
 
@@ -147,11 +154,8 @@ CREATE TABLE session_events (
   payload BLOB NOT NULL,
   PRIMARY KEY (session_id, seq)
 );
-`, `
-ALTER TABLE deleted_sessions ADD COLUMN project_id TEXT NOT NULL DEFAULT '';
-ALTER TABLE deleted_sessions ADD COLUMN created_by TEXT NOT NULL DEFAULT '';
-`, `
-CREATE TABLE IF NOT EXISTS background_tasks (
+
+CREATE TABLE background_tasks (
   session_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
   run_id TEXT NOT NULL,
@@ -161,9 +165,9 @@ CREATE TABLE IF NOT EXISTS background_tasks (
   payload BLOB NOT NULL,
   PRIMARY KEY (session_id, task_id)
 );
-CREATE INDEX IF NOT EXISTS idx_background_tasks_session ON background_tasks(session_id, started_at ASC);
-`, `
-CREATE TABLE IF NOT EXISTS turn_image_blobs (
+CREATE INDEX idx_background_tasks_session ON background_tasks(session_id, started_at ASC);
+
+CREATE TABLE turn_image_blobs (
   session_id TEXT NOT NULL,
   run_id TEXT NOT NULL,
   asked_path TEXT NOT NULL,
@@ -172,8 +176,9 @@ CREATE TABLE IF NOT EXISTS turn_image_blobs (
   turn INTEGER NOT NULL,
   PRIMARY KEY (session_id, run_id, asked_path)
 );
-CREATE INDEX IF NOT EXISTS idx_turn_image_blobs_session ON turn_image_blobs(session_id);
-`}
+CREATE INDEX idx_turn_image_blobs_session ON turn_image_blobs(session_id);
+`,
+}}
 
 type TurnImageBlob struct {
 	AskedPath  string
@@ -206,6 +211,12 @@ type SessionFilter struct {
 	Limit           uint32
 }
 
+type SessionSummary struct {
+	Running         int
+	Counts          map[string]uint32
+	ActiveByProject map[string]uint32
+}
+
 type Store struct {
 	path     string
 	blobsDir string
@@ -215,6 +226,11 @@ type Store struct {
 	writeMu  sync.Mutex
 	// steps: what the moves into this store did when it opened (legacy.go).
 	steps []sqlitedb.StepResult
+
+	summaryGen   atomic.Uint64
+	summaryMu    sync.Mutex
+	summaryAtGen uint64
+	summaryCache SessionSummary
 }
 
 // Steps is what the moves into this store did when it opened: those done
@@ -224,6 +240,10 @@ type Store struct {
 func (s *Store) Steps() []sqlitedb.StepResult { return s.steps }
 
 func Open(dbPath string) (*Store, error) {
+	dataDir := filepath.Dir(dbPath)
+	if err := migrateDevSessionsV2(dbPath, dataDir); err != nil {
+		return nil, err
+	}
 	writer, err := sqlitedb.Open(dbPath, migrations)
 	if err != nil {
 		return nil, err
@@ -239,7 +259,6 @@ func Open(dbPath string) (*Store, error) {
 		writer.Close()
 		return nil, err
 	}
-	dataDir := filepath.Dir(dbPath)
 	blobsDir := filepath.Join(dataDir, "blobs")
 	if err := os.MkdirAll(blobsDir, 0o700); err != nil {
 		ckpt.Close()
@@ -247,7 +266,6 @@ func Open(dbPath string) (*Store, error) {
 		writer.Close()
 		return nil, err
 	}
-	migrateLegacyDirs(dataDir, blobsDir)
 	st := &Store{
 		path:     dbPath,
 		blobsDir: blobsDir,
@@ -261,37 +279,123 @@ func Open(dbPath string) (*Store, error) {
 		st.Close()
 		return nil, err
 	}
+	st.summaryGen.Store(1)
 	return st, nil
 }
 
-func migrateLegacyDirs(dataDir, blobsDir string) {
-	oldBlobs := filepath.Join(dataDir, "blobs_v2")
-	if entries, err := os.ReadDir(oldBlobs); err == nil {
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			src := filepath.Join(oldBlobs, e.Name())
-			dst := filepath.Join(blobsDir, e.Name())
-			if _, sErr := os.Stat(dst); errors.Is(sErr, os.ErrNotExist) {
-				_ = os.Rename(src, dst)
-			}
-		}
-		_ = os.Remove(oldBlobs)
+// migrateDevSessionsV2 transitions unreleased pre-release local stores
+// (sessions_v2.db at schema 1..4 and leftover threads_v2.db) to sessions.db at
+// squashed schema 1.
+func migrateDevSessionsV2(dbPath, dataDir string) error {
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		_ = os.Remove(filepath.Join(dataDir, "threads_v2.db"+suffix))
 	}
-	oldWT := filepath.Join(dataDir, "worktrees_v2")
-	newWT := filepath.Join(dataDir, "worktrees")
-	if entries, err := os.ReadDir(oldWT); err == nil {
-		_ = os.MkdirAll(newWT, 0o755)
-		for _, e := range entries {
-			src := filepath.Join(oldWT, e.Name())
-			dst := filepath.Join(newWT, e.Name())
-			if _, sErr := os.Stat(dst); errors.Is(sErr, os.ErrNotExist) {
-				_ = os.Rename(src, dst)
-			}
-		}
-		_ = os.Remove(oldWT)
+	if filepath.Base(dbPath) != "sessions.db" {
+		return nil
 	}
+	oldPath := filepath.Join(dataDir, "sessions_v2.db")
+	oldFi, oldErr := os.Stat(oldPath)
+	if errors.Is(oldErr, os.ErrNotExist) {
+		return nil
+	} else if oldErr != nil {
+		return oldErr
+	}
+
+	if fi, err := os.Stat(dbPath); err == nil {
+		walFi, walErr := os.Stat(dbPath + "-wal")
+		if fi.Size() > 0 || (walErr == nil && walFi.Size() > 0) {
+			return nil
+		}
+		// Remove empty 0-byte placeholder sessions.db if a populated sessions_v2.db is waiting.
+		if oldFi.Size() > 0 {
+			_ = os.Remove(dbPath)
+			_ = os.Remove(dbPath + "-wal")
+			_ = os.Remove(dbPath + "-shm")
+		} else {
+			return nil
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	raw, err := sqlitedb.OpenRaw(oldPath)
+	if err != nil {
+		return err
+	}
+	var uv int
+	if err := raw.QueryRow(`PRAGMA user_version`).Scan(&uv); err != nil {
+		raw.Close()
+		return err
+	}
+	var one int
+	hasSessions := raw.QueryRow(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sessions'`).Scan(&one) == nil
+	if uv == 0 && !hasSessions {
+		_ = raw.Close()
+		for _, suffix := range []string{"", "-wal", "-shm"} {
+			_ = os.Remove(oldPath + suffix)
+		}
+		return nil
+	}
+	if uv > 4 {
+		raw.Close()
+		return fmt.Errorf("%w: sessions_v2.db is at schema %d", sqlitedb.ErrNewer, uv)
+	}
+	if uv < 1 || !hasSessions {
+		raw.Close()
+		return fmt.Errorf("%w: sessions_v2.db at schema %d is missing sessions table", sqlitedb.ErrChecksumMismatch, uv)
+	}
+
+	_, _ = raw.Exec(`ALTER TABLE deleted_sessions ADD COLUMN project_id TEXT NOT NULL DEFAULT ''`)
+	_, _ = raw.Exec(`ALTER TABLE deleted_sessions ADD COLUMN created_by TEXT NOT NULL DEFAULT ''`)
+	if _, err := raw.Exec(`
+CREATE TABLE IF NOT EXISTS background_tasks (
+  session_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  status INTEGER NOT NULL,
+  started_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  payload BLOB NOT NULL,
+  PRIMARY KEY (session_id, task_id)
+);
+CREATE INDEX IF NOT EXISTS idx_background_tasks_session ON background_tasks(session_id, started_at ASC);
+CREATE TABLE IF NOT EXISTS turn_image_blobs (
+  session_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  asked_path TEXT NOT NULL,
+  blob_sha256 TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  turn INTEGER NOT NULL,
+  PRIMARY KEY (session_id, run_id, asked_path)
+);
+CREATE INDEX IF NOT EXISTS idx_turn_image_blobs_session ON turn_image_blobs(session_id);
+`); err != nil {
+		raw.Close()
+		return err
+	}
+	_, _ = raw.Exec(`DELETE FROM data_steps WHERE name = 'v2-threads'`)
+	if _, err := raw.Exec(`PRAGMA user_version = 1`); err != nil {
+		raw.Close()
+		return err
+	}
+	var busy, logFrames, ckptFrames int
+	if err := raw.QueryRow(`PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &logFrames, &ckptFrames); err != nil {
+		raw.Close()
+		return err
+	}
+	if busy != 0 {
+		raw.Close()
+		return fmt.Errorf("sessions_v2.db is busy (wal_checkpoint busy=%d, log=%d, checkpointed=%d); close other readers before upgrading", busy, logFrames, ckptFrames)
+	}
+	if err := raw.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(oldPath, dbPath); err != nil {
+		return err
+	}
+	_ = os.Remove(oldPath + "-wal")
+	_ = os.Remove(oldPath + "-shm")
+	return nil
 }
 
 func (s *Store) Close() error {
@@ -304,8 +408,9 @@ func (s *Store) Close() error {
 
 // Tx wraps an atomic SQLite write transaction plus staged SessionEvents.
 type Tx struct {
-	tx     *sql.Tx
-	events []*sessionv1.SessionEvent
+	tx           *sql.Tx
+	events       []*sessionv1.SessionEvent
+	summaryDirty bool
 }
 
 func (s *Store) Mutate(fn func(tx *Tx) error) ([]*sessionv1.SessionEvent, error) {
@@ -323,6 +428,9 @@ func (s *Store) Mutate(fn func(tx *Tx) error) ([]*sessionv1.SessionEvent, error)
 	}
 	if err := sqlTx.Commit(); err != nil {
 		return nil, err
+	}
+	if tx.summaryDirty {
+		s.summaryGen.Add(1)
 	}
 	return tx.events, nil
 }
@@ -527,6 +635,9 @@ func (tx *Tx) putSessionInternal(s *sessionv1.Session) error {
 		s.SessionId, s.ProjectId, int32(s.Status), archived, pinned, s.Progress.LastEventSeq,
 		s.CreatedAt.AsTime().UnixMilli(), s.UpdatedAt.AsTime().UnixMilli(), b,
 	)
+	if err == nil {
+		tx.summaryDirty = true
+	}
 	return err
 }
 
@@ -569,6 +680,9 @@ func (tx *Tx) DeleteSession(sessionID string) error {
 		`INSERT OR REPLACE INTO deleted_sessions(session_id, project_id, created_by, deleted_at) VALUES(?, ?, ?, ?)`,
 		sessionID, projectID, createdBy, time.Now().UnixMilli(),
 	)
+	if err == nil {
+		tx.summaryDirty = true
+	}
 	return err
 }
 
@@ -637,6 +751,76 @@ func (s *Store) ListSessions(projectID string, includeArchived bool, limit uint3
 		IncludeArchived: includeArchived,
 		Limit:           limit,
 	})
+}
+
+func (s *Store) SessionSummary() (SessionSummary, error) {
+	gen := s.summaryGen.Load()
+	s.summaryMu.Lock()
+	if s.summaryAtGen == gen && gen != 0 {
+		cached := cloneSessionSummary(s.summaryCache)
+		s.summaryMu.Unlock()
+		return cached, nil
+	}
+	s.summaryMu.Unlock()
+
+	rows, err := s.reader.Query(`SELECT project_id, status, COUNT(*) FROM sessions WHERE archived = 0 GROUP BY project_id, status`)
+	if err != nil {
+		return SessionSummary{Counts: map[string]uint32{}, ActiveByProject: map[string]uint32{}}, err
+	}
+	defer rows.Close()
+
+	sum := SessionSummary{
+		Counts:          map[string]uint32{},
+		ActiveByProject: map[string]uint32{},
+	}
+	for rows.Next() {
+		var projectID string
+		var rawStatus int32
+		var n uint32
+		if err := rows.Scan(&projectID, &rawStatus, &n); err != nil {
+			return SessionSummary{Counts: map[string]uint32{}, ActiveByProject: map[string]uint32{}}, err
+		}
+		switch sessionv1.SessionStatus(rawStatus) {
+		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED:
+			sum.Counts["queued"] += n
+			sum.ActiveByProject[projectID] += n
+		case sessionv1.SessionStatus_SESSION_STATUS_PREPARING:
+			sum.Running += int(n)
+			sum.Counts["preparing"] += n
+			sum.ActiveByProject[projectID] += n
+		case sessionv1.SessionStatus_SESSION_STATUS_RUNNING:
+			sum.Running += int(n)
+			sum.Counts["running"] += n
+			sum.ActiveByProject[projectID] += n
+		case sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
+			sum.Running += int(n)
+			sum.Counts["waiting_input"] += n
+			sum.ActiveByProject[projectID] += n
+		case sessionv1.SessionStatus_SESSION_STATUS_IDLE:
+			sum.Counts["idle"] += n
+		case sessionv1.SessionStatus_SESSION_STATUS_CRASHED:
+			sum.Counts["crashed"] += n
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return SessionSummary{Counts: map[string]uint32{}, ActiveByProject: map[string]uint32{}}, err
+	}
+
+	s.summaryMu.Lock()
+	if s.summaryGen.Load() == gen {
+		s.summaryAtGen = gen
+		s.summaryCache = sum
+	}
+	s.summaryMu.Unlock()
+	return cloneSessionSummary(sum), nil
+}
+
+func cloneSessionSummary(in SessionSummary) SessionSummary {
+	return SessionSummary{
+		Running:         in.Running,
+		Counts:          maps.Clone(in.Counts),
+		ActiveByProject: maps.Clone(in.ActiveByProject),
+	}
 }
 
 func (s *Store) QuerySessions(f SessionFilter) ([]*sessionv1.Session, error) {

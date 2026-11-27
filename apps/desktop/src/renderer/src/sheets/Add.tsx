@@ -7,6 +7,7 @@ import { Mark } from "@hermesh/ui";
 import { local } from "../api";
 import { Icon } from "../icons";
 import { i18n } from "../../../shared/i18n";
+import { forgetWorktree } from "../session/choices";
 import { errorText, useStore } from "../store";
 import { ErrorLine, useAction, useWaitForPairings } from "./common";
 
@@ -280,6 +281,7 @@ export function AddProjectSheet({ machineId, agent, then }: { machineId?: string
       }),
     );
     if (ok) {
+      forgetWorktree(mid, projectId);
       st.set({ sheet: null });
       st.show(t("addProject.added", { name: projectId }));
       st.refresh();

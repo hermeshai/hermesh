@@ -2,6 +2,9 @@
    Corners come from --r-*, colours from the design variables, except an avatar's own. */
 
 .her{--pill:var(--win);--pill-bd:var(--menu-bd);position:relative;display:flex;flex:1;min-width:0;min-height:0}
+@media (prefers-color-scheme:light){
+  :root[data-light-style="soft"] .her{--pill:#ffffff;--pill-bd:rgba(32,33,39,.10)}
+}
 @media (prefers-color-scheme:dark){
   .her{--pill:var(--win2)}
   :root[data-dark-style="black"] .her{--pill:#15151a;--pill-bd:rgba(255,255,255,.08)}
@@ -262,10 +265,13 @@ html.blurred .her-id-n{color:var(--l2)}
 button.wb-h{cursor:pointer}
 button.wb-h:hover{background:var(--fill)}
 button.wb-h:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.wb-sweep{display:inline-flex;align-items:center;gap:8px;min-width:0;animation:wb-sweep 2.4s linear infinite;
-  -webkit-mask-image:linear-gradient(90deg,#000 38%,rgba(0,0,0,.28) 50%,#000 62%);mask-image:linear-gradient(90deg,#000 38%,rgba(0,0,0,.28) 50%,#000 62%);
-  -webkit-mask-size:300% 100%;mask-size:300% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}
-@keyframes wb-sweep{from{-webkit-mask-position:100% 0;mask-position:100% 0}to{-webkit-mask-position:0 0;mask-position:0 0}}
+.wb-sweep{display:inline-flex;align-items:center;gap:8px;min-width:0;will-change:opacity;animation:wb-sweep 2.4s linear infinite}
+@keyframes wb-sweep{from{opacity:.999}to{opacity:1}}
+.wb-sweep>.dots>i{will-change:opacity;animation:wb-wave 2.4s ease-in-out infinite}
+.wb-sweep>.dots>i:nth-child(2){animation-delay:.18s}
+.wb-sweep>.dots>i:nth-child(3){animation-delay:.36s}
+.wb-sweep>.wb-w>*{will-change:opacity;animation:wb-wave 2.4s ease-in-out .56s infinite}
+@keyframes wb-wave{0%,56%,100%{opacity:1}26%{opacity:.32}}
 .dots{display:inline-flex;align-items:center;gap:3px;height:21px;flex:none}
 .dots i{width:5px;height:5px;border-radius:50%;background:var(--l2)}
 .wb-w{display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;interpolate-size:allow-keywords;animation:wb-open .24s var(--ease-out)}
@@ -284,7 +290,7 @@ button.wb-h:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .wb-pop.open .ic{transform:none}
 .wb-mi .wb-nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wb-mi:focus .dots i{background:currentColor}
-@media (prefers-reduced-motion:reduce){.wb-sweep{animation:none;-webkit-mask-image:none;mask-image:none}.wb-w,.wb-rot>.wb-t.cur{animation:none}.wb-pop .ic{transition:none}}
+@media (prefers-reduced-motion:reduce){.wb-sweep,.wb-sweep>.dots>i,.wb-sweep>.wb-w>*{animation:none}.wb-w,.wb-rot>.wb-t.cur{animation:none}.wb-pop .ic{transition:none}}
 
 /* The onboarding while no model works (ModelOnboarding.tsx): Her's bubbles as the app writes them, quiet pills under the
    last one, and a key's field. Once a model answers, one line stays, over Her's first words. */

@@ -21,6 +21,7 @@ import (
 	"github.com/hermeshai/hermesh/internal/paths"
 	rt "github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/pkg/identity"
+	"github.com/hermeshai/hermesh/pkg/metrics"
 )
 
 func (n *Machine) serveControl(ctx context.Context) {
@@ -31,6 +32,7 @@ func (n *Machine) serveControl(ctx context.Context) {
 		return
 	}
 	mux := http.NewServeMux()
+	metrics.Mount(mux, metrics.Default)
 	mux.HandleFunc("POST /settings", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		cmd := &identityv1.AdminCommand{}

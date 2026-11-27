@@ -1,5 +1,6 @@
+import http from "node:http";
 import { expect, test, type ElectronApplication, type Locator } from "@playwright/test";
-import { launch, mapHeight, snap, thisComputer, sessionList, navTo } from "./app";
+import { fixture, launch, mapHeight, snap, thisComputer, sessionList, navTo, pickFrom } from "./app";
 
 test("map height waits for the first resize delivery after navigation", async () => {
   const { app, page } = await launch();
@@ -379,11 +380,99 @@ test("the overview stays centered when resizing the window or hiding the sidebar
         }));
         expect(layout.width).toBeCloseTo(Math.min(980, layout.available), 0);
         expect(layout.overflow).toBeLessThanOrEqual(1);
-        await snap(page, `overview-centered-${width}-${sidebar ? "sidebar" : "no-sidebar"}`);
+    await snap(page, `overview-centered-${width}-${sidebar ? "sidebar" : "no-sidebar"}`);
         if (!sidebar) await page.getByRole("button", { name: "显示边栏" }).click();
       }
     }
   } finally {
+    await app.close();
+  }
+});
+
+async function socketPost<T>(rpcPath: string, body: Record<string, unknown>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const payload = Buffer.from(JSON.stringify(body));
+    const req = http.request(
+      {
+        socketPath: fixture.socket,
+        path: rpcPath,
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": payload.length },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks).toString("utf8");
+          if ((res.statusCode ?? 500) >= 400) reject(new Error(`${rpcPath} ${res.statusCode}: ${raw}`));
+          else resolve(JSON.parse(raw || "{}") as T);
+        });
+      },
+    );
+    req.on("error", reject);
+    req.end(payload);
+  });
+}
+
+async function deleteOwnerSessions(): Promise<void> {
+  const { sessions = [] } = await socketPost<{ sessions?: { sessionId: string; createdBy: string }[] }>(
+    "/hermesh.session.v1.SessionService/ListSessions",
+    { includeArchived: true },
+  );
+  for (const s of sessions) {
+    if (s.createdBy === "owner") {
+      await socketPost("/hermesh.session.v1.SessionService/DeleteSession", { sessionId: s.sessionId });
+    }
+  }
+}
+
+test("owner sessions add 你 to the link map, merge same-route lines by stroke weight, and filter 进行中 when clicked", async () => {
+  const { app, page } = await launch();
+  try {
+    const map = page.getByRole("region", { name: "链路" });
+    const work = page.getByRole("region", { name: "进行中" });
+    await expect(map.getByRole("button", { name: "你", exact: true })).toHaveCount(0);
+    await expect(map.locator(".lm-flow")).toHaveCount(1);
+
+    // Start two concurrent owner sessions on demo via the New Thread composer.
+    for (const n of [1, 2]) {
+      await page.getByTestId("nav-new-thread").click();
+      await expect(page.getByTestId("thread-page")).toBeVisible();
+      await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-item-demo"));
+      await page.getByTestId("thread-composer-input").click();
+      await pickFrom(page.getByRole("button", { name: "模型" }), page.getByTestId("picker-provider-scripted").getByTestId("picker-model-scripted-pro"));
+      await page.getByTestId("thread-composer-input").fill(`sleep 30s\nsay owner_${n}`);
+      await page.getByTestId("composer-submit-btn").click();
+      await expect(page.getByTestId("composer-stop-btn")).toBeVisible({ timeout: 15_000 });
+    }
+
+    await navTo(page, /^概览/);
+    const you = map.getByRole("button", { name: "你", exact: true });
+    await expect(you).toBeVisible();
+    await expect(you).toHaveText("你");
+    // Two sender routes now run to demo (bot with 4 unsettled sessions, 你 with 2), each merged to one weighted path.
+    await expect(map.locator(".lm-flow")).toHaveCount(2);
+    const widths = await map.locator(".lm-flow").evaluateAll((els) => els.map((el) => getComputedStyle(el).strokeWidth));
+    expect(widths).toEqual(["2.4px", "1.85px"]);
+    await expect(map.locator(".lm-comet")).toHaveCount(4);
+
+    // Clicking 你 narrows 进行中 to the owner's sessions.
+    await you.click();
+    await expect(you).toHaveAttribute("aria-pressed", "true");
+    const condition = work.getByRole("status");
+    await expect(condition).toContainText("你发起的任务");
+    await expect(condition).toContainText("2 个");
+    await expect(work.getByRole("listitem")).toHaveCount(2);
+
+    // While 你 is picked, ending its sessions keeps the node pinned until unpicked, then removes it.
+    await deleteOwnerSessions();
+    await expect(work.locator(".wnone")).toContainText("当前没有任务经过此节点");
+    await expect(you).toHaveAttribute("aria-pressed", "true");
+    await condition.getByRole("button", { name: "显示全部" }).click();
+    await expect(you).toHaveCount(0);
+    await expect(map.locator(".lm-flow")).toHaveCount(1);
+  } finally {
+    await deleteOwnerSessions().catch(() => {});
     await app.close();
   }
 });

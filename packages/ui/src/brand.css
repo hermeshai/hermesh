@@ -113,6 +113,8 @@
 /* Busy at small sizes and in buttons: the beams light up in turn. */
 .hm-seq .hm-beam {
   opacity: 0.28;
+  mix-blend-mode: normal;
+  will-change: opacity;
   animation: hm-seq 1.2s linear infinite;
 }
 .hm-seq .hm-b1 {

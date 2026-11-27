@@ -17,6 +17,9 @@ import (
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/session/v1/sessionv1connect"
 	"github.com/hermeshai/hermesh/internal/localipc"
+	"github.com/hermeshai/hermesh/pkg/metrics"
+	"sync"
+	"time"
 )
 
 // ServeLocal serves LocalService on a local endpoint that only the same
@@ -26,10 +29,13 @@ func (d *Device) ServeLocal(ctx context.Context, sockPath string) error {
 	if err != nil {
 		return err
 	}
+	mux := http.NewServeMux()
+	metrics.Mount(mux, metrics.Default)
+	mux.Handle("/", d.LocalHandler())
 	var protocols http.Protocols
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
-	srv := &http.Server{Handler: d.LocalHandler(), Protocols: &protocols, ConnContext: func(ctx context.Context, c net.Conn) context.Context {
+	srv := &http.Server{Handler: mux, Protocols: &protocols, ConnContext: func(ctx context.Context, c net.Conn) context.Context {
 		if p, ok := localipc.Peer(c); ok {
 			return context.WithValue(ctx, callerKey{}, &localv1.Caller{Pid: int32(p.PID), Executable: p.Executable})
 		}
@@ -50,10 +56,75 @@ func (d *Device) ServeLocal(ctx context.Context, sockPath string) error {
 // its own listener and access control (the iPhone app's loopback server).
 func (d *Device) LocalHandler() http.Handler {
 	mux := http.NewServeMux()
-	opts := connect.WithInterceptors(connect.UnaryInterceptorFunc(d.kickAfterWrites))
+	opts := connect.WithInterceptors(localMetricsInterceptor{}, connect.UnaryInterceptorFunc(d.kickAfterWrites))
 	mux.Handle(localv1connect.NewLocalServiceHandler(&localService{d: d}, opts))
 	mux.Handle(sessionv1connect.NewSessionServiceHandler(&ownerSessionService{d: d}, opts))
 	return mux
+}
+
+type localMetricsInterceptor struct{}
+
+var (
+	localRPCCounts  sync.Map // procedure -> *metrics.Counter
+	localRPCHists   sync.Map // procedure -> *metrics.Histogram
+	localRPCStreams sync.Map // procedure -> *metrics.Gauge
+)
+
+func localMethodName(proc string) string {
+	return proc[strings.LastIndex(proc, "/")+1:]
+}
+
+func localRPCCounter(proc string) *metrics.Counter {
+	if c, ok := localRPCCounts.Load(proc); ok {
+		return c.(*metrics.Counter)
+	}
+	c := metrics.Default.Counter(`hermesh_local_rpc_total{method="` + localMethodName(proc) + `"}`)
+	actual, _ := localRPCCounts.LoadOrStore(proc, c)
+	return actual.(*metrics.Counter)
+}
+
+func localRPCHist(proc string) *metrics.Histogram {
+	if h, ok := localRPCHists.Load(proc); ok {
+		return h.(*metrics.Histogram)
+	}
+	h := metrics.Default.Histogram(`hermesh_local_rpc_seconds{method="` + localMethodName(proc) + `"}`)
+	actual, _ := localRPCHists.LoadOrStore(proc, h)
+	return actual.(*metrics.Histogram)
+}
+
+func localRPCStreamGauge(proc string) *metrics.Gauge {
+	if g, ok := localRPCStreams.Load(proc); ok {
+		return g.(*metrics.Gauge)
+	}
+	g := metrics.Default.Gauge(`hermesh_local_streams_active{method="` + localMethodName(proc) + `"}`)
+	actual, _ := localRPCStreams.LoadOrStore(proc, g)
+	return actual.(*metrics.Gauge)
+}
+
+func (localMetricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		proc := req.Spec().Procedure
+		localRPCCounter(proc).Inc()
+		start := time.Now()
+		res, err := next(ctx, req)
+		localRPCHist(proc).Since(start)
+		return res, err
+	}
+}
+
+func (localMetricsInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return next
+}
+
+func (localMetricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		proc := conn.Spec().Procedure
+		localRPCCounter(proc).Inc()
+		g := localRPCStreamGauge(proc)
+		g.Add(1)
+		defer g.Add(-1)
+		return next(ctx, conn)
+	}
 }
 
 // kickAfterWrites tells the screens (Watch) to look again after a call that

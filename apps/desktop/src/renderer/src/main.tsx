@@ -3,28 +3,23 @@ import { I18nextProvider } from "react-i18next";
 import { createRoot } from "react-dom/client";
 import { i18n } from "../../shared/i18n";
 import { App } from "./App";
+import { initAppearance } from "./appearance";
 import { releaseWhileHidden } from "./memory";
 import { platform } from "./platform";
+import { initRunningMotion } from "./runningMotion";
+import { initWindowVisibility } from "./visibility";
 import "./styles.css";
 
 document.documentElement.dataset.platform = platform;
 
-const applyDarkStyle = (appearance?: string) => {
-  const want = appearance === "black" ? "black" : "dark";
-  if (document.documentElement.dataset.darkStyle !== want) document.documentElement.dataset.darkStyle = want;
-};
-applyDarkStyle(window.hermesh?.appearance);
-let appearanceUpdated = false;
-window.hermesh?.onPreferences((p) => {
-  appearanceUpdated = true;
-  applyDarkStyle(p.appearance);
-});
-window.hermesh?.getPreferences().then((p) => {
-  if (p && !appearanceUpdated) applyDarkStyle(p.appearance);
-}).catch(() => {});
+initAppearance();
+initRunningMotion();
 
 // Titles go grey while another window has the focus (the .blurred rules).
 window.hermesh?.onWindowFocus((focused) => document.documentElement.classList.toggle("blurred", !focused));
+
+// Pause infinite animations while the window is hidden or minimized so the compositor and GPU go completely idle.
+initWindowVisibility();
 
 // A scroller shows its scrollbar while it moves and for a moment after, as macOS overlays do (app.css).
 const settle = new WeakMap<Element, number>();

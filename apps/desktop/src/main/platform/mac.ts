@@ -5,8 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { TerminalCommand } from "../../shared/bridge";
+import { usesSidebarMaterial, windowBackgroundOf } from "../../shared/appearance";
 import { chooseMacTerminal, parseRunningBundleIds } from "../../shared/terminal";
 import { settleInApplications } from "../install";
+import { activePalette } from "../notify";
 import { testDataDir } from "../paths";
 import type { Platform, WindowKind } from "./types";
 
@@ -97,17 +99,25 @@ export const mac: Platform = {
     console.warn(`restarting hermeshd: ${why}`);
     const job = daemonJob();
     const deadline = Date.now() + 15_000; // launchd kills it 5 s after the SIGTERM
+    // SMAppService-submitted jobs reject `launchctl bootout`; unregistering
+    // through SMAppService first cleanly unloads the old job and plist so
+    // re-registering picks up the new bundle's binary and HERMESH_APP_VERSION.
+    try {
+      app.setLoginItemSettings({ ...agent, openAtLogin: false });
+    } catch (e) {
+      console.warn("unregistering hermeshd:", e);
+    }
     const whenGone = () => execFile("launchctl", ["print", job], (notLoaded) => {
       if (notLoaded) {
         app.setLoginItemSettings({ ...agent, openAtLogin: true });
         void kickstartDaemon();
       } else if (Date.now() < deadline) setTimeout(whenGone, 200);
-      else execFile("launchctl", ["kickstart", "-k", job], (err) => err && console.warn("restarting hermeshd:", err));
+      else {
+        app.setLoginItemSettings({ ...agent, openAtLogin: true });
+        execFile("launchctl", ["kickstart", "-k", job], (err) => err && console.warn("restarting hermeshd:", err));
+      }
     });
-    execFile("launchctl", ["bootout", job], (err) => {
-      if (err) console.warn("restarting hermeshd:", err);
-      whenGone();
-    });
+    execFile("launchctl", ["bootout", job], () => whenGone());
   },
 
   /** The owner turned hermeshd off in System Settings › Login Items (or never allowed it): it does not run until they do. */
@@ -200,21 +210,29 @@ export const mac: Platform = {
   },
 
   frame(kind: WindowKind) {
+    const palette = activePalette();
+    const backgroundColor = windowBackgroundOf(palette);
     switch (kind) {
       case "panel":
         return { type: "panel", vibrancy: "popover", visualEffectState: "active", backgroundColor: "#00000000" };
       case "auxiliary":
-        return { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 12, y: 15 } };
-      default:
-        // The lights on the 44 px top band; the sidebar's material showing through (the content is opaque).
+        return { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 12, y: 15 }, backgroundColor };
+      default: {
+        // The lights on the 44 px top band; glass themes show the sidebar's material, solid themes stay opaque.
+        const glass = usesSidebarMaterial(palette);
         return {
           titleBarStyle: "hiddenInset",
           trafficLightPosition: kind === "onboarding" ? { x: 24, y: 24 } : { x: 12, y: 15 },
-          vibrancy: "sidebar",
           visualEffectState: "followWindow",
-          backgroundColor: "#00000000",
+          ...(glass ? { vibrancy: "sidebar", backgroundColor: "#00000000" } : { backgroundColor }),
         };
+      }
     }
+  },
+
+  applyMaterial(win, glass, backgroundColor) {
+    win.setVibrancy(glass ? "sidebar" : null);
+    win.setBackgroundColor(glass ? "#00000000" : backgroundColor);
   },
 
   placeButtons(win, kind) {

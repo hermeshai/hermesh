@@ -1,0 +1,1497 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>会话文件侧面板 · iPhone Duo 规范改进版 Demo</title>
+<style>
+:root {
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+[data-theme="light"] {
+  --page: #e7e8ee; --page-fg: #18191f; --page-fg2: #5e606c; --card: #ffffff; --card-bd: rgba(0,0,0,.08);
+  --i-bg: #ffffff; --i-bg2: #f2f2f7; --i-rail: #f0f0f5; --i-vbar: #ececf2;
+  --i-l1: #000000; --i-l2: rgba(60,60,67,.64); --i-l3: rgba(60,60,67,.34); --i-sep: rgba(0,0,0,.09);
+  --i-fill: rgba(118,118,128,.10); --i-fill2: rgba(118,118,128,.18);
+  --i-me: #3d5bff; --i-tint: #3d5bff; --i-tint-bg: rgba(61,91,255,.14);
+  --i-glass: rgba(252,252,255,.78); --i-glass-hi: rgba(255,255,255,.65); --i-glass-bd: rgba(0,0,0,.09);
+  --i-pop: rgba(250,250,253,.94); --scrim: rgba(0,0,0,.20);
+  --target: rgba(214,162,0,.18); --target-bd: #d6a200;
+  --syn-k: #1b36d9; --syn-s: #087f78; --syn-c: #686d7a; --syn-f: #7543ba; --syn-p: #1a5ce6; --syn-v: #b44b18;
+  --warn-bg: rgba(230,90,40,.10); --warn-fg: #c94518; --ok-bg: rgba(32,163,90,.11); --ok-fg: #188648;
+}
+[data-theme="dark"] {
+  --page: #0b0c10; --page-fg: #ededf2; --page-fg2: #9699a6; --card: #16171d; --card-bd: rgba(255,255,255,.08);
+  --i-bg: #000000; --i-bg2: #161618; --i-rail: #08080a; --i-vbar: #050507;
+  --i-l1: #f5f5f7; --i-l2: rgba(235,235,245,.62); --i-l3: rgba(235,235,245,.32); --i-sep: rgba(255,255,255,.11);
+  --i-fill: rgba(118,118,128,.22); --i-fill2: rgba(118,118,128,.34);
+  --i-me: #4a66ff; --i-tint: #7b93ff; --i-tint-bg: rgba(123,147,255,.20);
+  --i-glass: rgba(38,38,43,.76); --i-glass-hi: rgba(255,255,255,.14); --i-glass-bd: rgba(255,255,255,.13);
+  --i-pop: rgba(36,36,41,.95); --scrim: rgba(0,0,0,.46);
+  --target: rgba(212,172,42,.20); --target-bd: #d4ac2a;
+  --syn-k: #7ab0ff; --syn-s: #62d2be; --syn-c: #8e96a8; --syn-f: #c39bff; --syn-p: #8ec4ff; --syn-v: #f3a971;
+  --warn-bg: rgba(255,105,65,.14); --warn-fg: #ff8c6b; --ok-bg: rgba(63,207,134,.14); --ok-fg: #5ce09b;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--page); color: var(--page-fg);
+  font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased;
+  min-height: 100vh; padding-bottom: 84px;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+svg { display: block; flex: none; }
+code { font: 12px var(--mono); background: var(--i-fill); padding: 1px 5px; border-radius: 5px; }
+
+/* ---------- Header & Top Switcher ---------- */
+.hdr {
+  max-width: 1480px; margin: 0 auto; padding: 16px 20px 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
+.hdr-title { display: flex; flex-direction: column; gap: 2px; }
+.hdr-title h1 { font-size: 18px; font-weight: 650; margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.badge { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--ok-bg); color: var(--ok-fg); }
+.badge.warn { background: var(--warn-bg); color: var(--warn-fg); }
+.hdr-title p { margin: 0; font-size: 12.5px; color: var(--page-fg2); }
+
+.mode-tabs {
+  display: inline-flex; flex-wrap: wrap; gap: 3px; padding: 3px;
+  background: var(--card); border: 1px solid var(--card-bd); border-radius: 12px;
+}
+.mode-tabs button {
+  padding: 5px 11px; border-radius: 9px; font-size: 12.5px; font-weight: 500;
+  color: var(--page-fg2); transition: background .15s, color .15s;
+}
+.mode-tabs button.on { background: var(--i-me); color: #fff; }
+
+/* ---------- Stage & Responsive Scaler ---------- */
+.stage {
+  max-width: 1520px; margin: 0 auto; padding: 10px 16px 18px;
+  display: flex; flex-direction: column; align-items: center; gap: 22px;
+}
+.row-stage {
+  width: 100%; display: flex; gap: 24px; align-items: flex-start; justify-content: center; flex-wrap: wrap;
+}
+.fit-box {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  max-width: 100%; overflow: hidden;
+}
+.fit-inner { transform-origin: top center; display: flex; justify-content: center; }
+.cap { font-size: 12px; color: var(--page-fg2); text-align: center; }
+
+/* ---------- Icon helper ---------- */
+.ic {
+  width: 20px; height: 20px; fill: none; stroke: currentColor;
+  stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* ---------- Liquid Glass Primitives ---------- */
+.iglass {
+  background: var(--i-glass);
+  backdrop-filter: blur(26px) saturate(1.6); -webkit-backdrop-filter: blur(26px) saturate(1.6);
+  box-shadow: inset 0 .5px 0 var(--i-glass-hi), 0 0 0 .5px var(--i-glass-bd), 0 6px 20px rgba(0,0,0,.16);
+}
+.igb {
+  width: 42px; height: 42px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--i-l1); transition: transform .12s, background .15s, color .15s; position: relative;
+}
+.igb:active { transform: scale(.93); }
+.igb.on { background: var(--i-tint-bg); color: var(--i-tint); }
+.igb.solid-on { background: var(--i-me); color: #fff; }
+
+/* Vertical Liquid Glass Capsule (iPhone Duo Side Controls) */
+.vcapsule {
+  width: 46px; border-radius: 23px; padding: 3px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.vcapsule .igb { width: 40px; height: 40px; box-shadow: none; background: transparent; backdrop-filter: none; }
+.vcapsule .igb.on { background: var(--i-tint-bg); color: var(--i-tint); }
+.vcapsule .vsep { width: 22px; height: .5px; background: var(--i-sep); margin: 1px 0; }
+
+/* Horizontal Liquid Glass Capsule */
+.hcapsule {
+  height: 38px; border-radius: 19px; padding: 2px;
+  display: inline-flex; align-items: center; gap: 2px;
+}
+.hcapsule .igb { width: 34px; height: 34px; box-shadow: none; background: transparent; backdrop-filter: none; }
+.hcapsule .igb .ic { width: 17px; height: 17px; }
+.hcapsule .igb.on { background: var(--i-tint-bg); color: var(--i-tint); }
+
+/* ---------- Device Shells ---------- */
+/* 1. iPhone Duo Open Landscape (Real aspect ~4:3 book unfolded: 920 x 656) */
+.duo {
+  width: 920px; height: 656px; border-radius: 38px; padding: 11px;
+  background: #1a1b1f;
+  box-shadow: 0 28px 75px rgba(0,0,0,.42), inset 0 0 0 1.5px #383a42;
+  position: relative; user-select: none; flex: none;
+}
+/* Physical center hinge seam */
+.duo::before {
+  content: ""; position: absolute; left: 50%; top: 4px; bottom: 4px; width: 2px; margin-left: -1px;
+  background: linear-gradient(to bottom, rgba(255,255,255,.16), rgba(255,255,255,.03) 14%, rgba(255,255,255,.03) 86%, rgba(255,255,255,.16));
+  z-index: 96; pointer-events: none;
+}
+.duo .hinge-tag {
+  position: absolute; top: -9px; left: 50%; transform: translateX(-50%);
+  font-size: 10px; padding: 1px 7px; border-radius: 99px;
+  background: #282a33; color: #a8acb8; border: .5px solid rgba(255,255,255,.14);
+  z-index: 97; pointer-events: none; white-space: nowrap;
+}
+.scr {
+  position: relative; width: 100%; height: 100%; border-radius: 28px;
+  overflow: hidden; background: var(--i-bg); color: var(--i-l1);
+  font: 15.5px/1.4 var(--font); letter-spacing: -.12px; display: flex;
+}
+
+/* 2. iPhone Duo Closed (Outer Display: wider & shorter aspect ~436 x 640, bars on right side!) */
+.duo-outer {
+  width: 448px; height: 648px; border-radius: 44px; padding: 11px;
+  background: #1a1b1f;
+  box-shadow: 0 28px 75px rgba(0,0,0,.42), inset 0 0 0 1.5px #383a42;
+  position: relative; user-select: none; flex: none;
+}
+.duo-outer .scr { border-radius: 34px; }
+
+/* 3. Standard Candy-bar iPhone (402 x 856) */
+.phone {
+  width: 406px; height: 850px; border-radius: 56px; padding: 11px;
+  background: #1a1b1f;
+  box-shadow: 0 28px 75px rgba(0,0,0,.42), inset 0 0 0 1.5px #383a42;
+  position: relative; user-select: none; flex: none;
+}
+.phone .scr { border-radius: 46px; display: block; }
+.island-top {
+  position: absolute; top: 11px; left: 50%; transform: translateX(-50%);
+  width: 118px; height: 34px; border-radius: 20px; background: #000; z-index: 92;
+}
+.sb-top {
+  position: absolute; top: 0; left: 0; right: 0; height: 50px;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 30px 0 36px; font-size: 15px; font-weight: 600; z-index: 91; pointer-events: none;
+}
+.home-ind {
+  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+  width: 134px; height: 5px; border-radius: 3px; background: var(--i-l1); opacity: .75; z-index: 95; pointer-events: none;
+}
+
+/* ---------- iPhone Duo Left App Rail (72pt) ---------- */
+.dmenu {
+  flex: none; width: 256px; background: var(--i-rail); border-right: .5px solid var(--i-sep);
+  padding: 16px 10px 14px; display: flex; flex-direction: column; gap: 3px; font-size: 14.5px; z-index: 15;
+}
+.dmenu.rail { width: 64px; align-items: center; padding: 16px 0 14px; gap: 10px; }
+.dmenu .mi {
+  display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 10px;
+  border-radius: 12px; width: 100%; text-align: left; color: var(--i-l2); position: relative;
+}
+.dmenu.rail .mi { width: 44px; height: 44px; justify-content: center; padding: 0; }
+.dmenu .mi.sel { background: var(--i-fill); color: var(--i-l1); }
+.dmenu.rail .mi.sel::before {
+  content: ""; position: absolute; left: -10px; top: 11px; bottom: 11px; width: 3px;
+  border-radius: 2px; background: var(--i-tint);
+}
+.dmenu .mh { font-size: 12px; color: var(--i-l3); padding: 10px 10px 3px; }
+.dmenu .avatar {
+  margin-top: auto; width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, #6cc6bd, #4a89a8);
+  display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 13px;
+  box-shadow: 0 0 0 2px rgba(123,147,255,.35);
+}
+.ag-badge {
+  width: 24px; height: 24px; border-radius: 7px;
+  background: linear-gradient(135deg, #353849, #1d1f2b);
+  border: 1px solid rgba(255,255,255,.16);
+  display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #ff9d5c;
+}
+
+/* ---------- iPhone Duo Right System Vertical Bar (iOS 27.1 toolbarVerticalEdge) ---------- */
+.dvbar {
+  flex: none; width: 66px; background: var(--i-vbar); border-left: .5px solid var(--i-sep);
+  padding: 14px 0 16px; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  z-index: 50; position: relative;
+}
+.dvbar .vclock { font-size: 13.5px; font-weight: 650; letter-spacing: -.2px; color: var(--i-l1); }
+/* Dynamic Island / Status Ring on Duo side bar (matching user screenshot!) */
+.dvbar .vring {
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 2.2px solid var(--i-l1); position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  opacity: .92; transition: height .2s, border-radius .2s;
+}
+.dvbar .vring.live {
+  height: 82px; border-radius: 22px; background: #11131a; border-color: rgba(123,147,255,.55);
+  gap: 4px; color: #fff;
+}
+.dvbar .vring .dots {
+  position: absolute; bottom: -5px; font-size: 7px; letter-spacing: 1.5px; color: var(--i-l2);
+  background: var(--i-vbar); padding: 0 2px;
+}
+.dvbar .vcontrols {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-start; padding-top: 6px; gap: 10px; width: 100%;
+}
+.dvbar.kbd .vcontrols { justify-content: flex-start; gap: 6px; }
+.dvbar .vtag {
+  font-size: 9.5px; color: var(--i-l3); writing-mode: horizontal-tb; text-align: center;
+  line-height: 1.15; padding: 0 4px; margin-top: auto;
+}
+
+/* ---------- Duo Workspace (Conversation + Hinge-Aligned Side Panel) ---------- */
+.dwork {
+  flex: 1; min-width: 0; display: flex; position: relative; overflow: hidden;
+}
+.dconv {
+  flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column;
+}
+.dwork.max .dconv { display: none; }
+.dwork.max .dside { flex: 1; width: auto !important; border-left: 0; }
+
+/* Session Title Capsule Bar (on Duo, buttons are in .dvbar so only centered capsule remains!) */
+.inav {
+  position: absolute; top: 10px; left: 0; right: 0; height: 46px;
+  display: flex; align-items: center; gap: 8px; padding: 0 14px; z-index: 20;
+  background: linear-gradient(var(--i-bg) 52%, transparent); pointer-events: none;
+}
+.phone .inav { top: 50px; }
+.inav > * { pointer-events: auto; }
+.inav .mid { flex: 1; display: flex; justify-content: center; min-width: 0; }
+.itcap {
+  height: 42px; max-width: 236px; min-width: 0; border-radius: 21px; padding: 0 16px;
+  display: flex; flex-direction: column; justify-content: center; text-align: center; line-height: 1.18;
+}
+.itcap b { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.itcap small { font-size: 11px; color: var(--i-l2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+
+/* Conversation Scroll */
+.iscroll {
+  flex: 1; overflow-y: auto; scrollbar-width: none;
+  padding: 64px 18px 94px; display: flex; flex-direction: column; gap: 12px;
+}
+.phone .iscroll { position: absolute; inset: 0; padding: 106px 16px 104px; }
+.iscroll::-webkit-scrollbar { display: none; }
+.itl { align-self: center; font-size: 11.5px; color: var(--i-l3); }
+.ume { align-self: flex-end; max-width: 86%; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.ium { background: var(--i-me); color: #fff; border-radius: 18px; padding: 9px 14px; font-size: 15px; line-height: 1.4; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 11px 0 9px;
+  border-radius: 11px; background: var(--i-fill); font-size: 13.5px; color: var(--i-l1); cursor: pointer;
+}
+.chip .ic { width: 16px; height: 16px; color: var(--i-l2); }
+.chip small { font-size: 11.5px; color: var(--i-l2); }
+.iam { font-size: 15px; line-height: 1.55; color: var(--i-l1); }
+.iam p { margin: 0 0 8px; }
+.iam ol, .iam ul { margin: 4px 0 8px; padding-left: 20px; }
+.iam li { margin: 5px 0; }
+.ifref {
+  padding: 1.5px 5px; border-radius: 5px; background: var(--i-fill); color: var(--i-tint);
+  cursor: pointer; font-family: var(--mono); font-size: .88em; -webkit-box-decoration-break: clone;
+}
+.ifref .l { color: var(--i-l2); }
+.ifref.open { background: var(--i-tint-bg); font-weight: 500; }
+
+.idock { position: absolute; left: 12px; right: 12px; bottom: 14px; z-index: 20; }
+.phone .idock { bottom: 24px; }
+.ibox { height: 46px; border-radius: 23px; padding: 0 6px 0 8px; display: flex; align-items: center; gap: 8px; }
+.ibox .cplus, .ibox .csend {
+  width: 34px; height: 34px; border-radius: 50%; background: var(--i-fill);
+  display: grid; place-items: center; color: var(--i-l1);
+}
+.ibox .csend { background: var(--i-me); color: #fff; }
+.ibox .ph { flex: 1; color: var(--i-l3); font-size: 15px; }
+
+/* ---------- Improved SessionSidePanel ---------- */
+/* Hinge-aligned width: on 920px Duo (inner scr 898px), center hinge is at 449px from left.
+   Right half = 449px; minus 66px dvbar = 383px! Left half = 64px rail + 385px conv = 449px!
+   Exact 50/50 physical crease alignment! */
+.dside {
+  flex: none; width: 383px; position: relative; display: flex; flex-direction: column;
+  border-left: .5px solid var(--i-sep); background: var(--i-bg);
+  transition: transform .22s cubic-bezier(.2,.9,.3,1);
+}
+.dside.legacy { width: 432px; }
+
+/* Interactive Edge Swipe-to-Hide Handle on Panel's Left Seam */
+.edge-grip {
+  position: absolute; left: -7px; top: 0; bottom: 0; width: 16px; z-index: 35;
+  cursor: ew-resize; display: flex; align-items: center; justify-content: center;
+}
+.edge-grip i {
+  width: 3.5px; height: 38px; border-radius: 3px; background: var(--i-l3); opacity: .45;
+  transition: opacity .15s, height .15s, background .15s;
+}
+.edge-grip:hover i, .edge-grip.dragging i { opacity: 1; height: 52px; background: var(--i-tint); }
+
+/* Single-row Slim Tab Strip (48pt instead of 98pt double bar!) */
+.dstrip {
+  flex: none; height: 50px; display: flex; align-items: center; gap: 6px;
+  padding: 8px 10px 6px 12px; border-bottom: .5px solid var(--i-sep);
+}
+.dside.legacy .dstrip { border-bottom: 0; padding-top: 10px; }
+.dtabs {
+  display: flex; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; flex: 1;
+  align-items: center;
+}
+.dtabs::-webkit-scrollbar { display: none; }
+.dtab {
+  flex: none; max-width: 176px; height: 34px; border-radius: 17px;
+  display: flex; align-items: center; gap: 6px; padding: 0 7px 0 11px;
+  font-size: 13px; color: var(--i-l2); background: var(--i-fill); cursor: pointer;
+}
+.dtab.on {
+  background: var(--i-glass); color: var(--i-l1); font-weight: 500;
+  box-shadow: inset 0 .5px 0 var(--i-glass-hi), 0 0 0 .5px var(--i-glass-bd), 0 3px 10px rgba(0,0,0,.12);
+}
+.dtab .ic { width: 15px; height: 15px; }
+.dtab .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dtab:not(.on) { padding-right: 12px; }
+.dtab:not(.on) .x { display: none; }
+.dtab .x {
+  width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  color: var(--i-l2);
+}
+.dtab .x:hover { background: var(--i-fill2); }
+.dtab .x .ic { width: 12px; height: 12px; }
+
+/* Subtle inline address bar ONLY for .html page tabs or legacy comparison */
+.dbar {
+  flex: none; height: 38px; display: flex; align-items: center; gap: 6px;
+  padding: 0 10px 0 14px; border-bottom: .5px solid var(--i-sep);
+}
+.dbar .p {
+  flex: 1; min-width: 0; font: 12px var(--mono); color: var(--i-l2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dbar .addr {
+  height: 26px; line-height: 26px; padding: 0 10px; border-radius: 13px; background: var(--i-fill);
+}
+.dbar .tbb { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; color: var(--i-l1); }
+.dbar .tbb.on { background: var(--i-fill2); }
+.dbar .tbb .ic { width: 17px; height: 17px; }
+
+.dbody { flex: 1; min-height: 0; display: flex; position: relative; overflow: hidden; }
+.dmain { flex: 1; min-width: 0; overflow: auto; position: relative; scrollbar-width: none; }
+.dmain::-webkit-scrollbar { display: none; }
+
+/* Legacy deformed side-by-side tree (only shown when S.legacy == true to demonstrate the bug!) */
+.dtree-bad {
+  flex: none; width: 196px; border-left: .5px solid var(--i-sep); overflow: auto; padding: 6px 6px;
+}
+.dtree-bad .bad-row {
+  display: flex; align-items: center; gap: 6px; height: 38px; padding-right: 6px; font-size: 14px;
+}
+.dtree-bad .bad-row .ic { width: 17px; height: 17px; color: var(--i-tint); }
+.dtree-bad .bad-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Code, Markdown & Web Views ---------- */
+.code { font: 12.5px/1.68 var(--mono); padding: 10px 0 118px; }
+.code .ln { display: flex; padding: 0 12px 0 0; }
+.code.wrap-bad .ln span { white-space: pre-wrap; word-break: break-all; }
+.code .ln i {
+  flex: none; width: 38px; padding-right: 10px; text-align: right;
+  font-style: normal; color: var(--i-l3); user-select: none;
+}
+.code .ln span { white-space: pre; }
+.code .ln.tg { background: var(--target); box-shadow: inset 2.5px 0 0 var(--target-bd); }
+.yk { color: var(--syn-k); } .ys { color: var(--syn-s); } .yc { color: var(--syn-c); font-style: italic; }
+.yf { color: var(--syn-f); } .yp { color: var(--syn-p); } .yv { color: var(--syn-v); }
+
+.md { padding: 14px 18px 136px; font-size: 15px; line-height: 1.62; }
+.md h1 { font-size: 19px; line-height: 1.32; margin: 0 0 10px; }
+.md h2 { font-size: 16px; margin: 16px 0 6px; }
+.md p { margin: 0 0 10px; }
+.src { font: 12px/1.62 var(--mono); white-space: pre-wrap; padding: 12px 16px 130px; margin: 0; }
+
+.web {
+  min-height: 100%; padding: 16px 18px 40px;
+  background: var(--i-bg2); color: var(--i-l1); font: 14px/1.5 var(--font);
+}
+.web .wh b { font-size: 17px; display: block; }
+.web .wh span { font-size: 12px; color: var(--i-l2); }
+.web .wcard {
+  margin-top: 12px; border-radius: 14px; background: var(--i-bg);
+  border: .5px solid var(--i-sep); padding: 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.web .wshot { height: 108px; border-radius: 10px; background: linear-gradient(135deg, rgba(61,91,255,.22), rgba(123,147,255,.06)); border: .5px solid var(--i-sep); display: grid; place-items: center; color: var(--i-l2); font-size: 12.5px; }
+
+/* ---------- Unified Bottom Directory Tree Drawer (Both Duo Side Panel & Phone Page!) ---------- */
+.vbar-ver {
+  position: absolute; left: 10px; right: 10px; bottom: 70px; z-index: 20;
+  min-height: 44px; border-radius: 22px; display: flex; align-items: center; gap: 8px;
+  padding: 5px 6px 5px 14px; font-size: 12.5px; color: var(--i-l2);
+}
+.vbar-ver span { flex: 1; }
+.vbar-ver button {
+  height: 32px; padding: 0 12px; border-radius: 16px;
+  background: var(--i-fill2); color: var(--i-l1); font-size: 12.5px; font-weight: 500;
+}
+
+.drw-peek {
+  position: absolute; left: 10px; right: 10px; bottom: 12px; z-index: 21;
+  height: 50px; border-radius: 25px; display: flex; align-items: center; gap: 10px;
+  padding: 0 15px; text-align: left; width: calc(100% - 20px);
+}
+.phone .drw-peek { bottom: 24px; height: 52px; border-radius: 26px; }
+.phone .vbar-ver { bottom: 84px; }
+.drw-peek > .ic { width: 19px; height: 19px; color: var(--i-tint); }
+.drw-peek .dp-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.22; }
+.drw-peek .dp-txt b { font-size: 14px; font-weight: 600; color: var(--i-l1); }
+.drw-peek .dp-txt small {
+  font-size: 11.5px; color: var(--i-l2); font-family: var(--mono);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left;
+}
+.drw-peek .dp-txt small span { direction: ltr; unicode-bidi: isolate; }
+.drw-peek .chev { width: 16px; height: 16px; color: var(--i-l3); }
+
+.drw-dim { position: absolute; inset: 0; z-index: 30; background: var(--scrim); animation: fadeIn .16s ease; }
+.drw {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 60%; z-index: 31;
+  background: var(--i-pop); backdrop-filter: blur(32px) saturate(1.6); -webkit-backdrop-filter: blur(32px) saturate(1.6);
+  border-radius: 26px 26px 0 0;
+  box-shadow: 0 -10px 38px rgba(0,0,0,.28), inset 0 .5px 0 var(--i-glass-hi);
+  display: flex; flex-direction: column; transition: height .22s cubic-bezier(.2,.9,.3,1);
+}
+.drw.large { height: 88%; }
+.drw.dragging { transition: none; }
+.drw-grab { height: 22px; display: grid; place-items: center; cursor: ns-resize; flex: none; touch-action: none; }
+.drw-grab i { width: 38px; height: 5px; border-radius: 3px; background: var(--i-l3); }
+.drw-head {
+  display: flex; align-items: center; gap: 8px; padding: 0 12px 8px 18px;
+  border-bottom: .5px solid var(--i-sep); flex: none;
+}
+.drw-head .dh-txt { flex: 1; min-width: 0; }
+.drw-head .dh-txt b { font-size: 15.5px; font-weight: 600; display: block; }
+.drw-head .dh-txt small {
+  font-size: 11.5px; color: var(--i-l2); font-family: var(--mono);
+  display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.drw-head .igb { width: 32px; height: 32px; background: var(--i-fill); }
+.drw-head .igb .ic { width: 16px; height: 16px; }
+
+.drw-list { flex: 1; overflow-y: auto; padding: 6px 8px 28px; scrollbar-width: none; }
+.drw-list::-webkit-scrollbar { display: none; }
+.trow {
+  display: flex; align-items: center; gap: 7px; height: 40px; padding-right: 10px;
+  border-radius: 11px; cursor: pointer;
+}
+.trow:active { background: var(--i-fill); }
+.trow.on { background: var(--i-tint-bg); color: var(--i-tint); font-weight: 500; }
+.trow .disc { width: 13px; height: 13px; color: var(--i-l3); transition: transform .14s; }
+.trow .disc.open { transform: rotate(90deg); }
+.trow .disc-sp { width: 13px; flex: none; }
+.trow .ic.fld { width: 18px; height: 18px; color: var(--i-tint); }
+.trow .ic.doc { width: 18px; height: 18px; color: var(--i-l2); }
+.trow.on .ic.doc { color: var(--i-tint); }
+.trow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14.5px; }
+.trow .sz { font-size: 12px; color: var(--i-l3); font-variant-numeric: tabular-nums; }
+
+/* ---------- Pushed Page (Phone / Duo Outer) ---------- */
+.ipage { position: relative; flex: 1; height: 100%; background: var(--i-bg); display: flex; flex-direction: column; overflow: hidden; }
+.ipage .body { flex: 1; min-height: 0; overflow-y: auto; padding-top: 58px; scrollbar-width: none; }
+.phone .ipage .body { padding-top: 102px; }
+.ipage .body::-webkit-scrollbar { display: none; }
+
+/* ---------- Simulated Keyboard Overlay ---------- */
+.kbd-bar {
+  flex: none; height: 168px; background: var(--i-bg2); border-top: .5px solid var(--i-sep);
+  display: grid; place-items: center; color: var(--i-l2); font-size: 13px; z-index: 40;
+}
+
+/* ---------- Popover Menu & Toast ---------- */
+.pop {
+  position: absolute; z-index: 80; min-width: 224px; border-radius: 16px; padding: 6px 0;
+  background: var(--i-pop); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+  box-shadow: 0 0 0 .5px var(--i-glass-bd), 0 18px 48px rgba(0,0,0,.34); font-size: 14.5px;
+}
+.pop .psec { padding: 5px 14px 3px; font-size: 11.5px; font-weight: 600; color: var(--i-l3); }
+.pop button {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  width: 100%; padding: 9px 15px; text-align: left;
+}
+.pop button:hover { background: var(--i-fill); }
+.pop button .ic { width: 17px; height: 17px; color: var(--i-l2); }
+.pop hr { border: 0; border-top: .5px solid var(--i-sep); margin: 4px 0; }
+.toast {
+  position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%);
+  z-index: 90; padding: 8px 16px; border-radius: 20px; font-size: 13px; white-space: nowrap;
+}
+
+/* ---------- Pro Max Landscape (No System Vertical Bar) ---------- */
+.promax {
+  width: 880px; height: 424px; border-radius: 50px; padding: 10px;
+  background: #1a1b1f; box-shadow: 0 28px 75px rgba(0,0,0,.42), inset 0 0 0 1.5px #383a42;
+  position: relative; user-select: none; flex: none;
+}
+.promax .scr { border-radius: 40px; }
+.island-left {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  width: 30px; height: 108px; border-radius: 16px; background: #000; z-index: 92;
+}
+
+/* ---------- Notes / HIG Spec Cards ---------- */
+.spec-grid {
+  max-width: 1200px; width: 100%; display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;
+}
+.scard {
+  background: var(--card); border: 1px solid var(--card-bd); border-radius: 16px;
+  padding: 16px 18px; font-size: 13px; line-height: 1.65;
+}
+.scard h3 { margin: 0 0 8px; font-size: 14.5px; display: flex; align-items: center; gap: 7px; }
+.scard ul, .scard ol { margin: 4px 0 0; padding-left: 18px; color: var(--page-fg2); }
+.scard li { margin: 4px 0; }
+.scard li b { color: var(--page-fg); }
+.scard table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 6px; }
+.scard th, .scard td { padding: 6px 6px; border-bottom: 1px solid var(--card-bd); text-align: left; vertical-align: top; color: var(--page-fg2); }
+.scard th { color: var(--page-fg); font-weight: 600; }
+
+/* ---------- Bottom Control Dock ---------- */
+.ctl {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 98;
+  background: var(--card); border-top: 1px solid var(--card-bd);
+  padding: 8px 14px calc(8px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; justify-content: center; font-size: 12px;
+}
+.ctl .g { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.ctl .g b { color: var(--page-fg2); font-weight: 500; margin-right: 2px; }
+.ctl button { padding: 4px 10px; border-radius: 7px; background: var(--i-fill); color: var(--page-fg); }
+.ctl button.on { background: var(--i-me); color: #fff; }
+.ctl button.warn.on { background: #d9532f; color: #fff; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-title">
+    <h1>
+      会话文件侧面板 · iPhone Duo 规范改进版
+      <span class="badge" id="hdr-badge">Apple HIG · iOS 27.1 竖向侧栏规范</span>
+    </h1>
+    <p>一键收起面板（按钮 + 边缘右滑）· 全形态统一底部目录树抽屉 · Duo 右侧竖向液态玻璃胶囊分组与折痕中轴对齐</p>
+  </div>
+  <div class="mode-tabs" id="view-tabs"></div>
+</header>
+
+<main class="stage" id="stage"></main>
+
+<footer class="ctl" id="ctl"></footer>
+
+<script>
+const P = {
+  back: '<path d="M15 5l-7 7 7 7"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  more: '<circle cx="5.5" cy="12" r="1.45" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.45" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.45" fill="currentColor" stroke="none"/>',
+  folder: '<path d="M3 7.2C3 6.1 3.9 5.2 5 5.2h4.2l2 2.2H19c1.1 0 2 .9 2 2V17c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2z"/>',
+  doc: '<path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/>',
+  globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c-2.8 3-2.8 14 0 17M12 3.5c2.8 3 2.8 14 0 17"/>',
+  code: '<path d="M8.5 7L4 12l4.5 5M15.5 7L20 12l-4.5 5"/>',
+  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
+  share: '<path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/>',
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>',
+  chev: '<path d="M9 5l7 7-7 7"/>',
+  chevUp: '<path d="M6 15l6-6 6 6"/>',
+  chevDown: '<path d="M6 9l6 6 6-6"/>',
+  expand: '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>',
+  shrink: '<path d="M20 4l-6 6M14 5v5h5M4 20l6-6M10 19v-5H5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  up: '<path d="M12 19V5M6 11l6-6 6 6"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  panel: '<rect x="3" y="4.5" width="18" height="15" rx="2.6"/><path d="M15 4.5v15"/>',
+  panelHide: '<rect x="3" y="4.5" width="18" height="15" rx="2.6"/><path d="M15 4.5v15"/><path d="M9.5 9.5l3 2.5-3 2.5"/>',
+  sidebar: '<rect x="3" y="4.5" width="18" height="15" rx="2.6"/><path d="M9 4.5v15"/>',
+  tree: '<path d="M4 6h16M7 12h13M10 18h10"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="6.5" cy="18" r="1" fill="currentColor"/>',
+  her: '<rect x="4.5" y="6.5" width="15" height="12" rx="4"/><path d="M12 3.5v3M9.2 11.5h.01M14.8 11.5h.01M9.5 15c1.5 1 3.5 1 5 0"/>',
+  grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.3-4.3"/>',
+  wifi: '<path d="M5 12.5a10 10 0 0 1 14 0M8.2 15.7a5.5 5.5 0 0 1 7.6 0"/><circle cx="12" cy="18.6" r="1.2" fill="currentColor" stroke="none"/>',
+  term: '<polyline points="5 8 10 12 5 16"/><line x1="12" y1="16" x2="19" y2="16"/>',
+};
+const ic = (n, cls = "") => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${P[n] || ""}</svg>`;
+const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const base = (p) => p.split("/").pop();
+const dirOf = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
+const isPage = (p) => /\.html?$/.test(p);
+
+/* Exact files & deep monorepo tree from the user's real iPhone Duo screenshot! */
+const CSS_P = "apps/desktop/src/renderer/src/styles/app.css";
+const DEMO_P = "docs/sidebar-git-status-demo.html";
+const MD_P = "docs/session-files.md";
+const SWIFT_P = "apps/ios/Hermesh/Views/Session/SessionSidePanel.swift";
+
+const CSS_LINES = [
+  [325, '@media (prefers-reduced-motion:reduce){.stitle.run{color:inherit}.stitle .shine{display:none}}'],
+  [326, '.smeta{display:inline-flex;align-items:center;gap:5px;font-size:12px;line-height:16px;color:var(--l2);flex:none}'],
+  [327, '.gmark{display:inline-flex;align-items:center;justify-content:center;flex:none;opacity:.74}'],
+  [328, '.gmark .ic{width:13.5px;height:13.5px;stroke-width:1.35}'],
+  [329, '.gmark.pushed{color:var(--gh-push)}'],
+  [330, '.gmark.merged{color:var(--gh-merge)}'],
+  [331, '.srow.sel .gmark{opacity:.88}'],
+  [332, '.srow.arch .gmark{opacity:.52}'],
+  [333, '/* Read-only hover card: full semantic tint only on pointer hover */'],
+  [334, '.gcard{padding:10px 12px;border-radius:11px;border:.5px solid var(--sep);background:var(--pop)}'],
+  [335, '.gcard .del{color:var(--gh-del-soft);opacity:.86}'],
+];
+
+const SWIFT_LINES = [
+  [627, '/// With the system\'s bars on the side (iPhone Duo): session & panel controls in vertical capsules.'],
+  [628, 'private struct SessionSideItems: ToolbarContent {'],
+  [629, '    @Environment(AppModel.self) private var model'],
+  [630, '    let session: Session?'],
+  [631, '    var body: some ToolbarContent {'],
+  [632, '        ToolbarItemGroup(placement: .topBarPinnedTrailing) {'],
+  [633, '            SidePanelToggleButton(sessionID: session.sessionID) // 一键收起/展开侧边面板'],
+  [634, '            if files.panelOpen { SidePanelZoomButton(files: files) }'],
+  [635, '        }'],
+  [636, '        .axisBehavior(.verticalPreferred)'],
+  [637, '    }'],
+  [638, '}'],
+];
+
+const MD_SRC = `# §15. iPhone Duo 与手机端侧面板改进规范
+
+1. **一键收起侧面板**：Duo 右侧系统竖栏常驻 \`sidebar.right\`（并支持面板左缘向右滑动收起），保留已开标签。
+2. **目录树统一为底部抽屉**：移除 200pt 挤压右栏，代码享完整面板宽度，深层路径不再截断成单字。
+3. **Duo 竖向胶囊分组**：遵循 iOS 27.1 \`toolbarVerticalEdge\` 与折痕中轴避让。`;
+
+const TREE = [
+  { p: "apps", d: 1 },
+  { p: "apps/desktop", d: 1 },
+  { p: "apps/desktop/src", d: 1 },
+  { p: "apps/desktop/src/main", d: 1 },
+  { p: "apps/desktop/src/preload", d: 1 },
+  { p: "apps/desktop/src/renderer", d: 1 },
+  { p: "apps/desktop/src/renderer/index.html", s: "1.1 KB" },
+  { p: "apps/desktop/src/renderer/src", d: 1 },
+  { p: "apps/desktop/src/renderer/src/assets", d: 1 },
+  { p: "apps/desktop/src/renderer/src/files", d: 1 },
+  { p: "apps/desktop/src/renderer/src/her", d: 1 },
+  { p: "apps/desktop/src/renderer/src/hooks", d: 1 },
+  { p: "apps/desktop/src/renderer/src/overview", d: 1 },
+  { p: "apps/desktop/src/renderer/src/session", d: 1 },
+  { p: "apps/desktop/src/renderer/src/styles", d: 1 },
+  { p: CSS_P, s: "38 KB" },
+  { p: "apps/desktop/src/renderer/src/styles/files.css", s: "9.4 KB" },
+  { p: "apps/ios", d: 1 },
+  { p: "apps/ios/Hermesh", d: 1 },
+  { p: "apps/ios/Hermesh/Views", d: 1 },
+  { p: "apps/ios/Hermesh/Views/Session", d: 1 },
+  { p: SWIFT_P, s: "18 KB" },
+  { p: "docs", d: 1 },
+  { p: MD_P, s: "24 KB" },
+  { p: DEMO_P, s: "42 KB" },
+  { p: "README.md", s: "36 KB" },
+];
+const kids = (dir) => TREE.filter((e) => dirOf(e.p) === dir)
+  .sort((a, b) => (b.d ? 1 : 0) - (a.d ? 1 : 0) || a.p.localeCompare(b.p));
+
+const S = {
+  theme: "dark",
+  view: "duo",          // "duo" | "outer" | "phones" | "spec"
+  legacy: false,        // false = Improved HIG v2; true = Old screenshot bug state for 1-click A/B contrast
+  compactVBar: false,   // Simulate keyboard / Live Activity vertical compression on Duo
+  // Duo Open state
+  panel: true,
+  dMax: false,
+  menuExpanded: false,
+  tabs: [],
+  active: null,
+  dDrawer: false,
+  dDrawerLarge: false,
+  dPop: null,           // "more" | "add"
+  dTreeOpen: new Set(["apps", "apps/desktop", "apps/desktop/src", "apps/desktop/src/renderer", "apps/desktop/src/renderer/src", "apps/desktop/src/renderer/src/styles", "docs"]),
+  // Duo Outer (closed) pushed stack
+  outerStack: [{ k: "file", path: CSS_P, source: false, now: false, drawer: false, large: false }],
+  outerPop: null,
+  // Candy-bar iPhone pushed stack
+  ipStack: [{ k: "file", path: CSS_P, source: false, now: false, drawer: false, large: false }],
+  ipPop: null,
+  // Pro Max landscape
+  pmPanel: true,
+  pmMax: false,
+  pmDrawer: false,
+  toast: null,
+};
+let seq = 1;
+
+function initTabs() {
+  S.tabs = [
+    { id: seq++, kind: "files", path: CSS_P, source: false, now: false, legacyTree: true },
+    { id: seq++, kind: "files", path: MD_P, source: false, now: false, legacyTree: false },
+    { id: seq++, kind: "page", path: DEMO_P, source: false, now: false, legacyTree: false },
+  ];
+  S.active = S.tabs[0].id;
+}
+initTabs();
+
+function openAncestorDirs(path) {
+  const parts = path.split("/").slice(0, -1);
+  for (let i = 0; i < parts.length; i++) S.dTreeOpen.add(parts.slice(0, i + 1).join("/"));
+}
+
+function hiCss(line) {
+  let s = esc(line);
+  if (/^\s*\/\*/.test(line)) return `<span class="yc">${s}</span>`;
+  s = s.replace(/(@media|[a-z-]+)(?=\s*:)/g, '<span class="yp">$1</span>');
+  s = s.replace(/(\.[a-zA-Z0-9_-]+)/g, '<span class="yf">$1</span>');
+  s = s.replace(/(var\(--[a-z0-9-]+\)|#[0-9a-fA-F]{3,6}|\b\d+(?:\.\d+)?(?:px|s)?\b)/g, '<span class="yv">$1</span>');
+  return s;
+}
+function hiSwift(line) {
+  let s = esc(line);
+  if (/^\s*\/\/\//.test(line)) return `<span class="yc">${s}</span>`;
+  s = s.replace(/(\/\/.*$)/, '<span class="yc">$1</span>');
+  s = s.replace(/\b(private|struct|let|var|some|if)\b/g, '<span class="yk">$1</span>');
+  s = s.replace(/\b(ToolbarContent|AppModel|Session|ToolbarItemGroup|SidePanelToggleButton|SidePanelZoomButton)\b/g, '<span class="yf">$1</span>');
+  return s;
+}
+
+function renderCode(path, cramped) {
+  const rows = path === SWIFT_P ? SWIFT_LINES : CSS_LINES;
+  const hi = path === SWIFT_P ? hiSwift : hiCss;
+  return `<div class="code ${cramped ? "wrap-bad" : ""}">${rows.map(([ln, txt]) =>
+    `<div class="ln ${(path === CSS_P && ln >= 327 && ln <= 332) || (path === SWIFT_P && ln >= 632 && ln <= 636) ? "tg" : ""}"><i>${ln}</i><span>${hi(txt)}</span></div>`
+  ).join("")}</div>`;
+}
+
+function renderMd(source) {
+  if (source) return `<pre class="src">${esc(MD_SRC)}</pre>`;
+  return `<div class="md">
+    <h1>§15. iPhone Duo 与手机端侧面板改进规范</h1>
+    <p>针对真机展开后的高频痛点，按 Apple <code>Designing for iPhone Duo</code> 规范重构：</p>
+    <h2>1. 一键收起右侧面板</h2>
+    <p>Duo 右侧系统竖栏常驻 <code>sidebar.right</code> 按钮，面板左缘支持向右轻扫收起，收起后保留全部已打开标签。</p>
+    <h2>2. 目录树统一为底部抽屉</h2>
+    <p>移除 200pt 侧栏挤压树，文件底部常驻液态玻璃抽屉条，上拉半屏/全屏顺畅切换深层目录。</p>
+  </div>`;
+}
+
+function renderWeb() {
+  return `<div class="web">
+    <div class="wh"><b>Sidebar Git Status · 低饱和色板演示</b><span>沙盒离线页面 · 仅读取当前项目目录</span></div>
+    <div class="wcard">
+      <div style="display:flex;justify-content:space-between;font-size:12.5px"><b>深色 / 浅色对比卡片</b><span style="color:var(--ok-fg)">● 已推送 #2f7d4a</span></div>
+      <div class="wshot">网页标签独立运行（无底部目录树抽屉，顶部保留胶囊路径）</div>
+    </div>
+  </div>`;
+}
+
+function renderConvo(where) {
+  const activeTab = S.tabs.find((t) => t.id === S.active);
+  const ftag = (p, label, ln) => {
+    const isOpen = where === "duo" && S.panel && activeTab && activeTab.path === p;
+    return `<span class="ifref ${isOpen ? "open" : ""}" data-open="${p}" data-where="${where}">${esc(label)}${ln ? `<span class="l">:${ln}</span>` : ""}</span>`;
+  };
+  return `
+    <div class="itl">今天 02:27</div>
+    <div class="iam">
+      <ol start="2">
+        <li>侧边栏行内静态降权（${ftag(CSS_P, "app.css", "327-332")}）：
+          <ul><li>侧边栏列表行内的 <code>.gmark</code> 静态不透明度压至 <code>0.74</code>，鼠标悬停展开卡片时再呈现完整柔和语义色。</li></ul>
+        </li>
+        <li>同步更新演示稿：${ftag(DEMO_P, "sidebar-git-status-demo.html", "40-99")}，交互规范见 ${ftag(MD_P, "session-files.md", "")} 与 ${ftag(SWIFT_P, "SessionSidePanel.swift", "632")}。</li>
+      </ol>
+      <p>你可以先看下视觉感受；点上面任一文件标签即可在侧面板切换。</p>
+    </div>`;
+}
+
+const composerHtml = `<div class="idock"><div class="ibox iglass"><span class="cplus">${ic("plus")}</span><span class="ph">继续聊…</span><span class="csend">${ic("up")}</span></div></div>`;
+const titleCap = (t, sub) => `<div class="mid"><div class="itcap iglass"><b>${esc(t)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</div></div>`;
+
+/* ---------- Unified Bottom Drawer Component ---------- */
+function renderBottomDrawer(activePath, isOpen, isLarge, scope) {
+  const folder = dirOf(activePath);
+  const place = folder ? `hermesh/${folder}` : "hermesh";
+  if (!isOpen) {
+    return `<button class="drw-peek iglass" data-drw="${scope}:1" title="上拉或点击展开项目文件目录树">
+      ${ic("tree")}
+      <span class="dp-txt"><b>项目文件</b><small><span>${esc(place)}</span></small></span>
+      ${ic("chevUp", "chev")}
+    </button>`;
+  }
+  const rows = [];
+  const walk = (dir, depth) => {
+    for (const e of kids(dir)) {
+      const open = S.dTreeOpen.has(e.p);
+      const on = e.p === activePath;
+      // 13px per depth so even depth=6 (78px) leaves >260px for full folder/file names!
+      rows.push(`<div class="trow ${on ? "on" : ""}" style="padding-left:${10 + depth * 13}px" data-pick="${scope}:${e.d ? "dir:" : "file:"}${e.p}">
+        ${e.d ? ic("chev", "disc " + (open ? "open" : "")) : '<span class="disc-sp"></span>'}
+        ${ic(e.d ? "folder" : "doc", e.d ? "fld" : "doc")}
+        <span class="nm">${esc(base(e.p))}</span>
+        ${e.s ? `<span class="sz">${e.s}</span>` : ""}
+      </div>`);
+      if (e.d && open) walk(e.p, depth + 1);
+    }
+  };
+  walk("", 0);
+  return `
+    <div class="drw-dim" data-drw="${scope}:0"></div>
+    <div class="drw ${isLarge ? "large" : ""}" data-drw-box="${scope}">
+      <div class="drw-grab" data-grab="${scope}" title="上下拖动调节高度或下拉收起"><i></i></div>
+      <div class="drw-head">
+        <div class="dh-txt">
+          <b>项目文件</b>
+          <small>${esc(place)}</small>
+        </div>
+        <button class="igb" data-drw="${scope}:0" title="收起">${ic("chevDown")}</button>
+      </div>
+      <div class="drw-list">${rows.join("")}</div>
+    </div>`;
+}
+
+/* ---------- 1. iPhone Duo Open Landscape ---------- */
+function renderDuoOpen() {
+  const t = S.tabs.find((x) => x.id === S.active);
+  const isMd = t && /\.md$/.test(t.path);
+  const isWeb = t && t.kind === "page";
+  const isEmpty = t && !t.path;
+
+  // Left App Menu / Rail
+  const leftMenu = !S.menuExpanded
+    ? `<nav class="dmenu rail">
+        <button class="mi" data-dmenuexp="1" title="展开左侧会话栏">${ic("sidebar")}</button>
+        <button class="mi" title="Her">${ic("her")}</button>
+        <button class="mi" title="概览">${ic("grid")}</button>
+        <button class="mi" title="搜索">${ic("search")}</button>
+        <button class="mi sel" title="当前会话"><span class="ag-badge">A</span></button>
+        <div class="avatar" title="账号">Y</div>
+      </nav>`
+    : `<nav class="dmenu">
+        <div style="display:flex;justify-content:space-between;padding:0 2px 6px">
+          <button class="mi" style="width:auto" data-dmenuexp="0" title="收成图标栏">${ic("sidebar")}</button>
+          <button class="mi" style="width:auto">${ic("search")}</button>
+        </div>
+        <button class="mi">${ic("her")}Her</button>
+        <button class="mi">${ic("grid")}概览</button>
+        <div class="mh">进行中</div>
+        <button class="mi sel"><span class="ag-badge">A</span>我现在有一个困惑…</button>
+        <div class="mh">最近</div>
+        <button class="mi"><span class="ag-badge">C</span>会话文件的标签和预览</button>
+        <div class="avatar" style="margin-left:8px">Y</div>
+      </nav>`;
+
+  // Side Panel Content
+  let sideHtml = "";
+  if (S.panel) {
+    const tabsHtml = S.tabs.map((x) => `
+      <div class="dtab ${x === t ? "on" : ""}" data-dtab="${x.id}">
+        ${ic(x.kind === "page" ? "globe" : x.path ? "doc" : "tree")}
+        <span class="t">${x.path ? esc(base(x.path)) : "项目文件"}</span>
+        <span class="x" data-dclose="${x.id}" title="关闭标签">${ic("x")}</span>
+      </div>`).join("");
+
+    if (S.legacy) {
+      // OLD BUGGY SCREENSHOT LAYOUT (for 1-tap A/B comparison!)
+      const badRows = [
+        [0, "main", 1], [0, "pr…d", 1], [0, "re…er", 1, 1], [1, "…", 0], [1, "src", 1, 1],
+        [2, "a", 1], [2, "fi", 1], [2, "h", 1], [2, "h", 1], [2, "o", 1], [2, "s", 1], [2, "s", 1], [2, "s", 1, 1],
+      ].map(([d, nm, fld, open]) => `<div class="bad-row" style="padding-left:${6 + d * 24}px">
+        <span style="font-size:11px;color:var(--i-l3)">${open ? "⌄" : "›"}</span>${ic(fld ? "folder" : "doc")}<span>${nm}</span>
+      </div>`).join("");
+      sideHtml = `<aside class="dside legacy">
+        <div class="dstrip">
+          <div class="dtabs">${tabsHtml}</div>
+          <button class="igb iglass" style="width:38px;height:38px" title="旧版新建">${ic("plus")}</button>
+          <button class="igb iglass" style="width:38px;height:38px" data-dmax="1" title="旧版放大（无收起按钮！）">${ic(S.dMax ? "shrink" : "expand")}</button>
+        </div>
+        <div class="dbar">
+          <span class="p">${esc(t ? t.path : "")}</span>
+          <button class="tbb on" title="旧版右侧挤压树开关">${ic("tree")}</button>
+          <button class="tbb" title="旧版第二个 ⋯ 按钮（与右侧系统竖栏撞车）">${ic("more")}</button>
+        </div>
+        <div class="dbody">
+          <div class="dmain">${renderCode(CSS_P, true)}</div>
+          <div class="dtree-bad">${badRows}</div>
+        </div>
+      </aside>`;
+    } else {
+      // IMPROVED DUO HIG V2 LAYOUT
+      let subBar = "", mainBody = "", overlays = "";
+      if (isEmpty) {
+        subBar = `<div class="dbar"><span class="p">~/CodeSpace/hermesh</span></div>`;
+        mainBody = renderBottomDrawer("", true, true, "duo");
+      } else if (isWeb) {
+        subBar = `<div class="dbar"><span class="p addr">${esc(t.path)}</span></div>`;
+        mainBody = `<div class="dmain">${renderWeb()}</div>`;
+      } else {
+        mainBody = `<div class="dmain">${isMd ? renderMd(t.source) : renderCode(t.path, false)}</div>`;
+        if (isMd) {
+          overlays += t.now
+            ? `<div class="vbar-ver iglass"><span>这是当前版本</span><button data-dnow="0">查看回复时版本</button></div>`
+            : `<div class="vbar-ver iglass"><span>第 3 轮结束时的版本，之后改过</span><button data-dnow="1">查看当前版本</button></div>`;
+        }
+        overlays += renderBottomDrawer(t.path, S.dDrawer, S.dDrawerLarge, "duo");
+      }
+      sideHtml = `<aside class="dside" id="duo-side">
+        <div class="edge-grip" id="duo-grip" title="向右拖动边缘或点右侧竖栏按钮，一键收起面板"><i></i></div>
+        <div class="dstrip"><div class="dtabs">${tabsHtml}</div></div>
+        ${subBar}
+        <div class="dbody">${mainBody}${overlays}</div>
+      </aside>`;
+    }
+  }
+
+  // Right System Vertical Bar (iPhone Duo iOS 27.1 `toolbarVerticalEdge == .trailing`)
+  let rightVBarControls = "";
+  if (S.legacy) {
+    // Old buggy state: only lonely `...` in Duo vertical bar, missing SidePanel toggle!
+    rightVBarControls = `<button class="igb iglass" data-dpop="more" title="旧版：竖栏只有会话更多，漏掉了收起面板按钮">${ic("more")}</button>`;
+  } else if (S.compactVBar) {
+    // Compressed state (Keyboard / Live Activity): high-priority `sidebar.right` stays pinned; secondary items fold into `...`
+    rightVBarControls = `
+      <div class="vcapsule iglass">
+        <button class="igb ${S.panel ? "on" : ""}" data-dtoggle="1" title="${S.panel ? "一键收起右侧面板（最高优先级常驻）" : "展开右侧面板"}">${ic(S.panel ? "panelHide" : "panel")}</button>
+        <div class="vsep"></div>
+        <button class="igb" data-dpop="more" title="紧凑态溢出菜单（自动收纳放大、新建、源码与文件操作）">${ic("more")}</button>
+      </div>`;
+  } else {
+    // Full Duo Vertical Capsule Architecture (Thumb-zone Liquid Glass Pills!)
+    rightVBarControls = `
+      <div class="vcapsule iglass" title="窗口与分屏控制组 (topBarPinnedTrailing)">
+        <button class="igb ${S.panel ? "on" : ""}" data-dtoggle="1" title="${S.panel ? "收起右侧面板（保留标签）" : "展开右侧面板"}">${ic(S.panel ? "panelHide" : "panel")}</button>
+        ${S.panel ? `<div class="vsep"></div>
+        <button class="igb ${S.dMax ? "on" : ""}" data-dmax="1" title="${S.dMax ? "还原左右分屏" : "放大铺满工作区"}">${ic(S.dMax ? "shrink" : "expand")}</button>` : ""}
+      </div>
+      ${S.panel ? `
+      <div class="vcapsule iglass" title="面板上下文工具组 (axisBehavior: .verticalPreferred)">
+        <button class="igb" data-dpop="add" title="新建标签">${ic("plus")}</button>
+        ${isMd ? `<div class="vsep"></div><button class="igb ${t.source ? "on" : ""}" data-dsrc="1" title="${t.source ? "切回渲染预览" : "查看 Markdown 源码"}">${ic(t.source ? "eye" : "code")}</button>` : ""}
+      </div>` : ""}
+      <button class="igb iglass" data-dpop="more" title="统一更多菜单（当前文件 + 会话操作，消除双 ⋯ 撞车）">${ic("more")}</button>`;
+  }
+
+  // Popover Menu anchored next to Duo right vertical bar
+  let popHtml = "";
+  if (S.dPop === "add") {
+    popHtml = `<div class="pop" style="top:198px;right:74px;min-width:196px">
+      <div class="psec">新建标签页</div>
+      <button data-dopenproj="1"><span>项目文件抽屉</span>${ic("tree")}</button>
+      <button data-open="${SWIFT_P}" data-where="duo"><span>SessionSidePanel.swift</span>${ic("doc")}</button>
+    </div>`;
+  } else if (S.dPop === "more") {
+    popHtml = `<div class="pop" style="top:172px;right:74px">
+      ${S.panel && S.compactVBar ? `
+        <div class="psec">面板控制（紧凑态自动收纳）</div>
+        <button data-dmax="1"><span>${S.dMax ? "还原分屏" : "放大铺满页面"}</span>${ic(S.dMax ? "shrink" : "expand")}</button>
+        <button data-dopenproj="1"><span>打开目录树抽屉</span>${ic("tree")}</button>
+        ${isMd ? `<button data-dsrc="1"><span>${t.source ? "预览渲染" : "查看源码"}</span>${ic("code")}</button>` : ""}
+        <hr>` : ""}
+      ${S.panel && t && t.path ? `
+        <div class="psec">当前文件 · ${esc(base(t.path))}</div>
+        <button data-toast="已调起系统分享面板"><span>分享…</span>${ic("share")}</button>
+        <button data-toast="已复制完整路径"><span>复制路径</span>${ic("copy")}</button>
+        <hr>` : ""}
+      <div class="psec">当前会话</div>
+      <button data-dopenproj="1"><span>项目文件</span>${ic("folder")}</button>
+      <button data-toast="后台无运行中任务"><span>后台任务</span>${ic("term")}</button>
+      <button data-toast="已拷贝会话 ID"><span>拷贝会话 ID</span>${ic("copy")}</button>
+    </div>`;
+  }
+
+  return `
+  <div class="fit-box" data-design-w="920">
+    <div class="fit-inner">
+      <div class="duo">
+        <div class="hinge-tag">${S.legacy ? "⚠️ 旧版：分割线偏离物理折痕 43pt，代码压在折痕上" : "✦ 物理折痕中轴对齐（左屏对话 · 右屏预览）"}</div>
+        <div class="scr">
+          ${leftMenu}
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
+            <div class="dwork ${S.panel && S.dMax ? "max" : ""}">
+              <div class="dconv">
+                <div class="inav">${titleCap("我现在有一个困惑，在使用…", "yee-homebook/hermesh")}</div>
+                <div class="iscroll">${renderConvo("duo")}</div>
+                ${!S.compactVBar ? composerHtml : ""}
+              </div>
+              ${sideHtml}
+            </div>
+            ${S.compactVBar ? `<div class="kbd-bar">⌨️ 模拟软件键盘升起（观察右侧竖栏自动折叠次要按钮，保留「一键收起」常驻）</div>` : ""}
+          </div>
+          <aside class="dvbar ${S.compactVBar ? "kbd" : ""}">
+            <div class="vclock">02:27</div>
+            <div class="vring ${S.compactVBar ? "live" : ""}" title="iPhone Duo 系统灵动岛与状态环">
+              ${ic("wifi")}
+              ${S.compactVBar ? `<span style="font-size:10px;color:#8fa4ff">构建中</span>` : ""}
+              <span class="dots">•••••</span>
+            </div>
+            <div class="vcontrols">${rightVBarControls}</div>
+            <div class="vtag">Duo<br>竖栏</div>
+          </aside>
+          ${popHtml}
+          ${S.toast ? `<div class="toast iglass">${esc(S.toast)}</div>` : ""}
+        </div>
+      </div>
+    </div>
+    <div class="cap">iPhone Duo 展开横放（898 × 634 pt）· 试试点右侧竖栏高亮的「收起面板」图标、拉起底部「项目文件」抽屉，或向右拖动面板左边缘</div>
+  </div>`;
+}
+
+/* ---------- 2. iPhone Duo Closed (Outer Display: Compact Width + Right Side Bar!) ---------- */
+function renderDuoOuter() {
+  const top = S.outerStack[S.outerStack.length - 1];
+  const isChat = top.k === "chat";
+  const isMd = top.path === MD_P;
+  const isWeb = top.k === "page";
+
+  let pageBody = "";
+  if (isChat) {
+    pageBody = `<div class="dconv" style="height:100%">
+      <div class="inav">${titleCap("我现在有一个困惑…", "yee-homebook/hermesh")}</div>
+      <div class="iscroll">${renderConvo("outer")}</div>
+      ${composerHtml}
+    </div>`;
+  } else {
+    pageBody = `<div class="ipage">
+      <div class="inav">${titleCap(base(top.path), isWeb ? dirOf(top.path) + "/" : "")}</div>
+      <div class="body">${isWeb ? renderWeb() : isMd ? renderMd(top.source) : renderCode(top.path, false)}</div>
+      ${!isWeb ? renderBottomDrawer(top.path, top.drawer, top.large, "outer") : ""}
+    </div>`;
+  }
+
+  return `
+  <div class="fit-box" data-design-w="448">
+    <div class="fit-inner">
+      <div class="duo-outer">
+        <div class="scr">
+          <div style="flex:1;min-width:0;position:relative;display:flex">${pageBody}</div>
+          <aside class="dvbar">
+            <div class="vclock">02:27</div>
+            <div class="vring">${ic("wifi")}<span class="dots">•••••</span></div>
+            <div class="vcontrols">
+              ${isChat
+                ? `<button class="igb iglass" data-toast="合上态点击展开全屏会话菜单" title="菜单">${ic("menu")}</button>
+                   <button class="igb iglass" data-outergo="${CSS_P}" title="打开项目文件">${ic("folder")}</button>`
+                : `<div class="vcapsule iglass">
+                     <button class="igb" data-outerback="1" title="返回会话（合上态导航自动迁入右侧竖栏）">${ic("back")}</button>
+                     ${isMd ? `<div class="vsep"></div><button class="igb ${top.source ? "on" : ""}" data-outersrc="1" title="切换源码">${ic(top.source ? "eye" : "code")}</button>` : ""}
+                   </div>
+                   <button class="igb iglass" data-toast="分享或复制路径" title="更多">${ic("more")}</button>`}
+            </div>
+            <div class="vtag">外屏<br>竖栏</div>
+          </aside>
+          ${S.toast ? `<div class="toast iglass">${esc(S.toast)}</div>` : ""}
+        </div>
+      </div>
+    </div>
+    <div class="cap">iPhone Duo 合上外屏（阔折叠外屏 · 右侧系统竖栏 + 同一套底部目录树抽屉，开合无缝衔接）</div>
+  </div>`;
+}
+
+/* ---------- 3. Candy-bar iPhone + Pro Max Landscape ---------- */
+function renderPhones() {
+  const top = S.ipStack[S.ipStack.length - 1];
+  const isChat = top.k === "chat";
+  const isMd = top.path === MD_P;
+  const isWeb = top.k === "page";
+
+  const phoneHtml = `
+  <div class="fit-box" data-design-w="406">
+    <div class="fit-inner">
+      <div class="phone">
+        <div class="scr">
+          <div class="island-top"></div>
+          <div class="sb-top"><span>9:41</span><span>5G · 98%</span></div>
+          ${isChat
+            ? `<div class="inav">
+                 <button class="igb iglass">${ic("menu")}</button>
+                 ${titleCap("我现在有一个困惑…", "yee-homebook/hermesh")}
+                 <button class="igb iglass" data-ipgo="${CSS_P}" title="项目文件">${ic("more")}</button>
+               </div>
+               <div class="iscroll">${renderConvo("ip")}</div>${composerHtml}`
+            : `<div class="ipage">
+                 <div class="inav">
+                   <button class="igb iglass" data-ipback="1" title="返回对话">${ic("back")}</button>
+                   ${titleCap(base(top.path), isWeb ? dirOf(top.path) + "/" : "")}
+                   ${isMd ? `<button class="igb iglass ${top.source ? "on" : ""}" data-ipsrc="1">${ic(top.source ? "eye" : "code")}</button>` : ""}
+                   <button class="igb iglass" data-toast="分享 / 复制路径">${ic("more")}</button>
+                 </div>
+                 <div class="body">${isWeb ? renderWeb() : isMd ? renderMd(top.source) : renderCode(top.path, false)}</div>
+                 ${!isWeb ? renderBottomDrawer(top.path, top.drawer, top.large, "ip") : ""}
+               </div>`}
+          <div class="home-ind"></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">直板 iPhone 竖屏 · 推入文件页 + 同款底部目录树抽屉</div>
+  </div>`;
+
+  // Pro Max Landscape (wide screen WITHOUT Duo's system vertical bar -> panel strip carries its own compact glass capsule with Hide!)
+  const t = S.tabs.find((x) => x.id === S.active) || S.tabs[0];
+  const proMaxHtml = `
+  <div class="fit-box" data-design-w="880">
+    <div class="fit-inner">
+      <div class="promax">
+        <div class="scr">
+          <div class="island-left"></div>
+          <nav class="dmenu rail" style="padding-left:34px;width:90px">
+            <button class="mi">${ic("sidebar")}</button>
+            <button class="mi">${ic("her")}</button>
+            <button class="mi sel"><span class="ag-badge">A</span></button>
+            <div class="avatar">Y</div>
+          </nav>
+          <div class="dwork ${S.pmPanel && S.pmMax ? "max" : ""}">
+            <div class="dconv">
+              <div class="inav" style="top:8px">
+                ${titleCap("我现在有一个困惑…", "yee-homebook/hermesh")}
+                <div class="hcapsule iglass">
+                  <button class="igb ${S.pmPanel ? "on" : ""}" data-pmtoggle="1" title="展开/收起右侧面板">${ic("panel")}</button>
+                  <button class="igb" data-toast="会话更多菜单">${ic("more")}</button>
+                </div>
+              </div>
+              <div class="iscroll" style="padding-top:60px">${renderConvo("pm")}</div>
+              ${composerHtml}
+            </div>
+            ${S.pmPanel ? `
+              <aside class="dside" style="width:430px">
+                <div class="dstrip">
+                  <div class="dtabs">
+                    <div class="dtab on">${ic("doc")}<span class="t">${esc(base(t.path || CSS_P))}</span><span class="x">${ic("x")}</span></div>
+                  </div>
+                  <div class="hcapsule iglass" title="非 Duo 宽屏无系统右侧竖栏：面板顶栏自带胶囊控制组（含一键收起）">
+                    <button class="igb" data-toast="新建标签" title="新建标签">${ic("plus")}</button>
+                    <button class="igb ${S.pmMax ? "on" : ""}" data-pmmax="1" title="${S.pmMax ? "还原分屏" : "放大面板"}">${ic(S.pmMax ? "shrink" : "expand")}</button>
+                    <button class="igb on" data-pmtoggle="1" title="一键收起面板">${ic("panelHide")}</button>
+                  </div>
+                </div>
+                <div class="dbody">
+                  <div class="dmain">${renderCode(t.path || CSS_P, false)}</div>
+                  ${renderBottomDrawer(t.path || CSS_P, S.pmDrawer, false, "pm")}
+                </div>
+              </aside>` : ""}
+          </div>
+          <div class="home-ind"></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">iPhone Pro Max 横屏（无右侧系统竖栏）· 面板顶栏右侧自带液态玻璃胶囊 <code>[+ | ⤢ | 收起]</code>（全屏放大时也能一键收起）+ 底部目录树抽屉</div>
+  </div>`;
+
+  return `<div class="row-stage">${proMaxHtml}${phoneHtml}</div>`;
+}
+
+/* ---------- 4. Apple HIG Duo Guidelines & Trade-off Cards ---------- */
+function renderSpecCards() {
+  return `
+  <div class="spec-grid">
+    <div class="scard">
+      <h3>1. 查证：Apple HIG <code>iPhone Duo</code> 侧边按钮规范</h3>
+      <ul>
+        <li><b>Shared Vertical Bar（右侧共享竖栏）</b>：iOS 27.1 在 Duo 外屏与内屏横放时，通过 <code>toolbarVerticalEdge == .trailing</code> 将时钟、状态环与 <code>NavigationStack</code> 工具栏整体迁至右侧竖向拇指热区，把宝贵的纵向高度让给正文与代码。</li>
+        <li><b>液态玻璃竖向胶囊分组</b>：使用 <code>ToolbarItemGroup(placement: .topBarPinnedTrailing)</code> 搭配 <code>.axisBehavior(.verticalPreferred)</code>，高频相关动作（收起面板 + 放大缩小）收纳进同一枚竖向玻璃胶囊，与次级操作自然分组。</li>
+        <li><b>动态压缩优先级</b>：键盘弹起或灵动岛展开时，<code>visibilityPriority(.high)</code> 保证<b>「收起面板」永远置顶常驻</b>，低优先级项（新建、源码）自动收进 <code>ToolbarOverflowMenu</code>。</li>
+        <li><b>折痕避让（Fold Displacement）</b>：内屏分屏分割线对齐物理折痕中轴（左页对话、右页代码），避免行号或可点按钮压在铰链折痕上。</li>
+      </ul>
+    </div>
+
+    <div class="scard">
+      <h3>2. 三个核心痛点的精准修复对比</h3>
+      <table>
+        <tr><th>痛点（真机截图）</th><th>改进方案</th></tr>
+        <tr>
+          <td><b>缺一键隐藏右侧面板</b><br><code>SessionSideItems</code> 漏加面板开关，只能关光标签</td>
+          <td>① Duo 右侧竖栏顶部常驻 <code>sidebar.right</code> 一键收起/恢复（保留标签）<br>② 非 Duo 横屏在面板胶囊尾部配收起钮<br>③ 支持<b>面板左边缘向右滑动收起</b></td>
+        </tr>
+        <tr>
+          <td><b>目录树严重挤压变形</b><br>420pt 面板再切 200pt 树，目录变单字母 <code>a/fi/h/s</code></td>
+          <td><b>全手机形态统一为底部抽屉</b>：代码独享整列宽度；底部浮起「项目文件 · 所在路径」玻璃条，上拉半屏/大屏抽屉展示完整文件名与大小</td>
+        </tr>
+        <tr>
+          <td><b>双顶栏占高 + 双 <code>⋯</code> 撞车</b><br>面板两排顶栏吃掉 98pt，且两个 <code>⋯</code> 紧挨</td>
+          <td>面板顶部瘦身为<b>单层 48pt 标签条</b>（路径下移至底部抽屉条，省出 50pt 纵向代码区）；文件操作并入右侧竖栏上下文胶囊与分组菜单</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="scard">
+      <h3>3. 抽屉与菜单的精简交互约定</h3>
+      <ol>
+        <li><b>原生抽屉手势</b>：抽屉顶栏仅保留标题、路径与右侧收起钮 <code>⌄</code>，不放多余切换按钮；通过<b>顶部横条上下拖拽</b>切换半屏/大屏或下拉收起，点选文件后自动落回底部看代码。</li>
+        <li><b>右侧面板内就近弹起</b>：Duo 横放时抽屉仅在右侧面板列内升起（宽约 383pt），右手拇指就近点选且不遮挡左侧对话。</li>
+        <li><b>单一 <code>⋯</code> 分组菜单</b>：当前文件的「分享… / 复制路径」作为第一分组并入右侧竖栏底部 <code>⋯</code>，消除双 <code>⋯</code> 撞车。</li>
+      </ol>
+    </div>
+  </div>`;
+}
+
+/* ---------- Main Render & Auto-Fit Scaling ---------- */
+function fitDevices() {
+  const avail = Math.min(window.innerWidth - 28, 1460);
+  document.querySelectorAll(".fit-box").forEach((box) => {
+    const designW = +box.dataset.designW || 920;
+    const inner = box.querySelector(".fit-inner");
+    if (!inner) return;
+    inner.style.transform = "none";
+    box.style.height = "auto";
+    const scale = avail < designW ? avail / designW : 1;
+    if (scale < 0.995) {
+      const rawH = inner.offsetHeight;
+      inner.style.transform = `scale(${scale.toFixed(4)})`;
+      box.style.width = `${Math.floor(designW * scale)}px`;
+      box.style.height = `${Math.ceil(rawH * scale) + 28}px`;
+    } else {
+      box.style.width = "";
+      box.style.height = "";
+    }
+  });
+}
+
+function render() {
+  document.documentElement.dataset.theme = S.theme;
+  const badge = document.getElementById("hdr-badge");
+  if (S.legacy && S.view === "duo") {
+    badge.className = "badge warn";
+    badge.textContent = "⚠️ 旧版真机状态复现（缺收起按钮 · 200pt 侧树变形 · 双 ⋯ 撞车）";
+  } else {
+    badge.className = "badge";
+    badge.textContent = "✦ Apple HIG · iOS 27.1 竖向侧栏规范改进版";
+  }
+
+  const views = [
+    ["duo", "Duo 展开横放（改进核心）"],
+    ["outer", "Duo 合上外屏"],
+    ["phones", "Pro Max 横屏 & 直板机"],
+    ["spec", "HIG 规范 & 待确认"],
+  ];
+  document.getElementById("view-tabs").innerHTML = views
+    .map(([k, label]) => `<button class="${S.view === k ? "on" : ""}" data-view="${k}">${label}</button>`)
+    .join("");
+
+  const stage = document.getElementById("stage");
+  if (S.view === "duo") stage.innerHTML = renderDuoOpen() + renderSpecCards();
+  else if (S.view === "outer") stage.innerHTML = renderDuoOuter();
+  else if (S.view === "phones") stage.innerHTML = renderPhones();
+  else stage.innerHTML = renderSpecCards();
+
+  document.getElementById("ctl").innerHTML = `
+    <div class="g"><b>方案对比</b>
+      <button class="${!S.legacy ? "on" : ""}" data-legacy="0">✦ 改进版（Duo 竖栏 + 底部抽屉）</button>
+      <button class="warn ${S.legacy ? "on" : ""}" data-legacy="1">旧版截图痛点复现</button>
+    </div>
+    <div class="g"><b>Duo 状态</b>
+      <button class="${S.panel ? "on" : ""}" data-dtoggle="1">${S.panel ? "收起右侧面板" : "展开右侧面板"}</button>
+      <button class="${S.dDrawer && S.panel ? "on" : ""}" data-drw="duo:${S.dDrawer ? 0 : 1}">底部目录树抽屉</button>
+      <button class="${S.compactVBar ? "on" : ""}" data-kbd="1">模拟键盘/竖栏压缩</button>
+    </div>
+    <div class="g"><b>外观</b>
+      <button class="${S.theme === "dark" ? "on" : ""}" data-theme="dark">深色</button>
+      <button class="${S.theme === "light" ? "on" : ""}" data-theme="light">浅色</button>
+    </div>`;
+
+  requestAnimationFrame(fitDevices);
+  bindEdgeSwipe();
+  bindDrawerGrab();
+}
+
+let toastTimer;
+function showToast(msg) {
+  S.toast = msg;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { S.toast = null; render(); }, 1500);
+}
+
+/* Native iOS Sheet Grabber Drag (drag up -> large detent, drag down -> medium or dismiss) */
+function bindDrawerGrab() {
+  document.querySelectorAll("[data-grab]").forEach((grab) => {
+    const scope = grab.dataset.grab;
+    const drw = grab.closest(".drw");
+    const host = drw && drw.parentElement;
+    if (!drw || !host) return;
+    let startY = null, startH = 0, moved = false;
+    grab.onpointerdown = (ev) => {
+      startY = ev.clientY;
+      startH = drw.offsetHeight;
+      moved = false;
+      drw.classList.add("dragging");
+      grab.setPointerCapture(ev.pointerId);
+    };
+    grab.onpointermove = (ev) => {
+      if (startY === null) return;
+      const dy = ev.clientY - startY;
+      if (Math.abs(dy) > 4) moved = true;
+      const maxH = host.offsetHeight * 0.92;
+      const nextH = Math.max(80, Math.min(maxH, startH - dy));
+      drw.style.height = `${nextH}px`;
+    };
+    const end = (ev) => {
+      if (startY === null) return;
+      const dy = ev.clientY - startY;
+      const curRatio = drw.offsetHeight / host.offsetHeight;
+      startY = null;
+      drw.classList.remove("dragging");
+      drw.style.height = "";
+      const setState = (open, large) => {
+        if (scope === "duo") { S.dDrawer = open; S.dDrawerLarge = large; }
+        else if (scope === "outer") { const top = S.outerStack[S.outerStack.length - 1]; top.drawer = open; top.large = large; }
+        else if (scope === "ip") { const top = S.ipStack[S.ipStack.length - 1]; top.drawer = open; top.large = large; }
+        else if (scope === "pm") { S.pmDrawer = open; }
+      };
+      if (!moved) {
+        const isLarge = drw.classList.contains("large");
+        setState(true, !isLarge);
+      } else if (curRatio < 0.36 || dy > 110) {
+        setState(false, false);
+      } else if (curRatio > 0.72 || dy < -45) {
+        setState(true, true);
+      } else {
+        setState(true, false);
+      }
+      render();
+    };
+    grab.onpointerup = end;
+    grab.onpointercancel = end;
+  });
+}
+
+/* Interactive Swipe-Right on Side Panel's Left Edge to Hide Panel! */
+function bindEdgeSwipe() {
+  const grip = document.getElementById("duo-grip");
+  const side = document.getElementById("duo-side");
+  if (!grip || !side) return;
+  let startX = null;
+  grip.onpointerdown = (ev) => {
+    startX = ev.clientX;
+    grip.classList.add("dragging");
+    side.style.transition = "none";
+    grip.setPointerCapture(ev.pointerId);
+  };
+  grip.onpointermove = (ev) => {
+    if (startX === null) return;
+    const dx = Math.max(0, ev.clientX - startX);
+    side.style.transform = `translateX(${dx}px)`;
+    side.style.opacity = String(Math.max(0.35, 1 - dx / 320));
+  };
+  const end = (ev) => {
+    if (startX === null) return;
+    const dx = ev.clientX - startX;
+    startX = null;
+    grip.classList.remove("dragging");
+    side.style.transition = "";
+    side.style.transform = "";
+    side.style.opacity = "";
+    if (dx > 72) {
+      S.panel = false;
+      S.dMax = false;
+      S.dDrawer = false;
+      showToast("已手势收起侧面板（保留 3 个标签）");
+      render();
+    }
+  };
+  grip.onpointerup = end;
+  grip.onpointercancel = end;
+}
+
+window.addEventListener("resize", fitDevices);
+
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("button,[data-dtab],[data-dclose],[data-drw],[data-pick],[data-open]");
+  const hadPop = S.dPop;
+  S.dPop = null;
+  if (!el) { if (hadPop) render(); return; }
+  const d = el.dataset;
+
+  if (d.view) S.view = d.view;
+  else if (d.theme) S.theme = d.theme;
+  else if (d.legacy !== undefined) { S.legacy = d.legacy === "1"; S.view = "duo"; if (S.legacy) S.panel = true; }
+  else if (d.kbd) { S.compactVBar = !S.compactVBar; S.legacy = false; S.view = "duo"; }
+  else if (d.dtoggle) {
+    S.legacy = false;
+    S.panel = !S.panel;
+    if (!S.panel) { S.dMax = false; S.dDrawer = false; }
+    else if (!S.tabs.length) initTabs();
+  }
+  else if (d.dmax) { S.dMax = !S.dMax; }
+  else if (d.dmenuexp !== undefined) {
+    S.menuExpanded = d.dmenuexp === "1";
+    if (S.menuExpanded) { S.panel = false; S.dMax = false; }
+  }
+  else if (d.dpop) { S.dPop = hadPop === d.dpop ? null : d.dpop; }
+  else if (d.dtab) { S.active = +d.dtab; const tab = S.tabs.find((x) => x.id === S.active); if (tab && tab.path) openAncestorDirs(tab.path); }
+  else if (d.dclose) {
+    e.stopPropagation();
+    const id = +d.dclose, i = S.tabs.findIndex((x) => x.id === id);
+    if (i >= 0) S.tabs.splice(i, 1);
+    if (S.active === id) S.active = (S.tabs[i] || S.tabs[i - 1] || {}).id ?? null;
+    if (!S.tabs.length) { S.panel = false; S.dMax = false; S.dDrawer = false; }
+  }
+  else if (d.dsrc) { const t = S.tabs.find((x) => x.id === S.active); if (t) t.source = !t.source; }
+  else if (d.dnow !== undefined) { const t = S.tabs.find((x) => x.id === S.active); if (t) t.now = d.dnow === "1"; }
+  else if (d.dopenproj) {
+    S.legacy = false; S.panel = true; S.menuExpanded = false;
+    if (!S.tabs.length) initTabs();
+    const t = S.tabs.find((x) => x.id === S.active);
+    if (t && t.kind === "page") S.active = S.tabs[0].id;
+    S.dDrawer = true;
+  }
+  else if (d.drw) {
+    const [scope, val] = d.drw.split(":");
+    const open = val === "1";
+    if (scope === "duo") { S.panel = true; S.legacy = false; S.dDrawer = open; if (!open) S.dDrawerLarge = false; }
+    else if (scope === "outer") { const top = S.outerStack[S.outerStack.length - 1]; top.drawer = open; if (!open) top.large = false; }
+    else if (scope === "ip") { const top = S.ipStack[S.ipStack.length - 1]; top.drawer = open; if (!open) top.large = false; }
+    else if (scope === "pm") S.pmDrawer = open;
+  }
+  else if (d.pick) {
+    const [scope, kind, ...rest] = d.pick.split(":");
+    const p = rest.join(":");
+    if (kind === "dir") {
+      S.dTreeOpen.has(p) ? S.dTreeOpen.delete(p) : S.dTreeOpen.add(p);
+    } else {
+      if (scope === "duo") {
+        const cur = S.tabs.find((x) => x.id === S.active);
+        if (isPage(p)) {
+          let pg = S.tabs.find((x) => x.kind === "page" && x.path === p);
+          if (!pg) { pg = { id: seq++, kind: "page", path: p, source: false, now: false }; S.tabs.push(pg); }
+          S.active = pg.id;
+        } else if (cur && cur.kind === "files") {
+          Object.assign(cur, { path: p, source: false, now: false });
+        }
+        S.dDrawer = false; S.dDrawerLarge = false;
+      } else if (scope === "outer") {
+        const top = S.outerStack[S.outerStack.length - 1];
+        if (isPage(p)) { top.drawer = false; S.outerStack.push({ k: "page", path: p }); }
+        else { Object.assign(top, { k: "file", path: p, source: false, drawer: false, large: false }); }
+      } else if (scope === "ip") {
+        const top = S.ipStack[S.ipStack.length - 1];
+        if (isPage(p)) { top.drawer = false; S.ipStack.push({ k: "page", path: p }); }
+        else { Object.assign(top, { k: "file", path: p, source: false, drawer: false, large: false }); }
+      } else if (scope === "pm") {
+        const cur = S.tabs.find((x) => x.id === S.active);
+        if (cur && !isPage(p)) cur.path = p;
+        S.pmDrawer = false;
+      }
+    }
+  }
+  else if (d.open) {
+    const p = d.open, w = d.where;
+    openAncestorDirs(p);
+    if (w === "duo" || w === "pm") {
+      const k = isPage(p) ? "page" : "files";
+      let found = S.tabs.find((x) => x.kind === k && x.path === p);
+      if (!found) { found = { id: seq++, kind: k, path: p, source: false, now: false }; S.tabs.push(found); }
+      S.active = found.id; S.panel = true; S.pmPanel = true; S.menuExpanded = false; S.legacy = false;
+    } else if (w === "outer") {
+      S.outerStack.push({ k: isPage(p) ? "page" : "file", path: p, source: false, drawer: false, large: false });
+    } else if (w === "ip") {
+      S.ipStack.push({ k: isPage(p) ? "page" : "file", path: p, source: false, drawer: false, large: false });
+    }
+  }
+  else if (d.outerback) { if (S.outerStack.length > 1) S.outerStack.pop(); else S.outerStack = [{ k: "chat" }]; }
+  else if (d.outergo) { S.outerStack.push({ k: "file", path: d.outergo, source: false, drawer: false, large: false }); }
+  else if (d.outersrc) { const top = S.outerStack[S.outerStack.length - 1]; top.source = !top.source; }
+  else if (d.ipback) { if (S.ipStack.length > 1) S.ipStack.pop(); else S.ipStack = [{ k: "chat" }]; }
+  else if (d.ipgo) { S.ipStack.push({ k: "file", path: d.ipgo, source: false, drawer: false, large: false }); }
+  else if (d.ipsrc) { const top = S.ipStack[S.ipStack.length - 1]; top.source = !top.source; }
+  else if (d.pmtoggle) { S.pmPanel = !S.pmPanel; if (!S.pmPanel) S.pmMax = false; }
+  else if (d.pmmax) { S.pmMax = !S.pmMax; }
+  else if (d.toast) { showToast(d.toast); }
+
+  render();
+});
+
+render();
+</script>
+</body>
+</html>

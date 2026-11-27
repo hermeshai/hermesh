@@ -145,11 +145,50 @@ html[data-platform=win] .set-top{padding-right:calc(var(--caption) + 8px)}
 .set-th .c2,.set-table .c2{width:84px;flex:none;font-size:12px;color:var(--l2)}
 .set-th .c3,.set-table .c3{width:64px;flex:none;text-align:right;font-variant-numeric:tabular-nums;font-size:12px;color:var(--l2)}
 .set-checking{display:inline-flex;align-items:center;gap:5px}
-.set-look{display:flex;gap:14px}
-.set-look button{display:flex;flex-direction:column;align-items:center;gap:5px;border:0;background:none;padding:0;font:inherit;font-size:11.5px;color:var(--l2)}
-.set-look i{width:58px;height:38px;border-radius:7px;box-shadow:0 0 0 .5px var(--l4);display:block}
-.set-look .on{color:var(--l1)}.set-look .on i{outline:2.5px solid var(--accent);outline-offset:1px}
-.look-system{background:linear-gradient(135deg,#f2f2f5 50%,#2a2a2e 50%)}.look-light{background:#f2f2f5}.look-dark{background:#2a2a2e}.look-black{background:#070709;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.16),0 0 0 .5px var(--l4)}
+/* Appearance thumbnails: each card is a miniature desktop with the window's top-left corner offset inside it,
+   so glass sidebars ("light", "dark") visibly blur the backdrop while solid ones ("soft", "black") cut it off cleanly. */
+.look-block{padding:13px 14px 14px;display:flex;flex-direction:column;gap:11px}
+.look-head{font-size:var(--fs-text);color:var(--l1)}
+.set-look{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px}
+@media (max-width:520px){.set-look{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.look-card{display:flex;flex-direction:column;align-items:center;gap:7px;border:0;background:none;padding:0;font:inherit;color:var(--l2);outline:none}
+.look-card:disabled{opacity:.5;pointer-events:none}
+.look-stage{position:relative;width:100%;height:64px;border-radius:8.5px;overflow:hidden;
+  background:radial-gradient(circle at 18% 24%,rgba(56,189,248,.98) 0%,rgba(56,189,248,0) 52%),radial-gradient(circle at 26% 78%,rgba(244,114,182,.94) 0%,rgba(244,114,182,0) 52%),radial-gradient(circle at 78% 22%,rgba(167,139,250,.92) 0%,rgba(167,139,250,0) 54%),radial-gradient(circle at 12% 52%,rgba(251,191,36,.75) 0%,rgba(251,191,36,0) 46%),linear-gradient(135deg,#2563eb 0%,#4f46e5 52%,#1e1b4b 100%);
+  box-shadow:0 0 0 1px var(--field-bd),0 2px 5px rgba(0,0,0,.07);transition:box-shadow .16s var(--ease-out)}
+.look-card:hover .look-stage{box-shadow:0 0 0 1.5px var(--l3),0 4px 10px rgba(0,0,0,.12)}
+.look-card.on .look-stage{box-shadow:0 0 0 2px var(--accent),0 4px 12px color-mix(in srgb,var(--accent) 24%,transparent)}
+.look-card:focus-visible .look-stage{outline:2px solid var(--accent);outline-offset:2px}
+.look-cap{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--l2);white-space:nowrap;transition:color .15s}
+.look-card:hover .look-cap{color:var(--l1)}
+.look-card.on .look-cap{color:var(--l1);font-weight:var(--font-weight-semibold)}
+.look-pair-dot{width:4.5px;height:4.5px;border-radius:50%;background:var(--accent);opacity:0;transform:scale(.3);margin-left:-4.5px;transition:opacity .18s var(--ease-out),transform .18s var(--ease-out),margin-left .18s var(--ease-out)}
+.look-card.paired .look-pair-dot{opacity:.85;transform:scale(1);margin-left:0}
+.mini-win{position:absolute;left:9px;top:7px;right:-1px;bottom:-1px;border-radius:6.5px 0 0 0;overflow:hidden;display:grid;grid-template-columns:33% 67%;box-shadow:-2px -1px 7px rgba(0,0,0,.28),0 0 0 .6px var(--m-sep)}
+.m-light{--m-win:#ffffff;--m-side:rgba(250,251,254,.64);--m-filter:blur(6px) saturate(1.95) brightness(1.30);--m-side-hi:inset 1px 1px 0 rgba(255,255,255,.45);--m-sel:rgba(0,0,0,.10);--m-sep:rgba(0,0,0,.10);--m-bub:#dce3f2;--m-ink:rgba(20,22,30,.62);--m-ink2:rgba(20,22,30,.30);--m-code:#f2f4f8;--m-pill:#ffffff;--m-pill-sh:0 0 0 .7px rgba(0,0,0,.13),0 1px 2px rgba(0,0,0,.06);--m-acc:#3d5bff}
+.m-soft{--m-win:#ebedf2;--m-side:#dfe3ec;--m-filter:none;--m-side-hi:none;--m-sel:#cce0fa;--m-sep:rgba(32,33,39,.12);--m-bub:#d6dfee;--m-ink:rgba(32,33,39,.66);--m-ink2:rgba(32,33,39,.34);--m-code:#dfe4ed;--m-pill:#ffffff;--m-pill-sh:0 0 0 .7px rgba(32,33,39,.10),0 1.5px 3px rgba(32,33,39,.10);--m-acc:#2f6fd6}
+.m-dark{--m-win:#202025;--m-side:rgba(30,30,38,.56);--m-filter:blur(6px) saturate(1.9) brightness(0.82);--m-side-hi:inset 1px 1px 0 rgba(255,255,255,.14);--m-sel:rgba(255,255,255,.16);--m-sep:rgba(255,255,255,.14);--m-bub:#34343c;--m-ink:rgba(255,255,255,.72);--m-ink2:rgba(255,255,255,.34);--m-code:#17171b;--m-pill:#2c2c33;--m-pill-sh:0 0 0 .7px rgba(255,255,255,.12);--m-acc:#4a66ff}
+.m-black{--m-win:#070709;--m-side:#121216;--m-filter:none;--m-side-hi:none;--m-sel:#23232b;--m-sep:rgba(255,255,255,.12);--m-bub:#1f1f25;--m-ink:rgba(245,245,247,.84);--m-ink2:rgba(245,245,247,.38);--m-code:#0e0e13;--m-pill:#15151b;--m-pill-sh:inset 0 .5px 0 rgba(255,255,255,.10),0 0 0 .7px rgba(255,255,255,.15);--m-acc:#2f71e3}
+html[data-platform=linux] .m-light{--m-side:#f2f3f7;--m-filter:none;--m-side-hi:none}
+html[data-platform=linux] .m-dark{--m-side:#2a2a31;--m-filter:none;--m-side-hi:none}
+.mw-side{padding:5px 3.5px;display:flex;flex-direction:column;gap:3px;border-right:.6px solid var(--m-sep);background:var(--m-side);backdrop-filter:var(--m-filter);-webkit-backdrop-filter:var(--m-filter);box-shadow:var(--m-side-hi)}
+.mw-dots{display:flex;gap:2px;margin-bottom:2px}
+.mw-dots i{width:3px;height:3px;border-radius:50%;display:block}
+.mw-dots i:nth-child(1){background:#ff5f57}.mw-dots i:nth-child(2){background:#febc2e}.mw-dots i:nth-child(3){background:#28c840}
+.mw-nav{height:3.5px;border-radius:2px;background:var(--m-ink2);opacity:.48;width:74%}
+.mw-nav.sel{height:5px;width:100%;opacity:1;background:var(--m-sel)}
+.mw-nav.short{width:56%}
+.mw-body{background:var(--m-win);padding:5px 5px 4.5px;display:flex;flex-direction:column;gap:3px}
+.mw-bub{align-self:flex-end;width:48%;height:5.5px;border-radius:3px;background:var(--m-bub)}
+.mw-l1{width:76%;height:3px;border-radius:1.5px;background:var(--m-ink)}
+.mw-code{width:88%;height:6.5px;border-radius:2.5px;background:var(--m-code)}
+.mw-pill{margin-top:auto;height:8.5px;border-radius:3.5px;background:var(--m-pill);box-shadow:var(--m-pill-sh);display:flex;align-items:center;justify-content:flex-end;padding:0 2.5px}
+.mw-pill i{width:4px;height:4px;border-radius:50%;background:var(--m-acc);display:block}
+.sys-win{position:absolute;width:74%;height:75%;border-radius:5.5px;overflow:hidden;display:grid;grid-template-columns:33% 67%;box-shadow:0 0 0 .6px rgba(0,0,0,.20),0 3px 8px rgba(0,0,0,.26);transition:opacity .22s var(--ease-out)}
+.sys-win.day{top:5px;left:5px;z-index:2}
+.sys-win.night{right:-1px;bottom:-1px;border-radius:5.5px 0 0 0;z-index:1;box-shadow:-2px -1px 8px rgba(0,0,0,.42),0 0 0 .6px rgba(255,255,255,.20)}
+.sys-stage.night-now .sys-win.night{z-index:3}
+.sys-stage.night-now .sys-win.day{opacity:.90}
 .settings .ag-prjs{background:var(--win2);box-shadow:none;border-radius:var(--r-card)}
 .settings .ag-group{margin:0 0 6px 4px;font-size:12px;color:var(--l2)}
 /* Not signed in (docs/cold-start-prd.md §7): a figure instead of the initial; the account's own rows. */

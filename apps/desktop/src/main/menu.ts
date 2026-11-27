@@ -20,15 +20,16 @@ import { mainWindow, settingsVisible, showMain, showSettings, showAbout, showWha
 const mac = platform.token === "mac";
 
 export function setAppMenu() {
-  build();
-  menuStateListeners.add(build);
-  updateListeners.add(build);
-  daemonListeners.add(build);
-  worldListeners.add(() => build());
+  build(true);
+  const refresh = () => build(false);
+  menuStateListeners.add(refresh);
+  updateListeners.add(refresh);
+  daemonListeners.add(refresh);
+  worldListeners.add(refresh);
   app.on("browser-window-created", (_e, w) => {
     if (!mac) w.setMenuBarVisibility(false);
     // The window menu checks the open windows.
-    const rebuild = () => setImmediate(build);
+    const rebuild = () => setImmediate(() => build(false));
     w.on("show", rebuild);
     w.on("hide", rebuild);
     w.on("closed", rebuild);
@@ -37,10 +38,43 @@ export function setAppMenu() {
 }
 
 let builtReady = false;
+let lastMenuSig = "";
+let appMenuBuilds = 0;
+let appMenuBuildMs = 0;
+export const menuPerfStats = () => ({ appMenuBuilds, appMenuBuildMs: Math.round(appMenuBuildMs * 100) / 100 });
 
-function build() {
+function menuSignature(): string {
+  const st = currentMenuState();
+  const s = st.session;
+  const main = ready();
+  const owner = main && world.status?.machineOnly !== true;
+  const u = updateInfo().update;
+  return [
+    i18n.language,
+    main ? 1 : 0,
+    owner ? 1 : 0,
+    st.main ? 1 : 0,
+    st.her ? 1 : 0,
+    st.sidebar ? 1 : 0,
+    st.undo ? 1 : 0,
+    s ? `${s.inspector ? 1 : 0}:${s.answerable ? 1 : 0}:${s.interruptible ? 1 : 0}:${s.archivable ? 1 : 0}:${s.archived ? 1 : 0}` : "-",
+    daemonControlAvailable() ? daemonState() : "unmanaged",
+    preferences().stayOnline ? 1 : 0,
+    mainWindow()?.isVisible() ? 1 : 0,
+    settingsVisible() ? 1 : 0,
+    u.state === "ready" ? `ready:${u.version}` : "idle",
+  ].join("|");
+}
+
+function build(force = false) {
+  const sig = menuSignature();
+  if (!force && sig === lastMenuSig) return;
+  lastMenuSig = sig;
+  const t0 = performance.now();
   builtReady = ready();
   Menu.setApplicationMenu(Menu.buildFromTemplate(template()));
+  appMenuBuilds++;
+  appMenuBuildMs += performance.now() - t0;
 }
 
 /** Past the first run: the main window's commands work (opening it when it is closed). */
@@ -90,7 +124,7 @@ function template(): MenuItemConstructorOptions[] {
     enabled,
     click: () => {
       command(c);
-      setImmediate(build);
+      setImmediate(() => build(true));
     },
     ...more,
   });
@@ -197,8 +231,8 @@ function template(): MenuItemConstructorOptions[] {
         { role: "minimize", label: t("window.minimize") },
         ...(mac ? [{ role: "zoom", label: t("window.zoom") } as const] : []),
         sep,
-        { id: "mainWindow", label: "Hermesh", type: "checkbox", checked: !!mainWindow()?.isVisible(), click: () => (showMain(), setImmediate(build)) },
-        { id: "settingsWindow", label: t("window.settings"), type: "checkbox", checked: settingsOpen, enabled: main || settingsOpen, click: () => (showSettings(), setImmediate(build)) },
+        { id: "mainWindow", label: "Hermesh", type: "checkbox", checked: !!mainWindow()?.isVisible(), click: () => (showMain(), setImmediate(() => build(true))) },
+        { id: "settingsWindow", label: t("window.settings"), type: "checkbox", checked: settingsOpen, enabled: main || settingsOpen, click: () => (showSettings(), setImmediate(() => build(true))) },
       ],
     },
     {

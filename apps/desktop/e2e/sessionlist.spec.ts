@@ -310,10 +310,11 @@ test("concurrent active sessions stay in creation order without jumping, support
   await page.getByRole("menu", { name: "排序" }).getByRole("menuitem", { name: "恢复默认顺序" }).click();
   await expect.poll(activeTitles).toEqual(["并发任务 B", "并发任务 A", "跑很久"]);
 
-  // Pinning moves a task into the top 置顶 group; dragging another task into 置顶 pins and orders it too.
+  // Pinning via ⋯ moves a task into the top 置顶 group; dragging another task into 置顶 pins and orders it too.
   const rowA = active().getByRole("listitem").filter({ hasText: "并发任务 A" });
   await rowA.hover();
-  await rowA.getByRole("button", { name: "置顶" }).click();
+  await rowA.getByRole("button", { name: "更多操作" }).click();
+  await page.getByRole("menu", { name: "更多操作" }).getByRole("menuitem", { name: "置顶" }).click();
 
   const pinned = list.getByRole("group", { name: "置顶" });
   await expect(pinned).toContainText("并发任务 A");
@@ -327,11 +328,202 @@ test("concurrent active sessions stay in creation order without jumping, support
   await dragRow(list.getByRole("listitem").filter({ hasText: "刚跑完的" }), pinTopBox.x + 60, pinTopBox.y + 2);
   await expect.poll(() => pinned.locator(".stitle").allInnerTexts()).toEqual(["刚跑完的", "并发任务 A"]);
 
-  // Unpinning returns "刚跑完的" to 已结束.
+  // Unpinning via ⋯ returns "刚跑完的" to 已结束; unpin "并发任务 A" too so later tests start with no pinned rows.
   const pinnedDone = pinned.getByRole("listitem").filter({ hasText: "刚跑完的" });
   await pinnedDone.hover();
-  await pinnedDone.getByRole("button", { name: "取消置顶" }).click();
+  await pinnedDone.getByRole("button", { name: "更多操作" }).click();
+  await page.getByRole("menu", { name: "更多操作" }).getByRole("menuitem", { name: "取消置顶" }).click();
   await expect(list.getByRole("group", { name: "已结束" })).toContainText("刚跑完的");
+
+  const pinnedActive = pinned.getByRole("listitem").filter({ hasText: "并发任务 A" });
+  await pinnedActive.hover();
+  await pinnedActive.getByRole("button", { name: "更多操作" }).click();
+  await page.getByRole("menu", { name: "更多操作" }).getByRole("menuitem", { name: "取消置顶" }).click();
+  await expect(pinned).toHaveCount(0);
+
+  await app.close();
+});
+
+test("drag-and-drop places sessions into any slot across done, attention, project, and pinned sections with clean sidebar-scoped visuals", async () => {
+  test.setTimeout(150_000);
+  // Seed 5 finished tasks so the top 5 of 已结束 are deterministic regardless of earlier tests: [完成 5, 完成 4, 完成 3, 完成 2, 完成 1].
+  for (const title of ["完成 1", "完成 2", "完成 3", "完成 4", "完成 5"]) {
+    await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", title, "--prompt", "say 好", "--wait");
+  }
+
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdrag-"));
+  let { app, page } = await launch(fixture.socket, { profile });
+  let list = await sessionList(page);
+
+  const group = (name: string) => list.getByRole("group", { name });
+  const titlesOf = (name: string) => group(name).locator(".stitle").allInnerTexts();
+  const topDone = async (n = 5) => (await titlesOf("已结束")).slice(0, n);
+  const rowIn = (gName: string, title: string) => group(gName).getByRole("listitem").filter({ hasText: title });
+
+  const dragTo = async (from: ReturnType<typeof page.locator>, toY: number) => {
+    const box = (await from.boundingBox())!;
+    const x = box.x + 80;
+    const startY = box.y + box.height / 2;
+    await page.mouse.move(x, startY);
+    await page.mouse.down();
+    await page.mouse.move(x, startY + (toY < startY ? -8 : 8), { steps: 3 });
+    await page.mouse.move(x, toY, { steps: 8 });
+    await page.mouse.up();
+  };
+
+  await expect.poll(() => topDone()).toEqual(["完成 5", "完成 4", "完成 3", "完成 2", "完成 1"]);
+  const initialAttention = await titlesOf("需要处理");
+  expect(initialAttention).toHaveLength(3);
+
+  // 1. Visual & geometry checks during drag on a selected row:
+  //    - Starting a drag (spawning .pin-dropzone) causes 0px layout shift on existing rows.
+  //    - .srow.sel.drag-ghost is opaque (alpha === 1) with no action buttons inside.
+  //    - .drop-line stays strictly inside the 272px sidebar and sits between the two target rows.
+  const targetSel = rowIn("已结束", "完成 3");
+  await targetSel.click();
+  await expect(targetSel).toHaveClass(/\bsel\b/);
+
+  const sideBox = (await page.locator(".side").boundingBox())!;
+  const d5Before = (await rowIn("已结束", "完成 5").boundingBox())!;
+  const d4Before = (await rowIn("已结束", "完成 4").boundingBox())!;
+  const d3Box = (await targetSel.boundingBox())!;
+
+  await page.mouse.move(d3Box.x + 80, d3Box.y + d3Box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(d3Box.x + 80, d3Box.y + d3Box.height / 2 - 10, { steps: 3 });
+
+  // Zero layout jump when .pin-dropzone appears!
+  await expect(page.locator(".pin-dropzone")).toBeVisible();
+  const d5During = (await rowIn("已结束", "完成 5").boundingBox())!;
+  expect(Math.abs(d5During.y - d5Before.y)).toBeLessThanOrEqual(0.5);
+
+  // Ghost is opaque and stripped of .rowacts.
+  const ghostInfo = await page.locator(".srow.drag-ghost").evaluate((el) => {
+    const bg = getComputedStyle(el).backgroundColor;
+    const m = bg.match(/rgba?\(([^)]+)\)/);
+    const parts = m ? m[1].split(",").map((s) => Number(s.trim())) : [];
+    const alpha = parts.length === 4 ? parts[3] : 1;
+    return { alpha, acts: el.querySelectorAll(".rowacts").length };
+  });
+  expect(ghostInfo).toEqual({ alpha: 1, acts: 0 });
+
+  // Move between 完成 5 (index 0) and 完成 4 (index 1) -> drop-line appears inside sidebar between them.
+  await page.mouse.move(d3Box.x + 80, d4Before.y + d4Before.height * 0.3, { steps: 6 });
+  const lineBox = (await page.locator(".drop-line").boundingBox())!;
+  expect(lineBox.x).toBeGreaterThanOrEqual(sideBox.x);
+  expect(lineBox.x + lineBox.width).toBeLessThanOrEqual(sideBox.x + sideBox.width);
+  expect(lineBox.y).toBeGreaterThanOrEqual(d5Before.y + d5Before.height - 3);
+  expect(lineBox.y).toBeLessThanOrEqual(d4Before.y + 3);
+  await snap(page, "drag-reorder-done");
+  await expect(page.getByTestId("session-hover-card")).toHaveCount(0);
+
+  // Pressing Escape cancels the active drag cleanly without changing order.
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".srow.drag-ghost")).toHaveCount(0);
+  await expect(page.locator(".drop-line")).toHaveCount(0);
+  await page.mouse.up();
+  expect(await topDone()).toEqual(["完成 5", "完成 4", "完成 3", "完成 2", "完成 1"]);
+
+  // 2. Arbitrary slot reordering inside 已结束 (status:done):
+  // (a) 5th -> Top (slot 0, without accidentally triggering pin-dropzone)
+  const doneFirst = (await rowIn("已结束", "完成 5").boundingBox())!;
+  await dragTo(rowIn("已结束", "完成 1"), doneFirst.y + 6);
+  await expect.poll(() => topDone()).toEqual(["完成 1", "完成 5", "完成 4", "完成 3", "完成 2"]);
+  await expect(group("置顶")).toHaveCount(0);
+
+  // (b) Top -> Middle (move "完成 1" between "完成 4" and "完成 3", i.e. onto "完成 4"'s body)
+  const c4Box = (await rowIn("已结束", "完成 4").boundingBox())!;
+  await dragTo(rowIn("已结束", "完成 1"), c4Box.y + c4Box.height * 0.6);
+  await expect.poll(() => topDone()).toEqual(["完成 5", "完成 4", "完成 1", "完成 3", "完成 2"]);
+
+  // (c) Middle -> 5th (move "完成 4" right after "完成 2")
+  const c2Box = (await rowIn("已结束", "完成 2").boundingBox())!;
+  await dragTo(rowIn("已结束", "完成 4"), c2Box.y + c2Box.height * 0.6);
+  await expect.poll(() => topDone()).toEqual(["完成 5", "完成 1", "完成 3", "完成 2", "完成 4"]);
+
+  // (d) Adjacent 1-step swap down ("完成 1" index 1 <-> "完成 3" index 2) and back up
+  const c3Now = (await rowIn("已结束", "完成 3").boundingBox())!;
+  await dragTo(rowIn("已结束", "完成 1"), c3Now.y + c3Now.height * 0.6);
+  await expect.poll(() => topDone()).toEqual(["完成 5", "完成 3", "完成 1", "完成 2", "完成 4"]);
+
+  const c3SwapUp = (await rowIn("已结束", "完成 3").boundingBox())!;
+  await dragTo(rowIn("已结束", "完成 1"), c3SwapUp.y + c3SwapUp.height * 0.35);
+  await expect.poll(() => topDone()).toEqual(["完成 5", "完成 1", "完成 3", "完成 2", "完成 4"]);
+
+  // 3. Reordering inside 需要处理 (status:attention): move last item to top.
+  const [att0, att1, att2] = initialAttention;
+  const att0Box = (await rowIn("需要处理", att0).boundingBox())!;
+  await dragTo(rowIn("需要处理", att2), att0Box.y + 6);
+  await expect.poll(() => titlesOf("需要处理")).toEqual([att2, att0, att1]);
+
+  // 4. Pin via .pin-dropzone, pin into middle/bottom of 置顶, reorder within 置顶, and drag OUT of 置顶 into a specific middle slot of 已结束!
+  const listBox = (await page.locator(".side-list").boundingBox())!;
+  // Pin "完成 2" via top pin-dropzone.
+  const pinSrcBox = (await rowIn("已结束", "完成 2").boundingBox())!;
+  await page.mouse.move(pinSrcBox.x + 80, pinSrcBox.y + pinSrcBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(pinSrcBox.x + 80, listBox.y + 12, { steps: 10 });
+  await expect(page.locator(".pin-dropzone.over")).toBeVisible();
+  await snap(page, "drag-pin-dropzone");
+  await page.mouse.up();
+  await expect.poll(() => titlesOf("置顶")).toEqual(["完成 2"]);
+
+  // Drag "完成 4" to bottom of 置顶 -> ["完成 2", "完成 4"].
+  const p2Box = (await rowIn("置顶", "完成 2").boundingBox())!;
+  await dragTo(rowIn("已结束", "完成 4"), p2Box.y + p2Box.height * 0.8);
+  await expect.poll(() => titlesOf("置顶")).toEqual(["完成 2", "完成 4"]);
+
+  // Drag "完成 3" into the MIDDLE of 置顶 (between "完成 2" and "完成 4") -> ["完成 2", "完成 3", "完成 4"].
+  const p4Box = (await rowIn("置顶", "完成 4").boundingBox())!;
+  await dragTo(rowIn("已结束", "完成 3"), p4Box.y + p4Box.height * 0.2);
+  await expect.poll(() => titlesOf("置顶")).toEqual(["完成 2", "完成 3", "完成 4"]);
+
+  // Reorder inside 置顶: move "完成 4" above "完成 2" -> ["完成 4", "完成 2", "完成 3"].
+  const pTop = (await rowIn("置顶", "完成 2").boundingBox())!;
+  await dragTo(rowIn("置顶", "完成 4"), pTop.y + 6);
+  await expect.poll(() => titlesOf("置顶")).toEqual(["完成 4", "完成 2", "完成 3"]);
+
+  // Drag "完成 4" OUT of 置顶 directly between "完成 5" and "完成 1" in 已结束, then move "完成 1" above "完成 5":
+  // 置顶 keeps ["完成 2", "完成 3"] (reverse of natural ["完成 3", "完成 2"]), and top 3 of 已结束 become ["完成 1", "完成 5", "完成 4"]!
+  const c1InDone = (await rowIn("已结束", "完成 1").boundingBox())!;
+  await dragTo(rowIn("置顶", "完成 4"), c1InDone.y + c1InDone.height * 0.25);
+  await expect.poll(() => titlesOf("置顶")).toEqual(["完成 2", "完成 3"]);
+  await expect.poll(() => topDone(3)).toEqual(["完成 5", "完成 4", "完成 1"]);
+
+  const doneTopNow = (await rowIn("已结束", "完成 5").boundingBox())!;
+  await dragTo(rowIn("已结束", "完成 1"), doneTopNow.y + 6);
+  await expect.poll(() => topDone(3)).toEqual(["完成 1", "完成 5", "完成 4"]);
+
+  // 5. Switch to 按项目 (project grouping) and reorder mixed-status rows inside "demo".
+  await page.getByRole("button", { name: "视图选项" }).click();
+  await page.getByRole("menu", { name: "视图选项" }).getByRole("menuitem", { name: /分组/ }).hover();
+  await page.getByRole("menu", { name: "分组" }).getByRole("menuitemradio", { name: "按项目" }).click();
+
+  const demoBefore = await titlesOf("demo");
+  expect(demoBefore.length).toBeGreaterThanOrEqual(4);
+  const demoFirstBox = (await group("demo").getByRole("listitem").first().boundingBox())!;
+  const movedTitle = demoBefore[2];
+  await dragTo(rowIn("demo", movedTitle), demoFirstBox.y + 6);
+  await expect.poll(() => titlesOf("demo")).toEqual([movedTitle, demoBefore[0], demoBefore[1], ...demoBefore.slice(3)]);
+
+  // 6. Switch back to 按状态, relaunch app, verify all custom orders persisted, then reset order.
+  await page.getByRole("button", { name: "视图选项" }).click();
+  await page.getByRole("menu", { name: "视图选项" }).getByRole("menuitem", { name: /分组/ }).hover();
+  await page.getByRole("menu", { name: "分组" }).getByRole("menuitemradio", { name: "按状态" }).click();
+
+  await app.close();
+  ({ app, page } = await launch(fixture.socket, { profile }));
+  list = await sessionList(page);
+  await expect.poll(() => titlesOf("置顶")).toEqual(["完成 2", "完成 3"]);
+  await expect.poll(() => topDone(3)).toEqual(["完成 1", "完成 5", "完成 4"]);
+  await expect.poll(() => titlesOf("需要处理")).toEqual([att2, att0, att1]);
+
+  await page.getByRole("button", { name: "视图选项" }).click();
+  await page.getByRole("menu", { name: "视图选项" }).getByRole("menuitem", { name: /排序/ }).hover();
+  await page.getByRole("menu", { name: "排序" }).getByRole("menuitem", { name: "恢复默认顺序" }).click();
+  await expect.poll(() => titlesOf("置顶")).toEqual(["完成 3", "完成 2"]);
+  await expect.poll(() => topDone(3)).toEqual(["完成 5", "完成 4", "完成 1"]);
+  await expect.poll(() => titlesOf("需要处理")).toEqual(initialAttention);
 
   await app.close();
 });

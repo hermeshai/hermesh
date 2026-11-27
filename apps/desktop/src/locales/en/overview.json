@@ -71,6 +71,7 @@
     "showAll": "Show All",
     "disconnected": "Disconnected agent",
     "byGrant": "Tasks started by {{label}}",
+    "byYou": "Tasks started by you",
     "onMachine": "Tasks on {{machine}}",
     "inProject": "Tasks in project {{project}}",
     "waiting": "Waiting for you",

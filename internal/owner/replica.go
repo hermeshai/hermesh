@@ -172,6 +172,7 @@ var (
 	mWatchFresh   = metrics.Default.Counter(`hermesh_owner_machine_watches_total{start="fresh"}`)
 	mWatchResumed = metrics.Default.Counter(`hermesh_owner_machine_watches_total{start="resumed"}`)
 	mWatchRefused = metrics.Default.Counter(`hermesh_owner_machine_watches_total{start="refused"}`)
+	mRelayPolls   = metrics.Default.Counter("hermesh_owner_relay_polls_total")
 )
 
 func newReplica(o *Owner) *replica {
@@ -567,6 +568,7 @@ func (r *replica) poll(ctx context.Context, s *sources, machines, pairings bool)
 	r.polls++
 	n := r.polls
 	r.mu.Unlock()
+	mRelayPolls.Inc()
 	var wg sync.WaitGroup
 	if machines {
 		wg.Go(func() {

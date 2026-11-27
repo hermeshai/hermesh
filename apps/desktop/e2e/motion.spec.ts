@@ -34,8 +34,9 @@ test("the overview's motion is all the compositor's: comets ride the running ses
   // One running session: two comets of a head and five tail dots each.
   await expect(map.locator(".lm-comet")).toHaveCount(2);
   await expect(map.locator(".lm-comet i")).toHaveCount(12);
-  // A question or a failure is under 需要你处理: its line is the others', with no dot along it.
-  await expect(map.locator(".lm-flow")).toHaveCount(4);
+  // Four unsettled sessions share bot → this Mac → demo: one weighted line, with comets while any runs.
+  await expect(map.locator(".lm-flow")).toHaveCount(1);
+  expect(await map.locator(".lm-flow").evaluate((el) => getComputedStyle(el).strokeWidth)).toBe("2.4px");
   await expect(map.locator(".lm-flow.wait, .lm-flow.fail, .lm-mark, .ping")).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.getAnimations().length)).toBeGreaterThan(12);
 

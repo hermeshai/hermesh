@@ -179,7 +179,7 @@ function ImageLightbox({ shown, onClose }: { shown: ShownLightbox; onClose: () =
   const machineId = files ? files.home.machine : (atts?.machine ?? "");
   const machine = st.machines.find((m) => m.machineId === machineId);
   const online = (files?.home.local ?? false) || (st.status?.relayConnected !== false && (machine?.online ?? false));
-  const fileState = useSessionImage(file, true, online);
+  const fileState = useSessionImage(file, true, online, true);
   const attState = useAttachmentImage(att, atts?.session ?? "", machineId, online);
   const picState = usePicture(pic);
   const state = files ? fileState : atts ? attState : picState;

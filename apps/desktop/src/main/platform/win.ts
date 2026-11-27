@@ -9,9 +9,10 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { LoginItem } from "../../shared/bridge";
+import { usesSidebarMaterial, windowBackgroundOf } from "../../shared/appearance";
 import { i18n } from "../../shared/i18n";
 import { newer } from "../../shared/update";
-import { preferences } from "../notify";
+import { activePalette } from "../notify";
 import { dataDir, socketPath, testDataDir } from "../paths";
 import type { Platform, WindowKind } from "./types";
 
@@ -395,12 +396,23 @@ export const win: Platform = {
 
   frame(kind: WindowKind) {
     // The page's own background from the first frame (--win), for no white flash in the dark.
-    const backgroundColor = preferences().appearance === "black" ? "#070709" : nativeTheme.shouldUseDarkColors ? "#1e1e21" : "#ffffff";
+    const palette = activePalette();
+    const backgroundColor = windowBackgroundOf(palette);
     if (kind === "panel") return { backgroundColor };
     // Windows draws the caption buttons over the page's top band, whose toolbar rows are the drag area;
-    // Mica shows where the page is clear (the sidebar), as on the Mac.
-    const material = mica && kind !== "auxiliary" ? { backgroundMaterial: "mica" as const, backgroundColor: "#00000000" } : { backgroundColor };
+    // Mica shows where the page is clear (the sidebar) for glass themes, as on the Mac.
+    const glass = mica && kind !== "auxiliary" && usesSidebarMaterial(palette);
+    const material = glass ? { backgroundMaterial: "mica" as const, backgroundColor: "#00000000" } : { backgroundColor };
     return { titleBarStyle: "hidden", titleBarOverlay: { color: "#00000000", symbolColor: symbols(), height: buttonsHeight(kind) }, ...material };
+  },
+
+  applyMaterial(win, glass, backgroundColor) {
+    try {
+      if (mica) win.setBackgroundMaterial(glass ? "mica" : "none");
+      win.setBackgroundColor(mica && glass ? "#00000000" : backgroundColor);
+    } catch {
+      // Older builds or windows that reject material changes.
+    }
   },
 
   placeButtons(win, kind) {

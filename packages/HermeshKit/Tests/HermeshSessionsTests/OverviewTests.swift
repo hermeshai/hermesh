@@ -44,7 +44,7 @@ private func failed(_ id: String, by: String = "c1", machine: String = "m1") -> 
     #expect(layout.frames.count == 2 && layout.links.count == 2)
 }
 
-@Test func theMapDrawsALineForEachSessionNotFinished() {
+@Test func theMapMergesSessionsBetweenTheSameNodesAndWeightsTheirLine() {
     var asked = session("q", .waitingInput, by: "her", machine: "m1")
     ask(&asked)
     let team = teamState([session("r1", .running, by: "her", machine: "m1"), asked, failed("f", by: "gpt", machine: "m2"),
@@ -58,14 +58,21 @@ private func failed(_ id: String, by: String = "c1", machine: String = "m1") -> 
     #expect(map.senders.first { $0.id == "s:owner" }?.title == "You")
     #expect(map.environments.map(\.id) == ["e:m1", "e:m2", "e:m3"], "this device's own, then online, then offline")
     #expect(map.environments.last?.offline == true)
-    #expect(Set(map.lines.map(\.id)) == ["r1", "q", "f", "r2", "mine"], "a finished session and one from a grant not shown have no line")
-    #expect(map.lines.filter(\.atWork).map(\.id).sorted() == ["mine", "r1", "r2"])
+    #expect(Set(map.lines.map(\.id)) == ["s:her|e:m1", "s:gpt|e:m2", "s:cursor|e:m3", "s:owner|e:m1"],
+            "a finished session and one from a grant not shown have no line; multiple sessions between the same nodes share one")
+    let herLine = map.lines.first { $0.id == "s:her|e:m1" }!
+    let gptLine = map.lines.first { $0.id == "s:gpt|e:m2" }!
+    #expect(herLine.count == 2 && herLine.atWork)
+    #expect(gptLine.count == 1 && !gptLine.atWork)
+    #expect(herLine.strokeWidth > gptLine.strokeWidth && gptLine.strokeWidth == 1.5)
+    #expect(LinkMap.Line(sender: "s:owner", environment: "e:m1", count: 10, atWork: true).strokeWidth == 2.8, "stroke width is capped")
+    #expect(map.lines.filter(\.atWork).map(\.id).sorted() == ["s:cursor|e:m3", "s:her|e:m1", "s:owner|e:m1"])
 
-    let layout = LinkMapLayout(map, width: 329)
-    #expect(layout.size.height == 200, "five senders, 40 apart")
-    let r1 = layout.ways["r1"]!, q = layout.ways["q"]!
-    #expect(r1.count == 2 && r1[0].from.x == layout.frames["s:her"]!.maxX && r1[1].to.x == layout.frames["e:m1"]!.minX)
-    #expect(abs(r1[0].from.y - q[0].from.y) == 5, "two lines of the same two nodes run side by side")
+    let layout = LinkMapLayout(map, width: 337)
+    #expect(layout.size.height == 240 && LinkMapLayout.height(for: map) == 240, "five senders, 48 apart")
+    let way = layout.ways["s:her|e:m1"]!
+    #expect(way.count == 2 && way[0].from == CGPoint(x: layout.frames["s:her"]!.maxX, y: layout.frames["s:her"]!.midY)
+            && way[1].to == CGPoint(x: layout.frames["e:m1"]!.minX, y: layout.frames["e:m1"]!.midY))
 
     #expect(map.touched(by: "s:her", sessions: team.running + team.waiting + team.failed + team.finished) == ["s:her", "e:m1"])
     #expect(sessions(through: "e:m3", team: team).map(\.sessionID) == ["r2", "done"], "at work, then finished")
@@ -88,10 +95,10 @@ private func failed(_ id: String, by: String = "c1", machine: String = "m1") -> 
         for _ in 0..<20 {
             let team = teamState(all, requests: 0)
             let map = linkMap(senders: senders, environments: environments, team: team, owner: "You")
-            lines += LinkMapLayout(map, width: 329).ways.count
+            lines += LinkMapLayout(map, width: 337).ways.count
             _ = needs(team: team, pairings: [], expiring: [], guide: false, herOff: false, notificationsOff: false, secondDevice: false)
         }
     }
-    #expect(lines == 20 * 56)
+    #expect(lines == 20 * 5)
     #expect(took < .milliseconds(20 * 20), "500 held sessions: \(took / 20) a pass") // generous for a debug build on a shared machine
 }

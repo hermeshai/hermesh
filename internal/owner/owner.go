@@ -3028,6 +3028,11 @@ func (o *Owner) onlineMachines(ctx context.Context, only string) ([]*localv1.Mac
 	if err != nil {
 		return nil, nil, err
 	}
+	on, off := onlineMachinesFrom(machines, only)
+	return on, off, nil
+}
+
+func onlineMachinesFrom(machines []*localv1.Machine, only string) ([]*localv1.Machine, []*localv1.Unreachable) {
 	var on []*localv1.Machine
 	var off []*localv1.Unreachable
 	for _, n := range machines {
@@ -3040,7 +3045,7 @@ func (o *Owner) onlineMachines(ctx context.Context, only string) ([]*localv1.Mac
 			off = append(off, &localv1.Unreachable{MachineId: n.MachineId, MachineName: n.MachineName, Error: "offline"})
 		}
 	}
-	return on, off, nil
+	return on, off
 }
 
 // fanOut runs remote on each machine over the relay, and local on this
@@ -3082,6 +3087,15 @@ func (o *Owner) ListProjects(ctx context.Context, machineID string) (*localv1.Li
 	if err != nil {
 		return nil, err
 	}
+	return o.listProjectsOnline(ctx, on, off)
+}
+
+func (o *Owner) listProjectsForMachines(ctx context.Context, machines []*localv1.Machine, machineID string) (*localv1.ListProjectsResponse, error) {
+	on, off := onlineMachinesFrom(machines, machineID)
+	return o.listProjectsOnline(ctx, on, off)
+}
+
+func (o *Owner) listProjectsOnline(ctx context.Context, on []*localv1.Machine, off []*localv1.Unreachable) (*localv1.ListProjectsResponse, error) {
 	var mu sync.Mutex
 	out := &localv1.ListProjectsResponse{Unreachable: off}
 	// The followed machines' projects are in the replica; the others are asked.

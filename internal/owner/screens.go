@@ -12,6 +12,16 @@ import (
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/machine"
+	"github.com/hermeshai/hermesh/pkg/metrics"
+)
+
+var (
+	mWatchDiff        = metrics.Default.Histogram("hermesh_owner_watch_diff_seconds")
+	mWatchWakeSession = metrics.Default.Counter(`hermesh_owner_watch_wakes_total{trigger="session"}`)
+	mWatchWakeKick    = metrics.Default.Counter(`hermesh_owner_watch_wakes_total{trigger="kick"}`)
+	mWatchWakeTick    = metrics.Default.Counter(`hermesh_owner_watch_wakes_total{trigger="tick"}`)
+	mWatchSent        = metrics.Default.Counter("hermesh_owner_watch_sent_total")
+	mWatchNoop        = metrics.Default.Counter("hermesh_owner_watch_noop_total")
 )
 
 // LocalService.Watch: what the screens show, pushed (docs/state-sync.md
@@ -154,25 +164,35 @@ func (l *localService) watchRound(ctx context.Context, send func(*localv1.WatchR
 			if !ok {
 				return connect.NewError(connect.CodeResourceExhausted, errors.New("fell behind; watch again"))
 			}
+			mWatchWakeSession.Inc()
 			if m.MachinesChanged {
+				t0 := time.Now()
 				out = w.diff(ctx, l, o, mode)
+				mWatchDiff.Since(t0)
 			} else {
 				out = &localv1.WatchResponse{}
 			}
 			out.Sessions, out.DeletedSessionIds = m.Sessions, m.DeletedSessionIds
 		case <-kick:
+			mWatchWakeKick.Inc()
 		case <-tick.C:
+			mWatchWakeTick.Inc()
 		}
 		if out == nil {
 			if l.o() != o || screenMode(o.Status()) != mode {
 				return errNewRound
 			}
+			t0 := time.Now()
 			out = w.diff(ctx, l, o, mode)
+			mWatchDiff.Since(t0)
 		}
 		if !proto.Equal(out, &localv1.WatchResponse{}) {
+			mWatchSent.Inc()
 			if err := send(out); err != nil {
 				return err
 			}
+		} else {
+			mWatchNoop.Inc()
 		}
 	}
 }
@@ -193,7 +213,25 @@ type shown struct {
 // first time). A list that could not be read is left as it was.
 func (w *shown) diff(ctx context.Context, l *localService, o *Owner, mode string) *localv1.WatchResponse {
 	out := &localv1.WatchResponse{}
-	if st := o.Status(); !proto.Equal(st, w.status) {
+	st := o.Status()
+	// Suppress minor relay ping RTT micro-jitter when connection health is
+	// otherwise unchanged, matching Machine.Tunnel RTT suppression below.
+	if oh, nh := w.status.GetRelayHealth(), st.GetRelayHealth(); oh != nil && nh != nil &&
+		oh.GetPhase() == nh.GetPhase() && oh.GetRetryCount() == nh.GetRetryCount() && oh.GetLastError() == nh.GetLastError() {
+		oldMs, newMs := oh.GetRttMs(), nh.GetRttMs()
+		if oldMs > 0 && newMs > 0 {
+			var delta uint32
+			if newMs > oldMs {
+				delta = newMs - oldMs
+			} else {
+				delta = oldMs - newMs
+			}
+			if delta < max(uint32(20), oldMs/4) {
+				nh.RttMs = oldMs
+			}
+		}
+	}
+	if !proto.Equal(st, w.status) {
 		w.status, out.Status = st, st
 	}
 	if mode == "status" {
@@ -205,7 +243,10 @@ func (w *shown) diff(ctx context.Context, l *localService, o *Owner, mode string
 	if v := o.herKeptVersion.Load(); v != w.herKept {
 		w.herKept, out.HerKeptVersion = v, v
 	}
+	var listedMachines []*localv1.Machine
+	var haveMachines bool
 	if r, err := l.ListMachines(ctx, &localv1.ListMachinesRequest{}); err == nil {
+		listedMachines, haveMachines = r.Machines, true
 		if mode == "owner" {
 			o.rep.unreachable(r.Machines)
 		}
@@ -235,16 +276,25 @@ func (w *shown) diff(ctx context.Context, l *localService, o *Owner, mode string
 	if r, err := l.ListClients(ctx, &localv1.ListClientsRequest{}); err == nil {
 		out.Clients, out.RemovedGrantIds = w.clients.diff(r.Clients, func(c *localv1.Client) string { return c.GrantId })
 	}
-	if r, err := l.ListProjects(ctx, &localv1.ListProjectsRequest{}); err == nil {
+	var projRes *localv1.ListProjectsResponse
+	var projErr error
+	if haveMachines && mode != "machine" {
+		projRes, projErr = o.listProjectsForMachines(ctx, listedMachines, "")
+	} else {
+		projRes, projErr = l.ListProjects(ctx, &localv1.ListProjectsRequest{})
+	}
+	if projErr == nil {
 		var removed []string
-		out.Projects, removed = w.projects.diff(r.Projects, projectKey)
+		out.Projects, removed = w.projects.diff(projRes.Projects, projectKey)
 		for _, k := range removed {
 			m, p, _ := strings.Cut(k, "/") // a machine id has no slash
 			out.RemovedProjects = append(out.RemovedProjects, &localv1.ProjectRef{MachineId: m, ProjectId: p})
 		}
 	}
 	if mode == "owner" {
-		if r, err := l.ListDevices(ctx, &localv1.ListDevicesRequest{}); err == nil {
+		if haveMachines && o.requireInit() == nil {
+			out.Devices, out.RemovedDeviceKeyIds = w.devices.diff(o.devicesForMachines(listedMachines), func(d *localv1.Device) string { return d.KeyId })
+		} else if r, err := l.ListDevices(ctx, &localv1.ListDevicesRequest{}); err == nil {
 			out.Devices, out.RemovedDeviceKeyIds = w.devices.diff(r.Devices, func(d *localv1.Device) string { return d.KeyId })
 		}
 		if r, err := l.ListPairingRequests(ctx, &localv1.ListPairingRequestsRequest{}); err == nil {

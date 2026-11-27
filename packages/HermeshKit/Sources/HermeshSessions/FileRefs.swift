@@ -205,3 +205,33 @@ public func sameImagePath(_ a: String, _ b: String) -> Bool {
     if aa == ab { return false }
     return aa ? na.hasSuffix("/\(nb)") : nb.hasSuffix("/\(na)")
 }
+
+/// Resolves a relative path inside a Markdown document at `baseDir` ("" for chat replies).
+public func resolveDocPath(_ baseDir: String, _ path: String) -> String {
+    var base = baseDir.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\\", with: "/")
+    while base.hasSuffix("/") { base.removeLast() }
+    let p = path.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\\", with: "/")
+    if base.isEmpty || p.isEmpty || isAbsImagePath(p) { return path }
+    let root: String = if base.hasPrefix("/") {
+        "/"
+    } else if base.hasPrefix("~/") {
+        "~/"
+    } else if matches(regex(#"^[A-Za-z]:/"#), base) {
+        String(base.prefix(3))
+    } else {
+        ""
+    }
+    let segs = base.dropFirst(root.count).split(separator: "/", omittingEmptySubsequences: true)
+        + p.split(separator: "/", omittingEmptySubsequences: true)
+    var out: [Substring] = []
+    for s in segs {
+        if s == "." { continue }
+        if s == ".." {
+            if let last = out.last, last != ".." { out.removeLast() }
+            else if root.isEmpty { out.append("..") }
+            continue
+        }
+        out.append(s)
+    }
+    return root + out.joined(separator: "/")
+}

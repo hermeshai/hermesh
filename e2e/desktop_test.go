@@ -727,6 +727,58 @@ func otherMacFiles(t *testing.T, f desktopFixture) int {
 		t.Fatal(err)
 	}
 	f.Sessions["文件预览"] = s.SessionID
+
+	brainDir := filepath.Join(t.TempDir(), ".gemini", "antigravity-cli", "brain", "conv-walkthrough")
+	if err := os.MkdirAll(brainDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	slideDark := filepath.Join(brainDir, "carousel_dark.png")
+	slideLight := filepath.Join(brainDir, "carousel_light.png")
+	walkPath := filepath.Join(brainDir, "walkthrough.md")
+	if err := os.WriteFile(slideDark, makeE2EPNG(t, 150, 220, 35, 55, 95), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(slideLight, makeE2EPNG(t, 150, 220, 235, 240, 250), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	walkMD := strings.Join([]string{
+		"# 链路图走查",
+		"",
+		"> [!NOTE]",
+		"> 已合并同源连线并渲染轮播对比。",
+		"",
+		"````carousel",
+		"![深色预览](carousel_dark.png)",
+		"<!-- slide -->",
+		"![浅色预览](carousel_light.png)",
+		"````",
+		"",
+	}, "\n")
+	if err := os.WriteFile(walkPath, []byte(walkMD), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(walkPath+".metadata.json", []byte(`{"userFacing":true}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	walkPrompt := "say 走查结果：\\n\\n> [!NOTE]\\n> 兼容 Antigravity 轮播与提示框\\n\\n````carousel\\n![深色预览](" + slideDark + ")\\n<!-- slide -->\\n![浅色预览](" + slideLight + ")\\n````\\n\\n报告文件：[walkthrough.md](file://" + filepath.ToSlash(walkPath) + ")"
+	var walkSession sessionJSON
+	eventually(t, time.Minute, "walkthrough session on files-mac", func() bool {
+		walkSession = firstSession(w.cli(2*time.Minute, "session", "start", "--project", "files-mac/site", "-o", "json", "--agent", "gemini", "--title", "走查预览", "--prompt", walkPrompt, "--wait").stdout)
+		return walkSession.SessionID != ""
+	})
+	stagePaths := make([]string, 4)
+	for i := range stagePaths {
+		p := filepath.Join(brainDir, fmt.Sprintf("stage_%d.png", i+1))
+		if err := os.WriteFile(p, makeE2EPNG(t, 240, 135, uint8(40+i*45), uint8(90+i*25), uint8(210-i*35)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		stagePaths[i] = p
+	}
+	stageTurn := "say 多图舞台：\\n\\n![方案一 [默认收起]：连体抽屉托盘](" + stagePaths[0] + ")\\n\\n![方案二：点击展开完整步骤](" + stagePaths[1] + ")\\n\\n![方案三：浅色模式对比](" + stagePaths[2] + ")\\n\\n![方案四：无框刻度条](" + stagePaths[3] + ")"
+	if sw, r := w.send(2*time.Minute, walkSession.SessionID, stageTurn); sw.Status != "idle" {
+		t.Fatalf("walkthrough stage turn: %+v", r)
+	}
+	f.Sessions["走查预览"] = walkSession.SessionID
 	return daemon.cmd.Process.Pid
 }
 

@@ -571,8 +571,13 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 	}
 	st.Problems = n.health
 	n.mu.Unlock()
-	st.RunningSessions = uint32(n.Running())
-	st.Sessions = n.Counts()
+	if n.sessions != nil {
+		sum := n.sessions.SessionSummary()
+		st.RunningSessions = uint32(sum.Running)
+		st.Sessions = sum.Counts
+	} else {
+		st.Sessions = map[string]uint32{}
+	}
 	if !n.cfg.TestBeforeHer {
 		st.Her = n.herStatus()
 	}

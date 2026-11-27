@@ -13,6 +13,14 @@ import (
 
 	herv1 "github.com/hermeshai/hermesh/gen/go/hermesh/her/v1"
 	"github.com/hermeshai/hermesh/internal/localipc"
+	"github.com/hermeshai/hermesh/pkg/metrics"
+)
+
+var (
+	mHerCalls        = metrics.Default.Counter("hermesh_her_rpc_calls_total")
+	mHerNotes        = metrics.Default.Counter("hermesh_her_rpc_notes_total")
+	mHerBytesRead    = metrics.Default.Counter("hermesh_her_rpc_bytes_read_total")
+	mHerBytesWritten = metrics.Default.Counter("hermesh_her_rpc_bytes_written_total")
 )
 
 // her's JSON-RPC 2.0 (her/docs/cli/json-rpc.md): one JSON object per line
@@ -130,6 +138,7 @@ func (c *conn) call(ctx context.Context, method string, params json.RawMessage) 
 	if err != nil {
 		return nil, err
 	}
+	mHerCalls.Inc()
 	if err := c.write(append(line, '\n')); err != nil {
 		return nil, err
 	}
@@ -155,6 +164,7 @@ func (c *conn) write(b []byte) error {
 		c.close(err)
 		return err
 	}
+	mHerBytesWritten.Add(int64(len(b)))
 	return nil
 }
 
@@ -162,6 +172,7 @@ func (c *conn) read() {
 	sc := bufio.NewScanner(c.nc)
 	sc.Buffer(make([]byte, 64<<10), maxLine)
 	for sc.Scan() {
+		mHerBytesRead.Add(int64(len(sc.Bytes()) + 1))
 		var m message
 		if json.Unmarshal(sc.Bytes(), &m) != nil {
 			continue
@@ -176,6 +187,7 @@ func (c *conn) read() {
 			continue
 		}
 		if m.Method != "" {
+			mHerNotes.Inc()
 			if c.notes == nil {
 				continue
 			}

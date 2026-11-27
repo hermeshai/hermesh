@@ -509,69 +509,21 @@ func (n *Machine) Running() int {
 	if n.sessions == nil {
 		return 0
 	}
-	all, err := n.sessions.ListAllSessions(false)
-	if err != nil {
-		return 0
-	}
-	r := 0
-	for _, s := range all {
-		switch s.Status {
-		case sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
-			sessionv1.SessionStatus_SESSION_STATUS_RUNNING,
-			sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
-			r++
-		}
-	}
-	return r
+	return n.sessions.SessionSummary().Running
 }
 
 func (n *Machine) Counts() map[string]uint32 {
-	c := map[string]uint32{}
 	if n.sessions == nil {
-		return c
+		return map[string]uint32{}
 	}
-	all, err := n.sessions.ListAllSessions(false)
-	if err != nil {
-		return c
-	}
-	for _, s := range all {
-		switch s.Status {
-		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED:
-			c["queued"]++
-		case sessionv1.SessionStatus_SESSION_STATUS_PREPARING:
-			c["preparing"]++
-		case sessionv1.SessionStatus_SESSION_STATUS_RUNNING:
-			c["running"]++
-		case sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
-			c["waiting_input"]++
-		case sessionv1.SessionStatus_SESSION_STATUS_IDLE:
-			c["idle"]++
-		case sessionv1.SessionStatus_SESSION_STATUS_CRASHED:
-			c["crashed"]++
-		}
-	}
-	return c
+	return n.sessions.SessionSummary().Counts
 }
 
 func (n *Machine) ActiveByProject() map[string]uint32 {
-	out := map[string]uint32{}
 	if n.sessions == nil {
-		return out
+		return map[string]uint32{}
 	}
-	all, err := n.sessions.ListAllSessions(false)
-	if err != nil {
-		return out
-	}
-	for _, s := range all {
-		switch s.Status {
-		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED,
-			sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
-			sessionv1.SessionStatus_SESSION_STATUS_RUNNING,
-			sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
-			out[s.ProjectId]++
-		}
-	}
-	return out
+	return n.sessions.SessionSummary().ActiveByProject
 }
 
 func (n *Machine) canReadDeleted(p *Principal, projectID, createdBy string) bool {

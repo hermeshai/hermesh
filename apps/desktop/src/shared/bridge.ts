@@ -1,7 +1,10 @@
+import type { Appearance, DarkPalette, LightPalette } from "./appearance";
 import type { DaemonInfo } from "./daemon";
 import type { ChatGptSignIn, ConnectorSignIn } from "./herSignin";
 import type { Language, LanguageChoice } from "./i18n";
 import type { UpdateInfo } from "./update";
+
+export type { Appearance, DarkPalette, LightPalette };
 
 // What the preload script gives the page (window.hermesh). Everything else
 // the page needs comes from hermeshd through app://hermesh/api.
@@ -70,6 +73,8 @@ export type Bridge = {
   language: Language;
   /** The app's appearance at the time this window was created, so its first frame matches without waiting for IPC. */
   appearance?: Appearance;
+  preferredLight?: LightPalette;
+  preferredDark?: DarkPalette;
   /** macOS's major version, 0 elsewhere: System Settings names its lists by it. */
   macos: number;
   /** Opens the pane of System Settings where the owner allows a computer use permission (main/computer.ts). */
@@ -80,6 +85,8 @@ export type Bridge = {
   onSettingsTab(cb: (tab: string) => void): () => void;
   /** Whether this window has the focus: now, and whenever it changes. */
   onWindowFocus(cb: (focused: boolean) => void): () => void;
+  /** Whether this window is visible on screen (not hidden or minimized): now, and whenever it changes. */
+  onWindowVisible?(cb: (visible: boolean) => void): () => void;
   /** Shows the main window with its session list narrowed to a grant (its client id) or a machine. */
   showInMain(filter: { grant: string } | { machine: string }): void;
   /** Shows the main window joining the owner as a trusted device (a machine only becoming one). */
@@ -167,6 +174,9 @@ export type Bridge = {
   getPreferences(): Promise<Preferences>;
   setPreferences(p: Partial<Preferences>): Promise<Preferences>;
   onPreferences(cb: (p: Preferences) => void): () => void;
+  /** Transient live preview while hovering an appearance card in Settings (null restores the saved preference). */
+  previewAppearance?(a: Appearance | null): void;
+  onAppearancePreview?(cb: (a: Appearance | null) => void): () => void;
   /** Quits and opens the app again (a new language takes effect). */
   relaunch(): void;
   /** Whether the app opens at login (Open Hermesh at login). */
@@ -215,11 +225,11 @@ export type Bridge = {
   traySize(height: number): void;
 };
 
-/** Light, soft dark, deep black ("暗黑模式"), or the system's. */
-export type Appearance = "system" | "light" | "dark" | "black";
-
 export type Preferences = {
   appearance: Appearance;
+  /** Which light and dark palettes "system" switches between (updated when the person picks one directly). */
+  preferredLight?: LightPalette;
+  preferredDark?: DarkPalette;
   notifyStarted: boolean;
   notifyQuestion: boolean;
   notifyFailed: boolean;

@@ -110,13 +110,16 @@ test("Her conversations: given to Her from a new session, the work she sends nes
 
   // Not archived while what it sent still runs; the work under it has no pin of its own.
   await convRow.hover();
+  await expect(convRow.getByRole("button", { name: "归档" })).toHaveCount(0);
   await convRow.getByRole("button", { name: "更多" }).click();
   const rowMenu = page.getByRole("menu", { name: "更多" });
   await expect(rowMenu.getByRole("menuitem", { name: "归档" })).toBeDisabled();
   await expect(rowMenu.getByRole("menuitem", { name: "归档" })).toHaveAttribute("title", "还有任务在进行");
   await page.keyboard.press("Escape");
   await childRow.hover();
-  await expect(childRow.getByRole("button", { name: "置顶" })).toHaveCount(0);
+  await childRow.getByRole("button", { name: "更多" }).click();
+  await expect(page.getByRole("menu", { name: "更多" }).getByRole("menuitem", { name: "置顶" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
   // By project, Her's conversations are a group of their own, right at the top.
   const view = async (pane: RegExp, menu: string, item: string, role: "menuitemradio" | "menuitemcheckbox") => {
