@@ -458,10 +458,10 @@ test("activeTodoSteps and sessionFocusText track live turns, background continua
   expect(sessionFocusText(p)).toBeUndefined();
 });
 
-test("windowTodoSteps builds 3-row smart window, handles parallel steps, and deduplicates focus text", () => {
+test("windowTodoSteps exposes all steps in order, handles parallel active steps, and deduplicates focus text", () => {
   expect(windowTodoSteps([])).toBeUndefined();
 
-  // <= 3 steps: direct display without fold chrome, and verbatim workText deduplicated:
+  // Verbatim workText matching active step is deduplicated:
   const short = windowTodoSteps(
     [
       { text: "Check motion constraints", status: "completed" },
@@ -470,13 +470,12 @@ test("windowTodoSteps builds 3-row smart window, handles parallel steps, and ded
     ],
     "Rewrite CALayer halo",
   )!;
-  expect(short.foldLeading).toBe(false);
-  expect(short.foldUpcoming).toBe(false);
+  expect(short.all).toHaveLength(3);
   expect(short.stepNumber).toBe(2);
-  expect(short.settledCount).toBe(1);
+  expect(short.active.map((a) => a.index)).toEqual([1]);
   expect(short.subFocus).toBeUndefined();
 
-  // >= 4 steps with parallel in_progress steps and distinct tool focus:
+  // Longer list with parallel in_progress steps and distinct tool focus keeps all steps un-folded:
   const long = windowTodoSteps(
     [
       { text: "Sync main", status: "completed" },
@@ -489,12 +488,9 @@ test("windowTodoSteps builds 3-row smart window, handles parallel steps, and ded
     ],
     "Running Playwright and Simulator suites",
   )!;
-  expect(long.foldLeading).toBe(true);
-  expect(long.leading).toHaveLength(3);
-  expect(long.settledCount).toBe(3);
+  expect(long.all).toHaveLength(7);
+  expect(long.total).toBe(7);
   expect(long.stepNumber).toBe(4);
   expect(long.active.map((a) => a.index)).toEqual([3, 4]);
-  expect(long.foldUpcoming).toBe(true);
-  expect(long.moreUpcomingCount).toBe(1);
   expect(long.subFocus).toBe("Running Playwright and Simulator suites");
 });

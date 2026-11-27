@@ -166,7 +166,6 @@ struct SessionPage: View {
     /// Horizontal drag offset when swiping the side panel's leading edge right to put it away.
     @GestureState private var panelDrag: CGFloat = 0
     @State private var questionTyping = false
-    @State private var todoExpanded = false
     @FocusState private var focused: Bool
 
     init(machineID: String, projectID: String) {
@@ -612,7 +611,7 @@ struct SessionPage: View {
                     .id(q.questionID)
                 }
                 if let todoWindow {
-                    SessionTodoSpine(window: todoWindow, since: workStatus?.since, hasWork: workStatus != nil, expanded: $todoExpanded)
+                    SessionTodoSpine(window: todoWindow, since: workStatus?.since, hasWork: workStatus != nil)
                 }
                 ConnectionLine(machine: machine, linkUp: s.status == .archived || (following && reachable), work: todoWindow == nil ? workStatus : nil)
                 if let f = sessionFailure(currentSession) {
@@ -624,8 +623,6 @@ struct SessionPage: View {
             .background(ConversationScrollFinder(box: scrollBox))
         }
         .keyboardAwayOnTap()
-        .onChange(of: sessionID) { _, _ in todoExpanded = false }
-        .onChange(of: todos.isEmpty) { _, empty in if empty { todoExpanded = false } }
         .onChange(of: questionTyping) { _, typingNow in
             if typingNow {
                 focused = false
@@ -2168,145 +2165,53 @@ private struct BackgroundTasksSheet: View {
     }
 }
 
-/// Inline B2 live checklist spine at the foot of the conversation: 18pt icon column aligned with `ConnectionLine`,
-/// a 1pt vertical spine connecting nodes, smart 3-row window while collapsed, and deduplicated live sub-focus + timer.
+/// Inline live checklist spine at the foot of the conversation: 18pt icon column aligned with `ConnectionLine`,
+/// per-node spine segments (traversed sage solid, future 1pt dashed, zero tail after last step), and deduplicated live sub-focus + timer.
 private struct SessionTodoSpine: View {
+    private enum SpineSegment {
+        case none
+        case traversed
+        case activeBridge
+        case future
+    }
+
     @Environment(\.scenePhase) private var phase
-    @Environment(\.accessibilityReduceMotion) private var still
     let window: TodoSpineWindow
     let since: Date?
     let hasWork: Bool
-    @Binding var expanded: Bool
 
     private static let tokenRegex = /`([^`]+)`|(\b[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.\/-]+|\b[a-zA-Z0-9_-]+\.(?:swift|tsx?|jsx?|go|rs|py|css|html|md|json|ya?ml|sql|db|app)\b)/
 
-    private var activeIndexSet: Set<Int> { Set(window.active.map(\.index)) }
-    private var lastActiveIndex: Int? { window.active.last?.index }
+    private var activeOrderByIndex: [Int: Int] {
+        Dictionary(uniqueKeysWithValues: window.active.enumerated().map { ($0.element.index, $0.offset) })
+    }
+    private var firstActiveIndex: Int { window.active.first?.index ?? 0 }
+    private var lastActiveIndex: Int { window.active.last?.index ?? 0 }
 
-    private var spined: Bool {
-        let collapsedRows = (window.foldLeading ? 1 : window.leading.count)
-            + window.active.count
-            + (window.foldUpcoming ? 1 : window.upcoming.count)
-        return (expanded ? window.total + 1 : collapsedRows) >= 2
+    private func segment(for step: IndexedTodoStep) -> SpineSegment {
+        guard step.index < window.total - 1 else { return .none }
+        if step.index < firstActiveIndex, step.status == .completed || step.status == .skipped {
+            return .traversed
+        }
+        if step.index >= lastActiveIndex {
+            return .future
+        }
+        return .activeBridge
     }
 
     var body: some View {
+        let activeOrder = activeOrderByIndex
         VStack(alignment: .leading, spacing: 0) {
-            if expanded {
-                Button {
-                    withAnimation(still ? nil : .snappy(duration: 0.22)) { expanded = false }
-                } label: {
-                    HStack(alignment: .center, spacing: 8) {
-                        glyphBox { checkCircle }
-                        HStack(spacing: 4) {
-                            Text("Steps · \(window.settledCount)/\(window.total) completed")
-                                .foregroundStyle(.secondary)
-                            Text("·").foregroundStyle(.tertiary)
-                            Text("Hide").foregroundStyle(.tertiary)
-                            Image(systemName: "chevron.up")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .font(.footnote)
-                    }
-                    .padding(.vertical, 3.5)
-                    .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("thread-todo-toggle")
-
-                ForEach(window.all, id: \.index) { step in
-                    if activeIndexSet.contains(step.index) {
-                        let order = window.active.firstIndex(where: { $0.index == step.index }) ?? 0
-                        activeNode(step, order: order)
-                    } else {
-                        passiveNode(step)
-                    }
-                }
-            } else {
-                if window.foldLeading {
-                    Button {
-                        withAnimation(still ? nil : .snappy(duration: 0.22)) { expanded = true }
-                    } label: {
-                        HStack(alignment: .center, spacing: 8) {
-                            glyphBox { checkCircle }
-                            HStack(spacing: 4) {
-                                Text("Completed \(window.leading.count) · \(window.total) total")
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 10, weight: .semibold))
-                            }
-                            .font(.footnote)
-                            .foregroundStyle(.tertiary)
-                        }
-                        .padding(.vertical, 3.5)
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("thread-todo-toggle")
-                } else {
-                    ForEach(window.leading, id: \.index) { passiveNode($0) }
-                }
-
-                ForEach(Array(window.active.enumerated()), id: \.element.index) { order, step in
+            ForEach(window.all, id: \.index) { step in
+                if let order = activeOrder[step.index] {
                     activeNode(step, order: order)
-                }
-
-                if window.foldUpcoming, let next = window.upcoming.first {
-                    HStack(alignment: .top, spacing: 8) {
-                        glyphBox { stepGlyph(next.status) }
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text(next.status == .pending ? String(localized: "Next: \(next.text)") : next.text)
-                                .font(.footnote)
-                                .foregroundStyle(.tertiary)
-                                .lineLimit(1)
-                            Button {
-                                withAnimation(still ? nil : .snappy(duration: 0.22)) { expanded = true }
-                            } label: {
-                                HStack(spacing: 2) {
-                                    Text("+\(window.moreUpcomingCount) more")
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 9.5, weight: .semibold))
-                                }
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .fixedSize()
-                        }
-                    }
-                    .padding(.vertical, 3.5)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("thread-todo-step-\(next.index)")
                 } else {
-                    ForEach(Array(window.upcoming.enumerated()), id: \.element.index) { idx, step in
-                        if window.foldLeading, idx == 0, step.status == .pending {
-                            HStack(alignment: .top, spacing: 8) {
-                                glyphBox { stepGlyph(step.status) }
-                                Text("Next: \(step.text)")
-                                    .font(.footnote)
-                                    .foregroundStyle(.tertiary)
-                                    .lineLimit(1)
-                            }
-                            .padding(.vertical, 3.5)
-                            .accessibilityElement(children: .combine)
-                            .accessibilityIdentifier("thread-todo-step-\(step.index)")
-                        } else {
-                            passiveNode(step)
-                        }
-                    }
+                    passiveNode(step)
                 }
             }
         }
+        .padding(.top, 3)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(alignment: .topLeading) {
-            if spined {
-                Rectangle()
-                    .fill(Palette.separator)
-                    .frame(width: 1)
-                    .padding(.leading, 8.5)
-                    .padding(.vertical, 10)
-            }
-        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("thread-todo-card")
     }
@@ -2316,7 +2221,7 @@ private struct SessionTodoSpine: View {
         let showSub = isLast && window.subFocus != nil
         let deduplicatedWork = isLast && window.subFocus == nil && hasWork
         HStack(alignment: .top, spacing: 8) {
-            glyphBox { stepGlyph(step.status) }
+            glyphBox(active: true) { stepGlyph(step.status) }
             VStack(alignment: .leading, spacing: 2.5) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(Self.styledStepText(step.text, meta: order == 0 ? "\(window.stepNumber)/\(window.total)" : nil))
@@ -2368,19 +2273,20 @@ private struct SessionTodoSpine: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 4.5)
+        .padding(.vertical, 6)
+        .background { spineLine(segment(for: step), active: true) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("thread-todo-step-\(step.index)")
     }
 
     @ViewBuilder private func passiveNode(_ step: IndexedTodoStep) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            glyphBox { stepGlyph(step.status) }
+            glyphBox(active: false) { stepGlyph(step.status) }
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(Self.styledStepText(step.text))
                     .font(.footnote)
                     .foregroundStyle(step.status == .pending ? .secondary : .tertiary)
-                    .opacity(step.status == .pending ? 0.8 : 1)
+                    .opacity(step.status == .pending ? 0.76 : 1)
                     .fixedSize(horizontal: false, vertical: true)
                 if step.status == .skipped {
                     Text("Skipped")
@@ -2393,24 +2299,34 @@ private struct SessionTodoSpine: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 3.5)
+        .padding(.vertical, 2.5)
+        .background { spineLine(segment(for: step), active: false) }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("thread-todo-step-\(step.index)")
     }
 
-    private func glyphBox<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        content()
-            .frame(width: 18, height: 20)
-            .background(Color(UIColor.systemBackground))
+    @ViewBuilder private func spineLine(_ seg: SpineSegment, active: Bool) -> some View {
+        if seg != .none {
+            GeometryReader { geo in
+                let startY: CGFloat = active ? 24 : 20
+                let endY: CGFloat = geo.size.height + 4
+                if endY > startY {
+                    Path { p in
+                        p.move(to: CGPoint(x: 9, y: startY))
+                        p.addLine(to: CGPoint(x: 9, y: endY))
+                    }
+                    .stroke(
+                        seg == .traversed ? Color.green.opacity(0.30) : (seg == .future ? Color(UIColor.quaternaryLabel) : Palette.separator),
+                        style: seg == .future ? StrokeStyle(lineWidth: 1, dash: [2.5, 2.5]) : StrokeStyle(lineWidth: 1)
+                    )
+                }
+            }
+        }
     }
 
-    private var checkCircle: some View {
-        Image(systemName: "checkmark")
-            .font(.system(size: 8.5, weight: .bold))
-            .foregroundStyle(.green)
-            .frame(width: 14, height: 14)
-            .background(Color.green.opacity(0.14), in: .circle)
-            .overlay(Circle().strokeBorder(Color.green.opacity(0.35), lineWidth: 0.8))
+    private func glyphBox<Content: View>(active: Bool, @ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .frame(width: 18, height: active ? 20 : 19)
     }
 
     @ViewBuilder private func stepGlyph(_ status: TodoStepStatus) -> some View {
@@ -2420,7 +2336,7 @@ private struct SessionTodoSpine: View {
         case .completed:
             Image(systemName: "checkmark")
                 .font(.system(size: 10.5, weight: .semibold))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Color.green.opacity(0.8))
         case .skipped:
             Image(systemName: "minus")
                 .font(.system(size: 10.5, weight: .semibold))

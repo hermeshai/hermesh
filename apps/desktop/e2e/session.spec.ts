@@ -1316,16 +1316,17 @@ test("a live ACP session shows its inline step checklist and focus while running
     const todoCard = page.getByTestId("thread-todo-card");
     await expect(todoCard).toBeVisible({ timeout: 10_000 });
 
-    // B2 smart 3-row window: folds leading settled steps, shows active step + 3/5, previews next step + "+1 步":
-    const toggle = page.getByTestId("thread-todo-toggle");
-    await expect(toggle).toContainText("已完成前 2 步 · 共 5 步");
-    await expect(page.getByTestId("thread-todo-step-0")).toHaveCount(0);
+    // All 5 steps render directly inline in order with no fold toggle, highlighting active step 3/5:
+    await expect(page.getByTestId("thread-todo-toggle")).toHaveCount(0);
+    await expect(page.getByTestId("thread-todo-step-0")).toHaveAttribute("data-status", "completed");
+    await expect(page.getByTestId("thread-todo-step-0")).toContainText("梳理历史归约");
+    await expect(page.getByTestId("thread-todo-step-1")).toHaveAttribute("data-status", "completed");
     await expect(page.getByTestId("thread-todo-step-2")).toHaveAttribute("data-status", "in_progress");
     await expect(page.getByTestId("thread-todo-step-2")).toContainText("检查现有动效实现");
     await expect(page.getByTestId("thread-todo-step-2")).toContainText("3/5");
     await expect(page.getByTestId("thread-todo-step-3")).toHaveAttribute("data-status", "pending");
-    await expect(page.getByTestId("thread-todo-step-3")).toContainText("下一步：重写侧边栏光环");
-    await expect(page.getByTestId("thread-todo-step-4")).toHaveCount(0);
+    await expect(page.getByTestId("thread-todo-step-3")).toContainText("重写侧边栏光环");
+    await expect(page.getByTestId("thread-todo-step-4")).toHaveAttribute("data-status", "skipped");
 
     // Flows inline inside .dbody above the composer (never inside .cmp-zone), and never leaks raw update_steps tool rows:
     const inScrollFlow = await todoCard.evaluate((el) => !!el.closest(".dbody") && !el.closest(".cmp-zone"));
@@ -1353,13 +1354,6 @@ test("a live ACP session shows its inline step checklist and focus while running
     );
     expect(animProps.length).toBeGreaterThan(0);
     for (const p of animProps) expect(p === "transform" || p === "opacity", `unexpected animated prop: ${p}`).toBe(true);
-
-    // Clicking the fold header expands all 5 steps inline, and clicking again collapses back:
-    await toggle.click();
-    await expect(page.getByTestId("thread-todo-step-0")).toContainText("梳理历史归约");
-    await expect(page.getByTestId("thread-todo-step-4")).toHaveAttribute("data-status", "skipped");
-    await page.getByTestId("thread-todo-toggle").click();
-    await expect(page.getByTestId("thread-todo-step-0")).toHaveCount(0);
 
     // Once all steps complete/skip and the turn settles, the inline checklist auto-collapses:
     await expect(log).toContainText("全部优化已完成", { timeout: 15_000 });

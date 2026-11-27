@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>随流内嵌任务提示 · 四版精修排版与极端场景原型</title>
+<title>B2 全展开随流任务脊柱 · 零折叠精修对比原型</title>
 <style>
 @font-face {
   font-family: "Google Sans Flex";
@@ -22,22 +22,17 @@
   --font-ios: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", system-ui, sans-serif;
   --mono: "Google Sans Code", ui-monospace, "SF Mono", Menlo, Monaco, monospace;
   --ease: cubic-bezier(.22, 1, .36, 1);
-  --ease-out: cubic-bezier(.2, 0, 0, 1);
-  --ease-spring: cubic-bezier(.34, 1.4, .64, 1);
-  /* Exact Hermesh spacing & column tokens (app.css + brand.css) */
   --sp-1: 8px;
   --sp-2: 13px;
-  --sp-3: 21px;
   --conv-w: 728px;
   --cmp-w: 768px;
 }
 
-/* ---------- Pure Black OLED (app.css data-dark-style="black" + iOS OLED #000) ---------- */
+/* ---------- Pure Black (Onyx deep black in app.css + iPhone OLED #000) ---------- */
 [data-theme="black"] {
   --page: #090a0e;
   --page-fg: #ededf2;
   --page-fg2: #9498a6;
-  --page-fg3: #626675;
   --page-card: #121319;
   --page-bd: rgba(255,255,255,.085);
   --page-btn: rgba(255,255,255,.075);
@@ -45,6 +40,8 @@
 
   --win: #070709;
   --win-rgb: 7,7,9;
+  --bub: #1f1f24;
+  --bub-fg: #f5f5f7;
   --pill: #15151a;
   --pill-bd: rgba(255,255,255,.085);
   --cmp-hi: rgba(255,255,255,.05);
@@ -58,34 +55,28 @@
   --glass-sh: 0 0 0 .5px rgba(255,255,255,.13), inset 0 .5px 0 rgba(255,255,255,.12), 0 10px 28px rgba(0,0,0,.6);
 
   --l1: #f5f5f7;
-  --l2: rgba(235,235,245,.58);
-  --l3: rgba(235,235,245,.35);
-  --l4: rgba(255,255,255,.15);
-  --sep: rgba(255,255,255,.08);
+  --l2: #bcbdc6;
+  --l3: #7f818a;
+  --l4: rgba(255,255,255,.16);
+  --sep: rgba(255,255,255,.075);
+  --spine-done: rgba(122,174,102,.30);
+  --spine-todo: rgba(255,255,255,.075);
   --fill: rgba(255,255,255,.044);
   --fill2: rgba(255,255,255,.08);
   --fill3: rgba(255,255,255,.13);
-  --code: rgba(255,255,255,.07);
+  --code: rgba(255,255,255,.075);
 
   --accent: #4a66ff;
-  --accent-t: #8fa2ff;
+  --accent-t: #8ab4f8;
   --accent-bg: rgba(74,102,255,.16);
-  --ok: #3fcf86;
-  --ok-bg: rgba(63,207,134,.13);
+  --ok: #7aae66;
+  --ok-bg: rgba(122,174,102,.14);
   --danger: #ff6670;
   --danger-bg: rgba(255,102,112,.14);
-  --warn: #f5a53c;
-  --warn-bg: rgba(245,165,60,.14);
 
-  --aurora-g0: #22e1c9;
-  --aurora-g1: #00d0de;
-  --aurora-g2: #00b9f1;
-  --aurora-g3: #009cfe;
-  --aurora-g4: #3e7bff;
-  --aurora-g5: #5175ff;
-  --aurora-g6: #616eff;
-  --aurora-g7: #6e68ff;
-  --aurora-g8: #7b61ff;
+  --aurora-g0: #22e1c9; --aurora-g1: #00d0de; --aurora-g2: #00b9f1;
+  --aurora-g3: #009cfe; --aurora-g4: #3e7bff; --aurora-g5: #5175ff;
+  --aurora-g6: #616eff; --aurora-g7: #6e68ff; --aurora-g8: #7b61ff;
   --beam-opacity: 0.72;
   --beam-blend: plus-lighter;
 }
@@ -95,7 +86,6 @@
   --page: #0e0f14;
   --page-fg: #ececf1;
   --page-fg2: #989ba8;
-  --page-fg3: #666977;
   --page-card: #171820;
   --page-bd: rgba(255,255,255,.085);
   --page-btn: rgba(255,255,255,.08);
@@ -103,6 +93,8 @@
 
   --win: #1e1e21;
   --win-rgb: 30,30,33;
+  --bub: #303030;
+  --bub-fg: #f0f0ed;
   --pill: #29292d;
   --pill-bd: rgba(255,255,255,.11);
   --cmp-hi: rgba(255,255,255,.08);
@@ -115,45 +107,91 @@
   --glass-pill: rgba(32,32,37,.82);
   --glass-sh: 0 0 0 .5px rgba(255,255,255,.13), inset 0 .5px 0 rgba(255,255,255,.12), 0 10px 28px rgba(0,0,0,.55);
 
-  --l1: rgba(255,255,255,.90);
-  --l2: rgba(255,255,255,.56);
-  --l3: rgba(255,255,255,.34);
-  --l4: rgba(255,255,255,.15);
+  --l1: #f0f0ed;
+  --l2: #b2b2ad;
+  --l3: #8a8a85;
+  --l4: rgba(255,255,255,.16);
   --sep: rgba(255,255,255,.09);
+  --spine-done: rgba(122,174,102,.32);
+  --spine-todo: rgba(255,255,255,.085);
   --fill: rgba(255,255,255,.05);
   --fill2: rgba(255,255,255,.085);
   --fill3: rgba(255,255,255,.14);
-  --code: rgba(255,255,255,.07);
+  --code: rgba(255,255,255,.075);
 
   --accent: #4a66ff;
-  --accent-t: #8fa2ff;
+  --accent-t: #8ab4f8;
   --accent-bg: rgba(74,102,255,.17);
-  --ok: #3fcf86;
-  --ok-bg: rgba(63,207,134,.14);
+  --ok: #7aae66;
+  --ok-bg: rgba(122,174,102,.14);
   --danger: #ff6670;
   --danger-bg: rgba(255,102,112,.14);
-  --warn: #f5a53c;
-  --warn-bg: rgba(245,165,60,.14);
 
-  --aurora-g0: #22e1c9;
-  --aurora-g1: #00d0de;
-  --aurora-g2: #00b9f1;
-  --aurora-g3: #009cfe;
-  --aurora-g4: #3e7bff;
-  --aurora-g5: #5175ff;
-  --aurora-g6: #616eff;
-  --aurora-g7: #6e68ff;
-  --aurora-g8: #7b61ff;
+  --aurora-g0: #22e1c9; --aurora-g1: #00d0de; --aurora-g2: #00b9f1;
+  --aurora-g3: #009cfe; --aurora-g4: #3e7bff; --aurora-g5: #5175ff;
+  --aurora-g6: #616eff; --aurora-g7: #6e68ff; --aurora-g8: #7b61ff;
   --beam-opacity: 0.68;
   --beam-blend: plus-lighter;
 }
 
-/* ---------- Light Mode ---------- */
+/* ---------- Soft Light ("柔白", app.css data-light-style="soft") ---------- */
+[data-theme="soft"] {
+  --page: #e4e6ec;
+  --page-fg: #202127;
+  --page-fg2: #60636d;
+  --page-card: #f4f5f7;
+  --page-bd: rgba(32,33,39,.09);
+  --page-btn: rgba(32,33,39,.07);
+  --page-bar: rgba(244,245,247,.90);
+
+  --win: #f4f5f7;
+  --win-rgb: 244,245,247;
+  --bub: #e7ebf2;
+  --bub-fg: #202127;
+  --pill: #ffffff;
+  --pill-bd: rgba(32,33,39,.10);
+  --cmp-hi: rgba(255,255,255,.8);
+  --cmp-lift: 0 0 0 1px rgba(32,33,39,.09), 0 6px 18px -8px rgba(32,33,39,.10);
+  --slice-sh: 0 0 0 .5px rgba(32,33,39,.14), 0 20px 52px rgba(20,24,40,.11);
+
+  --ios-bg: #f4f5f7;
+  --ios-bg-rgb: 244,245,247;
+  --glass: rgba(255,255,255,.78);
+  --glass-pill: rgba(255,255,255,.86);
+  --glass-sh: 0 0 0 .5px rgba(32,33,39,.09), inset 0 .5px 0 rgba(255,255,255,.9), 0 8px 24px rgba(32,33,39,.09);
+
+  --l1: #202127;
+  --l2: #5b5e68;
+  --l3: #7f838f;
+  --l4: rgba(32,33,39,.17);
+  --sep: rgba(32,33,39,.075);
+  --spine-done: rgba(23,146,79,.28);
+  --spine-todo: rgba(32,33,39,.08);
+  --fill: rgba(32,33,39,.04);
+  --fill2: rgba(32,33,39,.07);
+  --fill3: rgba(32,33,39,.12);
+  --code: rgba(32,33,39,.06);
+
+  --accent: #2f6fd6;
+  --accent-t: #285fb8;
+  --accent-bg: rgba(47,111,214,.10);
+  --ok: #17924f;
+  --ok-bg: rgba(23,146,79,.11);
+  --danger: #d7333f;
+  --danger-bg: rgba(215,51,63,.10);
+
+  --aurora-g0: #0891b2; --aurora-g1: #008cc2; --aurora-g2: #0084d3;
+  --aurora-g3: #0079e3; --aurora-g4: #2f6bf0; --aurora-g5: #4361f2;
+  --aurora-g6: #5356f3; --aurora-g7: #614af2; --aurora-g8: #6d3cf0;
+  --beam-opacity: 0.78;
+  --beam-blend: multiply;
+}
+
+/* ---------- Pure Light ---------- */
 [data-theme="light"] {
   --page: #e8eaf0;
   --page-fg: #1b1c22;
   --page-fg2: #5d606d;
-  --page-fg3: #8a8e9c;
   --page-card: #ffffff;
   --page-bd: rgba(0,0,0,.085);
   --page-btn: rgba(20,24,40,.065);
@@ -161,23 +199,27 @@
 
   --win: #ffffff;
   --win-rgb: 255,255,255;
+  --bub: #eef1f8;
+  --bub-fg: #1b1c22;
   --pill: #ffffff;
   --pill-bd: rgba(0,0,0,.105);
   --cmp-hi: transparent;
   --cmp-lift: 0 .5px 1px rgba(0,0,0,.05), 0 3px 10px rgba(10,20,50,.06);
   --slice-sh: 0 0 0 .5px rgba(0,0,0,.15), 0 20px 52px rgba(10,20,50,.12);
 
-  --ios-bg: #fbfbfc;
-  --ios-bg-rgb: 251,251,252;
+  --ios-bg: #ffffff;
+  --ios-bg-rgb: 255,255,255;
   --glass: rgba(250,250,252,.82);
-  --glass-pill: rgba(255,255,255,.86);
+  --glass-pill: rgba(255,255,255,.88);
   --glass-sh: 0 0 0 .5px rgba(0,0,0,.095), inset 0 .5px 0 rgba(255,255,255,.85), 0 10px 28px rgba(20,24,40,.10);
 
-  --l1: rgba(0,0,0,.87);
-  --l2: rgba(0,0,0,.55);
-  --l3: rgba(0,0,0,.34);
-  --l4: rgba(0,0,0,.14);
+  --l1: rgba(0,0,0,.88);
+  --l2: rgba(0,0,0,.56);
+  --l3: rgba(0,0,0,.36);
+  --l4: rgba(0,0,0,.16);
   --sep: rgba(0,0,0,.08);
+  --spine-done: rgba(23,146,79,.28);
+  --spine-todo: rgba(0,0,0,.085);
   --fill: rgba(0,0,0,.042);
   --fill2: rgba(0,0,0,.075);
   --fill3: rgba(0,0,0,.12);
@@ -190,18 +232,10 @@
   --ok-bg: rgba(23,146,79,.11);
   --danger: #d7333f;
   --danger-bg: rgba(215,51,63,.10);
-  --warn: #c86c08;
-  --warn-bg: rgba(200,108,8,.11);
 
-  --aurora-g0: #0891b2;
-  --aurora-g1: #008cc2;
-  --aurora-g2: #0084d3;
-  --aurora-g3: #0079e3;
-  --aurora-g4: #2f6bf0;
-  --aurora-g5: #4361f2;
-  --aurora-g6: #5356f3;
-  --aurora-g7: #614af2;
-  --aurora-g8: #6d3cf0;
+  --aurora-g0: #0891b2; --aurora-g1: #008cc2; --aurora-g2: #0084d3;
+  --aurora-g3: #0079e3; --aurora-g4: #2f6bf0; --aurora-g5: #4361f2;
+  --aurora-g6: #5356f3; --aurora-g7: #614af2; --aurora-g8: #6d3cf0;
   --beam-opacity: 0.78;
   --beam-blend: multiply;
 }
@@ -214,14 +248,13 @@ body {
   font: 14px/1.55 var(--font-mac);
   font-variation-settings: "ROND" 0, "slnt" 0, "wdth" 94;
   -webkit-font-smoothing: antialiased;
-  padding-bottom: 124px;
+  padding-bottom: 112px;
 }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 svg { display: block; flex: none; }
 
-/* ---------- Hermesh Emergence Mark + Shimmer (app.css + brand.css) ---------- */
+/* ---------- Hermesh Emergence Mark + Shimmer ---------- */
 .hm-mark { flex: none; display: inline-block; }
-.hm-beam { opacity: var(--beam-opacity); mix-blend-mode: var(--beam-blend); }
 .hm-seq .hm-beam {
   opacity: .26;
   mix-blend-mode: normal;
@@ -245,19 +278,17 @@ svg { display: block; flex: none; }
   to { -webkit-mask-position: 0 0; mask-position: 0 0; }
 }
 
-/* Optional Alignment Guide Overlay (Toggleable to inspect the 20px / 18px grid!) */
+/* Optional Alignment Guide Overlay */
 .show-guides .guide-col {
   box-shadow: inset 1px 0 0 rgba(255, 70, 120, .38), inset -1px 0 0 rgba(255, 70, 120, .38);
 }
-.show-guides .guide-axis {
-  position: relative;
-}
+.show-guides .guide-axis { position: relative; }
 .show-guides .guide-axis::after {
   content: "";
   position: absolute;
   top: 0; bottom: 0;
-  left: 26px; /* 18px icon slot + 8px gap = exact text start axis! */
-  border-left: 1px dashed rgba(74, 150, 255, .42);
+  left: 26px; /* 18px icon slot + 8px gap = exact x=26px text start axis */
+  border-left: 1px dashed rgba(74, 150, 255, .45);
   pointer-events: none;
 }
 
@@ -277,7 +308,7 @@ svg { display: block; flex: none; }
   margin: 6px 0 13px;
   color: var(--page-fg2);
   font-size: 13px;
-  max-width: 96ch;
+  max-width: 98ch;
   line-height: 1.65;
 }
 .scheme-tabs {
@@ -351,6 +382,7 @@ svg { display: block; flex: none; }
 }
 .tag-pill.good { background: var(--ok-bg); color: var(--ok); }
 .tag-pill.info { background: var(--accent-bg); color: var(--accent-t); }
+.tag-pill.base { background: var(--fill2); color: var(--page-fg2); }
 
 .devices-row {
   display: flex;
@@ -373,11 +405,11 @@ svg { display: block; flex: none; }
 .dev-caption b { color: var(--page-fg); font-weight: 600; }
 
 /* ==========================================================================
-   MAC WINDOW: Exact 728px Conversation Inside 768px Composer Grid (app.css L578)
+   MAC WINDOW: Exact 728px Conversation Inside 768px Composer Grid
    ========================================================================== */
 .mac-win {
   position: relative;
-  height: 600px;
+  height: 620px;
   border-radius: 16px;
   background: var(--win);
   box-shadow: var(--slice-sh);
@@ -412,8 +444,7 @@ svg { display: block; flex: none; }
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* Exact Hermesh geometry: composer is max 768px with 32px gutter; conversation is 728px inset 20px inside composer! */
-  padding: 20px 52px 146px;
+  padding: 20px 52px 142px;
   scrollbar-width: none;
 }
 .mac-chat::-webkit-scrollbar { display: none; }
@@ -422,31 +453,31 @@ svg { display: block; flex: none; }
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2); /* 13px exact .tr gap! */
+  gap: var(--sp-2);
 }
 .m-ubub {
   align-self: flex-end;
   max-width: 80%;
-  background: var(--accent);
-  color: #fff;
+  background: var(--bub);
+  color: var(--bub-fg);
   border-radius: 14px;
   padding: 9px 15px;
   font-size: 14px;
   line-height: 1.6;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 .m-tool {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 14px;
+  gap: 8px;
+  font-size: 13.5px;
   line-height: 20px;
   color: var(--l2);
 }
 .m-tool code, .inline-code {
   font-family: var(--mono);
   font-size: .88em;
-  background: var(--fill2);
+  background: var(--code);
   padding: 1px 5px;
   border-radius: 4px;
   word-break: normal;
@@ -459,7 +490,13 @@ svg { display: block; flex: none; }
   line-height: 1.65;
   color: var(--l1);
 }
-/* Mac Composer Zone: 32px gutter around 768px composer -> 20px wider per side than 728px conversation! */
+.m-am code {
+  font-family: var(--mono);
+  font-size: .88em;
+  background: var(--code);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
 .mac-zone {
   position: absolute;
   left: 0; right: 0; bottom: 0;
@@ -468,11 +505,7 @@ svg { display: block; flex: none; }
   padding: 28px 32px 16px;
   background: linear-gradient(to bottom, rgba(var(--win-rgb), 0), rgba(var(--win-rgb), .92) 26px, var(--win) 40px);
 }
-.mac-zcol {
-  pointer-events: auto;
-  max-width: var(--cmp-w);
-  margin: 0 auto;
-}
+.mac-zcol { pointer-events: auto; max-width: var(--cmp-w); margin: 0 auto; }
 .mac-cmp {
   background: var(--pill);
   border-radius: 18px;
@@ -481,26 +514,15 @@ svg { display: block; flex: none; }
   flex-direction: column;
 }
 .mac-cmp-in {
-  min-height: 52px;
-  padding: 14px 17px 6px; /* 32px + 17px = 49px, practically aligned with 52px conversation left edge! */
-  font-size: 15px;
+  min-height: 50px;
+  padding: 13px 17px 5px;
+  font-size: 14.5px;
   line-height: 21px;
   color: var(--l3);
 }
-.mac-cmp-bar {
-  display: flex;
-  align-items: center;
-  padding: 0 8px 8px 9px;
-  gap: 2px;
-}
-.mac-ib {
-  width: 32px; height: 32px; border-radius: 50%; color: var(--l3);
-  display: inline-flex; align-items: center; justify-content: center;
-}
-.mac-pick {
-  height: 28px; padding: 0 8px; border-radius: 8px;
-  display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--l1);
-}
+.mac-cmp-bar { display: flex; align-items: center; padding: 0 8px 8px 9px; gap: 2px; }
+.mac-ib { width: 32px; height: 32px; border-radius: 50%; color: var(--l3); display: inline-flex; align-items: center; justify-content: center; }
+.mac-pick { height: 28px; padding: 0 8px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--l1); }
 .mac-pick img { width: 15px; height: 15px; border-radius: 4px; }
 .mac-pick .lvl { color: var(--l3); }
 .mac-pick .lvl::before { content: "·"; margin-right: 5px; }
@@ -509,48 +531,8 @@ svg { display: block; flex: none; }
   color: var(--l1); box-shadow: inset 0 0 0 1.5px var(--l4);
   display: inline-flex; align-items: center; justify-content: center;
 }
-.mac-send {
-  width: 30px; height: 30px; margin: 1px; border-radius: 50%; color: var(--l3);
-  display: inline-flex; align-items: center; justify-content: center;
-}
+.mac-send { width: 30px; height: 30px; margin: 1px; border-radius: 50%; color: var(--l3); display: inline-flex; align-items: center; justify-content: center; }
 
-/* ==========================================================================
-   SHARED STRICT 18PX ICON GRID & TYPOGRAPHIC TOKENS FOR INLINE FLOW
-   ========================================================================== */
-
-/* Exact Hermesh ConnectionLine (.th-work in composer.css L46: inline timer right beside text, never stranded far right!) */
-.work-line {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: 13.5px;
-  line-height: 20px;
-  color: var(--l2);
-}
-.work-line .slot-18 {
-  width: 18px; height: 20px;
-  flex: none;
-  display: flex; align-items: center; justify-content: center;
-}
-.work-line .w-body {
-  flex: 0 1 auto;
-  min-width: 0;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  overflow-wrap: break-word;
-}
-.work-line .w-timer {
-  flex: none;
-  font-size: 12.5px;
-  line-height: 20px;
-  color: var(--l3);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* Universal 18px Icon Slot so 13px check, 14px ring, and 16-18px Mark share ONE exact center axis! */
 .g18 {
   width: 18px;
   height: 20px;
@@ -559,17 +541,6 @@ svg { display: block; flex: none; }
   justify-content: center;
   flex: none;
 }
-.t-meta {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  line-height: 20px;
-  color: var(--l3);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
 .status-chip {
   font-family: var(--font-mac);
   font-size: 11px;
@@ -577,125 +548,53 @@ svg { display: block; flex: none; }
   padding: 0 5.5px;
   border-radius: 4px;
   font-weight: 550;
+  margin-left: 6px;
 }
-.status-chip.run { background: var(--accent-bg); color: var(--accent-t); }
-.status-chip.fail { background: var(--danger-bg); color: var(--danger); }
+.status-chip.run { background: var(--accent-bg); color: var(--accent-t); margin-left: 0; }
 .status-chip.skip { background: var(--fill2); color: var(--l3); }
 
 /* ==========================================================================
-   VARIANT B1: 细线清单卡 + 底栏联动 (Hairline Plan Card · SettledCard / StepsCard 同源)
-   ========================================================================== */
-.b1-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.b1-card {
-  width: 100%;
-  max-width: 560px; /* Optimal reading width on Desktop so short steps never float in a 728px void; 100% on iPhone! */
-  border-radius: 12px;
-  background: var(--fill);
-  box-shadow: inset 0 0 0 .5px var(--sep);
-  overflow: hidden;
-}
-.phone .b1-card { max-width: 100%; }
-.b1-head {
-  width: 100%;
-  min-height: 38px;
-  padding: 8px 12px;
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  column-gap: 8px;
-  align-items: center;
-  text-align: left;
-  transition: background .15s;
-}
-.b1-head:hover { background: var(--fill2); }
-.b1-h-title {
-  min-width: 0;
-  font-size: 13.5px;
-  line-height: 20px;
-  color: var(--l1);
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.b1-h-title.muted {
-  color: var(--l2);
-  font-size: 12.5px;
-  font-weight: 500;
-}
-.b1-segs {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-.b1-segs i {
-  width: 9px; height: 3px; border-radius: 2px; background: var(--fill3); display: block;
-}
-.b1-segs i.done { background: var(--ok); opacity: .8; }
-.b1-segs i.run { background: var(--accent-t); }
-.b1-segs i.fail { background: var(--danger); }
-
-.b1-list {
-  border-top: .5px solid var(--sep);
-  max-height: 224px; /* ~6.5 rows cap with soft scroll, matching StepsCard! */
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  scrollbar-width: thin;
-}
-.b1-row {
-  padding: 7.5px 12px;
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  column-gap: 8px;
-  align-items: start;
-  font-size: 13px;
-  line-height: 19.5px;
-}
-.b1-row + .b1-row { border-top: .5px solid var(--sep); }
-.b1-row.in_progress { background: rgba(74, 102, 255, .055); }
-[data-theme="light"] .b1-row.in_progress { background: rgba(61, 91, 255, .045); }
-.b1-row.failed { background: rgba(255, 102, 112, .06); }
-.b1-row .r-txt {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--l2);
-}
-.b1-row.completed .r-txt, .b1-row.skipped .r-txt { color: var(--l3); }
-.b1-row.in_progress .r-txt { color: var(--l1); font-weight: 500; }
-.b1-row.failed .r-txt { color: var(--danger); font-weight: 500; }
-.b1-subfocus {
-  margin-top: 2px;
-  font-size: 12px;
-  line-height: 17px;
-  color: var(--l2);
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
-  overflow: hidden;
-}
-
-/* ==========================================================================
-   VARIANT B2: 呼吸脊柱时间轴 · 三行智能视窗 (Editorial Spine · 零卡片 18px 严苛轴线)
+   B2 ALL-EXPANDED INLINE SPINE: S0 (Baseline) vs S1 (Refined) vs S2 (Dashed)
    ========================================================================== */
 .b2-spine {
   position: relative;
   display: flex;
   flex-direction: column;
 }
-/* Continuous 1px vertical spine centered at x=9px (middle of 18px icon column!) */
-.b2-spine::before {
+
+/* --- S0 Baseline (what happens right after deleting fold code without visual polish):
+   single continuous ::before line shoots past last icon when last step wraps / has subFocus! --- */
+.b2-spine.s0 { padding-top: 8px; }
+.b2-spine.s0.spined::before {
   content: "";
   position: absolute;
   left: 8.5px;
-  top: 10px;
+  top: 18px;
   bottom: 10px;
   width: 1px;
   background: var(--sep);
   pointer-events: none;
+}
+.b2-spine.s0 .b2-node { padding: 3.5px 0; }
+.b2-spine.s0 .b2-node.active { padding: 4.5px 0; }
+.b2-spine.s0 .b2-glyph {
+  width: 18px; height: 20px;
+  background: var(--win);
+  display: flex; align-items: center; justify-content: center;
+  position: relative; z-index: 1;
+}
+.phone .b2-spine.s0 .b2-glyph { background: var(--ios-bg); }
+.b2-spine.s0 .b2-passive-txt { font-size: 13px; line-height: 20px; color: var(--l3); overflow-wrap: break-word; }
+.b2-spine.s0 .b2-node.pending .b2-passive-txt { color: var(--l2); opacity: .78; }
+
+/* --- S1 & S2 Refined All-Expanded Spine:
+   1. Per-node segment between icon centers -> ZERO dangling tail on last step!
+   2. Traversed segment (completed -> next) subtly tinted/solid vs upcoming segment softer/dashed.
+   3. Three-tier hierarchy: muted sage-green check + compact 12.5px completed rows ->
+      breathing active focal row (6.5px vertical rhythm + 14px medium + 2-line shimmer subFocus) ->
+      crisp hollow ring + calm secondary upcoming rows. --- */
+.b2-spine.refined {
+  padding-top: 5px;
 }
 .b2-node {
   position: relative;
@@ -703,48 +602,61 @@ svg { display: block; flex: none; }
   grid-template-columns: 18px minmax(0, 1fr);
   column-gap: 8px;
   align-items: start;
-  padding: 4px 0;
+  min-width: 0;
 }
-/* Mask behind each 18px glyph so the 1px vertical spine never pierces through icons! */
-.b2-glyph {
+.b2-spine.refined .b2-node {
+  padding: 2.5px 0;
+}
+.b2-spine.refined .b2-node.active {
+  padding: 6px 0; /* Breathing room around the active step so the eye anchors immediately */
+}
+.b2-spine.refined .b2-glyph {
   width: 18px;
-  height: 20px;
-  background: var(--win);
+  height: 19px;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   z-index: 1;
 }
-.phone .b2-glyph { background: var(--ios-bg); }
-.b2-fold-btn {
-  width: fit-content;
-  max-width: 100%;
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  column-gap: 8px;
-  align-items: center;
-  padding: 3px 0;
-  text-align: left;
-  color: var(--l3);
-  font-size: 13px;
-  line-height: 20px;
-  transition: color .15s;
+.b2-spine.refined .b2-node.active .b2-glyph {
+  height: 20px;
 }
-.b2-fold-btn:hover { color: var(--l1); }
-.b2-fold-lbl {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
+/* Segment from current node's icon bottom to next node's icon top — NEVER drawn on :last-child! */
+.b2-spine.refined .b2-node:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 8.5px;
+  top: 20px;
+  bottom: -4px;
+  width: 1px;
+  background: var(--spine-todo);
+  pointer-events: none;
 }
+.b2-spine.refined .b2-node.active:not(:last-child)::after {
+  top: 24px;
+}
+/* Traversed rail between completed/skipped steps */
+.b2-spine.refined .b2-node.traversed:not(:last-child)::after {
+  background: var(--spine-done);
+}
+/* Dashed future rail after active step (fused into both S1 & S2!) */
+.b2-spine.refined .b2-node.future-seg:not(:last-child)::after {
+  background: none;
+  border-left: 1px dashed var(--l4);
+}
+
 .b2-active-main {
+  min-width: 0;
   font-size: 14px;
-  line-height: 20.5px;
+  line-height: 20px;
   color: var(--l1);
-  font-weight: 500;
+  font-weight: 520;
   overflow-wrap: break-word;
 }
+.phone .b2-active-main { font-size: 14.5px; line-height: 20.5px; }
+.b2-node.failed .b2-active-main { color: var(--danger); }
+
 .b2-inline-meta {
   display: inline-flex;
   align-items: center;
@@ -761,8 +673,9 @@ svg { display: block; flex: none; }
 .b2-active-sub {
   margin-top: 2.5px;
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 6px;
+  min-width: 0;
   font-size: 12.5px;
   line-height: 18px;
   color: var(--l2);
@@ -780,193 +693,48 @@ svg { display: block; flex: none; }
   flex: none;
   font-family: var(--mono);
   font-size: 11.5px;
-  color: var(--l3);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.b2-next-txt {
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--l3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.b2-done-txt {
-  font-size: 13px;
-  line-height: 19.5px;
-  color: var(--l3);
-  overflow-wrap: anywhere;
-}
-
-/* ==========================================================================
-   VARIANT B3: 原生 ToolFold 同构折叠行 (Zero-New-Primitive · 与「已使用…」完全同构)
-   ========================================================================== */
-.b3-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-.b3-summary-btn {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  column-gap: 8px;
-  align-items: center;
-  padding: 2px 0;
-  text-align: left;
-  font-size: 13.5px;
-  line-height: 20px;
-  color: var(--l2);
-  transition: color .15s;
-}
-.b3-summary-btn:hover { color: var(--l1); }
-.b3-sum-line {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.b3-sum-step {
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--l1);
-  font-weight: 480;
-}
-.b3-ratio-pill {
-  font-family: var(--mono);
-  font-size: 11px;
-  line-height: 17px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--fill2);
-  color: var(--l2);
-  font-variant-numeric: tabular-nums;
-  flex: none;
-}
-/* Exact Hermesh .tg-b / StepsCard (app.css line 729 & Tools.swift line 138) */
-.b3-steps-card {
-  width: 100%;
-  max-width: 560px;
-  border: 1px solid var(--sep);
-  border-radius: 10px;
-  overflow: hidden;
-  max-height: 248px;
-  overflow-y: auto;
-}
-.phone .b3-steps-card { max-width: 100%; }
-.b3-card-row {
-  padding: 7.5px 12px;
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  column-gap: 8px;
-  align-items: start;
-  font-size: 13px;
-  line-height: 19px;
-}
-.b3-card-row + .b3-card-row { border-top: .5px solid var(--sep); }
-.b3-card-row.in_progress { background: var(--fill); }
-.b3-card-row .r-idx {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--l3);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ==========================================================================
-   VARIANT B4: 进度左轨引文式 (Proportional Left Accent Rail · 长文本最舒展)
-   ========================================================================== */
-.b4-rail-box {
-  position: relative;
-  padding: 2px 0 2px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-/* 2px Left Track with proportional live progress fill! */
-.b4-rail-track {
-  position: absolute;
-  left: 2px;
-  top: 3px;
-  bottom: 3px;
-  width: 2.5px;
-  border-radius: 99px;
-  background: var(--fill3);
-  overflow: hidden;
-}
-.b4-rail-fill {
-  width: 100%;
-  height: var(--pct, 66%);
-  border-radius: 99px;
-  background: linear-gradient(180deg, var(--aurora-g0), var(--accent));
-  transition: height .35s var(--ease);
-}
-.b4-rail-fill.fail { background: var(--danger); }
-.b4-eyebrow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
   line-height: 18px;
   color: var(--l3);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.b4-eyebrow b {
-  font-weight: 550;
+
+.b2-spine.refined .b2-passive-txt {
+  min-width: 0;
+  font-size: 12.75px;
+  line-height: 19px;
+  color: var(--l3);
+  overflow-wrap: break-word;
+}
+.phone .b2-spine.refined .b2-passive-txt {
+  font-size: 13px;
+  line-height: 19px;
+}
+.b2-spine.refined .b2-node.pending .b2-passive-txt {
   color: var(--l2);
+  opacity: .76;
 }
-.b4-eyebrow .b4-toggle {
+
+/* Auto-collapsed banner in "done" scene to show how cleanly the conversation settles */
+.settled-clean-note {
+  margin-top: 2px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--ok-bg);
+  color: var(--ok);
+  font-size: 12.5px;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  font-size: 12px;
-  color: var(--l2);
-  padding: 1px 6px;
-  border-radius: 5px;
-  background: var(--fill);
-}
-.b4-eyebrow .b4-toggle:hover { color: var(--l1); background: var(--fill2); }
-.b4-cur-step {
-  font-size: 14px;
-  line-height: 1.52;
-  color: var(--l1);
-  font-weight: 500;
-  overflow-wrap: anywhere; /* Gets 100% of column width — zero right-column squeeze! */
-}
-.b4-cur-focus {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: var(--l2);
-  overflow-wrap: anywhere;
-}
-.b4-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: 2px;
-  max-height: 220px;
-  overflow-y: auto;
-}
-.b4-row {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  column-gap: 8px;
-  align-items: start;
-  font-size: 13px;
-  line-height: 19.5px;
+  gap: 7px;
+  width: fit-content;
 }
 
 /* ==========================================================================
-   IPHONE VIEWPORT (Supports Standard Symmetric 20pt Margin AND Duo Side Rail!)
+   IPHONE VIEWPORT
    ========================================================================== */
 .phone {
   width: 390px;
-  height: 676px;
+  height: 696px;
   border-radius: 50px;
   background: var(--ios-bg);
   position: relative;
@@ -987,7 +755,6 @@ svg { display: block; flex: none; }
   pointer-events: none;
   background: linear-gradient(to bottom, rgba(var(--ios-bg-rgb), .94) 30%, rgba(var(--ios-bg-rgb), 0));
 }
-/* Standard Portrait Top Nav vs Duo Side Rail */
 .ios-top-nav {
   position: absolute;
   top: 14px; left: 16px; right: 16px;
@@ -1032,9 +799,6 @@ svg { display: block; flex: none; }
   border: 2px solid var(--l2); border-bottom-color: transparent;
   display: flex; align-items: center; justify-content: center;
 }
-
-/* Symmetric 20pt horizontal padding on standard iPhone (SessionPage.swift L479: .padding(.horizontal, 20));
-   64pt right inset when Duo vertical toolbar rail is active! */
 .ios-chat {
   position: absolute;
   inset: 0;
@@ -1045,22 +809,16 @@ svg { display: block; flex: none; }
   gap: 13px;
   scrollbar-width: none;
 }
-.phone.duo-rail .ios-chat {
-  padding-right: 64px;
-}
+.phone.duo-rail .ios-chat { padding-right: 64px; }
 .ios-chat::-webkit-scrollbar { display: none; }
 .ios-msg { font-size: 15.5px; line-height: 1.48; color: var(--l1); }
 .ios-msg code {
   font-family: var(--mono); font-size: 13.5px; background: var(--code);
   padding: 1px 5px; border-radius: 5px;
 }
-.ios-tool {
-  font-size: 14px; color: var(--l2);
-  display: flex; align-items: center; gap: 5px;
-}
+.ios-tool { font-size: 14px; color: var(--l2); display: flex; align-items: center; gap: 5px; }
 .ios-tool code { font-family: var(--mono); font-size: 12.5px; }
 
-/* Clean Standalone Bottom Composer on iPhone */
 .ios-bottom {
   position: absolute;
   left: 0; right: 0; bottom: 0;
@@ -1109,21 +867,7 @@ svg { display: block; flex: none; }
   display: inline-flex; align-items: center; justify-content: center; flex: none;
 }
 
-/* Settled turn-completed summary line */
-.settled-plan-line {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  column-gap: 8px;
-  align-items: center;
-  padding: 3px 0;
-  font-size: 13px;
-  color: var(--l3);
-  width: 100%;
-  text-align: left;
-}
-.settled-plan-line:hover { color: var(--l1); }
-
-/* ---------- Sticky Control Bar ---------- */
+/* ---------- Sticky Control Bar (Zero fold/expand buttons!) ---------- */
 .ctl-bar {
   position: fixed;
   left: 0; right: 0; bottom: 0;
@@ -1153,94 +897,77 @@ svg { display: block; flex: none; }
 }
 .ctl-bar button:hover { color: var(--page-fg); }
 .ctl-bar button.on { background: var(--accent); color: #fff; }
-.chev-rot { transition: transform .18s var(--ease); }
-.chev-rot.open { transform: rotate(90deg); }
-.chev-flip { transition: transform .18s var(--ease); }
-.chev-flip.open { transform: rotate(180deg); }
 </style>
 </head>
 <body>
 
 <header class="page-head">
-  <h1>随流内嵌（Inline Flow）· 宽度、边距、对齐、长内容与状态时间四版精修</h1>
+  <h1>B2 全展开随流任务脊柱 · 零折叠精修对比原型</h1>
   <p class="lead">
-    严格对齐 Hermesh 会话流网格：桌面端锚定 <code>728px</code> 对话列宽（嵌于 <code>768px</code> 输入框内侧各 <code>20px</code>），手机端对齐 <code>20pt</code> 正文边距；所有图标统一收敛进 <strong><code>18px</code> 定宽前导槽</strong>，右侧步骤比与计时采用 <code>tabular-nums</code> 等宽数字独立右列，<strong>彻底消除长文本折行挤压与宏观步骤 / 微观动作重复</strong>。可在底栏切换「超长折行与代码路径」「并行子任务」「10 步限高滚动」及打开「对齐参考线」检验每一像素。
+    <strong>已彻底移除一切折叠头、`+N 步` 与展开/收起按钮</strong>：已完成步骤、当前步骤、未来待办步骤始终全量线性展示，随时一眼扫清「完成了哪些、正在干什么、后面还剩什么」，全部完成后自动收起。下方对比<strong>两套无折叠精修细节（S1 / S2）</strong>与<strong>未精修基线（S0）</strong>在末步无拖尾脊柱、已完成/待办辨识度与当前步呼吸留白上的差异。
   </p>
-  <nav class="scheme-tabs" id="top-tabs" aria-label="随流内嵌精修方案切换"></nav>
+  <nav class="scheme-tabs" id="top-tabs" aria-label="B2 全展开精修版本切换"></nav>
 </header>
 
 <main class="stage-wrap" id="stage"></main>
 
 <div class="ctl-bar">
   <div class="ctl-g">
-    <b>折叠状态</b>
-    <button data-act="expand" data-val="0">默认精简态</button>
-    <button data-act="expand" data-val="1">展开全部步骤</button>
-  </div>
-  <div class="ctl-g">
-    <b>极端内容测试</b>
-    <button data-act="scene" data-val="normal">常规短句</button>
+    <b>场景切换</b>
+    <button data-act="scene" data-val="normal">常规 6 步</button>
+    <button data-act="scene" data-val="lastactive">末步进行中（验无拖尾）</button>
     <button data-act="scene" data-val="longtext">超长多行 + 代码路径</button>
-    <button data-act="scene" data-val="many">10 步长列表 + 并行</button>
+    <button data-act="scene" data-val="many">8 步 + 并行子代理</button>
     <button data-act="scene" data-val="failed">含失败与跳过</button>
-    <button data-act="scene" data-val="done">全部完成收尾</button>
+    <button data-act="scene" data-val="done">全部完成自动收起</button>
   </div>
   <div class="ctl-g">
     <b>手机版式</b>
     <button data-act="ioslayout" data-val="std">常规对称 20pt</button>
     <button data-act="ioslayout" data-val="duo">竖排工具栏 (Duo)</button>
-    <button data-act="scroll" data-val="away">上滑历史</button>
+    <button data-act="scroll" data-val="away">上滑看历史</button>
   </div>
   <div class="ctl-g">
     <b>参考线与外观</b>
     <button data-act="guides" id="btn-guides">对齐参考线</button>
     <button data-act="theme" data-val="black">纯黑</button>
     <button data-act="theme" data-val="dark">深灰</button>
-    <button data-act="theme" data-val="light">浅色</button>
+    <button data-act="theme" data-val="soft">柔白</button>
+    <button data-act="theme" data-val="light">纯白</button>
   </div>
 </div>
 
 <script>
-const ANTIGRAVITY_LOGO = "data:image/png;base64,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";
+const ANTIGRAVITY_LOGO = "data:image/png;base64,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";
 
 const VARIANTS = [
   {
-    id: "b2",
-    short: "B2 · 呼吸脊柱三行视窗",
-    rec: "精修首选",
-    title: "B2 · 呼吸脊柱时间轴 · 三行智能视窗（Editorial Spine）",
-    badge: { text: "零边框 · 严苛 18px 轴线 · 主次合一", cls: "good" },
-    gridSpec: "左列固定 18px 图标槽（中心 x=9px 贯穿 1px 细脊线）+ 中列自适应长文本悬挂缩进 + 右列等宽 tabular-nums（5/6 · 4:18）首行基线对齐。",
-    longSpec: "无论总共 4 步还是 12 步，默认永远收敛为「✓ 已完成前 N 步 ⌄ → ✳ 当前主步骤（含下方流光微观子动作） → ○ 下一步预告」三行呼吸视窗；长句折行绝不撞击右侧时间。",
-    statusSpec: "宏观计划（5/6）与微观实时动作（如正在执行的命令 + 4:18 计时）上下分层同轴聚合；当微观动作与步骤同名时自动去重合并。"
+    id: "s1",
+    short: "S1 · 轻绿裸勾 + 实过虚来双态轨",
+    rec: "融合定稿",
+    title: "S1 · B2 全展开融合精修 · 轻绿裸勾 + 已过实轨 / 未来虚轨",
+    badge: { text: "全量展开 · 末步零拖尾 · 虚实分明", cls: "good" },
+    spineSpec: "逐节点分段连接（末节点绝不向下画线，彻底消除末步拖尾）：已走过步骤之间为柔和绿意实线，当前步往后的未来待办路径采用 1px 极细虚线，虚实路径一目了然。",
+    tierSpec: "拉开三层清晰梯队：已完成 = 低饱和鼠尾草绿裸勾 + 12.75px 淡灰紧凑字（轻盈克制）；进行中 = 极光序列标 + 14px 主色中粗 + 5/6 + 双行流光子动作与耗时；待办 = 空心细圆环 + 次级灰字。",
+    rhythmSpec: "当前执行步上下留出 6px 停驻呼吸缓冲（普通行 2.5px），让全展开的 5–8 步列表依然拥有清晰的视觉焦点锚点，不显拥挤也不抢上方对话正文风头。"
   },
   {
-    id: "b1",
-    short: "B1 · 细线清单卡",
-    rec: "最稳重规整",
-    title: "B1 · 细线清单卡 + 底栏联动（Hairline Plan Card）",
-    badge: { text: "与已答提问卡 / StepsCard 同源材质", cls: "good" },
-    gridSpec: "严格撑满 728px 会话列宽（手机端撑满正文安全列），采用 0.5px 极细描边与极淡底色（Palette.fill），彻底消除短文本时的松散漂浮感。",
-    longSpec: "收起时为 38px 规整单行条（环形进度 + 当前步 + 分段格 5/6 ⌄）；展开后行间 0.5px 细线分隔，超过 6.5 行自动限高滚动，当前步带微蓝高亮底。",
-    statusSpec: "职责彻底解耦：上方细线卡专注展示「宏观步骤状态（已完成 / 进行中 / 失败 / 跳过）」，下方紧贴原生 ConnectionLine 展示「微观工具流光 + 4:18 总耗时」。"
+    id: "s2",
+    short: "S2 · 微圆底绿勾 + 虚线未来轨",
+    title: "S2 · B2 全展开精修 · 微圆底完成章 + 虚线未来路径",
+    badge: { text: "已完成仪式感更强 · 虚实路径分明", cls: "info" },
+    spineSpec: "同样采用逐节点无拖尾分段脊柱；已走过步骤之间为柔和实线，当前步往后的未来待办路径改为 1px 极细虚线，明确区分「已走完的实轨」与「待执行的虚轨」。",
+    tierSpec: "已完成步骤采用 13px 微缩淡绿圆底勾（复刻此前广受好评的完成徽章质感），在纯黑、深灰与柔白主题下都十分精致醒目。",
+    rhythmSpec: "保留相同的 18px 前导图标轴（x=26px 正文起笔线）、`/` 路径优雅断行胶囊与双行流光子动作去重。"
   },
   {
-    id: "b3",
-    short: "B3 · 原生工具折叠同构",
-    title: "B3 · 原生 ToolFold 同构行（Zero-New-Primitive）",
-    badge: { text: "与「已使用…」工具组 100% 同一套组件", cls: "info" },
-    gridSpec: "完全复用现有工具折叠头（.tg-h / ToolFold）与细线展开框（.tg-b / StepsCard），零新增视觉物种，前导对齐 18px 槽位。",
-    longSpec: "收起态仅一行克制的次级摘要（[5/6 胶囊] 当前步骤名 ⌄），点开即为熟悉的圆角 10px 细线限高列表（自带 iOS 嵌套滚动手势门控与上下渐隐遮罩）。",
-    statusSpec: "列表内右侧显示等宽步骤序号（01–06）或异常标签；底部保留原生极光标工作行显示实时子动作与耗时。"
-  },
-  {
-    id: "b4",
-    short: "B4 · 比例左轨引文式",
-    title: "B4 · 比例进度左轨引文（Proportional Accent Rail）",
-    badge: { text: "超长多行与代码路径最舒展", cls: "info" },
-    gridSpec: "左侧一条 2.5px 圆角竖轨（按已完成比例实时填充极光蓝进度！），内容右缩进 14px，无右侧外框束缚。",
-    longSpec: "将「步骤进展 5/6 · 已用时 4:18 · 展开全部 ⌄」独立提炼为顶部 12px 眉题行（Eyebrow），使下方步骤正文独享 100% 列宽，3 行超长路径也毫厘不挤。",
-    statusSpec: "眉题统一承载进度比与总时间，下方主标题展示当前步骤，次行流光展示微观命令；全部完成时左轨满格变绿并收合为一行总结。"
+    id: "s0",
+    short: "S0 · 未精修基线（对比参考）",
+    title: "S0 · 仅去掉折叠代码后的当前未精修态（用于直观对比差距）",
+    badge: { text: "对比基线", cls: "base" },
+    spineSpec: "整根容器 ::before 均质灰线从头贯到底（bottom: 10px）：切到「末步进行中」或「超长多行」场景即可看到最后一个图标下方多伸出一截悬空尾巴线。",
+    tierSpec: "已完成勾号为纯灰（--l3），与待办灰圈（--l4）色相接近，5–8 步排开时需要定睛细看图标形状才能分清已完成与未开始。",
+    rhythmSpec: "非激活行（3.5px）与激活行（4.5px）间距几乎均质，全量平铺后缺少停驻呼吸节奏。"
   }
 ];
 
@@ -1266,6 +993,26 @@ const SCENES = {
       { text: "Upgrade macOS app and trigger automatic DB migration", status: "pending" }
     ]
   },
+  lastactive: {
+    focusMac: "正在校验 docs/technical-design.md 章节链接并运行最终 pnpm -r typecheck…",
+    focusIOS: "Verifying SQLite schema_history checksums after relaunching Hermesh.app on macOS",
+    elapsed: "7:42",
+    iosElapsed: "11:05",
+    mac: [
+      { text: "修复并通过桌面端 E2E 测试", status: "completed" },
+      { text: "运行真实模型与后端回归 E2E 测试", status: "completed" },
+      { text: "提交后端与桌面端阶段性改动", status: "completed" },
+      { text: "实现 iPhone 端代码与端到端测试", status: "completed" },
+      { text: "更新设计文档已实现章节并执行全仓最终门禁回归校验", status: "in_progress" }
+    ],
+    ios: [
+      { text: "Sync latest origin/main and verify clean merge", status: "completed" },
+      { text: "Back up local Hermesh SQLite databases safely", status: "completed" },
+      { text: "Build and install Hermesh onto Yi's iPhone", status: "completed" },
+      { text: "Build signed macOS Hermesh.app bundle", status: "completed" },
+      { text: "Upgrade macOS app and trigger automatic DB migration", status: "in_progress" }
+    ]
+  },
   longtext: {
     focusMac: "Run go test ./internal/runtime/... ./e2e -run TestTranscriptTodoSteps -count=1",
     focusIOS: "Compile packages/HermeshKit/Sources/HermeshSessions/Transcript.swift (arm64-apple-ios26.0)",
@@ -1274,18 +1021,18 @@ const SCENES = {
     mac: [
       { text: "梳理 packages/core/src/transcript.ts 与 HermeshSessions/Transcript.swift 双端历史步骤归约逻辑", status: "completed" },
       { text: "过滤历史会话中遗留的裸 Run update_steps / TodoWrite 工具调用，避免渲染冗余工具行", status: "completed" },
-      { text: "重构 SessionPage.tsx 与 SessionView.swift 中的随流内嵌清单视图，严格对齐 728px 会话列、18px 图标槽与等宽计时列", status: "in_progress" },
+      { text: "重构 SessionPage.tsx 与 SessionPage.swift 中的随流内嵌清单视图，严格对齐 728px 会话列与 18px 图标槽", status: "in_progress" },
       { text: "补充超长多行中英文混排、内联代码路径及 Dynamic Type 大字号无障碍缩放下的 UI 自动化回归测试", status: "pending" }
     ],
     ios: [
       { text: "Normalize ACP progress titles in internal/runtime/acp/acp.go and strip MCP namespace prefixes", status: "completed" },
       { text: "Port sequential turn-chain progress reducer to packages/HermeshKit/Sources/HermeshSessions/Transcript.swift", status: "completed" },
-      { text: "Flow inline checklist cleanly at the bottom of SessionView.swift with symmetric 20pt margins and hanging indent", status: "in_progress" },
+      { text: "Flow inline checklist cleanly at the bottom of SessionPage.swift with symmetric 20pt margins", status: "in_progress" },
       { text: "Verify Dynamic Type XL layout, Duo vertical toolbar inset, and XCUITest assertions on Simulator", status: "pending" }
     ]
   },
   many: {
-    focusMac: "并行等待 2 个子代理完成桌面端与 iOS 端回归验证…",
+    focusMac: "并行等待 2 个子代理完成桌面端 Playwright 与 iOS 模拟器回归验证…",
     focusIOS: "Running parallel verification subagents (Desktop Playwright + iOS Simulator)…",
     elapsed: "19:45",
     iosElapsed: "19:45",
@@ -1293,11 +1040,9 @@ const SCENES = {
       { text: "拉取最新 origin/main 并检查工作区状态", status: "completed" },
       { text: "设计 SQLite schema_history 迁移表与 SHA-256 校验和", status: "completed" },
       { text: "实现旧版 sessions.db 平滑重命名与 WAL 文件清理", status: "completed" },
-      { text: "编写 internal/sqlitedb 损坏检测与回滚单测", status: "completed" },
       { text: "更新 Go 守护进程 Watch 增量推送与性能指标", status: "completed" },
       { text: "子代理 1：运行桌面端 Playwright 全量会话与侧栏 E2E 测试", status: "in_progress" },
       { text: "子代理 2：编译 HermeshCore 并执行 iPhone 模拟器 XCUITest", status: "in_progress" },
-      { text: "汇总双端测试报告并清理临时派生目录", status: "pending" },
       { text: "打包 Developer ID 签名版 Hermesh.app", status: "pending" },
       { text: "更新 docs/data-migrations.md 架构文档", status: "pending" }
     ],
@@ -1305,7 +1050,6 @@ const SCENES = {
       { text: "Sync latest origin/main and verify clean worktree", status: "completed" },
       { text: "Design schema_history checksum verification table", status: "completed" },
       { text: "Migrate legacy sessions.db and clean up WAL/SHM", status: "completed" },
-      { text: "Pass Go internal/sqlitedb unit & corruption tests", status: "completed" },
       { text: "Optimize daemon Watch delta batching latency", status: "completed" },
       { text: "Subagent 1: Run Desktop Playwright session E2E suite", status: "in_progress" },
       { text: "Subagent 2: Run iOS Simulator SessionDetailUITests", status: "in_progress" },
@@ -1314,7 +1058,7 @@ const SCENES = {
     ]
   },
   failed: {
-    focusMac: "codesign 返回非零退出码，等待处理签名证书问题",
+    focusMac: "codesign 返回非零退出码，等待解锁钥匙串证书后继续",
     focusIOS: "Developer ID codesign failed (errSecInternalComponent)",
     elapsed: "6:12",
     iosElapsed: "6:12",
@@ -1338,29 +1082,15 @@ const SCENES = {
     focusIOS: "",
     elapsed: "9:24",
     iosElapsed: "9:24",
-    mac: [
-      { text: "修复并通过桌面端 E2E 测试", status: "completed" },
-      { text: "运行真实模型与后端回归 E2E 测试", status: "completed" },
-      { text: "提交后端与桌面端阶段性改动", status: "completed" },
-      { text: "制作并确认 iPhone 交互原型", status: "completed" },
-      { text: "实现 iPhone 端代码与端到端测试", status: "completed" },
-      { text: "更新设计文档已实现章节", status: "completed" }
-    ],
-    ios: [
-      { text: "Sync latest origin/main and verify clean merge", status: "completed" },
-      { text: "Back up local Hermesh SQLite databases safely", status: "completed" },
-      { text: "Build and install Hermesh onto Yi's iPhone", status: "completed" },
-      { text: "Build signed macOS Hermesh.app bundle", status: "completed" },
-      { text: "Upgrade macOS app and trigger automatic DB migration", status: "completed" }
-    ]
+    mac: [],
+    ios: []
   }
 };
 
 const state = {
-  variant: "b2",
-  expanded: false,
+  variant: "s1",
   scene: "normal",
-  iosLayout: "std", // "std" (symmetric 20pt) | "duo" (vertical right toolbar)
+  iosLayout: "std",
   scrolledAway: false,
   guides: false,
   theme: "black"
@@ -1392,27 +1122,14 @@ function emergenceMark(size = 16) {
   </svg>`;
 }
 
-function progressRing(done, total, hasFail, size = 15) {
-  const r = 5.6;
-  const c = 2 * Math.PI * r;
-  const pct = total > 0 ? done / total : 0;
-  const dash = (pct * c).toFixed(2);
-  const stroke = hasFail ? "var(--danger)" : done === total ? "var(--ok)" : "var(--accent-t)";
-  return `<svg width="${size}" height="${size}" viewBox="0 0 16 16" aria-hidden="true">
-    <circle cx="8" cy="8" r="${r}" fill="none" stroke="var(--fill3)" stroke-width="1.8"/>
-    <circle cx="8" cy="8" r="${r}" fill="none" stroke="${stroke}" stroke-width="1.8"
-      stroke-dasharray="${dash} ${c.toFixed(2)}" stroke-linecap="round" transform="rotate(-90 8 8)"/>
-  </svg>`;
-}
-
 const IC = {
-  check: `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4l3.1 3.1 6.5-6.8"/></svg>`,
-  checkCircle: `<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" fill="var(--ok-bg)" stroke="var(--ok)" stroke-opacity=".35" stroke-width="1"/><path d="M5.1 8.2l2 2 3.9-4.1" stroke="var(--ok)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-  ring: `<svg width="12" height="12" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="4.6" stroke="currentColor" stroke-width="1.35"/></svg>`,
+  checkGray: `<svg width="12.5" height="12.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.3 8.4l3 3 6.4-6.7"/></svg>`,
+  checkSage: `<svg width="12.5" height="12.5" viewBox="0 0 16 16" fill="none" stroke="var(--ok)" stroke-opacity=".82" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M3.3 8.4l3 3 6.4-6.7"/></svg>`,
+  checkBadge: `<svg width="13.5" height="13.5" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.3" fill="var(--ok-bg)" stroke="var(--ok)" stroke-opacity=".32" stroke-width=".9"/><path d="M5.1 8.2l2 2 3.9-4.1" stroke="var(--ok)" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  ring: `<svg width="11.5" height="11.5" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.35"/></svg>`,
   skip: `<svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3.8 7h6.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
   fail: `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--danger)" stroke-width="1.9" stroke-linecap="round"><path d="M4.3 4.3l7.4 7.4M11.7 4.3l-7.4 7.4"/></svg>`,
-  chevR: (open) => `<svg class="chev-rot ${open ? "open" : ""}" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 4.4L9.8 8l-3.6 3.6"/></svg>`,
-  chevD: (open) => `<svg class="chev-flip ${open ? "open" : ""}" width="12.5" height="12.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.3L8 9.8l3.5-3.5"/></svg>`,
+  chevR: `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 4.4L9.8 8l-3.6 3.6"/></svg>`,
   plus: `<svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>`,
   up: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M4.2 6.8L8 3l3.8 3.8"/></svg>`,
   down: `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4.2 9.2L8 13l3.8-3.8"/></svg>`,
@@ -1423,270 +1140,118 @@ const IC = {
 };
 
 function formatRichStepText(txt) {
-  // Highlight file paths / CLI commands gently in monospace AND break cleanly at '/' slashes (<wbr>) instead of mid-word!
-  return txt.replace(/([a-zA-Z0-9_.-]+\/[a-zA-Z0-9_./-]+|\b(?:sessions\.db|schema_history|Transcript\.swift|SessionPage\.tsx|SessionView\.swift|Hermesh\.app|Playwright|XCUITest|HermeshCore|WAL\/SHM)\b)/g, (m) => {
+  return txt.replace(/([a-zA-Z0-9_.-]+\/[a-zA-Z0-9_./-]+|\b(?:sessions\.db|schema_history|Transcript\.swift|SessionPage\.tsx|SessionPage\.swift|Hermesh\.app|Playwright|XCUITest|HermeshCore|WAL\/SHM|TodoWrite)\b)/g, (m) => {
     const cleanBreaks = m.replace(/\//g, "/<wbr>");
     return `<code class="inline-code">${cleanBreaks}</code>`;
   });
 }
 
-function glyphFor(status, size = 15) {
-  if (status === "completed") return `<span style="color:var(--l3);display:inline-flex">${IC.check}</span>`;
+function glyphFor(status, variant, size = 16) {
+  if (status === "completed") {
+    if (variant === "s2") return IC.checkBadge;
+    if (variant === "s1") return IC.checkSage;
+    return `<span style="color:var(--l3);display:inline-flex">${IC.checkGray}</span>`;
+  }
   if (status === "skipped") return `<span style="color:var(--l3);display:inline-flex">${IC.skip}</span>`;
   if (status === "failed") return IC.fail;
   if (status === "in_progress") return emergenceMark(size);
   return `<span style="color:var(--l4);display:inline-flex">${IC.ring}</span>`;
 }
 
-function analyzeSteps(steps) {
-  const total = steps.length;
-  const completed = steps.filter(s => s.status === "completed");
-  const skipped = steps.filter(s => s.status === "skipped");
-  const settledCount = completed.length + skipped.length;
-  const activeList = steps.filter(s => s.status === "in_progress" || s.status === "failed");
-  const pendingList = steps.filter(s => s.status === "pending");
-  const hasFail = steps.some(s => s.status === "failed");
-  const allDone = settledCount === total;
-  const currentStepNum = Math.min(total, settledCount + 1);
-  return { total, completed, skipped, settledCount, activeList, pendingList, hasFail, allDone, currentStepNum };
+function computeSpine(steps, focusRaw) {
+  if (!steps || steps.length === 0) return null;
+  const all = steps.map((s, index) => ({ index, text: s.text, status: s.status }));
+  let active = all.filter(s => s.status === "in_progress" || s.status === "failed");
+  if (active.length === 0) active = [all.find(s => s.status === "pending") || all[all.length - 1]];
+  const firstActive = active[0].index;
+  const lastActive = active[active.length - 1].index;
+  const w = (focusRaw || "").trim();
+  const subFocus = w && !active.some(a => a.text.trim() === w) ? w : "";
+  return {
+    total: all.length,
+    stepNumber: firstActive + 1,
+    firstActive,
+    lastActive,
+    hasFail: all.some(s => s.status === "failed"),
+    all,
+    active,
+    subFocus
+  };
 }
 
-function renderInlineBlock(variant, platform) {
+function renderAllExpandedSpine(variant, platform) {
   const sc = SCENES[state.scene];
-  const steps = sc[platform];
-  const focusText = platform === "mac" ? sc.focusMac : sc.focusIOS;
-  const elapsed = platform === "mac" ? sc.elapsed : sc.iosElapsed;
-  const info = analyzeSteps(steps);
-
-  // Settled state when all steps finished: calm 1-line summary (expandable on click!)
-  if (info.allDone && !state.expanded) {
+  if (state.scene === "done") {
     return `
-      <div class="guide-axis">
-        <button class="settled-plan-line" data-toggle="expand">
-          <span class="g18">${IC.checkCircle}</span>
-          <span>已完成全部 ${info.total} 步任务</span>
-          <span class="t-meta">${elapsed} ${IC.chevD(false)}</span>
-        </button>
+      <div class="m-am" style="${platform === "ios" ? "font-size:15.5px;line-height:1.48" : ""}">
+        全部步骤已完成并通过端到端验证；随流任务清单已自动收起，不留历史残影。
       </div>
     `;
   }
+  const steps = platform === "mac" ? sc.mac : sc.ios;
+  const focusRaw = platform === "mac" ? sc.focusMac : sc.focusIOS;
+  const elapsed = platform === "mac" ? sc.elapsed : sc.iosElapsed;
+  const win = computeSpine(steps, focusRaw);
+  if (!win) return "";
 
-  // ==================== B1: Hairline Plan Card + Native WorkLine ====================
-  if (variant === "b1") {
-    const segs = steps.map(s => `<i class="${s.status === "completed" || s.status === "skipped" ? "done" : s.status === "failed" ? "fail" : s.status === "in_progress" ? "run" : ""}"></i>`).join("");
-    const primaryActive = info.activeList[0];
-    const headerLabel = state.expanded
-      ? `<span class="b1-h-title muted">步骤进展 · 已完成 ${info.settledCount}/${info.total}</span>`
-      : info.allDone
-        ? `<span class="b1-h-title muted">已完成全部 ${info.total} 步任务</span>`
-        : `<span class="b1-h-title">${info.activeList.length > 1 ? `并行执行 ${info.activeList.length} 项：${primaryActive.text}` : primaryActive ? primaryActive.text : ""}</span>`;
+  const activeOrderMap = new Map(win.active.map((a, i) => [a.index, i]));
+  const isRefined = variant !== "s0";
+  const cls = isRefined ? `b2-spine refined ${variant}` : `b2-spine s0 ${win.total >= 2 ? "spined" : ""}`;
+  const markSize = platform === "ios" ? 16 : 17;
+  const skipLabel = platform === "ios" ? "Skipped" : "跳过";
+  const parLabel = platform === "ios" ? "Parallel" : "并行";
 
-    return `
-      <div class="b1-wrap guide-axis">
-        <div class="b1-card">
-          <button class="b1-head" data-toggle="expand">
-            <span class="g18">${info.allDone ? IC.checkCircle : progressRing(info.settledCount, info.total, info.hasFail, 15)}</span>
-            ${headerLabel}
-            <span class="t-meta">
-              ${steps.length <= 8 ? `<span class="b1-segs">${segs}</span>` : ""}
-              <span>${info.allDone ? `${info.total}/${info.total}` : `${info.currentStepNum}/${info.total}`}</span>
-              ${IC.chevD(state.expanded)}
-            </span>
-          </button>
-          ${state.expanded ? `
-            <div class="b1-list">
-              ${steps.map((s, idx) => `
-                <div class="b1-row ${s.status}">
-                  <span class="g18" style="height:19.5px">${glyphFor(s.status, 14)}</span>
-                  <div class="r-txt">${formatRichStepText(s.text)}</div>
-                  <span class="t-meta">
-                    ${s.status === "failed" ? `<span class="status-chip fail">失败</span>`
-                      : s.status === "skipped" ? `<span class="status-chip skip">跳过</span>`
-                      : s.status === "in_progress" ? `<span class="status-chip run">进行中</span>`
-                      : `<span style="opacity:.55">${String(idx + 1).padStart(2, "0")}</span>`}
+  return `
+    <div class="${cls} guide-axis">
+      ${win.all.map((step) => {
+        const order = activeOrderMap.get(step.index);
+        const isActive = order !== undefined;
+        const isLastActive = step.index === win.lastActive;
+        const traversed = step.index < win.firstActive && (step.status === "completed" || step.status === "skipped");
+        const futureSeg = step.index >= win.lastActive;
+        const segCls = `${traversed ? "traversed" : ""} ${futureSeg ? "future-seg" : ""}`;
+
+        if (isActive) {
+          return `
+            <div class="b2-node active ${step.status} ${segCls}">
+              <span class="b2-glyph">${glyphFor(step.status, variant, markSize)}</span>
+              <div style="min-width:0">
+                <div class="b2-active-main">
+                  <span>${formatRichStepText(step.text)}</span>
+                  <span class="b2-inline-meta">
+                    ${order === 0
+                      ? `${win.stepNumber}/${win.total}${!win.subFocus ? ` · ${elapsed}` : ""}`
+                      : `<span class="status-chip run">${parLabel}</span>`
+                    }
                   </span>
                 </div>
-              `).join("")}
-            </div>
-          ` : ""}
-        </div>
-        ${!info.allDone && focusText ? `
-          <div class="work-line">
-            <span class="slot-18">${info.hasFail ? IC.fail : emergenceMark(17)}</span>
-            <span class="w-body ${info.hasFail ? "" : "shimmer"}" style="${info.hasFail ? "color:var(--danger)" : ""}">${focusText}</span>
-            <span class="w-timer">· ${elapsed}</span>
-          </div>
-        ` : ""}
-      </div>
-    `;
-  }
-
-  // ==================== B2: Editorial Spine · 3-Row Smart Window ====================
-  if (variant === "b2") {
-    const pastDone = steps.filter(s => s.status === "completed" || s.status === "skipped");
-    const nextOne = info.pendingList[0];
-    const morePending = info.pendingList.length - 1;
-
-    return `
-      <div class="b2-spine guide-axis">
-        ${pastDone.length > 0 && !state.expanded ? `
-          <button class="b2-fold-btn" data-toggle="expand">
-            <span class="b2-glyph">${IC.checkCircle}</span>
-            <span class="b2-fold-lbl">
-              <span>已完成前 ${pastDone.length} 步</span>
-              <span style="color:var(--l3);opacity:.75;font-variant-numeric:tabular-nums">· 共 ${info.total} 步</span>
-              ${IC.chevR(false)}
-            </span>
-          </button>
-        ` : ""}
-
-        ${state.expanded ? `
-          <button class="b2-fold-btn" data-toggle="expand" style="color:var(--l2)">
-            <span class="b2-glyph">${IC.checkCircle}</span>
-            <span class="b2-fold-lbl">
-              <span>步骤进展 · 已完成 ${info.settledCount}/${info.total}</span>
-              <span style="color:var(--l3)">· 收起</span>
-              ${IC.chevD(true)}
-            </span>
-          </button>
-          ${pastDone.map((s) => `
-            <div class="b2-node">
-              <span class="b2-glyph">${glyphFor(s.status, 14)}</span>
-              <span class="b2-done-txt">
-                ${formatRichStepText(s.text)}
-                ${s.status === "skipped" ? `<span class="status-chip skip" style="margin-left:6px">跳过</span>` : ""}
-              </span>
-            </div>
-          `).join("")}
-        ` : ""}
-
-        ${info.activeList.map((act, i) => {
-          const anyFocus = !!focusText;
-          const isLastActive = i === info.activeList.length - 1;
-          const showSub = isLastActive && anyFocus;
-          return `
-            <div class="b2-node" style="padding:5px 0">
-              <span class="b2-glyph">${act.status === "failed" ? IC.fail : emergenceMark(17)}</span>
-              <div style="min-width:0">
-                <div class="b2-active-main" style="${act.status === "failed" ? "color:var(--danger)" : ""}">
-                  ${formatRichStepText(act.text)}<span class="b2-inline-meta">${i === 0 ? `${info.currentStepNum}/${info.total}${!anyFocus ? ` · ${elapsed}` : ""}` : `<span class="status-chip run">并行</span>`}</span>
-                </div>
-                ${showSub ? `
-                  <div class="b2-active-sub" style="display:block">
-                    <span class="${info.hasFail ? "" : "shimmer"}">${focusText.replace(/\//g, "/<wbr>")}</span><span class="sub-el" style="margin-left:6px">· ${elapsed}</span>
+                ${isLastActive && win.subFocus ? `
+                  <div class="b2-active-sub">
+                    <span class="sub-t ${win.hasFail ? "" : "shimmer"}" style="${win.hasFail ? "color:var(--danger)" : ""}">${win.subFocus.replace(/\//g, "/<wbr>")}</span>
+                    <span class="sub-el">· ${elapsed}</span>
                   </div>
                 ` : ""}
               </div>
             </div>
           `;
-        }).join("")}
+        }
 
-        ${!state.expanded && nextOne ? `
-          <div class="b2-node">
-            <span class="b2-glyph" style="color:var(--l4)">${IC.ring}</span>
-            <div class="b2-next-txt">
-              <span>下一步：${nextOne.text}</span>
-              ${morePending > 0 ? `<button data-toggle="expand" style="margin-left:6px;color:var(--l2);font-size:12px;display:inline-flex;align-items:center;gap:2px">+${morePending} 步 ${IC.chevR(false)}</button>` : ""}
+        return `
+          <div class="b2-node ${step.status} ${segCls}">
+            <span class="b2-glyph">${glyphFor(step.status, variant, markSize)}</span>
+            <div class="b2-passive-txt">
+              ${formatRichStepText(step.text)}
+              ${step.status === "skipped" ? `<span class="status-chip skip">${skipLabel}</span>` : ""}
             </div>
           </div>
-        ` : ""}
-
-        ${state.expanded ? info.pendingList.map((p) => `
-          <div class="b2-node">
-            <span class="b2-glyph" style="color:var(--l4)">${IC.ring}</span>
-            <span class="b2-done-txt" style="color:var(--l2);opacity:.78">${formatRichStepText(p.text)}</span>
-          </div>
-        `).join("") : ""}
-      </div>
-    `;
-  }
-
-  // ==================== B3: Unified ToolFold Sibling ====================
-  if (variant === "b3") {
-    const primaryActive = info.activeList[0];
-    return `
-      <div class="b3-wrap guide-axis">
-        <button class="b3-summary-btn" data-toggle="expand">
-          <span class="g18">${info.allDone ? IC.checkCircle : progressRing(info.settledCount, info.total, info.hasFail, 15)}</span>
-          <span class="b3-sum-line">
-            <span class="b3-ratio-pill">${info.allDone ? `${info.total}/${info.total}` : `${info.currentStepNum}/${info.total}`}</span>
-            <span class="b3-sum-step">${state.expanded ? `执行步骤清单（已完成 ${info.settledCount} 步）` : primaryActive ? primaryActive.text : `已完成全部 ${info.total} 步`}</span>
-            ${IC.chevD(state.expanded)}
-          </span>
-          <span></span>
-        </button>
-
-        ${state.expanded ? `
-          <div class="b3-steps-card">
-            ${steps.map((s, idx) => `
-              <div class="b3-card-row ${s.status}">
-                <span style="height:19px;display:inline-flex;align-items:center;justify-content:center">${glyphFor(s.status, 14)}</span>
-                <span style="min-width:0;overflow-wrap:anywhere;color:${s.status === "in_progress" ? "var(--l1)" : s.status === "failed" ? "var(--danger)" : s.status === "pending" ? "var(--l2)" : "var(--l3)"};font-weight:${s.status === "in_progress" ? "500" : "400"}">${formatRichStepText(s.text)}</span>
-                <span class="r-idx">${s.status === "failed" ? `<span class="status-chip fail">失败</span>` : s.status === "skipped" ? `<span class="status-chip skip">跳过</span>` : `${idx + 1}/${info.total}`}</span>
-              </div>
-            `).join("")}
-          </div>
-        ` : ""}
-
-        ${!info.allDone && focusText ? `
-          <div class="work-line">
-            <span class="slot-18">${info.hasFail ? IC.fail : emergenceMark(17)}</span>
-            <span class="w-body ${info.hasFail ? "" : "shimmer"}" style="${info.hasFail ? "color:var(--danger)" : ""}">${focusText}</span>
-            <span class="w-timer">· ${elapsed}</span>
-          </div>
-        ` : ""}
-      </div>
-    `;
-  }
-
-  // ==================== B4: Proportional Left Accent Rail ====================
-  if (variant === "b4") {
-    const pct = Math.max(14, Math.round(((info.settledCount + (info.allDone ? 0 : 0.45)) / info.total) * 100));
-    return `
-      <div class="b4-rail-box">
-        <div class="b4-rail-track">
-          <div class="b4-rail-fill ${info.hasFail ? "fail" : ""}" style="--pct:${info.allDone ? 100 : pct}%"></div>
-        </div>
-        <div class="b4-eyebrow">
-          <b>步骤 ${info.allDone ? `${info.total}/${info.total}` : `${info.currentStepNum}/${info.total}`}</b>
-          <span>·</span>
-          <span>已用时 ${elapsed}</span>
-          ${info.activeList.length > 1 ? `<span>· 并行 ${info.activeList.length} 项</span>` : ""}
-          <button class="b4-toggle" data-toggle="expand">
-            <span>${state.expanded ? "收起清单" : `全部 ${info.total} 步`}</span>
-            ${IC.chevD(state.expanded)}
-          </button>
-        </div>
-
-        ${state.expanded ? `
-          <div class="b4-list">
-            ${steps.map((s) => `
-              <div class="b4-row">
-                <span style="height:19.5px;display:inline-flex;align-items:center;justify-content:center">${glyphFor(s.status, 14)}</span>
-                <span style="min-width:0;overflow-wrap:anywhere;color:${s.status === "in_progress" ? "var(--l1)" : s.status === "failed" ? "var(--danger)" : s.status === "pending" ? "var(--l2)" : "var(--l3)"};font-weight:${s.status === "in_progress" ? "500" : "400"}">${formatRichStepText(s.text)}</span>
-                <span>${s.status === "failed" ? `<span class="status-chip fail">失败</span>` : s.status === "skipped" ? `<span class="status-chip skip">跳过</span>` : ""}</span>
-              </div>
-            `).join("")}
-          </div>
-        ` : `
-          ${info.activeList.map(act => `
-            <div class="b4-cur-step" style="${act.status === "failed" ? "color:var(--danger)" : ""}">${formatRichStepText(act.text)}</div>
-          `).join("")}
-        `}
-
-        ${!info.allDone && focusText ? `
-          <div class="b4-cur-focus">
-            <span style="margin-top:2px;display:inline-flex">${info.hasFail ? IC.fail : emergenceMark(14)}</span>
-            <span class="${info.hasFail ? "" : "shimmer"}">${focusText}</span>
-          </div>
-        ` : ""}
-      </div>
-    `;
-  }
-  return "";
+        `;
+      }).join("")}
+    </div>
+  `;
 }
 
 function renderMac(variant) {
+  const isDone = state.scene === "done";
   return `
     <div class="mac-win">
       <div class="mac-titlebar">
@@ -1696,24 +1261,24 @@ function renderMac(variant) {
       </div>
       <div class="mac-chat">
         <div class="mac-dbody guide-col">
-          <div class="m-ubub">把桌面端和 iPhone 端的随流任务步骤提示打磨精致，并验证长文本与多步骤场景。</div>
+          <div class="m-ubub">默认完成的折叠没必要，完成的任务和未来的任务都想直接看到，去掉展开收起并精修一下样式。</div>
           <div class="m-tool guide-axis">
             <span class="g18" style="color:var(--l3)">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2.2" y="3" width="11.6" height="10" rx="1.8"/><path d="M5 6.5l2 1.7-2 1.7M8.5 10h2.5"/></svg>
             </span>
             <span>已读取 4 个文件 · 已运行 <code>pnpm test</code></span>
-            ${IC.chevR(false)}
+            ${IC.chevR}
           </div>
           <div class="m-am">
-            桌面端与后端回归测试已全部通过，阶段性改动已提交；接下来在严格遵循 <code>728px</code> 对话列宽与 <code>18px</code> 前导图标网格的前提下完成双端收尾验证。
+            桌面端与后端回归测试已通过；下方随流清单直接平铺展示全部已完成、当前执行与后续待办步骤：
           </div>
-          ${renderInlineBlock(variant, "mac")}
+          ${renderAllExpandedSpine(variant, "mac")}
         </div>
       </div>
       <div class="mac-zone">
         <div class="mac-zcol">
           <div class="mac-cmp">
-            <div class="mac-cmp-in">继续说，会排到下一轮…</div>
+            <div class="mac-cmp-in">${isDone ? "继续跟进…" : "继续说，会排到下一轮…"}</div>
             <div class="mac-cmp-bar">
               <button class="mac-ib">${IC.plus}</button>
               <button class="mac-pick">
@@ -1723,7 +1288,7 @@ function renderMac(variant) {
                 <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4.5 6.3L8 9.8l3.5-3.5"/></svg>
               </button>
               <div style="flex:1"></div>
-              <button class="mac-stop">${IC.stop}</button>
+              ${isDone ? "" : `<button class="mac-stop">${IC.stop}</button>`}
               <button class="mac-send">${IC.up}</button>
             </div>
           </div>
@@ -1735,8 +1300,9 @@ function renderMac(variant) {
 
 function renderIPhone(variant) {
   const sc = SCENES[state.scene];
-  const info = analyzeSteps(sc.ios);
-  const primaryActive = info.activeList[0];
+  const isDone = state.scene === "done";
+  const win = computeSpine(sc.ios, sc.focusIOS);
+  const primaryActive = win?.active[0];
   const isDuo = state.iosLayout === "duo";
 
   const topChrome = isDuo ? `
@@ -1763,15 +1329,15 @@ function renderIPhone(variant) {
 
   const bodyContent = state.scrolledAway ? `
     <div class="ios-msg" style="opacity:.86">已核查 <code>internal/sqlitedb/steps.go</code> 中的版本号校验逻辑，准备备份本地 SQLite 库并执行全端升级。</div>
-    <div class="ios-tool"><span>已使用 <code>Run backup_sqlite</code></span> ${IC.chevR(false)}</div>
+    <div class="ios-tool"><span>已使用 <code>Run backup_sqlite</code></span> ${IC.chevR}</div>
     <div class="ios-msg">本地 <code>sessions.db</code> 与 <code>owner.db</code> 快照已安全保存至备份目录，SHA-256 校验和一致。</div>
-    <div class="ios-tool"><span>已使用 <code>xcrun devicectl install</code></span> ${IC.chevR(false)}</div>
-    <div class="ios-msg">iPhone 端新包已签名安装到「Yi's iPhone」（屏幕当前处于锁屏状态，解锁打开即可）。接下来等待 macOS 桌面端编译打包完成。</div>
+    <div class="ios-tool"><span>已使用 <code>xcrun devicectl install</code></span> ${IC.chevR}</div>
+    <div class="ios-msg">iPhone 端新包已签名安装到「Yi's iPhone」。接下来等待 macOS 桌面端编译打包完成。</div>
   ` : `
     <div class="ios-msg">iPhone 端新包已签名安装到「Yi's iPhone」。接下来等待 macOS 桌面端 <code>Hermesh.app</code> 编译打包完成。</div>
-    <div class="ios-tool"><span>已使用 <code>Run manage_task</code></span> ${IC.chevR(false)}</div>
-    <div class="ios-msg">macOS 端全部组件（Go 守护进程、Rust <code>her</code>、<code>Hermesh Signer</code>）已编译完成，正在执行应用打包与签名。</div>
-    ${renderInlineBlock(variant, "ios")}
+    <div class="ios-tool"><span>已使用 <code>Run manage_task</code></span> ${IC.chevR}</div>
+    <div class="ios-msg">macOS 端全部组件（Go 守护进程、Rust <code>her</code>、<code>Hermesh Signer</code>）已编译完成，正在打包签名：</div>
+    ${renderAllExpandedSpine(variant, "ios")}
   `;
 
   return `
@@ -1782,11 +1348,11 @@ function renderIPhone(variant) {
         ${bodyContent}
       </div>
       <div class="ios-bottom">
-        ${state.scrolledAway && !info.allDone ? `
+        ${state.scrolledAway && win && !isDone ? `
           <div class="ios-toend-wrap">
             <button class="ios-toend-cap" data-act="scroll-bottom">
-              ${info.hasFail ? IC.fail : emergenceMark(14)}
-              <span style="font-family:var(--mono);font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums">${info.currentStepNum}/${info.total}</span>
+              ${win.hasFail ? IC.fail : emergenceMark(14)}
+              <span style="font-family:var(--mono);font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums">${win.stepNumber}/${win.total}</span>
               <span class="tc-txt">${primaryActive ? primaryActive.text : ""}</span>
               <span class="tc-arr">${IC.down}</span>
             </button>
@@ -1794,8 +1360,8 @@ function renderIPhone(variant) {
         ` : ""}
         <div class="ios-box">
           <button class="ios-plus">${IC.plus}</button>
-          <span class="ios-ph">继续说，会排到下一轮…</span>
-          <button class="ios-stop">${IC.stop}</button>
+          <span class="ios-ph">${isDone ? "继续跟进" : "继续说，会排到下一轮…"}</span>
+          ${isDone ? "" : `<button class="ios-stop">${IC.stop}</button>`}
           <button class="ios-send">${IC.up}</button>
         </div>
       </div>
@@ -1820,38 +1386,35 @@ function render() {
     <section class="scheme-banner">
       <div class="sb-col">
         <h2>${cur.title} <span class="tag-pill ${cur.badge.cls}">${cur.badge.text}</span></h2>
-        <p>${cur.gridSpec}</p>
+        <p>${cur.spineSpec}</p>
       </div>
       <div class="sb-col">
-        <h3>长内容折行与多步处理</h3>
-        <p>${cur.longSpec}</p>
+        <h3>已完成 / 进行中 / 未来待办 三层梯队</h3>
+        <p>${cur.tierSpec}</p>
       </div>
       <div class="sb-col">
-        <h3>状态与时间的层次关系</h3>
-        <p>${cur.statusSpec}</p>
+        <h3>全展开呼吸节奏与对齐网格</h3>
+        <p>${cur.rhythmSpec}</p>
       </div>
     </section>
     <div class="devices-row">
       <div class="dev-block mac-block">
         <div class="dev-caption">
-          <b>macOS 桌面端（728px 会话列嵌于 768px 输入框内各 20px）</b>
-          <span>点击文末进度区可直接展开 / 收起</span>
+          <b>macOS 桌面端（728px 会话列 · 全步骤直接平铺零折叠）</b>
+          <span>已完成、当前执行、未来待办一目了然</span>
         </div>
         ${renderMac(cur.id)}
       </div>
       <div class="dev-block ios-block">
         <div class="dev-caption">
-          <b>iPhone 端（${state.iosLayout === "duo" ? "Duo 竖排工具栏右侧避让 64pt" : "常规对称 20pt 正文边距"}）</b>
-          <span>${state.scrolledAway ? "已上滑看历史 · 底部浮现进度胶囊" : "纯黑画布零玻璃遮挡"}</span>
+          <b>iPhone 端（${state.iosLayout === "duo" ? "Duo 竖排栏右侧避让 64pt" : "对称 20pt 边距 · 全步骤平铺"}）</b>
+          <span>${state.scrolledAway ? "已上滑看历史 · 底部浮现进度胶囊" : "无折叠无玻璃遮挡 · 直接通览全局"}</span>
         </div>
         ${renderIPhone(cur.id)}
       </div>
     </div>
   `;
 
-  document.querySelectorAll("[data-act='expand']").forEach(b => {
-    b.classList.toggle("on", Boolean(Number(b.dataset.val)) === state.expanded);
-  });
   document.querySelectorAll("[data-act='scene']").forEach(b => {
     b.classList.toggle("on", b.dataset.val === state.scene);
   });
@@ -1865,16 +1428,6 @@ function render() {
     b.classList.toggle("on", b.dataset.val === state.theme);
   });
   document.getElementById("btn-guides")?.classList.toggle("on", state.guides);
-
-  // Keep active step visible inside scrollable inline cards (B1 / B3 / B4) just like StepsCard in Tools.swift!
-  requestAnimationFrame(() => {
-    document.querySelectorAll(".b1-list, .b3-steps-card, .b4-list").forEach(sc => {
-      const act = sc.querySelector(".in_progress, .failed");
-      if (act && sc.scrollHeight > sc.clientHeight) {
-        sc.scrollTop = Math.max(0, act.offsetTop - sc.clientHeight / 2 + act.offsetHeight / 2);
-      }
-    });
-  });
 }
 
 document.addEventListener("click", (e) => {
@@ -1884,17 +1437,10 @@ document.addEventListener("click", (e) => {
     render();
     return;
   }
-  const tBtn = e.target.closest("[data-toggle='expand']");
-  if (tBtn) {
-    state.expanded = !state.expanded;
-    render();
-    return;
-  }
   const actBtn = e.target.closest("[data-act]");
   if (!actBtn) return;
   const act = actBtn.dataset.act;
-  if (act === "expand") state.expanded = Boolean(Number(actBtn.dataset.val));
-  else if (act === "scene") state.scene = actBtn.dataset.val;
+  if (act === "scene") state.scene = actBtn.dataset.val;
   else if (act === "ioslayout") state.iosLayout = actBtn.dataset.val;
   else if (act === "scroll") state.scrolledAway = !state.scrolledAway;
   else if (act === "scroll-bottom") state.scrolledAway = false;

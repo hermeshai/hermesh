@@ -418,7 +418,7 @@ private func kind(_ it: TranscriptItem) -> String {
     #expect(activeTodoSteps(p).isEmpty)
 }
 
-@Test func windowTodoStepsBuildsSmartThreeRowWindowAndDeduplicatesFocus() {
+@Test func windowTodoStepsExposesAllStepsInOrderAndDeduplicatesFocus() {
     #expect(windowTodoSteps([]) == nil)
 
     let short = windowTodoSteps([
@@ -426,10 +426,9 @@ private func kind(_ it: TranscriptItem) -> String {
         TodoStepView(text: "Rewrite CALayer halo", status: .inProgress),
         TodoStepView(text: "Verify GPU usage", status: .pending),
     ], workText: "Rewrite CALayer halo")!
-    #expect(!short.foldLeading)
-    #expect(!short.foldUpcoming)
+    #expect(short.all.count == 3)
     #expect(short.stepNumber == 2)
-    #expect(short.settledCount == 1)
+    #expect(short.active.map(\.index) == [1])
     #expect(short.subFocus == nil)
 
     let long = windowTodoSteps([
@@ -441,12 +440,9 @@ private func kind(_ it: TranscriptItem) -> String {
         TodoStepView(text: "Bundle Hermesh.app", status: .pending),
         TodoStepView(text: "Update docs", status: .pending),
     ], workText: "Running Playwright and Simulator suites")!
-    #expect(long.foldLeading)
-    #expect(long.leading.count == 3)
-    #expect(long.settledCount == 3)
+    #expect(long.all.count == 7)
+    #expect(long.total == 7)
     #expect(long.stepNumber == 4)
     #expect(long.active.map(\.index) == [3, 4])
-    #expect(long.foldUpcoming)
-    #expect(long.moreUpcomingCount == 1)
     #expect(long.subFocus == "Running Playwright and Simulator suites")
 }

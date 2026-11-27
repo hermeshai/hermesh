@@ -53,11 +53,6 @@
   },
   "todo": {
     "label": "Steps",
-    "completedFold": "Completed {{done}} · {{total}} total",
-    "expandedHeader": "Steps · {{done}}/{{total}} completed",
-    "hide": "Hide",
-    "next": "Next: {{text}}",
-    "moreSteps": "+{{count}} more",
     "parallel": "Parallel",
     "skipped": "Skipped"
   },
