@@ -91,13 +91,16 @@ test("a session on another machine: its folder added as a project, the model pic
     await expect(page.getByTestId("launch-project-chip")).toHaveText(name);
     await expect(page.getByTestId("launch-worktree")).toHaveText("独立 worktree");
     await expect(page.getByTestId("branch-trigger")).toHaveText("基于 main");
-    // The working copy is a choice over the box: the project's own folder, or a worktree of its own.
-    await page.getByRole("button", { name: "工作目录" }).click();
-    await page.getByTestId("worktree-off").click();
+    // The working copy over the box toggles on one click (no menu) and remembers what was chosen for this project.
+    await page.getByRole("button", { name: /工作目录/ }).click();
     await expect(page.getByTestId("launch-worktree")).toHaveText("当前目录");
-    await page.getByRole("button", { name: "工作目录" }).click();
-    await page.getByTestId("worktree-on").click();
+    await expect(page.getByTestId("branch-trigger")).toHaveText("main");
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-item-scratch"));
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId(`project-item-${name}`));
+    await expect(page.getByTestId("launch-worktree")).toHaveText("当前目录");
+    await page.getByRole("button", { name: /工作目录/ }).click();
     await expect(page.getByTestId("launch-worktree")).toHaveText("独立 worktree");
+    await expect(page.getByTestId("branch-trigger")).toHaveText("基于 main");
 
     // The model: one panel, the providers one under another. Search across them; choosing one closes it.
     await input.click();
@@ -163,7 +166,7 @@ test("a session on another machine: its folder added as a project, the model pic
     await workspace.getByRole("button").click();
     await expect(workspace).toContainText("方式  独立 worktree");
     await snap(page, "composer-workspace");
-    await workspace.getByRole("button").click();
+    await workspace.getByRole("button").first().click();
     // Where it runs, fixed, beside the title; nothing under the box.
     await expect(page.getByTestId("session-where")).toHaveText(`work-mac · ${name}`);
     const row = page.locator(".side-sessions [role=listitem]").filter({ hasText: "say hello_from_work_mac" });
@@ -266,11 +269,12 @@ test("a new session's branch: a worktree from another branch, and the project's 
     expect(git("log", "-1", "--format=%s", sessionBranch)).toBe("on feat/x");
     expect(git("branch", "--show-current")).toBe("main");
 
-    // In the project's own folder: the branch is the one to work on; another one switches the folder first.
+    // In the project's own folder: one click switches it, and the branch is the one to work on; another one switches the folder first.
     await page.getByTestId("nav-new-thread").click();
     await expect(page.getByTestId("launch-project-chip")).toHaveText(name);
-    await page.getByRole("button", { name: "工作目录" }).click();
-    await page.getByTestId("worktree-off").click();
+    await expect(page.getByTestId("launch-worktree")).toHaveText("独立 worktree");
+    await page.getByRole("button", { name: /工作目录/ }).click();
+    await expect(page.getByTestId("launch-worktree")).toHaveText("当前目录");
     await expect(page.getByTestId("branch-trigger")).toHaveText("main");
     await page.getByRole("button", { name: "在哪个分支上工作" }).click();
     await expect(panel.getByTestId("branch-remote")).toHaveCount(0);
@@ -288,6 +292,16 @@ test("a new session's branch: a worktree from another branch, and the project's 
     await switched.getByRole("button").click();
     await expect(switched).toContainText("feat/x（原来在 main）");
     expect(git("branch", "--show-current")).toBe("feat/x");
+
+    // Next session in the same project remembers "当前目录", while another repository on work-mac still keeps its own setting.
+    await page.getByTestId("nav-new-thread").click();
+    await expect(page.getByTestId("launch-project-chip")).toHaveText(name);
+    await expect(page.getByTestId("launch-worktree")).toHaveText("当前目录");
+    await expect(page.getByTestId("branch-trigger")).toHaveText("feat/x");
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.locator('[data-testid^="project-item-remote-app-"]'));
+    await expect(page.getByTestId("launch-worktree")).toHaveText("独立 worktree");
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId(`project-item-${name}`));
+    await expect(page.getByTestId("launch-worktree")).toHaveText("当前目录");
   } finally {
     await app.close();
   }

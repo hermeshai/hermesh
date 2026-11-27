@@ -38,6 +38,7 @@ import {
   language,
   pendingRequestOf,
   projectOnMachine,
+  projectWorktree,
   providerUnusable,
   queuedRunsOf,
   replyEnds,
@@ -64,7 +65,7 @@ import { keepAttachmentBlob } from "./session/attachments";
 import { ComposerPlace, LaunchAsk, ModelButtons, ThreadComposer, type Branches, type Place } from "./session/Composer";
 import { Inspector } from "./session/Inspector";
 import { SessionRequest } from "./session/Request";
-import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, remember } from "./session/choices";
+import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, rememberedWorktree, remember, rememberWorktree } from "./session/choices";
 import { ContentScope, SessionRunContext, type SessionCodeActions } from "./session/scope";
 import { stripTerminalEscapes } from "./session/terminalText";
 import { FilesHomeContext, type FilesHome } from "./session/files/files";
@@ -150,8 +151,9 @@ export function SessionPage() {
   // A new session's where: as the entry asked (a project group's ＋), else as last time (choices.ts).
   const [machineId, setMachineId] = useState<string>("");
   const [projectId, setProjectId] = useState<string>(SCRATCH_PROJECT);
-  // Where it works and on which branch (§16): only this session's, never remembered.
+  // Working copy is remembered per (machine, project); branch selection applies only to this session.
   const [place, setPlace] = useState<Place>({ worktree: true, base: "", on: "", fromRemote: false });
+  const placeEdited = useRef(false);
   const [branches, setBranches] = useState<Branches | undefined>();
 
   // Composer controls
@@ -194,11 +196,14 @@ export function SessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel.kind, askedMachine, askedProject, machinesKnown]);
 
-  /** A project, and whether a session of it gets its own worktree: as the project works. */
+  /** A project, and whether a session of it gets its own worktree: as last chosen for this project, else as the project works. */
+  const findProject = (mid: string, pid: string) =>
+    projectsOn(mid).list.find((p) => p.projectId === pid) ?? lastProjects(mid).find((p) => p.projectId === pid);
   const pickProject = (mid: string, pid: string) => {
     setProjectId(pid);
-    const pr = projectsOn(mid).list.find((p) => p.projectId === pid);
-    setPlace({ worktree: pr?.workspace === Workspace.WORKTREE, base: "", on: "", fromRemote: false });
+    placeEdited.current = false;
+    const pr = findProject(mid, pid);
+    setPlace({ worktree: projectWorktree(pr, rememberedWorktree(mid, pid)), base: "", on: "", fromRemote: false });
   };
   const pickMachine = (mid: string) => {
     setMachineId(mid);
@@ -479,7 +484,16 @@ export function SessionPage() {
     const began = Date.now();
     try {
       const res = await sessionApi.startSession(start.req);
-      remember(start.req.machineId ?? "", { projectId: start.req.projectId ?? "", sel: modelSel, mode: clampedMode });
+      const mid = start.req.machineId ?? "";
+      const pid = start.req.projectId ?? "";
+      const pr = findProject(mid, pid);
+      const canWorktree = Boolean(pr?.repo || pr?.workspace === Workspace.WORKTREE);
+      remember(mid, {
+        projectId: pid,
+        sel: modelSel,
+        mode: clampedMode,
+        worktree: canWorktree ? start.req.workspace?.mode === Workspace.WORKTREE : undefined,
+      });
       // "Sending…", once shown (at 400 ms), stays half a second.
       const took = Date.now() - began;
       if (took > 400 && took < 900) await new Promise((r) => setTimeout(r, 900 - took));
@@ -572,6 +586,18 @@ export function SessionPage() {
   // working copy and branch over it (for a repository).
   const projectsHere = [...st.projects.filter((p) => p.machineId !== effectiveMachineId), ...projectsOn(effectiveMachineId).list];
   const project = projectsHere.find((p) => p.machineId === effectiveMachineId && p.projectId === effectiveProjectId);
+  useEffect(() => {
+    if (activeSessionId || !project || placeEdited.current) return;
+    const want = projectWorktree(project, rememberedWorktree(effectiveMachineId, effectiveProjectId));
+    setPlace((prev) => (prev.worktree === want ? prev : { ...prev, worktree: want }));
+  }, [activeSessionId, effectiveMachineId, effectiveProjectId, project?.repo, project?.workspace]);
+  const handlePlace = (next: Place) => {
+    placeEdited.current = true;
+    if (next.worktree !== place.worktree) {
+      rememberWorktree(effectiveMachineId, effectiveProjectId, next.worktree);
+    }
+    setPlace(next);
+  };
   const choice = { machineId: effectiveMachineId, projectId: effectiveProjectId, worktree: place.worktree, sel: modelSel, mode: clampedMode, plan: false };
   const modelButtons = (
     <ModelButtons
@@ -590,7 +616,7 @@ export function SessionPage() {
     onMode: (rm: RuntimeMode) => applyConfigUpdate({ rm }),
     model: modelButtons,
   };
-  const placeRow = !activeSessionId && (project?.repo || project?.workspace === Workspace.WORKTREE) && <ComposerPlace place={place} branches={branches} onPlace={setPlace} />;
+  const placeRow = !activeSessionId && (project?.repo || project?.workspace === Workspace.WORKTREE) && <ComposerPlace place={place} branches={branches} onPlace={handlePlace} />;
   const ask = (
     <LaunchAsk
       machines={st.machines}
@@ -606,6 +632,7 @@ export function SessionPage() {
             kind: "addProject",
             machineId,
             then: (pid, wt) => {
+              placeEdited.current = true;
               setProjectId(pid);
               setPlace({ worktree: wt, base: "", on: "", fromRemote: false });
             },

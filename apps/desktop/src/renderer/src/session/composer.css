@@ -78,10 +78,23 @@
 .th-off{width:6px;height:6px;border-radius:50%;background:var(--l4);flex:none}
 .th-where{height:22px;margin-left:10px;display:inline-flex;align-items:center;gap:5px;color:var(--l3);font-size:12.5px;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .th-where .ic{width:13px;height:13px;flex:none}
-/* Over a new session's box: where it works, and on which branch. */
+/* Over a new session's box: where it works (one click toggles, hover explains), and on which branch. */
 .th-place{display:flex;align-items:center;gap:2px;min-width:0;padding:0 10px;margin-bottom:-4px}
 .th-place .mb{height:26px;padding:0 7px;gap:5px}
 .th-place .mb .lbl{max-width:280px}
+.th-wt-wrap{position:relative;display:inline-flex;flex:none}
+.th-wtbtn:active{transform:scale(.965)}
+.th-wt-slot{display:inline-flex;align-items:center;gap:5px;animation:th-wt-in .16s var(--ease-out, cubic-bezier(.2,0,0,1))}
+@keyframes th-wt-in{from{opacity:.3;transform:translateY(3px)}to{opacity:1;transform:none}}
+.th-swap{display:inline-flex;color:var(--l3);transition:transform .32s cubic-bezier(.34,1.45,.64,1),color .14s}
+.th-swap .ic{width:11.5px;height:11.5px;stroke-width:1.6}
+.th-wtbtn:hover .th-swap{color:var(--l2)}
+.th-wttip{position:absolute;left:0;bottom:calc(100% + 6px);z-index:25;padding:5px 9px;border-radius:7px;background:var(--win3, #2c2c31);color:var(--l1);box-shadow:0 0 0 .5px var(--menu-bd),0 6px 18px rgba(0,0,0,.22);font-size:11.5px;line-height:1.45;white-space:nowrap;pointer-events:none;opacity:0;transform:translateY(3px);transition:opacity .15s ease,transform .15s ease}
+@media (prefers-color-scheme:light){.th-wttip{background:var(--win)}}
+.th-wttip b{font-weight:var(--font-weight-semibold)}
+.th-wttip span{color:var(--l2);margin-left:5px}
+.th-wt-wrap:hover .th-wttip,.th-wt-wrap:has(:focus-visible) .th-wttip{opacity:1;transform:none;transition-delay:.18s}
+@media (prefers-reduced-motion:reduce){.th-wt-slot{animation:none}.th-swap,.th-wttip{transition:none}}
 .th-br b,.th-mono{font-family:var(--mono);font-weight:var(--font-weight-normal);font-size:12px}
 .th-br b{color:var(--l1)}
 .th-slash{display:flex;gap:6px;flex-wrap:wrap;padding:6px 2px 0}

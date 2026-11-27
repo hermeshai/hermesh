@@ -109,6 +109,14 @@ public func projectOnMachine(_ projects: [Hermesh_Local_V1_Project], machineID: 
     return scratchProject
 }
 
+/// Whether a new session in a project uses its own worktree: never when the project cannot use worktrees
+/// (or is the temporary workspace); otherwise what the owner last chose for this project, falling back to
+/// the project's own setting.
+public func projectWorktree(_ project: Hermesh_Local_V1_Project?, remembered: Bool? = nil) -> Bool {
+    guard let project, project.repo || project.workspace == .worktree else { return false }
+    return remembered ?? (project.workspace == .worktree)
+}
+
 /// The grants a new project on a machine would reach at once, without anyone signing anything: those whose
 /// machines include it and whose projects are all ("*") or name it (docs/thread-composer.md §3.2). all: by "*".
 public func grantsReaching(_ clients: [Hermesh_Local_V1_Client], machineID: String, projectID: String) -> [(client: Hermesh_Local_V1_Client, all: Bool)] {

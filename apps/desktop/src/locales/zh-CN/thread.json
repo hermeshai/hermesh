@@ -28,7 +28,9 @@
     "ask": "要在 <project/> 里做什么？",
     "workingCopy": "工作目录",
     "checkout": "当前目录",
-    "checkoutHint": "直接在项目目录里修改"
+    "checkoutHint": "直接在项目目录里修改",
+    "switchToWorktree": "点击切为独立 worktree",
+    "switchToCheckout": "点击切为当前目录"
   },
   "header": {
     "archive": "归档",

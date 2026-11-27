@@ -15,6 +15,7 @@ enum SessionChoices {
         var projectID: String?
         var selection: Data?
         var mode: Int?
+        var worktrees: [String: Bool]?
     }
 
     private struct Kept: Codable {
@@ -37,10 +38,45 @@ enum SessionChoices {
         mine(machine)?.selection.flatMap { try? Hermesh_Session_V1_ModelSelection(serializedBytes: $0) }
     }
 
-    static func remember(machine: String, project: String, selection: Hermesh_Session_V1_ModelSelection, mode: Hermesh_Identity_V1_RuntimeMode) {
+    static func worktree(machine: String, project: String) -> Bool? {
+        guard !machine.isEmpty, !project.isEmpty, project != scratchProject else { return nil }
+        return mine(machine)?.worktrees?[project]
+    }
+
+    static func rememberWorktree(machine: String, project: String, worktree: Bool) {
+        guard !machine.isEmpty, !project.isEmpty, project != scratchProject else { return }
         var k = kept
+        var m = k.byMachine[machine] ?? Mine()
+        var w = m.worktrees ?? [:]
+        w[project] = worktree
+        m.worktrees = w
+        k.byMachine[machine] = m
+        kept = k
+    }
+
+    static func forgetWorktree(machine: String, project: String) {
+        guard !machine.isEmpty, !project.isEmpty else { return }
+        var k = kept
+        guard var m = k.byMachine[machine], var w = m.worktrees, w.removeValue(forKey: project) != nil else { return }
+        m.worktrees = w.isEmpty ? nil : w
+        k.byMachine[machine] = m
+        kept = k
+    }
+
+    static func remember(machine: String, project: String, selection: Hermesh_Session_V1_ModelSelection, mode: Hermesh_Identity_V1_RuntimeMode, worktree: Bool? = nil) {
+        guard !machine.isEmpty else { return }
+        var k = kept
+        var m = k.byMachine[machine] ?? Mine()
+        m.projectID = project
+        m.selection = try? selection.serializedData()
+        m.mode = mode.rawValue
+        if !project.isEmpty, project != scratchProject, let worktree {
+            var w = m.worktrees ?? [:]
+            w[project] = worktree
+            m.worktrees = w
+        }
         k.machineID = machine
-        k.byMachine[machine] = Mine(projectID: project, selection: try? selection.serializedData(), mode: mode.rawValue)
+        k.byMachine[machine] = m
         kept = k
     }
 
@@ -81,6 +117,8 @@ struct SessionPage: View {
     @State private var machineID = ""
     @State private var projectID = scratchProject
     @State private var place = SessionPlace()
+    @State private var placeEdited = false
+    @State private var worktreeTurns: Double = 0
     @State private var branches: SessionBranches?
     @State private var pickingBranch = false
     @State private var selection = Hermesh_Session_V1_ModelSelection()
@@ -226,9 +264,16 @@ struct SessionPage: View {
             if reachable && !following { wakeRetry() }
         }
         .task(id: "\(effectiveMachineID)/\(effectiveProjectID)") { await loadProviders() }
-        .onChange(of: model.projects) { SessionChoices.keepProjects(model.projects, machines: model.machines) }
+        .onChange(of: model.projects) {
+            SessionChoices.keepProjects(model.projects, machines: model.machines)
+            if isNew, !placeEdited, let pr = model.projects.first(where: { $0.machineID == machineID && $0.projectID == projectID }) {
+                let want = projectWorktree(pr, remembered: SessionChoices.worktree(machine: machineID, project: projectID))
+                if place.worktree != want { place.worktree = want }
+            }
+        }
         .onChange(of: model.addedProject) {
             guard let added = model.addedProject, added.machineID == machineID else { return }
+            placeEdited = true
             projectID = added.projectID
             place = SessionPlace(worktree: added.worktree)
             model.addedProject = nil
@@ -323,6 +368,7 @@ struct SessionPage: View {
                             Button { pick(project: scratchProject, in: here) } label: {
                                 Label { Text("Temporary Workspace") } icon: { if projectID == scratchProject { Image(systemName: "checkmark") } }
                             }
+                            .accessibilityIdentifier("project-scratch")
                         }
                         Button("Add Project…", systemImage: "plus") { model.sheet = .addProject(machineID, forSession: true) }
                             .disabled(!online)
@@ -973,18 +1019,36 @@ struct SessionPage: View {
         let project = projects(on: machineID).list.first { $0.projectID == projectID }
         if project?.repo == true || project?.workspace == .worktree {
             HStack(spacing: 6) {
-                Menu {
+                Button {
+                    setWorktree(!place.worktree)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: place.worktree ? "arrow.triangle.branch" : "folder")
+                            .contentTransition(.symbolEffect(.replace))
+                        Text(verbatim: place.worktree ? String(localized: "Separate worktree") : String(localized: "Current checkout"))
+                            .lineLimit(1)
+                        Image(systemName: "arrow.left.arrow.right")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(worktreeTurns * 180))
+                    }
+                    .font(.footnote).foregroundStyle(.primary)
+                    .padding(.horizontal, 10).frame(height: 32)
+                    .background(Palette.fill2, in: Capsule())
+                }
+                .tint(.primary)
+                .sensoryFeedback(.selection, trigger: worktreeTurns)
+                .contextMenu {
                     Section("Working copy") {
-                        Button { place.worktree = false } label: {
-                            Label { Text("Current checkout"); Text("Works on the project’s own folder") } icon: { if !place.worktree { Image(systemName: "checkmark") } }
+                        Button { setWorktree(false) } label: {
+                            Label { Text("Current checkout"); Text("Works on the project’s own folder") } icon: { Image(systemName: !place.worktree ? "checkmark" : "folder") }
                         }
-                        Button { place.worktree = true } label: {
-                            Label { Text("Separate worktree"); Text("A branch of its own; your files are left alone") } icon: { if place.worktree { Image(systemName: "checkmark") } }
+                        Button { setWorktree(true) } label: {
+                            Label { Text("Separate worktree"); Text("A branch of its own; your files are left alone") } icon: { Image(systemName: place.worktree ? "checkmark" : "arrow.triangle.branch") }
                         }
                     }
-                } label: { chip(icon: place.worktree ? "arrow.triangle.branch" : "folder", place.worktree ? String(localized: "Separate worktree") : String(localized: "Current checkout")) }
-                    .tint(.primary)
-                    .accessibilityIdentifier("thread-worktree")
+                }
+                .accessibilityIdentifier("thread-worktree")
                 if let branches {
                     let name = place.chosen(branches)
                     Button {
@@ -1016,18 +1080,21 @@ struct SessionPage: View {
     private var m_icon: String { machine?.local == true ? "laptopcomputer" : "server.rack" }
     private var clamped: Hermesh_Identity_V1_RuntimeMode { clampRuntimeMode(mode, ceiling: ceiling) }
 
-    private func chip(icon: String?, _ title: String) -> some View {
-        HStack(spacing: 4) {
-            if let icon { Image(systemName: icon) }
-            Text(verbatim: title).lineLimit(1)
-            Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+    // MARK: Choosing
+
+    private func setWorktree(_ next: Bool) {
+        placeEdited = true
+        guard place.worktree != next else { return }
+        withAnimation(.spring(duration: 0.3, bounce: 0.25)) {
+            worktreeTurns += 1
+            place.worktree = next
         }
-        .font(.footnote).foregroundStyle(.primary)
-        .padding(.horizontal, 10).frame(height: 32)
-        .background(Palette.fill2, in: Capsule())
+        SessionChoices.rememberWorktree(machine: machineID, project: projectID, worktree: next)
     }
 
-    // MARK: Choosing
+    private func findProject(machine id: String, project pid: String) -> Project? {
+        projects(on: id).list.first { $0.projectID == pid } ?? SessionChoices.lastProjects(id).first { $0.projectID == pid }
+    }
 
     private func pick(machine id: String) {
         machineID = id
@@ -1036,7 +1103,9 @@ struct SessionPage: View {
 
     private func pick(project id: String, in list: [Project]) {
         projectID = id
-        place = SessionPlace(worktree: list.first { $0.projectID == id }?.workspace == .worktree)
+        placeEdited = false
+        let pr = list.first { $0.projectID == id } ?? SessionChoices.lastProjects(machineID).first { $0.projectID == id }
+        place = SessionPlace(worktree: projectWorktree(pr, remembered: SessionChoices.worktree(machine: machineID, project: id)))
     }
 
     private func setMode(_ m: Hermesh_Identity_V1_RuntimeMode) {
@@ -1328,7 +1397,15 @@ struct SessionPage: View {
         let began = Date.now
         do {
             let res = try await api.startSession(st.request)
-            SessionChoices.remember(machine: st.request.machineID, project: st.request.projectID, selection: selection, mode: clamped)
+            let pr = findProject(machine: st.request.machineID, project: st.request.projectID)
+            let canWt = pr?.repo == true || pr?.workspace == .worktree
+            SessionChoices.remember(
+                machine: st.request.machineID,
+                project: st.request.projectID,
+                selection: selection,
+                mode: clamped,
+                worktree: canWt ? st.request.workspace.mode == .worktree : nil
+            )
             // "Sending…", once shown (at 400 ms), stays half a second.
             let took = Date.now.timeIntervalSince(began)
             if took > 0.4 && took < 0.9 { try? await Task.sleep(for: .seconds(0.9 - took)) }

@@ -1269,6 +1269,7 @@ final class AppModel {
     func addProject(_ r: Hermesh_Local_V1_AddProjectRequest) async throws {
         signer.expect(.types([SigningPreview.adminCommand]))
         try await api?.addProject(r)
+        SessionChoices.forgetWorktree(machine: r.machineID, project: r.projectID)
     }
 
     func createFolder(machine: String, parent: String, name: String, gitInit: Bool) async throws {
@@ -1279,6 +1280,7 @@ final class AppModel {
     func removeProject(machine: String, project: String) async throws {
         signer.expect(.types([SigningPreview.adminCommand]))
         try await api?.removeProject(machine: machine, project: project)
+        SessionChoices.forgetWorktree(machine: machine, project: project)
     }
 
     /// Adds p again, working another way (adding again changes it). A project is for every agent provider
