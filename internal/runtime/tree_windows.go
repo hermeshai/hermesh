@@ -5,9 +5,11 @@ package runtime
 
 type tracked struct{}
 
-func track(pid int) *tracked           { return &tracked{} }
-func (t *tracked) stop() int           { return 0 }
-func (t *tracked) running() [][]string { return nil }
+func track(pid int) *tracked                 { return &tracked{} }
+func (t *tracked) stop() int                 { return 0 }
+func (t *tracked) running() [][]string       { return nil }
+func (t *tracked) snapshotBaseline()         {}
+func (t *tracked) hasActiveDescendants() bool { return false }
 
 // KillTree has nothing to do: when a daemon exits, its jobs end their
 // processes.

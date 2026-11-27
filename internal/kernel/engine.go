@@ -198,6 +198,10 @@ type Config struct {
 	// GitRemoteSyncCooldown throttles on-demand background remote ref probes per
 	// repository; zero uses the production default (60s).
 	GitRemoteSyncCooldown time.Duration
+	// WakeupHandoffGrace bounds how long an awaiting_background run waits for an
+	// out-of-turn wakeup after its last awaited background task settles; zero uses
+	// the production default (3s).
+	WakeupHandoffGrace time.Duration
 }
 
 type shellSub struct {
@@ -338,9 +342,19 @@ func (e *Engine) onLeaseReaped(lease *runtime.LeaseEntry) {
 }
 
 func (e *Engine) settleSessionBackgroundTasks(sessionID, matchPSID, summary string) {
+	e.settleBackgroundTasksFiltered(sessionID, matchPSID, summary, false)
+}
+
+func (e *Engine) stopAwaitedBackgroundTasks(sessionID, matchPSID, summary string) {
+	e.settleBackgroundTasksFiltered(sessionID, matchPSID, summary, true)
+}
+
+func (e *Engine) settleBackgroundTasksFiltered(sessionID, matchPSID, summary string, awaitedOnly bool) {
 	if sessionID == "" || e.bgCtx.Err() != nil {
 		return
 	}
+	var targetPSID string
+	var awaitedCnt, daemonCnt uint32
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
 		sess, err := tx.GetSession(sessionID)
 		if err != nil {
@@ -349,11 +363,35 @@ func (e *Engine) settleSessionBackgroundTasks(sessionID, matchPSID, summary stri
 		if matchPSID != "" && sess.ActiveProviderSessionId != "" && sess.ActiveProviderSessionId != matchPSID {
 			return nil
 		}
-		stopped, items, err := tx.StopRunningBackgroundTasks(sessionID, "", summary)
-		if err != nil || len(stopped) == 0 {
-			return err
+		targetPSID = sess.ActiveProviderSessionId
+		var stopped []*sessionv1.BackgroundTask
+		var items []*sessionv1.TurnItem
+		if awaitedOnly {
+			tasks, tErr := tx.BackgroundTasks(sessionID)
+			if tErr != nil {
+				return tErr
+			}
+			for _, bt := range tasks {
+				if bt.Status == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING && bt.Awaited && bt.Kind != sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON {
+					st, it, sErr := tx.StopRunningBackgroundTasks(sessionID, bt.TaskId, summary)
+					if sErr != nil {
+						return sErr
+					}
+					stopped = append(stopped, st...)
+					items = append(items, it...)
+				}
+			}
+		} else {
+			var sErr error
+			stopped, items, sErr = tx.StopRunningBackgroundTasks(sessionID, "", summary)
+			if sErr != nil {
+				return sErr
+			}
 		}
-		_, _, _ = tx.RefreshSessionBackgroundCounts(sess)
+		if len(stopped) == 0 {
+			return nil
+		}
+		awaitedCnt, daemonCnt, _ = tx.RefreshSessionBackgroundCounts(sess)
 		if err := putSessionSynced(tx, sess); err != nil {
 			return err
 		}
@@ -366,6 +404,9 @@ func (e *Engine) settleSessionBackgroundTasks(sessionID, matchPSID, summary stri
 		return nil
 	})
 	if err == nil && len(events) > 0 {
+		if lease := e.sup.Get(targetPSID); lease != nil {
+			lease.SetBackgroundCounts(int(awaitedCnt), int(daemonCnt))
+		}
 		e.publish(events, nil)
 	}
 }
@@ -537,8 +578,146 @@ func extractEffort(opts map[string]*sessionv1.OptionValue) string {
 	return ""
 }
 
+func (e *Engine) wakeupHandoffGrace() time.Duration {
+	if e.cfg.WakeupHandoffGrace > 0 {
+		return e.cfg.WakeupHandoffGrace
+	}
+	return 3 * time.Second
+}
+
+func firstNonEmptyTrimmed(vals ...string) string {
+	for _, v := range vals {
+		if t := strings.TrimSpace(v); t != "" {
+			return t
+		}
+	}
+	return ""
+}
+
+// deriveSessionActivityTx deterministically projects Session.Progress.Phase and
+// Session.Progress.CurrentTool from the live database state of the active Run
+// and its background tasks, eliminating imperative race-prone CurrentTool writes.
+func deriveSessionActivityTx(tx *store.Tx, s *sessionv1.Session) {
+	if s == nil || s.Progress == nil || s.Status != sessionv1.SessionStatus_SESSION_STATUS_RUNNING {
+		return
+	}
+	if s.ActiveRunId == "" {
+		s.Progress.Phase = "running"
+		s.Progress.CurrentTool = ""
+		return
+	}
+
+	bgByItemID := map[string]*sessionv1.BackgroundTask{}
+	var awaitedBgs []*sessionv1.BackgroundTask
+	if s.ActiveBackgroundCount > 0 || s.ActiveDaemonCount > 0 {
+		if tasks, err := tx.BackgroundTasks(s.SessionId); err == nil {
+			for _, bt := range tasks {
+				if bt.Status != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+					continue
+				}
+				if bt.ItemId != "" {
+					bgByItemID[bt.ItemId] = bt
+				}
+				if bt.Awaited && bt.Kind != sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON {
+					awaitedBgs = append(awaitedBgs, bt)
+				}
+			}
+		}
+	}
+
+	items, _ := tx.RunTurnItems(s.SessionId, s.ActiveRunId)
+	var (
+		fgToolLabel           string
+		hasStreamingReply     bool
+		hasStreamingReasoning bool
+		lastWorkSeq           uint64
+		lastReplySeq          uint64
+		todoFocus             string
+	)
+	for _, it := range items {
+		switch it.Kind {
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_TOOL_CALL,
+			sessionv1.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION:
+			if it.Seq > lastWorkSeq {
+				lastWorkSeq = it.Seq
+			}
+			if it.Status == "running" && bgByItemID[it.ItemId] == nil {
+				if lbl := firstNonEmptyTrimmed(it.Text, it.ToolName, it.Command); lbl != "" {
+					fgToolLabel = lbl
+				}
+			}
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE:
+			if it.Streaming || it.Status == "running" {
+				hasStreamingReply = true
+			}
+			if strings.TrimSpace(it.Text) != "" && it.Seq > lastReplySeq {
+				lastReplySeq = it.Seq
+			}
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_REASONING:
+			if it.Seq > lastWorkSeq {
+				lastWorkSeq = it.Seq
+			}
+			if it.Streaming {
+				hasStreamingReasoning = true
+			}
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_TODO_LIST:
+			if it.Seq > lastWorkSeq {
+				lastWorkSeq = it.Seq
+			}
+			if len(it.TodoSteps) == 0 {
+				todoFocus = strings.TrimSpace(it.Text)
+			} else {
+				var inProg string
+				for _, st := range it.TodoSteps {
+					if st.GetStatus() == "in_progress" {
+						inProg = strings.TrimSpace(st.GetText())
+						break
+					}
+				}
+				if inProg != "" {
+					todoFocus = firstNonEmptyTrimmed(it.Text, inProg)
+				} else {
+					todoFocus = ""
+				}
+			}
+		}
+	}
+
+	switch {
+	case fgToolLabel != "":
+		s.Progress.Phase = "running"
+		s.Progress.CurrentTool = fgToolLabel
+	case hasStreamingReply:
+		s.Progress.Phase = "responding"
+		s.Progress.CurrentTool = ""
+	case len(awaitedBgs) > 0:
+		latest := awaitedBgs[len(awaitedBgs)-1]
+		lbl := firstNonEmptyTrimmed(latest.Title, latest.Command)
+		if len(awaitedBgs) > 1 && lbl != "" {
+			lbl = fmt.Sprintf("%s (+%d)", lbl, len(awaitedBgs)-1)
+		}
+		s.Progress.Phase = "awaiting_background"
+		s.Progress.CurrentTool = lbl
+	case lastReplySeq > lastWorkSeq && !hasStreamingReasoning:
+		s.Progress.Phase = "responding"
+		s.Progress.CurrentTool = ""
+	case todoFocus != "":
+		s.Progress.Phase = "running"
+		s.Progress.CurrentTool = todoFocus
+	case hasStreamingReasoning:
+		s.Progress.Phase = "thinking"
+		s.Progress.CurrentTool = ""
+	default:
+		if s.Progress.Phase != "awaiting_background" {
+			s.Progress.Phase = "running"
+		}
+		s.Progress.CurrentTool = ""
+	}
+}
+
 func putSessionSynced(tx *store.Tx, s *sessionv1.Session) error {
 	syncSessionSummary(s)
+	deriveSessionActivityTx(tx, s)
 	return tx.PutSession(s)
 }
 
@@ -2003,6 +2182,7 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *session
 		now := timestamppb.Now()
 		sNow.QueueHeld = false
 		sNow.Error = ""
+		sNow.Result = ""
 		sNow.Progress.LastFailure = nil
 		sNow.Progress.TurnCount++
 		sNow.Progress.TurnStartedAt = now
@@ -2346,6 +2526,7 @@ func (e *Engine) DeliverInboundMail(ctx context.Context, p *Principal, sessionID
 		}
 		now := timestamppb.Now()
 		sNow.Error = ""
+		sNow.Result = ""
 		sNow.Progress.LastFailure = nil
 		sNow.Progress.TurnCount++
 		sNow.Progress.TurnStartedAt = now
@@ -3106,12 +3287,17 @@ func (e *Engine) captureTurnCheckpoint(sessionID, runID string, ordinal uint32, 
 }
 
 type activeTurnHandle struct {
-	runID       string
-	ordinal     uint32
-	workdir     string
-	prevTreeOID string
-	doneCh      chan struct{}
-	doneOnce    sync.Once
+	runID          string
+	ordinal        uint32
+	workdir        string
+	prevTreeOID    string
+	segmentSeq     uint32
+	awaitingWakeup bool
+	lastResultText string
+	heldPlan       *sessionv1.PlanReviewPayload
+	heldQuestion   *sessionv1.UserInputPayload
+	doneCh         chan struct{}
+	doneOnce       sync.Once
 }
 
 func (h *activeTurnHandle) closeDone() {
@@ -3121,20 +3307,106 @@ func (h *activeTurnHandle) closeDone() {
 }
 
 type leasePump struct {
-	lease      *runtime.LeaseEntry
-	stopCh     chan struct{}
-	stopOnce   sync.Once
-	mu         sync.Mutex
-	workdir    string
-	active     *activeTurnHandle
-	itemScopes map[string]string
-	lastWake   string
+	lease            *runtime.LeaseEntry
+	stopCh           chan struct{}
+	stopOnce         sync.Once
+	mu               sync.Mutex
+	workdir          string
+	active           *activeTurnHandle
+	itemScopes       map[string]string
+	lastWake         string
+	handoffTimer     *time.Timer
+	handoffStartedAt time.Time
 }
 
 func (p *leasePump) stop() {
 	if p != nil {
+		p.cancelHandoffTimer()
 		p.stopOnce.Do(func() { close(p.stopCh) })
 	}
+}
+
+func (p *leasePump) cancelHandoffTimer() {
+	p.mu.Lock()
+	if p.handoffTimer != nil {
+		p.handoffTimer.Stop()
+		p.handoffTimer = nil
+	}
+	p.handoffStartedAt = time.Time{}
+	p.mu.Unlock()
+}
+
+func (p *leasePump) setAwaitingWakeup(runID string, v bool) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.active == nil || p.active.runID != runID {
+		return false
+	}
+	p.active.awaitingWakeup = v
+	if !v && p.handoffTimer != nil {
+		p.handoffTimer.Stop()
+		p.handoffTimer = nil
+		p.handoffStartedAt = time.Time{}
+	}
+	return true
+}
+
+func (p *leasePump) isAwaitingWakeup(runID string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.active != nil && p.active.runID == runID && p.active.awaitingWakeup
+}
+
+func (p *leasePump) resumeActiveWakeup() *activeTurnHandle {
+	p.mu.Lock()
+	cur := p.active
+	resumed := false
+	if cur != nil && cur.awaitingWakeup {
+		cur.awaitingWakeup = false
+		resumed = true
+		if p.handoffTimer != nil {
+			p.handoffTimer.Stop()
+			p.handoffTimer = nil
+		}
+		p.handoffStartedAt = time.Time{}
+	}
+	p.mu.Unlock()
+	if resumed {
+		p.lease.SetInTurn(true)
+	}
+	return cur
+}
+
+func (p *leasePump) takeActiveIf(runID string) *activeTurnHandle {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.active != nil && p.active.runID == runID {
+		cur := p.active
+		p.active = nil
+		if p.handoffTimer != nil {
+			p.handoffTimer.Stop()
+			p.handoffTimer = nil
+		}
+		p.handoffStartedAt = time.Time{}
+		return cur
+	}
+	return nil
+}
+
+func (p *leasePump) takeAwaitingIf(runID string) *activeTurnHandle {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.active != nil && p.active.runID == runID && p.active.awaitingWakeup {
+		cur := p.active
+		p.active = nil
+		if p.handoffTimer != nil {
+			p.handoffTimer.Stop()
+			p.handoffTimer = nil
+		}
+		p.handoffStartedAt = time.Time{}
+		return cur
+	}
+	return nil
 }
 
 func (p *leasePump) attachTurn(runID string, ordinal uint32, workdir, prevTreeOID string) *activeTurnHandle {
@@ -3182,6 +3454,11 @@ func (p *leasePump) clearActiveIf(runID string) bool {
 	if p.active != nil && p.active.runID == runID {
 		cur := p.active
 		p.active = nil
+		if p.handoffTimer != nil {
+			p.handoffTimer.Stop()
+			p.handoffTimer = nil
+		}
+		p.handoffStartedAt = time.Time{}
 		cur.closeDone()
 		return true
 	}
@@ -3260,15 +3537,16 @@ func (e *Engine) getLeasePump(psID string) *leasePump {
 }
 
 // ensureContinuationTurn attaches to an already-active run on pump's session or
-// spawns a system-authored Continuation Run when out-of-turn agent work arrives.
+// spawns a system-authored Continuation Run when out-of-turn agent work arrives
+// on an already-idle session.
 func (e *Engine) ensureContinuationTurn(pump *leasePump) *activeTurnHandle {
-	if cur := pump.getActive(); cur != nil {
+	if cur := pump.resumeActiveWakeup(); cur != nil {
 		return cur
 	}
 	sessionID := pump.lease.SessionID
 	unlock := e.lockSession(sessionID)
 
-	if cur := pump.getActive(); cur != nil {
+	if cur := pump.resumeActiveWakeup(); cur != nil {
 		unlock()
 		return cur
 	}
@@ -3321,6 +3599,7 @@ func (e *Engine) ensureContinuationTurn(pump *leasePump) *activeTurnHandle {
 		}
 		now := timestamppb.Now()
 		sNow.Error = ""
+		sNow.Result = ""
 		sNow.Progress.LastFailure = nil
 		sNow.Progress.TurnCount++
 		sNow.Progress.TurnStartedAt = now
@@ -3629,6 +3908,11 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			if err == nil {
 				pump.lease.SetBackgroundCounts(int(awaitedCnt), int(daemonCnt))
 				e.publish(evs, nil)
+				if awaitedCnt > 0 {
+					pump.cancelHandoffTimer()
+				} else if cur != nil && pump.isAwaitingWakeup(cur.runID) {
+					e.scheduleWakeupHandoffCheck(pump, cur.runID, e.wakeupHandoffGrace())
+				}
 			}
 
 		case runtime.EventUsage:
@@ -3684,8 +3968,8 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			existingScoped := pump.lookupScopedItem(ev.ItemID)
 			cur := pump.getActive()
 			// A background task completing on its own updates its original TurnItem
-			// without spawning an empty Continuation Run.
-			if cur == nil && ev.Kind == runtime.EventToolCompleted && existingScoped != "" {
+			// without spawning an empty Continuation Run or falsely clearing awaitingWakeup.
+			if (cur == nil || pump.isAwaitingWakeup(cur.runID)) && ev.Kind == runtime.EventToolCompleted && existingScoped != "" {
 				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
 					prev, err := tx.GetTurnItem(sessionID, existingScoped)
 					if err != nil {
@@ -3708,6 +3992,9 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					if err := tx.PutTurnItem(prev); err != nil {
 						return err
 					}
+					if sNow, sErr := tx.GetSession(sessionID); sErr == nil {
+						_ = putSessionSynced(tx, sNow)
+					}
 					return tx.AppendEvent(&sessionv1.SessionEvent{
 						SessionId: sessionID,
 						Type:      "item.updated",
@@ -3717,11 +4004,9 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				e.publish(evs, nil)
 				continue
 			}
+			cur = e.ensureContinuationTurn(pump)
 			if cur == nil {
-				cur = e.ensureContinuationTurn(pump)
-				if cur == nil {
-					continue
-				}
+				continue
 			}
 			itemID := existingScoped
 			if itemID == "" {
@@ -3796,22 +4081,13 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					return err
 				}
 				if sNow, sErr := tx.GetSession(sessionID); sErr == nil {
-					if sNow.Progress == nil {
-						sNow.Progress = &sessionv1.SessionProgress{}
-					}
-					if ev.Kind == runtime.EventToolStarted {
-						curTool := text
-						if curTool == "" {
-							curTool = toolName
-						}
-						if curTool == "" {
-							curTool = cmd
-						}
-						sNow.Progress.CurrentTool = curTool
-					} else {
-						sNow.Progress.CurrentTool = ""
-					}
 					_ = putSessionSynced(tx, sNow)
+					return tx.AppendEvent(&sessionv1.SessionEvent{
+						SessionId: sessionID,
+						Type:      "item.updated",
+						Session:   sNow,
+						Item:      it,
+					})
 				}
 				return tx.AppendEvent(&sessionv1.SessionEvent{
 					SessionId: sessionID,
@@ -3826,7 +4102,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			if cur == nil {
 				continue
 			}
-			itemID := scopeRunItemID(cur.runID, ev.ItemID, "msg")
+			itemID := scopeSegmentItemID(cur.runID, cur.segmentSeq, ev.ItemID, "msg")
 			buf := msgBufs[itemID]
 			if buf == nil {
 				buf = &strings.Builder{}
@@ -3848,9 +4124,15 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				if err := tx.PutTurnItem(it); err != nil {
 					return err
 				}
+				var sNow *sessionv1.Session
+				if s, sErr := tx.GetSession(sessionID); sErr == nil {
+					sNow = s
+					_ = putSessionSynced(tx, sNow)
+				}
 				return tx.AppendEvent(&sessionv1.SessionEvent{
 					SessionId:    sessionID,
 					Type:         "item.delta",
+					Session:      sNow,
 					Item:         it,
 					TextDelta:    ev.Text,
 					TargetItemId: itemID,
@@ -3863,7 +4145,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			if cur == nil {
 				continue
 			}
-			itemID := scopeRunItemID(cur.runID, ev.ItemID, "msg")
+			itemID := scopeSegmentItemID(cur.runID, cur.segmentSeq, ev.ItemID, "msg")
 			text := ev.Text
 			if text == "" && msgBufs[itemID] != nil {
 				text = msgBufs[itemID].String()
@@ -3885,16 +4167,21 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				if err := tx.PutTurnItem(it); err != nil {
 					return err
 				}
-				if sNow, sErr := tx.GetSession(sessionID); sErr == nil && text != "" {
-					if sNow.Progress == nil {
-						sNow.Progress = &sessionv1.SessionProgress{}
+				var sNow *sessionv1.Session
+				if s, sErr := tx.GetSession(sessionID); sErr == nil {
+					sNow = s
+					if text != "" {
+						if sNow.Progress == nil {
+							sNow.Progress = &sessionv1.SessionProgress{}
+						}
+						sNow.Progress.LastMessageExcerpt = excerptText(text, 240)
 					}
-					sNow.Progress.LastMessageExcerpt = excerptText(text, 240)
 					_ = putSessionSynced(tx, sNow)
 				}
 				return tx.AppendEvent(&sessionv1.SessionEvent{
 					SessionId: sessionID,
 					Type:      "item.updated",
+					Session:   sNow,
 					Item:      it,
 				})
 			})
@@ -3905,7 +4192,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			if cur == nil {
 				continue
 			}
-			itemID := scopeRunItemID(cur.runID, ev.ItemID, "rsn")
+			itemID := scopeSegmentItemID(cur.runID, cur.segmentSeq, ev.ItemID, "rsn")
 			settleReasoning(itemID)
 			liveRsn[itemID] = cur.runID
 			buf := rsnBufs[itemID]
@@ -4029,7 +4316,15 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				prev, _ := tx.GetTurnItem(sessionID, itemID)
 				focus := strings.TrimSpace(ev.Text)
 				if !ev.HasFocus && prev != nil {
-					focus = prev.Text
+					prevInProg := firstInProgressTodoText(prev.TodoSteps)
+					curInProg := firstInProgressTodoText(ev.TodoSteps)
+					if len(prev.TodoSteps) > 0 && curInProg != "" && curInProg != prevInProg {
+						focus = curInProg
+					} else {
+						focus = prev.Text
+					}
+				} else if !ev.HasFocus && focus == "" {
+					focus = firstInProgressTodoText(ev.TodoSteps)
 				}
 				it := &sessionv1.TurnItem{
 					ItemId:    itemID,
@@ -4043,18 +4338,15 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				if err := tx.PutTurnItem(it); err != nil {
 					return err
 				}
-				if focus != "" {
-					if sNow, sErr := tx.GetSession(sessionID); sErr == nil {
-						if sNow.Progress == nil {
-							sNow.Progress = &sessionv1.SessionProgress{}
-						}
-						sNow.Progress.CurrentTool = focus
-						_ = putSessionSynced(tx, sNow)
-					}
+				var sNow *sessionv1.Session
+				if s, sErr := tx.GetSession(sessionID); sErr == nil {
+					sNow = s
+					_ = putSessionSynced(tx, sNow)
 				}
 				return tx.AppendEvent(&sessionv1.SessionEvent{
 					SessionId: sessionID,
 					Type:      "item.updated",
+					Session:   sNow,
 					Item:      it,
 				})
 			})
@@ -4088,16 +4380,15 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				if err := tx.PutTurnItem(it); err != nil {
 					return err
 				}
-				if sNow, sErr := tx.GetSession(sessionID); sErr == nil {
-					if sNow.Progress == nil {
-						sNow.Progress = &sessionv1.SessionProgress{}
-					}
-					sNow.Progress.CurrentTool = focus
+				var sNow *sessionv1.Session
+				if s, sErr := tx.GetSession(sessionID); sErr == nil {
+					sNow = s
 					_ = putSessionSynced(tx, sNow)
 				}
 				return tx.AppendEvent(&sessionv1.SessionEvent{
 					SessionId: sessionID,
 					Type:      "item.updated",
+					Session:   sNow,
 					Item:      it,
 				})
 			})
@@ -4138,7 +4429,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			}
 
 		case runtime.EventTurnCompleted:
-			cur := pump.takeActive()
+			cur := pump.getActive()
 			if cur == nil {
 				resetTurnBuffers()
 				continue
@@ -4160,9 +4451,19 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 						if err := tx.PutTurnItem(it); err != nil {
 							return err
 						}
+						var sNow *sessionv1.Session
+						if s, sErr := tx.GetSession(sessionID); sErr == nil {
+							sNow = s
+							if sNow.Progress == nil {
+								sNow.Progress = &sessionv1.SessionProgress{}
+							}
+							sNow.Progress.LastMessageExcerpt = excerptText(full, 240)
+							_ = putSessionSynced(tx, sNow)
+						}
 						return tx.AppendEvent(&sessionv1.SessionEvent{
 							SessionId: sessionID,
 							Type:      "item.updated",
+							Session:   sNow,
 							Item:      it,
 						})
 					})
@@ -4172,11 +4473,52 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			if ev.Text != "" {
 				lastAssistantText = ev.Text
 			}
-			resultText := lastAssistantText
-			planToReview := pendingPlan
-			questionToAsk := pendingQuestion
+			pump.mu.Lock()
+			if strings.TrimSpace(lastAssistantText) != "" {
+				cur.lastResultText = lastAssistantText
+			}
+			if pendingPlan != nil {
+				cur.heldPlan = pendingPlan
+			}
+			if pendingQuestion != nil {
+				cur.heldQuestion = pendingQuestion
+			}
+			cur.segmentSeq++
+			resultText := cur.lastResultText
+			planToReview := cur.heldPlan
+			questionToAsk := cur.heldQuestion
+			pump.mu.Unlock()
 			resetTurnBuffers()
 
+			hold, hasAwaitedBg, _ := e.shouldHoldRunForBackground(sessionID, cur.runID, pump)
+			if hold && planToReview == nil && questionToAsk == nil {
+				if pump.setAwaitingWakeup(cur.runID, true) {
+					pump.lease.SetInTurn(false)
+					evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+						sNow, sErr := tx.GetSession(sessionID)
+						if sErr != nil {
+							return sErr
+						}
+						if err := putSessionSynced(tx, sNow); err != nil {
+							return err
+						}
+						return tx.AppendEvent(&sessionv1.SessionEvent{
+							SessionId: sessionID,
+							Type:      "session.updated",
+							Session:   sNow,
+						})
+					})
+					e.publish(evs, nil)
+					if !hasAwaitedBg {
+						e.scheduleWakeupHandoffCheck(pump, cur.runID, e.wakeupHandoffGrace())
+					}
+					continue
+				}
+			}
+
+			if pump.takeActiveIf(cur.runID) == nil {
+				continue
+			}
 			capturedCp, cumStat := e.captureTurnCheckpoint(sessionID, cur.runID, cur.ordinal, cur.workdir, cur.prevTreeOID)
 			e.finishRunCompleted(sessionID, cur.runID, psID, capturedCp, cumStat, resultText, planToReview, questionToAsk)
 			pump.lease.SetInTurn(false)
@@ -4247,6 +4589,92 @@ func truncateTurnOutput(output string) (string, bool) {
 	return output[:cut] + "\n...[output truncated]...", true
 }
 
+func firstInProgressTodoText(steps []*sessionv1.TodoStep) string {
+	for _, st := range steps {
+		if st.GetStatus() == "in_progress" {
+			if txt := strings.TrimSpace(st.GetText()); txt != "" {
+				return txt
+			}
+		}
+	}
+	return ""
+}
+
+func (e *Engine) shouldHoldRunForBackground(sessionID, runID string, pump *leasePump) (hold bool, hasAwaitedBg bool, pendingWake bool) {
+	if sess, err := e.st.Session(sessionID); err == nil && sess.ActiveBackgroundCount > 0 {
+		hasAwaitedBg = true
+	}
+	runHadAwaitedBg := hasAwaitedBg
+	if !runHadAwaitedBg && runID != "" {
+		if bgs, err := e.st.BackgroundTasks(sessionID); err == nil {
+			for _, bt := range bgs {
+				if bt.RunId == runID && bt.Awaited && bt.Kind != sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON {
+					runHadAwaitedBg = true
+					break
+				}
+			}
+		}
+	}
+	if runHadAwaitedBg && pump != nil && pump.lease != nil && pump.lease.Session != nil {
+		if probe, ok := pump.lease.Session.(runtime.WakeupProbe); ok && probe.PendingWakeup() {
+			pendingWake = true
+		}
+	}
+	return hasAwaitedBg || pendingWake, hasAwaitedBg, pendingWake
+}
+
+func (e *Engine) scheduleWakeupHandoffCheck(pump *leasePump, runID string, delay time.Duration) {
+	if pump == nil || runID == "" || e.bgCtx.Err() != nil {
+		return
+	}
+	pump.mu.Lock()
+	if pump.active == nil || pump.active.runID != runID || !pump.active.awaitingWakeup {
+		pump.mu.Unlock()
+		return
+	}
+	if pump.handoffTimer != nil {
+		pump.handoffTimer.Stop()
+	}
+	if pump.handoffStartedAt.IsZero() {
+		pump.handoffStartedAt = time.Now()
+	}
+	pump.handoffTimer = time.AfterFunc(delay, func() {
+		if e.bgCtx.Err() != nil || !pump.isAwaitingWakeup(runID) {
+			return
+		}
+		sessionID := pump.lease.SessionID
+		psID := pump.lease.ProviderSessionID
+		_, hasAwaitedBg, pendingWake := e.shouldHoldRunForBackground(sessionID, runID, pump)
+		if hasAwaitedBg {
+			pump.cancelHandoffTimer()
+			return
+		}
+		if pendingWake {
+			pump.mu.Lock()
+			started := pump.handoffStartedAt
+			pump.mu.Unlock()
+			if time.Since(started) < 2*time.Minute {
+				e.scheduleWakeupHandoffCheck(pump, runID, 250*time.Millisecond)
+				return
+			}
+		}
+		cur := pump.takeAwaitingIf(runID)
+		if cur == nil {
+			return
+		}
+		pump.mu.Lock()
+		resultText := cur.lastResultText
+		planToReview := cur.heldPlan
+		questionToAsk := cur.heldQuestion
+		pump.mu.Unlock()
+		capturedCp, cumStat := e.captureTurnCheckpoint(sessionID, cur.runID, cur.ordinal, cur.workdir, cur.prevTreeOID)
+		e.finishRunCompleted(sessionID, cur.runID, psID, capturedCp, cumStat, resultText, planToReview, questionToAsk)
+		pump.lease.SetInTurn(false)
+		cur.closeDone()
+	})
+	pump.mu.Unlock()
+}
+
 func scopeRunItemID(runID, rawID, fallbackPrefix string) string {
 	if rawID == "" {
 		return fallbackPrefix + "_" + runID
@@ -4255,6 +4683,20 @@ func scopeRunItemID(runID, rawID, fallbackPrefix string) string {
 		return rawID
 	}
 	return runID + ":" + rawID
+}
+
+func scopeSegmentItemID(runID string, segmentSeq uint32, rawID, fallbackPrefix string) string {
+	if segmentSeq == 0 {
+		return scopeRunItemID(runID, rawID, fallbackPrefix)
+	}
+	if rawID == "" {
+		return fmt.Sprintf("%s_%d_%s", fallbackPrefix, segmentSeq, runID)
+	}
+	segPrefix := fmt.Sprintf("%s:seg%d:", runID, segmentSeq)
+	if strings.HasPrefix(rawID, segPrefix) {
+		return rawID
+	}
+	return segPrefix + rawID
 }
 
 func excerptText(s string, maxRunes int) string {
@@ -4384,11 +4826,19 @@ func (e *Engine) finishRunCompleted(sessionID, runID, psID string, cp *sessionv1
 		}
 
 		queued, _ := tx.QueuedRuns(sessionID)
+		var completedSess *sessionv1.Session
 		var resumeReq *sessionv1.RuntimeRequest
 		var resumeReqItem *sessionv1.TurnItem
 		if len(queued) > 0 && !sess.QueueHeld {
+			completedSess = proto.Clone(sess).(*sessionv1.Session)
+			completedSess.ActiveRunId = ""
+			completedSess.QueuedRunCount = uint32(len(queued))
+			completedSess.Status = sessionv1.SessionStatus_SESSION_STATUS_QUEUED
+			syncSessionSummary(completedSess)
+
 			now := timestamppb.Now()
 			nextQueued = queued[0]
+			sess.Result = ""
 			sess.Progress.TurnCount++
 			sess.Progress.TurnStartedAt = now
 			nextQueued.Ordinal = sess.Progress.TurnCount
@@ -4498,10 +4948,14 @@ func (e *Engine) finishRunCompleted(sessionID, runID, psID string, cp *sessionv1
 		if err := putSessionSynced(tx, sess); err != nil {
 			return err
 		}
+		completedSnapshot := sess
+		if completedSess != nil {
+			completedSnapshot = completedSess
+		}
 		if err := tx.AppendEvent(&sessionv1.SessionEvent{
 			SessionId:  sessionID,
 			Type:       "run.completed",
-			Session:    sess,
+			Session:    completedSnapshot,
 			Run:        r,
 			Item:       cpItem,
 			Checkpoint: cp,
@@ -4594,6 +5048,7 @@ func (e *Engine) finishRunInterrupted(sessionID, runID, reason string, cp *sessi
 		if len(queued) > 0 && !sess.QueueHeld {
 			now := timestamppb.Now()
 			nextQueued = queued[0]
+			sess.Result = ""
 			sess.Progress.TurnCount++
 			sess.Progress.TurnStartedAt = now
 			sess.Progress.LastFailure = nil
@@ -4782,12 +5237,16 @@ func (e *Engine) makeGate(sessionID, workdir string) runtime.GateFunc {
 		if err != nil {
 			return runtime.ToolGateResult{}, err
 		}
-		if sess.ActiveRunId == "" && sess.ActiveProviderSessionId != "" {
+		if sess.ActiveProviderSessionId != "" {
 			if pump := e.getLeasePump(sess.ActiveProviderSessionId); pump != nil {
-				if h := e.ensureContinuationTurn(pump); h != nil {
-					if refreshed, rErr := e.st.Session(sessionID); rErr == nil {
-						sess = refreshed
+				if sess.ActiveRunId == "" {
+					if h := e.ensureContinuationTurn(pump); h != nil {
+						if refreshed, rErr := e.st.Session(sessionID); rErr == nil {
+							sess = refreshed
+						}
 					}
+				} else {
+					pump.resumeActiveWakeup()
 				}
 			}
 		}
@@ -5476,6 +5935,30 @@ func (e *Engine) InterruptSession(ctx context.Context, p *Principal, req *sessio
 			}
 		}
 	} else {
+		if activeRunID != "" {
+			if pump := e.getLeasePump(psID); pump != nil && pump.isAwaitingWakeup(activeRunID) {
+				if bc, ok := lease.Session.(runtime.BackgroundController); ok {
+					tasks, _ := e.st.BackgroundTasks(req.SessionId)
+					for _, bt := range tasks {
+						if bt.Status == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING && bt.Awaited && bt.Kind != sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON {
+							_ = bc.StopBackgroundTask(ctx, bt.TaskId)
+						}
+					}
+				}
+				e.stopAwaitedBackgroundTasks(req.SessionId, psID, intReason)
+				if cur := pump.takeAwaitingIf(activeRunID); cur != nil {
+					lease.SetInTurn(false)
+					cp, cumStat := e.captureTurnCheckpoint(req.SessionId, activeRunID, cur.ordinal, cur.workdir, cur.prevTreeOID)
+					e.finishRunInterrupted(req.SessionId, activeRunID, intReason, cp, cumStat)
+					cur.closeDone()
+				}
+				updated, uErr := e.st.Session(req.SessionId)
+				if uErr != nil {
+					return nil, uErr
+				}
+				return &sessionv1.InterruptSessionResponse{Session: updated}, nil
+			}
+		}
 		_ = lease.Session.Interrupt(ctx)
 		if activeRunID != "" {
 			sid := req.SessionId
@@ -5603,6 +6086,13 @@ func (e *Engine) StopBackgroundTask(ctx context.Context, p *Principal, req *sess
 		lease.SetBackgroundCounts(int(awaitedCnt), int(daemonCnt))
 	}
 	e.publish(events, nil)
+	if awaitedCnt == 0 {
+		if pump := e.getLeasePump(psID); pump != nil {
+			if cur := pump.getActive(); cur != nil && pump.isAwaitingWakeup(cur.runID) {
+				e.scheduleWakeupHandoffCheck(pump, cur.runID, 50*time.Millisecond)
+			}
+		}
+	}
 	return res, nil
 }
 

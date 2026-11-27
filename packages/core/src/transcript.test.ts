@@ -414,10 +414,11 @@ test("activeTodoSteps and sessionFocusText track live turns, background continua
   ]);
   expect(sessionFocusText(p)).toBe("Verify with HermeshKit and iOS Simulator tests");
 
-  // Auto-collapses when all steps in the active turn are completed/skipped:
+  // Auto-collapses when all steps in the active turn are completed/skipped, and clears stale TODO_LIST.text focus:
   p.items.push(
     item(7, "r3", TurnItemKind.TODO_LIST, {
       itemId: "r3:todo:todo",
+      text: "Inspecting stale focus before completion",
       todoSteps: [
         { text: "Step A", status: "done" },
         { text: "Step B", status: "skipped" },
@@ -425,6 +426,36 @@ test("activeTodoSteps and sessionFocusText track live turns, background continua
     }),
   );
   expect(activeTodoSteps(p)).toEqual([]);
+  expect(sessionFocusText(p)).toBeUndefined();
+
+  // Single-run awaited background task surfaces as focus while awaiting, yields to streaming reply, and ignores DAEMON:
+  p.backgroundTasks.push(
+    create(BackgroundTaskSchema, {
+      taskId: "bg_daemon",
+      runId: "r3",
+      itemId: "r3:daemon",
+      kind: BackgroundTaskKind.DAEMON,
+      status: BackgroundTaskStatus.RUNNING,
+      title: "Vite dev server",
+      awaited: false,
+    }),
+    create(BackgroundTaskSchema, {
+      taskId: "bg_xcode",
+      runId: "r3",
+      itemId: "r3:xcode",
+      kind: BackgroundTaskKind.COMMAND,
+      status: BackgroundTaskStatus.RUNNING,
+      title: "Run HermeshKit unit tests",
+      awaited: true,
+    }),
+  );
+  p.items.push(item(8, "r3", TurnItemKind.COMMAND_EXECUTION, { itemId: "r3:xcode", command: "xcodebuild test", status: "running" }));
+  expect(sessionWork(p)).toBe("tool");
+  expect(sessionFocusText(p)).toBe("Run HermeshKit unit tests");
+
+  p.items.push(item(9, "r3", TurnItemKind.ASSISTANT_MESSAGE, { text: "All tests passed!", streaming: true }));
+  expect(sessionWork(p)).toBe("replying");
+  expect(sessionFocusText(p)).toBeUndefined();
 });
 
 test("windowTodoSteps builds 3-row smart window, handles parallel steps, and deduplicates focus text", () => {

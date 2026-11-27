@@ -439,6 +439,7 @@ type claudeAsyncInput struct {
 	kind    sessionv1.BackgroundTaskKind
 	title   string
 	command string
+	awaited bool
 }
 
 type claudeBgTask struct {
@@ -449,6 +450,7 @@ type claudeBgTask struct {
 	command    string
 	outputFile string
 	outputTail string
+	awaited    bool
 	running    bool
 	tailing    bool
 	stopCh     chan struct{}
@@ -499,6 +501,23 @@ type session struct {
 	pendingTodoCreates map[string]*claudeTodoTask // tool_use_id -> pending TaskCreate item
 	pendingTodoOrder   []string
 	lastTodoSig        string
+	pendingWakeup      bool
+}
+
+func (s *session) hasRunningAwaitedBgLocked() bool {
+	for _, bg := range s.bgTasks {
+		if bg != nil && bg.running && bg.awaited {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *session) PendingWakeup() bool {
+	s.mu.Lock()
+	pw := s.pendingWakeup || s.inTurn
+	s.mu.Unlock()
+	return pw
 }
 
 func (s *session) gateCtx() context.Context {
@@ -528,6 +547,7 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 	s.mu.Lock()
 	s.turnCtx = ctx
 	s.inTurn = true
+	s.pendingWakeup = false
 	s.sent++
 	s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
 	s.msgUsed = false
@@ -539,10 +559,12 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 
 func (s *session) Steer(_ context.Context, text string, atts []runtime.TurnAttachment) error {
 	s.mu.Lock()
-	if !s.inTurn {
+	if !s.inTurn && !s.hasRunningAwaitedBgLocked() && !s.pendingWakeup {
 		s.mu.Unlock()
 		return errors.New("no active turn to steer")
 	}
+	s.inTurn = true
+	s.pendingWakeup = false
 	s.sent++
 	s.mu.Unlock()
 	return s.writeUserMessage(text, atts)
@@ -662,6 +684,9 @@ func (s *session) StopBackgroundTask(ctx context.Context, taskID string) error {
 		bg.running = false
 		bg.stopTail()
 	}
+	if !s.hasRunningAwaitedBgLocked() {
+		s.pendingWakeup = false
+	}
 	s.mu.Unlock()
 
 	var firstErr error
@@ -692,7 +717,7 @@ func (s *session) StopBackgroundTask(ctx context.Context, taskID string) error {
 			BackgroundKind:      bg.kind,
 			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
 			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
-			BackgroundAwaited:   true,
+			BackgroundAwaited:   bg.awaited,
 		})
 		if bg.itemID != "" {
 			s.emit(runtime.Event{
@@ -845,6 +870,7 @@ func (s *session) readLoop() {
 		case "system":
 			switch l.Subtype {
 			case "init":
+				s.proc.SnapshotBaseline()
 				if l.SessionID != "" {
 					s.emit(runtime.Event{
 						Kind:         runtime.EventNativeSession,
@@ -885,6 +911,7 @@ func (s *session) readLoop() {
 			if ev.Type == "content_block_start" && (ev.ContentBlock.Type == "thinking" || ev.ContentBlock.Type == "redacted_thinking") {
 				s.thinking = true
 				s.mu.Lock()
+				s.pendingWakeup = false
 				msgID := s.msgItemID
 				s.mu.Unlock()
 				s.emit(runtime.Event{Kind: runtime.EventReasoningDelta, ItemID: "rsn_" + msgID})
@@ -899,12 +926,14 @@ func (s *session) readLoop() {
 				if ev.Delta.Type == "text_delta" && ev.Delta.Text != "" {
 					s.settleScheduledWakeups()
 					s.mu.Lock()
+					s.pendingWakeup = false
 					msgID := s.msgItemID
 					s.msgUsed = true
 					s.mu.Unlock()
 					s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgID, Text: ev.Delta.Text})
 				} else if ev.Delta.Type == "thinking_delta" && ev.Delta.Thinking != "" {
 					s.mu.Lock()
+					s.pendingWakeup = false
 					msgID := s.msgItemID
 					s.mu.Unlock()
 					s.emit(runtime.Event{Kind: runtime.EventReasoningDelta, ItemID: "rsn_" + msgID, Text: ev.Delta.Thinking})
@@ -915,6 +944,9 @@ func (s *session) readLoop() {
 			if l.ParentToolID != "" {
 				return
 			}
+			s.mu.Lock()
+			s.pendingWakeup = false
+			s.mu.Unlock()
 			var m struct {
 				Content []struct {
 					Type  string          `json:"type"`
@@ -999,6 +1031,7 @@ func (s *session) readLoop() {
 								itemID:  c.ID,
 								kind:    sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE,
 								title:   asyncMeta.title,
+								awaited: true,
 								running: true,
 							}
 							s.mu.Unlock()
@@ -1100,9 +1133,13 @@ func (s *session) readLoop() {
 										kind:    asyncMeta.kind,
 										title:   asyncMeta.title,
 										command: asyncMeta.command,
+										awaited: asyncMeta.awaited,
 										running: true,
 									}
 									s.mu.Unlock()
+									if !asyncMeta.awaited {
+										s.proc.SnapshotBaseline()
+									}
 									s.emit(runtime.Event{
 										Kind:                runtime.EventBackgroundTask,
 										TaskID:              synthID,
@@ -1112,7 +1149,7 @@ func (s *session) readLoop() {
 										BackgroundKind:      asyncMeta.kind,
 										BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
 										BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
-										BackgroundAwaited:   true,
+										BackgroundAwaited:   asyncMeta.awaited,
 									})
 								} else {
 									s.mu.Unlock()
@@ -1157,6 +1194,7 @@ func (s *session) readLoop() {
 			}
 			heldResult = nil
 			s.inTurn = false
+			s.pendingWakeup = false
 			s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
 			s.msgUsed = false
 			s.mu.Unlock()
@@ -1297,8 +1335,12 @@ func (s *session) snapshotClaudeTodosLocked() (runtime.Event, bool) {
 		}
 		st := runtime.NormalizeTodoStatus(t.status)
 		steps = append(steps, &sessionv1.TodoStep{Text: t.content, Status: st})
-		if st == "in_progress" && focus == "" && t.activeForm != "" {
-			focus = t.activeForm
+		if st == "in_progress" && focus == "" {
+			if t.activeForm != "" {
+				focus = t.activeForm
+			} else {
+				focus = t.content
+			}
 		}
 		sigBuf.WriteByte(0)
 		sigBuf.WriteString(st)
@@ -1620,6 +1662,9 @@ func parseClaudeTodoWrite(raw json.RawMessage) (steps []*sessionv1.TodoStep, foc
 		steps = append(steps, &sessionv1.TodoStep{Text: txt, Status: st})
 		if st == "in_progress" && focus == "" {
 			focus = strings.TrimSpace(item.ActiveForm)
+			if focus == "" {
+				focus = txt
+			}
 		}
 	}
 	return steps, focus, true
@@ -1821,6 +1866,7 @@ func detectClaudeAsyncTool(name string, raw json.RawMessage) (claudeAsyncInput, 
 			kind:    sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
 			title:   title,
 			command: strings.TrimSpace(in.Command),
+			awaited: true,
 		}, true
 	case "ScheduleWakeup":
 		title := strings.TrimSpace(in.Description)
@@ -1836,21 +1882,32 @@ func detectClaudeAsyncTool(name string, raw json.RawMessage) (claudeAsyncInput, 
 			}
 		}
 		return claudeAsyncInput{
-			kind:  sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE,
-			title: title,
+			kind:    sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE,
+			title:   title,
+			awaited: true,
 		}, true
 	case "Bash":
 		if !in.RunInBackground {
 			return claudeAsyncInput{}, false
 		}
+		cmd := strings.TrimSpace(in.Command)
 		title := strings.TrimSpace(in.Description)
 		if title == "" {
-			title = strings.TrimSpace(in.Command)
+			title = cmd
+		}
+		if runtime.IsDaemonCommand(cmd, title) {
+			return claudeAsyncInput{
+				kind:    sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
+				title:   title,
+				command: cmd,
+				awaited: false,
+			}, true
 		}
 		return claudeAsyncInput{
 			kind:    sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
 			title:   title,
-			command: strings.TrimSpace(in.Command),
+			command: cmd,
+			awaited: true,
 		}, true
 	case "Agent", "Task":
 		if !in.RunInBackground {
@@ -1864,8 +1921,9 @@ func detectClaudeAsyncTool(name string, raw json.RawMessage) (claudeAsyncInput, 
 			title = name
 		}
 		return claudeAsyncInput{
-			kind:  sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
-			title: title,
+			kind:    sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
+			title:   title,
+			awaited: true,
 		}, true
 	default:
 		return claudeAsyncInput{}, false
@@ -1913,22 +1971,29 @@ func (s *session) settleScheduledWakeups() {
 
 func (s *session) handleBackgroundTasksChanged(l wireLine) {
 	var newEvents []runtime.Event
+	var sawDaemon bool
 	s.mu.Lock()
 	for _, t := range l.Tasks {
 		tid := strings.TrimSpace(t.TaskID)
 		if tid == "" || s.bgTasks[tid] != nil {
 			continue
 		}
+		desc := strings.TrimSpace(t.Description)
 		kind := sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND
+		awaited := true
 		if strings.Contains(t.TaskType, "agent") {
 			kind = sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT
+		} else if runtime.IsDaemonCommand(desc, desc) {
+			kind = sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON
+			awaited = false
+			sawDaemon = true
 		}
-		desc := strings.TrimSpace(t.Description)
 		bg := &claudeBgTask{
 			taskID:  tid,
 			kind:    kind,
 			title:   desc,
 			command: desc,
+			awaited: awaited,
 			running: true,
 		}
 		s.bgTasks[tid] = bg
@@ -1940,10 +2005,13 @@ func (s *session) handleBackgroundTasksChanged(l wireLine) {
 			BackgroundKind:      kind,
 			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
 			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
-			BackgroundAwaited:   true,
+			BackgroundAwaited:   awaited,
 		})
 	}
 	s.mu.Unlock()
+	if sawDaemon {
+		s.proc.SnapshotBaseline()
+	}
 	for _, ev := range newEvents {
 		s.emit(ev)
 	}
@@ -1988,7 +2056,7 @@ func (s *session) startClaudeOutputTailer(bg *claudeBgTask) {
 					BackgroundKind:      bg.kind,
 					BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
 					BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
-					BackgroundAwaited:   true,
+					BackgroundAwaited:   bg.awaited,
 				}
 				s.mu.Unlock()
 				s.emit(ev)
@@ -2026,6 +2094,7 @@ func (s *session) handleTaskSystemLine(l wireLine) {
 		bg = &claudeBgTask{
 			taskID:  taskID,
 			kind:    kind,
+			awaited: true,
 			running: true,
 			stopCh:  make(chan struct{}),
 		}
@@ -2040,8 +2109,12 @@ func (s *session) handleTaskSystemLine(l wireLine) {
 			bg.command = desc
 		}
 	}
+	hasExplicitMeta := false
 	if bg.itemID != "" {
 		if meta, ok := s.asyncToolInputs[bg.itemID]; ok {
+			hasExplicitMeta = true
+			bg.kind = meta.kind
+			bg.awaited = meta.awaited
 			if meta.command != "" {
 				bg.command = meta.command
 			}
@@ -2049,6 +2122,10 @@ func (s *session) handleTaskSystemLine(l wireLine) {
 				bg.title = meta.title
 			}
 		}
+	}
+	if !hasExplicitMeta && bg.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND && runtime.IsDaemonCommand(bg.command, bg.title) {
+		bg.kind = sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON
+		bg.awaited = false
 	}
 	if outFile != "" {
 		bg.outputFile = outFile
@@ -2067,12 +2144,20 @@ func (s *session) handleTaskSystemLine(l wireLine) {
 	title := bg.title
 	cmd := bg.command
 	curTail := bg.outputTail
+	bgKind := bg.kind
+	bgAwaited := bg.awaited
 	if l.Subtype == "task_notification" {
 		bg.running = false
 		bg.stopTail()
+		if bgAwaited && !s.inTurn && l.Status != "stopped" && l.Status != "cancelled" {
+			s.pendingWakeup = true
+		}
 	}
 	s.mu.Unlock()
 
+	if !bgAwaited && l.Subtype == "task_started" {
+		s.proc.SnapshotBaseline()
+	}
 	if shouldStartTailer {
 		s.startClaudeOutputTailer(bg)
 	}
@@ -2086,7 +2171,7 @@ func (s *session) handleTaskSystemLine(l wireLine) {
 			BackgroundKind:      supersededSynth.kind,
 			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
 			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
-			BackgroundAwaited:   true,
+			BackgroundAwaited:   supersededSynth.awaited,
 		})
 	}
 
@@ -2100,10 +2185,10 @@ func (s *session) handleTaskSystemLine(l wireLine) {
 			Command:             cmd,
 			Output:              curTail,
 			Text:                strings.TrimSpace(l.Summary),
-			BackgroundKind:      kind,
+			BackgroundKind:      bgKind,
 			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
 			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
-			BackgroundAwaited:   true,
+			BackgroundAwaited:   bgAwaited,
 		})
 	case "task_notification":
 		bgStatus := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
@@ -2129,10 +2214,10 @@ func (s *session) handleTaskSystemLine(l wireLine) {
 			Text:                strings.TrimSpace(l.Summary),
 			ExitCode:            exitCode,
 			HasExitCode:         true,
-			BackgroundKind:      kind,
+			BackgroundKind:      bgKind,
 			BackgroundStatus:    bgStatus,
 			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
-			BackgroundAwaited:   true,
+			BackgroundAwaited:   bgAwaited,
 		})
 		if itemID != "" {
 			s.emit(runtime.Event{

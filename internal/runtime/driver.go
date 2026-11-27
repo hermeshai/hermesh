@@ -253,6 +253,13 @@ type BackgroundController interface {
 	StopBackgroundTask(ctx context.Context, taskID string) error
 }
 
+// WakeupProbe is optionally implemented by Sessions that can inspect
+// provider-side wakeup queues or live child tool processes before a logical
+// turn settles.
+type WakeupProbe interface {
+	PendingWakeup() bool
+}
+
 // MaxBackgroundIdleTTL bounds how long awaited background work can keep an
 // otherwise silent provider process exempt from Supervisor idle reaping.
 const MaxBackgroundIdleTTL = 2 * time.Hour
