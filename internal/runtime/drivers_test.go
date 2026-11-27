@@ -3363,9 +3363,11 @@ func TestAntigravityACPScheduleLifecycleSettlesSessionStatus(t *testing.T) {
 		return sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_UNSPECIFIED
 	}
 
-	// 1. After Turn #1 finishes, all 7 awaited tasks/schedules are RUNNING (pre-existing message did not cancel tc_sched_any):
+	// 1. After foreground segment finishes, all 7 awaited tasks/schedules hold Run #1 open in awaiting_background:
 	p1 := waitProj("initial 7 background tasks armed", func(p *sessionv1.SessionProjection) bool {
-		return p.GetSession().GetActiveBackgroundCount() == 7 && p.GetSession().GetActiveRunId() == ""
+		return p.GetSession().GetActiveBackgroundCount() == 7 &&
+			p.GetSession().GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_RUNNING &&
+			p.GetSession().GetProgress().GetPhase() == "awaiting_background"
 	})
 	if bgStatus(p1, "tc_sched_any") != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
 		t.Fatalf("pre-existing message must not cancel tc_sched_any: %+v", p1.GetBackgroundTasks())
@@ -3657,8 +3659,8 @@ func TestClaudeSupersededScheduleAndPlaceholderNoCountLeak(t *testing.T) {
 	var finalProj *sessionv1.SessionProjection
 	for time.Now().Before(deadline) {
 		p, gErr := eng.GetSession(ctx, owner, sid)
-		if gErr == nil && len(p.Runs) >= 2 &&
-			p.Runs[1].Status == sessionv1.RunStatus_RUN_STATUS_COMPLETED &&
+		if gErr == nil && len(p.Runs) == 1 &&
+			p.Runs[0].Status == sessionv1.RunStatus_RUN_STATUS_COMPLETED &&
 			p.Session.ActiveBackgroundCount == 0 &&
 			p.Session.Status == sessionv1.SessionStatus_SESSION_STATUS_IDLE {
 			finalProj = p
@@ -3720,7 +3722,7 @@ func TestACPSessionStartReliabilityE2E(t *testing.T) {
 
 	waitSession := func(sid string, pred func(*sessionv1.SessionProjection) bool) *sessionv1.SessionProjection {
 		t.Helper()
-		deadline := time.Now().Add(8 * time.Second)
+		deadline := time.Now().Add(20 * time.Second)
 		var last *sessionv1.SessionProjection
 		for time.Now().Before(deadline) {
 			p, gErr := eng.GetSession(ctx, owner, sid)

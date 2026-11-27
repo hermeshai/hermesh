@@ -1171,6 +1171,33 @@ func (tx *Tx) SettleRunItems(sessionID, runID, terminalStatus string) ([]*sessio
 	return settled, nil
 }
 
+func (tx *Tx) RunTurnItems(sessionID, runID string) ([]*sessionv1.TurnItem, error) {
+	if sessionID == "" || runID == "" {
+		return nil, nil
+	}
+	rows, err := tx.tx.Query(
+		`SELECT payload FROM turn_items WHERE session_id = ? AND run_id = ? ORDER BY seq ASC`,
+		sessionID, runID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*sessionv1.TurnItem
+	for rows.Next() {
+		var b []byte
+		if err := rows.Scan(&b); err != nil {
+			return nil, err
+		}
+		it := &sessionv1.TurnItem{}
+		if err := proto.Unmarshal(b, it); err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
+}
+
 func (tx *Tx) DeleteTurnItemsAfterRunIds(sessionID string, removedRunIDs map[string]bool) error {
 	for runID := range removedRunIDs {
 		if _, err := tx.tx.Exec(`DELETE FROM turn_items WHERE session_id = ? AND run_id = ?`, sessionID, runID); err != nil {

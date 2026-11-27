@@ -156,6 +156,9 @@ type session struct {
 	alive       atomic.Bool
 	itemSeq     atomic.Uint64
 
+	emitMu       sync.RWMutex
+	eventsClosed bool
+
 	mu              sync.Mutex
 	inTurn          bool
 	selection       *sessionv1.ModelSelection
@@ -261,6 +264,11 @@ func (s *session) Close() error {
 }
 
 func (s *session) emit(ev runtime.Event) bool {
+	s.emitMu.RLock()
+	defer s.emitMu.RUnlock()
+	if s.eventsClosed {
+		return false
+	}
 	select {
 	case s.events <- ev:
 		return true
@@ -271,8 +279,17 @@ func (s *session) emit(ev runtime.Event) bool {
 	}
 }
 
+func (s *session) closeEvents() {
+	s.emitMu.Lock()
+	if !s.eventsClosed {
+		s.eventsClosed = true
+		close(s.events)
+	}
+	s.emitMu.Unlock()
+}
+
 func (s *session) loop(ctx context.Context) {
-	defer close(s.events)
+	defer s.closeEvents()
 	for {
 		select {
 		case <-ctx.Done():

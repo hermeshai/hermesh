@@ -354,7 +354,7 @@ func (d *Driver) outOfTurnToolWait() time.Duration {
 	if d != nil && d.OutOfTurnToolWait > 0 {
 		return d.OutOfTurnToolWait
 	}
-	return 6 * time.Second
+	return 3 * time.Minute
 }
 
 func (d *Driver) outOfTurnDebounce() time.Duration {
@@ -368,7 +368,7 @@ func (d *Driver) outOfTurnQuietLimit() time.Duration {
 	if d != nil && d.OutOfTurnQuietLimit > 0 {
 		return d.OutOfTurnQuietLimit
 	}
-	return 45 * time.Second
+	return 90 * time.Second
 }
 
 func (d *Driver) busyPromptRetryDelay() time.Duration {
@@ -787,6 +787,7 @@ func (p *Provider) startRuntimeSessionAttempt(leaseCtx, attemptCtx context.Conte
 		Effort:       curOwn.Effort,
 	})
 	_ = s.SetModes(attemptCtx, spec.EffectiveMode, spec.InteractionMode)
+	s.proc.SnapshotBaseline()
 	return s, "", "", nil
 }
 
@@ -1074,11 +1075,9 @@ type session struct {
 	inPrompt           bool
 	awaitingMerge      bool
 	mergeTimer         *time.Timer
-	outOfTurnActive    bool
-	outOfTurnReplyOpen bool
-	outOfTurnSawReply  bool
-	outOfTurnSawUsage  bool
+	wakeSteps          runtime.TurnStepTracker
 	outOfTurnTimer     *time.Timer
+	agyInitialMsgs     map[string]bool
 	openServerReqs     int
 	msgItemID          string
 	msgBuf             strings.Builder
@@ -1127,9 +1126,84 @@ func (s *session) hasOpenWakeToolLocked() bool {
 	return false
 }
 
-func (s *session) noteWakeActivityLocked(opensReply bool) {
-	if s.inPrompt {
+func (s *session) hasRunningBgTaskLocked() bool {
+	for _, bg := range s.bgTasks {
+		if bg != nil && bg.running {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *session) recordAgyMessagesDirLocked(dir string) {
+	if dir == "" || s.agyMessagesDir != "" {
 		return
+	}
+	s.agyMessagesDir = dir
+	s.agyInitialMsgs = snapshotExistingMsgs(dir)
+}
+
+// hasUnreadAntigravityWakeMsgsLocked checks Antigravity's read.json (when
+// present) to detect newly-delivered wakeup messages in .system_generated/messages
+// that the agent process has not yet consumed into an ACP wakeup turn.
+func (s *session) hasUnreadAntigravityWakeMsgsLocked() bool {
+	dir := s.agyMessagesDir
+	if dir == "" {
+		return false
+	}
+	readRaw, err := os.ReadFile(filepath.Join(dir, "read.json"))
+	if err != nil {
+		return false
+	}
+	readStr := string(readRaw)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	cutoff := time.Now().Add(-2 * time.Minute)
+	for _, ent := range entries {
+		name := ent.Name()
+		if ent.IsDir() || name == "read.json" || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		full := filepath.Join(dir, name)
+		if s.agyInitialMsgs[full] {
+			continue
+		}
+		stem := strings.TrimSuffix(name, ".json")
+		if strings.Contains(readStr, name) || (stem != "" && strings.Contains(readStr, stem)) {
+			continue
+		}
+		info, iErr := ent.Info()
+		if iErr != nil || info.ModTime().Before(cutoff) {
+			continue
+		}
+		msgRaw, rErr := os.ReadFile(full)
+		if rErr != nil {
+			continue
+		}
+		var meta struct {
+			HideFromUser bool `json:"hideFromUser"`
+		}
+		if json.Unmarshal(msgRaw, &meta) == nil && meta.HideFromUser {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func (s *session) PendingWakeup() bool {
+	s.mu.Lock()
+	active := s.inPrompt || s.awaitingMerge || s.wakeSteps.Active() || s.openServerReqs > 0 || s.hasOpenWakeToolLocked()
+	unreadWake := !active && s.hasUnreadAntigravityWakeMsgsLocked()
+	s.mu.Unlock()
+	return active || unreadWake
+}
+
+func (s *session) beginWakeStepLocked() bool {
+	if s.inPrompt {
+		return false
 	}
 	if s.awaitingMerge {
 		if s.mergeTimer != nil {
@@ -1138,19 +1212,31 @@ func (s *session) noteWakeActivityLocked(opensReply bool) {
 		}
 		s.awaitingMerge = false
 	}
-	if !s.outOfTurnActive {
-		s.outOfTurnActive = true
+	if !s.wakeSteps.Active() {
 		s.turnSeq++
-		s.outOfTurnSawReply = false
-		s.outOfTurnSawUsage = false
 		if s.msgItemID == "" {
 			s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
 		}
 	}
-	s.outOfTurnSawUsage = false
-	if opensReply {
-		s.outOfTurnReplyOpen = true
-		s.outOfTurnSawReply = true
+	return true
+}
+
+func (s *session) noteWakeReplyLocked() {
+	if !s.beginWakeStepLocked() {
+		return
+	}
+	s.wakeSteps.NoteReplyChunk()
+	s.rearmOutOfTurnTimerLocked()
+}
+
+func (s *session) noteWakeToolLocked(completed bool) {
+	if !s.beginWakeStepLocked() {
+		return
+	}
+	if completed {
+		s.wakeSteps.NoteToolCompleted()
+	} else {
+		s.wakeSteps.NoteToolActive()
 	}
 	s.rearmOutOfTurnTimerLocked()
 }
@@ -1160,38 +1246,53 @@ func (s *session) rearmOutOfTurnTimerLocked() {
 		s.outOfTurnTimer.Stop()
 		s.outOfTurnTimer = nil
 	}
-	if !s.outOfTurnActive || s.inPrompt {
+	if !s.wakeSteps.Active() || s.inPrompt {
 		return
 	}
-	if s.openServerReqs > 0 || s.hasOpenWakeToolLocked() {
+	hasOpen := s.openServerReqs > 0 || s.hasOpenWakeToolLocked()
+	wait, ok := s.wakeSteps.NextSettleDelay(hasOpen, runtime.TurnStepConfig{
+		Debounce:          s.drv.outOfTurnDebounce(),
+		StreamingQuiet:    s.drv.outOfTurnQuietLimit(),
+		PostToolModelWait: s.drv.outOfTurnToolWait(),
+	})
+	if !ok {
 		return
-	}
-	wait := s.drv.outOfTurnDebounce()
-	if s.outOfTurnReplyOpen {
-		wait = s.drv.outOfTurnQuietLimit()
-	} else if !s.outOfTurnSawUsage {
-		wait = s.drv.outOfTurnToolWait()
 	}
 	s.outOfTurnTimer = time.AfterFunc(wait, s.settleOutOfTurn)
 }
 
 func (s *session) settleOutOfTurn() {
 	s.mu.Lock()
-	if !s.outOfTurnActive || s.inPrompt {
+	if !s.wakeSteps.Active() || s.inPrompt {
 		s.mu.Unlock()
 		return
 	}
-	if s.openServerReqs > 0 || s.hasOpenWakeToolLocked() {
+	if s.openServerReqs > 0 || s.hasOpenWakeToolLocked() || s.hasUnreadAntigravityWakeMsgsLocked() {
 		s.rearmOutOfTurnTimerLocked()
 		s.mu.Unlock()
 		return
 	}
-	sawReply := s.outOfTurnSawReply
+	phase := s.wakeSteps.Phase()
+	hasBg := s.hasRunningBgTaskLocked()
+	if phase != runtime.StepModelResponded && !hasBg {
+		s.mu.Unlock()
+		if s.proc.HasActiveDescendants() {
+			s.mu.Lock()
+			if s.wakeSteps.Active() && !s.inPrompt {
+				s.rearmOutOfTurnTimerLocked()
+			}
+			s.mu.Unlock()
+			return
+		}
+		s.mu.Lock()
+		if !s.wakeSteps.Active() || s.inPrompt {
+			s.mu.Unlock()
+			return
+		}
+	}
+	sawReply := s.wakeSteps.SawReply()
 	wokeTurn := s.turnSeq
-	s.outOfTurnActive = false
-	s.outOfTurnReplyOpen = false
-	s.outOfTurnSawReply = false
-	s.outOfTurnSawUsage = false
+	s.wakeSteps.Reset()
 	s.outOfTurnTimer = nil
 
 	autoSettled := s.syncAntigravityCompletionsLocked()
@@ -1438,10 +1539,7 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 	s.inPrompt = true
 	s.turnSeq++
 	s.awaitingMerge = false
-	s.outOfTurnActive = false
-	s.outOfTurnReplyOpen = false
-	s.outOfTurnSawReply = false
-	s.outOfTurnSawUsage = false
+	s.wakeSteps.Reset()
 	s.turnCtx = ctx
 	s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
 	s.msgBuf.Reset()
@@ -1921,9 +2019,7 @@ func (s *session) syncAntigravityCompletionsLocked() []runtime.Event {
 			}
 			if d := bg.messagesDir(); d != "" {
 				dirs[d] = true
-				if s.agyMessagesDir == "" {
-					s.agyMessagesDir = d
-				}
+				s.recordAgyMessagesDirLocked(d)
 			}
 			if bg.agentID != "" {
 				byKey[bg.agentID] = bg
@@ -2246,7 +2342,7 @@ func classifyACPBackgroundTool(st *acpToolState) (kind sessionv1.BackgroundTaskK
 		return 0, "", "", false, false
 	}
 	m := parseACPInputFields(st.rawInput)
-	isDaemon, _ := acpFieldBool(m, "IsDaemon", "is_daemon", "persistent")
+	isDaemon, hasExplicitDaemon := acpFieldBool(m, "IsDaemon", "is_daemon", "persistent")
 	durSec, _ := acpFieldInt64(m, "DurationSeconds", "duration_seconds")
 	cronExpr := strings.TrimSpace(acpFieldString(m, "CronExpression", "cron_expression"))
 	toolSummary := strings.TrimSpace(acpFieldString(m, "toolSummary", "tool_summary"))
@@ -2288,7 +2384,7 @@ func classifyACPBackgroundTool(st *acpToolState) (kind sessionv1.BackgroundTaskK
 
 	switch {
 	case lowerKind == "execute" || lowerKind == "command" || lowerKind == "bash" || normRawTool == "run_command" || cmd != "":
-		if isDaemon {
+		if isDaemon || (!hasExplicitDaemon && st.asyncLaunch && runtime.IsDaemonCommand(cmd, title)) {
 			return sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON, title, cmd, false, true
 		}
 		return sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND, title, cmd, true, true
@@ -2533,8 +2629,8 @@ func (s *session) promoteOpenBackgroundWork() (newEvents []runtime.Event, hasAwa
 				stopScope:      sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
 				running:        true,
 			}
-			if d := bg.messagesDir(); d != "" && s.agyMessagesDir == "" {
-				s.agyMessagesDir = d
+			if d := bg.messagesDir(); d != "" {
+				s.recordAgyMessagesDirLocked(d)
 			}
 			if bg.timerCondition != "" {
 				msgDir := bg.messagesDir()
@@ -2841,11 +2937,8 @@ func (s *session) Interrupt(context.Context) error {
 	s.killTerminals()
 	s.mu.Lock()
 	inPrompt := s.inPrompt
-	wasOutOfTurn := s.outOfTurnActive
-	s.outOfTurnActive = false
-	s.outOfTurnReplyOpen = false
-	s.outOfTurnSawReply = false
-	s.outOfTurnSawUsage = false
+	wasOutOfTurn := s.wakeSteps.Active()
+	s.wakeSteps.Reset()
 	s.awaitingMerge = false
 	s.stopTimersLocked()
 	var stopped []runtime.Event
@@ -3101,7 +3194,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		}
 		if json.Unmarshal(u.Content, &cb) == nil && cb.Text != "" {
 			s.mu.Lock()
-			s.noteWakeActivityLocked(true)
+			s.noteWakeReplyLocked()
 			msgID := s.msgItemID
 			s.msgBuf.WriteString(cb.Text)
 			s.mu.Unlock()
@@ -3114,7 +3207,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		}
 		if json.Unmarshal(u.Content, &cb) == nil && cb.Text != "" {
 			s.mu.Lock()
-			s.noteWakeActivityLocked(true)
+			s.noteWakeReplyLocked()
 			msgID := s.msgItemID
 			s.mu.Unlock()
 			s.emit(runtime.Event{Kind: runtime.EventReasoningDelta, ItemID: "rsn_" + msgID, Text: cb.Text})
@@ -3244,7 +3337,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					BackgroundAwaited:   bg.awaited,
 				}
 			}
-			if s.outOfTurnActive {
+			if s.wakeSteps.Active() {
 				s.rearmOutOfTurnTimerLocked()
 			}
 		} else if standalone && isNewTerm && (at.command != "" || at.title != "") {
@@ -3445,8 +3538,8 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					stopScope:      sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
 					running:        true,
 				}
-				if d := bg.messagesDir(); d != "" && s.agyMessagesDir == "" {
-					s.agyMessagesDir = d
+				if d := bg.messagesDir(); d != "" {
+					s.recordAgyMessagesDirLocked(d)
 				}
 				if bg.timerCondition != "" {
 					msgDir := bg.messagesDir()
@@ -3516,11 +3609,11 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					BackgroundAwaited:   bg.awaited,
 				}
 			}
-			if s.outOfTurnActive {
+			if s.wakeSteps.Active() {
 				s.rearmOutOfTurnTimerLocked()
 			}
 		} else {
-			s.noteWakeActivityLocked(status != "completed" && status != "failed")
+			s.noteWakeToolLocked(status == "completed" || status == "failed")
 		}
 		s.mu.Unlock()
 
@@ -3586,7 +3679,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		}
 	case "plan":
 		s.mu.Lock()
-		s.noteWakeActivityLocked(true)
+		s.noteWakeReplyLocked()
 		s.mu.Unlock()
 		var steps []*sessionv1.TodoStep
 		for _, e := range u.Entries {
@@ -3609,22 +3702,24 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			})
 		}
 		s.mu.Lock()
-		if s.outOfTurnActive {
-			// If an out-of-turn wake started a new background command during the wake,
-			// promote it before checking whether any foreground tool remains open.
-			s.mu.Unlock()
+		isWake := s.wakeSteps.Active() && !s.inPrompt
+		s.mu.Unlock()
+		if isWake {
+			// Flush the completed assistant text segment for this wake step before
+			// promoting background work or re-arming settle timers, so chained
+			// wakeups never concatenate onto a previous wake's msgBuf.
+			s.flushAssistantSegment()
 			bgEvents, _ := s.promoteOpenBackgroundWork()
 			for _, ev := range bgEvents {
 				s.emit(ev)
 			}
 			s.mu.Lock()
-			if s.outOfTurnActive {
-				s.outOfTurnSawUsage = true
-				s.outOfTurnReplyOpen = false
+			if s.wakeSteps.Active() {
+				s.wakeSteps.NoteUsageOrEnd()
 				s.rearmOutOfTurnTimerLocked()
 			}
+			s.mu.Unlock()
 		}
-		s.mu.Unlock()
 	}
 }
 
@@ -3776,7 +3871,7 @@ func (s *session) handleCopilotSessionEvent(params json.RawMessage) {
 				Output:      kept,
 			}
 		}
-		if s.outOfTurnActive {
+		if s.wakeSteps.Active() {
 			s.rearmOutOfTurnTimerLocked()
 		}
 		s.mu.Unlock()
@@ -3789,12 +3884,17 @@ func (s *session) handleCopilotSessionEvent(params json.RawMessage) {
 
 	case "assistant.idle":
 		s.mu.Lock()
-		if s.outOfTurnActive && !s.inPrompt {
-			s.outOfTurnSawUsage = true
-			s.outOfTurnReplyOpen = false
-			s.rearmOutOfTurnTimerLocked()
-		}
+		isWake := s.wakeSteps.Active() && !s.inPrompt
 		s.mu.Unlock()
+		if isWake {
+			s.flushAssistantSegment()
+			s.mu.Lock()
+			if s.wakeSteps.Active() && !s.inPrompt {
+				s.wakeSteps.NoteUsageOrEnd()
+				s.rearmOutOfTurnTimerLocked()
+			}
+			s.mu.Unlock()
+		}
 	}
 }
 
@@ -3877,15 +3977,46 @@ func extractACPRawOutput(raw json.RawMessage) string {
 		return s
 	}
 	var obj struct {
-		Output         string `json:"output"`
-		Stdout         string `json:"stdout"`
-		CombinedOutput string `json:"combinedOutput"`
-		Content        string `json:"content"`
+		Output         string          `json:"output"`
+		Stdout         string          `json:"stdout"`
+		CombinedOutput string          `json:"combinedOutput"`
+		Text           string          `json:"text"`
+		Message        string          `json:"message"`
+		Content        json.RawMessage `json:"content"`
+		Result         json.RawMessage `json:"result"`
 	}
 	if json.Unmarshal(raw, &obj) == nil {
-		for _, cand := range []string{obj.CombinedOutput, obj.Output, obj.Stdout, obj.Content} {
+		for _, cand := range []string{obj.CombinedOutput, obj.Output, obj.Stdout, obj.Text, obj.Message} {
 			if cand != "" {
 				return cand
+			}
+		}
+		for _, nested := range []json.RawMessage{obj.Content, obj.Result} {
+			if len(nested) == 0 || string(bytes.TrimSpace(nested)) == "null" {
+				continue
+			}
+			var ns string
+			if json.Unmarshal(nested, &ns) == nil && ns != "" {
+				return ns
+			}
+			var arr []struct {
+				Text    string `json:"text"`
+				Content struct {
+					Text string `json:"text"`
+				} `json:"content"`
+			}
+			if json.Unmarshal(nested, &arr) == nil && len(arr) > 0 {
+				var parts []string
+				for _, item := range arr {
+					if item.Text != "" {
+						parts = append(parts, item.Text)
+					} else if item.Content.Text != "" {
+						parts = append(parts, item.Content.Text)
+					}
+				}
+				if len(parts) > 0 {
+					return strings.Join(parts, "\n")
+				}
 			}
 		}
 	}
@@ -4484,7 +4615,7 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 		method == "fs/write_text_file" ||
 		method == "terminal/create"
 	if isDetachedWakeReq {
-		s.noteWakeActivityLocked(true)
+		s.noteWakeToolLocked(false)
 	}
 	s.openServerReqs++
 	s.mu.Unlock()
@@ -4493,9 +4624,9 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 		if s.openServerReqs > 0 {
 			s.openServerReqs--
 		}
-		if s.outOfTurnActive {
+		if s.wakeSteps.Active() {
 			if isDetachedWakeReq {
-				s.outOfTurnReplyOpen = true
+				s.wakeSteps.NoteToolCompleted()
 			}
 			s.rearmOutOfTurnTimerLocked()
 		}

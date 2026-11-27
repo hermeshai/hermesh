@@ -164,14 +164,6 @@ func (e *Engine) execOwnerShellCommand(runCtx context.Context, sess *sessionv1.S
 			var sNow *sessionv1.Session
 			if s, sErr := tx.GetSession(sessionID); sErr == nil {
 				sNow = s
-				if sNow.Progress == nil {
-					sNow.Progress = &sessionv1.SessionProgress{}
-				}
-				if clearTool {
-					sNow.Progress.CurrentTool = ""
-				} else {
-					sNow.Progress.CurrentTool = cmd
-				}
 				_ = putSessionSynced(tx, sNow)
 			}
 			return tx.AppendEvent(&sessionv1.SessionEvent{

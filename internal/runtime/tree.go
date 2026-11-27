@@ -26,8 +26,9 @@ type procInfo struct {
 }
 
 type tracked struct {
-	root  procInfo
-	known map[int]int64 // pid → start time
+	root     procInfo
+	known    map[int]int64 // pid → start time
+	baseline map[int]int64 // pid → start time of long-lived sidecars/daemons
 }
 
 var tracker struct {
@@ -140,6 +141,52 @@ func (t *tracked) running() [][]string {
 		}
 	}
 	return cmds
+}
+
+// snapshotBaseline marks every descendant alive right now as part of the
+// session's standing baseline (MCP servers, language servers, or promoted
+// daemon processes) so HasActiveDescendants ignores them.
+func (t *tracked) snapshotBaseline() {
+	procs := listProcs()
+	t.update(procs)
+	alive := map[int]int64{}
+	for _, p := range procs {
+		alive[p.pid] = p.start
+	}
+	tracker.mu.Lock()
+	if t.baseline == nil {
+		t.baseline = map[int]int64{}
+	}
+	for pid, st := range t.known {
+		if alive[pid] == st {
+			t.baseline[pid] = st
+		}
+	}
+	for pid, st := range t.baseline {
+		if alive[pid] != st {
+			delete(t.baseline, pid)
+		}
+	}
+	tracker.mu.Unlock()
+}
+
+// hasActiveDescendants reports whether any non-baseline descendant process of
+// the agent is currently alive.
+func (t *tracked) hasActiveDescendants() bool {
+	procs := listProcs()
+	t.update(procs)
+	alive := map[int]int64{}
+	for _, p := range procs {
+		alive[p.pid] = p.start
+	}
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	for pid, st := range t.known {
+		if alive[pid] == st && t.baseline[pid] != st {
+			return true
+		}
+	}
+	return false
 }
 
 // stop kills every remembered descendant still alive and stops tracking.

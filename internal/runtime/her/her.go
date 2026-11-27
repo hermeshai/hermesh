@@ -326,7 +326,7 @@ func (s *session) take(ev herEvent) {
 			}
 			return
 		}
-		s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: ev.CallID, ToolName: ev.Name, Command: ev.Title})
+		s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: ev.CallID, Text: strings.TrimSpace(ev.Title), ToolName: ev.Name, Command: ev.Title})
 	case "tool_completed":
 		if ev.Result.ToolName == sendToUser {
 			return

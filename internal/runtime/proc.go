@@ -366,6 +366,35 @@ func (p *Proc) Diagnose() Diagnosis {
 	return d
 }
 
+// SnapshotBaseline records the agent's current descendant processes as its
+// standing baseline (e.g. MCP stdio servers or detached daemons) so
+// HasActiveDescendants only reports newly-spawned tool commands.
+func (p *Proc) SnapshotBaseline() {
+	if p == nil || p.tree == nil {
+		return
+	}
+	select {
+	case <-p.done:
+		return
+	default:
+	}
+	p.tree.snapshotBaseline()
+}
+
+// HasActiveDescendants reports whether the agent process currently has any
+// live descendant process outside its recorded baseline.
+func (p *Proc) HasActiveDescendants() bool {
+	if p == nil || p.tree == nil {
+		return false
+	}
+	select {
+	case <-p.done:
+		return false
+	default:
+	}
+	return p.tree.hasActiveDescendants()
+}
+
 // String is d on one line for a failure message: the newest programs and
 // the end of stderr.
 func (d Diagnosis) String() string {

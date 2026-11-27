@@ -4,6 +4,7 @@ import {
   ActorKind,
   ApprovalDecision,
   AnswerSchema,
+  BackgroundTaskKind,
   ErrorEventSchema,
   FailureKind,
   FailureSchema,
@@ -397,10 +398,14 @@ export function sessionWork(proj: SessionProjection | null | undefined): Session
   const run = proj?.session?.activeRunId;
   if (!proj || !run) return "working";
   const now = proj.items.filter((it) => it.runId === run);
+  const bgItemIds = activeBackgroundItemIdsOf(proj);
   const tools = [TurnItemKind.TOOL_CALL, TurnItemKind.COMMAND_EXECUTION, TurnItemKind.FILE_CHANGE];
-  if (now.some((it) => it.status === "running" && tools.includes(it.kind) && !isMetaProgressToolItem(it))) return "tool";
+  if (now.some((it) => it.status === "running" && !bgItemIds.has(it.itemId) && tools.includes(it.kind) && !isMetaProgressToolItem(it))) {
+    return "tool";
+  }
   if (now.some((it) => it.kind === TurnItemKind.REASONING && it.streaming)) return "thinking";
   if (now.some((it) => it.kind === TurnItemKind.ASSISTANT_MESSAGE && it.streaming)) return "replying";
+  if (now.some((it) => it.status === "running" && bgItemIds.has(it.itemId) && tools.includes(it.kind))) return "tool";
   return "working";
 }
 
@@ -516,8 +521,11 @@ function reduceChainProgress(proj: SessionProjection, chain: Set<string>): { ste
           if (text) parsed.push({ text, status: normalizeTodoStepStatus(s.status) });
         }
         steps = parsed;
+        const allSettled = parsed.length > 0 && parsed.every((s) => s.status === "completed" || s.status === "skipped");
+        focus = allSettled ? "" : it.text.trim();
+      } else {
+        focus = it.text.trim();
       }
-      focus = it.text.trim();
       continue;
     }
     if (it.kind !== TurnItemKind.TOOL_CALL || it.command !== "") continue;
@@ -553,7 +561,8 @@ function reduceChainProgress(proj: SessionProjection, chain: Set<string>): { ste
         }
       }
       steps = parsed;
-      focus = nextFocus;
+      const allSettled = parsed.length > 0 && parsed.every((s) => s.status === "completed" || s.status === "skipped");
+      focus = allSettled ? "" : nextFocus;
     } catch {
       // Ignore malformed legacy tool input.
     }
@@ -645,18 +654,29 @@ export function sessionFocusText(proj: SessionProjection | null | undefined): st
   const work = sessionWork(proj);
   if (work === "thinking" || work === "replying") return undefined;
 
-  const chain = currentTurnChainRunIds(proj);
-  const { focus: explicitFocus } = reduceChainProgress(proj, chain);
-  if (explicitFocus) return explicitFocus;
+  const bgItemIds = activeBackgroundItemIdsOf(proj);
+  const toolLabel = (it: TurnItem): string => it.text.trim() || it.toolName.trim() || it.command.trim();
 
-  const runningTool = proj.items.findLast(
+  const fgRunningTool = proj.items.findLast(
     (it) =>
       it.runId === s.activeRunId &&
       it.status === "running" &&
+      !bgItemIds.has(it.itemId) &&
       (it.kind === TurnItemKind.COMMAND_EXECUTION || (it.kind === TurnItemKind.TOOL_CALL && !isMetaProgressToolItem(it))) &&
-      it.text.trim() !== "",
+      toolLabel(it) !== "",
   );
-  if (runningTool) return runningTool.text.trim();
+  if (fgRunningTool) return toolLabel(fgRunningTool);
+
+  const awaitedBgs = activeBackgroundTasksOf(proj).filter((bt) => bt.awaited && bt.kind !== BackgroundTaskKind.DAEMON);
+  if (awaitedBgs.length > 0) {
+    const latest = awaitedBgs[awaitedBgs.length - 1]!;
+    const lbl = latest.title.trim() || latest.command.trim();
+    if (lbl) return awaitedBgs.length > 1 ? `${lbl} (+${awaitedBgs.length - 1})` : lbl;
+  }
+
+  const chain = currentTurnChainRunIds(proj);
+  const { focus: explicitFocus } = reduceChainProgress(proj, chain);
+  if (explicitFocus) return explicitFocus;
 
   const inProgressStep = activeTodoSteps(proj).find((st) => st.status === "in_progress");
   return inProgressStep?.text;

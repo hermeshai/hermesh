@@ -450,6 +450,7 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 	if method == "thread/resume" {
 		s.syncResumedBackgroundTerminals(ctx)
 	}
+	s.proc.SnapshotBaseline()
 	return s, nil
 }
 
@@ -551,6 +552,7 @@ type session struct {
 	sessionCancel   context.CancelFunc
 	turnCtx         context.Context
 	turnID          string
+	turnCompleted   bool
 	msgItemID       string
 	msgUsed         bool
 	lastTurnErr     string
@@ -576,6 +578,13 @@ func (s *session) gateCtx() context.Context {
 
 func (s *session) Events() <-chan runtime.Event { return s.events }
 func (s *session) Alive() bool                  { return s.alive.Load() }
+
+func (s *session) PendingWakeup() bool {
+	s.mu.Lock()
+	inTurn := s.turnID != ""
+	s.mu.Unlock()
+	return inTurn
+}
 
 func (s *session) SetTitle(ctx context.Context, title string) error {
 	if s.codexThreadID == "" || title == "" {
@@ -655,6 +664,7 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 	s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
 	s.msgUsed = false
 	s.lastTurnErr = ""
+	s.turnCompleted = false
 	s.mu.Unlock()
 
 	sandbox, approval := mapSandboxAndPolicy(rm, im)
@@ -678,7 +688,9 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 	_ = json.Unmarshal(res, &tr)
 	if tr.Turn.ID != "" {
 		s.mu.Lock()
-		s.turnID = tr.Turn.ID
+		if !s.turnCompleted {
+			s.turnID = tr.Turn.ID
+		}
 		s.mu.Unlock()
 	}
 	return nil
@@ -1543,6 +1555,7 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 		_ = json.Unmarshal(params, &p)
 		s.mu.Lock()
 		s.turnID = ""
+		s.turnCompleted = true
 		lastErr := s.lastTurnErr
 		s.lastTurnErr = ""
 		var promoted []runtime.Event
@@ -1568,6 +1581,9 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 		}
 		s.runningCmds = nil
 		s.mu.Unlock()
+		if len(promoted) > 0 {
+			s.proc.SnapshotBaseline()
+		}
 		for _, ev := range promoted {
 			s.emit(ev)
 		}
