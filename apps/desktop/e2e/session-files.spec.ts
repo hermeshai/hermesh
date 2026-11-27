@@ -244,6 +244,9 @@ test("a reply's files are tags opening side panel tabs; a page runs there offlin
   await expect(stageBox.getByTestId("session-image-thumb")).toHaveCount(4);
   await expect(stageBox.getByTestId("session-image-counter")).toContainText("1 / 4 · 240 × 135");
   await expect(stageBox.getByTestId("session-image-caption")).toHaveText("方案一 [默认收起]：连体抽屉托盘");
+  const proseW = await stageReply.locator("p").first().evaluate((el) => el.getBoundingClientRect().width);
+  const stageW = await stageBox.evaluate((el) => el.getBoundingClientRect().width);
+  expect(Math.abs(stageW - proseW)).toBeLessThanOrEqual(2);
   await stageBox.getByTestId("session-image-thumb").nth(2).click();
   await expect(stageBox.getByTestId("session-image-counter")).toContainText("3 / 4 · 240 × 135");
   await expect(stageBox.getByTestId("session-image-caption")).toHaveText("方案三：浅色模式对比");
