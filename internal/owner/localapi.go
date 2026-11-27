@@ -380,6 +380,17 @@ func (l *localService) SetMachinePaused(ctx context.Context, req *localv1.SetMac
 	return &localv1.SetMachinePausedResponse{}, err
 }
 
+func (l *localService) MaintainProvider(ctx context.Context, req *localv1.MaintainProviderRequest) (*localv1.MaintainProviderResponse, error) {
+	if req.Operation == nil || req.MachineId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("missing target or operation"))
+	}
+	_, err := l.o().admin(ctx, req.MachineId, func(c *identityv1.AdminCommand) {
+		c.Command = &identityv1.AdminCommand_MaintainProvider{MaintainProvider: req.Operation}
+	})
+	l.o().wrote(ctx, err, false, req.MachineId)
+	return &localv1.MaintainProviderResponse{}, err
+}
+
 func (l *localService) SetAgentDefaults(ctx context.Context, req *localv1.SetAgentDefaultsRequest) (*localv1.SetAgentDefaultsResponse, error) {
 	if req.Defaults == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("no defaults"))

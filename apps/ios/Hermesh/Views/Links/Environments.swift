@@ -120,7 +120,7 @@ struct EnvironmentView: View {
                 .accessibilityIdentifier("env-name")
             }
             Section {
-                entry("Agent Providers", symbol: "chevron.left.forwardslash.chevron.right", color: .gray, route: .providers(m.machineID), id: "env-providers", off: !m.online) {
+                entry("Agent Providers", symbol: "chevron.left.forwardslash.chevron.right", color: .gray, route: .providers(m.machineID), id: "env-providers", off: !m.online && model.providerMachine(m).status.providerMaintenance.isEmpty) {
                     if m.online {
                         Text("\(ready) available") + (unsigned > 0 ? Text(" · \(unsigned)").foregroundStyle(.orange) : Text(verbatim: ""))
                     } else {
@@ -326,9 +326,19 @@ struct ProvidersView: View {
     @State private var checking = false
 
     var body: some View {
-        let m = model.machines.first { $0.machineID == id }
+        let m = model.machines.first { $0.machineID == id }.map(model.providerMachine)
         let agents = sortedAgents(m?.status.agents ?? [])
         List {
+            if let m, !m.status.providerMaintenance.isEmpty || !m.status.providerOperations.isEmpty {
+                Section {
+                    NavigationLink {
+                        ProviderMaintenanceView(machineID: id)
+                    } label: {
+                        Label("Installation and Updates", systemImage: "arrow.down.circle")
+                    }
+                    .accessibilityIdentifier("provider-maintenance")
+                }
+            }
             Section {
                 ForEach(agents.installed, id: \.name) { a in
                     NavigationLink(value: Route.machineAgent(id, a.name)) {
@@ -378,7 +388,11 @@ struct ProvidersView: View {
                 Section {
                     ForEach(agents.missing, id: \.self) { a in
                         LabeledContent {
-                            if let url = installPage[a] { Link("How to Install", destination: url).font(.subheadline) }
+                            if m?.status.providerMaintenance.contains(where: { $0.provider == a && !$0.package.isEmpty }) == true {
+                                NavigationLink("Installation and Updates") { ProviderActions(machineID: id, provider: a) }
+                            } else if let url = installPage[a] {
+                                Link("How to Install", destination: url).font(.subheadline)
+                            }
                         } label: {
                             HStack(spacing: 12) {
                                 AgentLogo(id: a, size: 30).grayscale(1).opacity(0.5)
@@ -392,7 +406,9 @@ struct ProvidersView: View {
                 } header: {
                     Text("Not Installed")
                 } footer: {
-                    Text("Install one on \(m?.machineName ?? ""), then Check Again.")
+                    if m?.status.providerMaintenance.isEmpty != false {
+                        Text("Install one on \(m?.machineName ?? ""), then Check Again.")
+                    }
                 }
             }
         }

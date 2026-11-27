@@ -280,6 +280,13 @@ test("a Mac with no coding agent: the agents not installed, and on without them"
   await expect(page.getByRole("heading", { name: "还没有可用的 Agent 提供方" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("安装并登录 Claude Code 或 Codex 后，Hermesh 会自己发现。")).toBeVisible();
   await expect(page.getByRole("list", { name: "Agent 提供方" }).getByRole("listitem", { name: "Claude Code" })).toContainText("没有安装");
+  const others = page.getByRole("button", { name: "其他提供方（3）" });
+  const folded = page.getByRole("listitem", { name: /^(Gemini CLI|DeepSeek Harness|Augment)$/ });
+  await expect(folded).toHaveCount(0);
+  await others.click();
+  await expect(folded).toHaveCount(3);
+  await others.click();
+  await expect(folded).toHaveCount(0);
   await expect(page.getByRole("button", { name: "继续" })).toBeDisabled();
   // No agent provider to work: a project is not what it waits for.
   await expect(page.getByText("添加一个项目后即可继续", { exact: false })).toHaveCount(0);

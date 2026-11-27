@@ -246,9 +246,19 @@ message AdminCommand {
     CreateFolder create_folder = 19;
     SetMaxRuntimeMode set_max_runtime_mode = 20;
     SetWorkspacePolicy set_workspace_policy = 21;
+    MaintainProvider maintain_provider = 22;
   }
   reserved 12;
   reserved "rename_machine";
+}
+
+// Owner-signed request. The target chooses the package and executable.
+message MaintainProvider {
+  string request_id = 1;
+  string provider = 2;
+  string action = 3; // install, update, verify, enable_auto, disable_auto
+  string expected_version = 4;
+  string target_version = 5;
 }
 
 message AddProject {

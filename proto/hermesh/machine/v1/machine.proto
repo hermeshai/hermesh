@@ -193,6 +193,8 @@ message MachineStatus {
   // from the handlers it registers (docs/version-skew.md §6.1). Empty: a
   // machine from before the list, which may answer some of them.
   repeated string methods = 20;
+  repeated ProviderMaintenance provider_maintenance = 21;
+  repeated ProviderOperation provider_operations = 22;
 }
 
 // ScreenStatus is whether the owner's devices can see and operate this
@@ -299,6 +301,22 @@ enum MachineProblemKind {
   // store (docs/data-migrations.md), so some of it does not show: detail
   // says which move and why. It is tried again each time hermeshd starts.
   MACHINE_PROBLEM_KIND_DATA_MOVE = 5;
+}
+
+message ProviderMaintenance {
+  string provider = 1;
+  string package = 2;
+  string target_version = 3;
+  string managed_version = 4;
+  bool auto_update = 5;
+  string account = 6;
+}
+
+message ProviderOperation {
+  hermesh.identity.v1.MaintainProvider request = 1;
+  string phase = 2;
+  string detail = 3;
+  int64 updated_unix_ms = 4;
 }
 
 message AgentStatus {

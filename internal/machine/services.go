@@ -356,6 +356,8 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 			return "", err
 		}
 		return "permission mode limited to " + c.SetMaxRuntimeMode.Mode.String(), nil
+	case *identityv1.AdminCommand_MaintainProvider:
+		return "", n.startProviderOperation(c.MaintainProvider)
 	case *identityv1.AdminCommand_SetAgentDefaults:
 		if err := n.setAgentDefaults(c.SetAgentDefaults); err != nil {
 			return "", connect.NewError(connect.CodeInvalidArgument, err)

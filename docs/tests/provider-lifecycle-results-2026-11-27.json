@@ -1,0 +1,919 @@
+{
+  "date_utc": "2026-11-27",
+  "repo_commit": "f5f5498a",
+  "scope": "Isolated processes, no model prompts. A successful initialize can be from an unchanged old executable after a failed upgrade. Inspect both version and install_exit.",
+  "observations": [
+    {
+      "platform": "linux-arm64",
+      "distribution": "claude",
+      "method": "official installer",
+      "command": [
+        "claude",
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose"
+      ],
+      "image_variant": "with unzip/bzip2",
+      "before": {
+        "install_exit": null,
+        "install_signal": "SIGTERM",
+        "version_exit": null
+      },
+      "after": {
+        "install_exit": 1,
+        "version_exit": null
+      },
+      "initialize": null
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "kiro",
+      "method": "official installer",
+      "command": [
+        "kiro-cli",
+        "acp"
+      ],
+      "image_variant": "with unzip/bzip2",
+      "before": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "kiro-cli 3.0.0"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "kiro-cli 3.6.2"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "darwin-arm64",
+      "distribution": "@anthropic-ai/claude-code",
+      "method": "npm",
+      "command": [
+        "claude",
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose"
+      ],
+      "home": "isolated writable",
+      "before": {
+        "install_exit": 0,
+        "requested": "2.1.331",
+        "version_exit": 0,
+        "version_stdout": "2.1.331 (Claude Code)"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "2.1.332 (Claude Code)"
+      },
+      "initialize": {
+        "ok": true,
+        "reply": "success"
+      }
+    },
+    {
+      "platform": "darwin-arm64",
+      "distribution": "@openai/codex",
+      "method": "npm",
+      "command": [
+        "codex",
+        "app-server"
+      ],
+      "home": "isolated writable",
+      "before": {
+        "install_exit": 0,
+        "requested": "0.171.0",
+        "version_exit": 0,
+        "version_stdout": "codex-cli 0.171.0"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "codex-cli 0.172.0"
+      },
+      "initialize": {
+        "ok": true,
+        "userAgent": "hermesh_probe/0.172.0 (Mac OS 27.2.0; arm64) unknown (hermesh_probe; 1.0)"
+      }
+    },
+    {
+      "platform": "darwin-arm64",
+      "distribution": "@github/copilot",
+      "method": "npm",
+      "command": [
+        "copilot",
+        "--acp"
+      ],
+      "home": "isolated writable",
+      "before": {
+        "install_exit": 0,
+        "requested": "1.0.116",
+        "version_exit": 0,
+        "version_stdout": "GitHub Copilot CLI 1.0.116."
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "GitHub Copilot CLI 1.0.117."
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "darwin-arm64",
+      "distribution": "@opencode/cli",
+      "method": "npm",
+      "command": [
+        "opencode",
+        "acp"
+      ],
+      "home": "isolated writable",
+      "before": {
+        "install_exit": 0,
+        "requested": "2.4.1",
+        "version_exit": 0,
+        "version_stdout": "opencode v2.4.1"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "opencode v2.4.2"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "darwin-arm64",
+      "distribution": "@qwen-code/qwen-code",
+      "method": "npm",
+      "command": [
+        "qwen",
+        "--acp"
+      ],
+      "home": "isolated writable",
+      "before": {
+        "install_exit": 0,
+        "requested": "0.28.6",
+        "version_exit": 0,
+        "version_stdout": "0.28.6"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "0.28.7"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "darwin-arm64",
+      "distribution": "@openai/codex",
+      "method": "npm",
+      "command": [
+        "codex",
+        "app-server"
+      ],
+      "home": "real home denied; no writable test home",
+      "before": {
+        "install_exit": 0,
+        "requested": "0.171.0",
+        "version_exit": 0,
+        "version_stdout": "codex-cli 0.171.0"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "codex-cli 0.172.0"
+      },
+      "initialize": {
+        "ok": false,
+        "problem": "exit 1/null"
+      }
+    },
+    {
+      "platform": "darwin-arm64",
+      "distribution": "@github/copilot",
+      "method": "npm",
+      "command": [
+        "copilot",
+        "--acp"
+      ],
+      "home": "real home denied; no writable test home",
+      "before": {
+        "install_exit": 0,
+        "requested": "1.0.116",
+        "version_exit": 1
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 1
+      },
+      "initialize": {
+        "ok": false,
+        "problem": "exit 1/null"
+      }
+    },
+    {
+      "platform": "darwin-arm64",
+      "distribution": "@opencode/cli",
+      "method": "npm",
+      "command": [
+        "opencode",
+        "acp"
+      ],
+      "home": "real home denied; no writable test home",
+      "before": {
+        "install_exit": 1,
+        "requested": "2.4.1"
+      },
+      "initialize": null
+    },
+    {
+      "platform": "darwin-arm64",
+      "distribution": "@qwen-code/qwen-code",
+      "method": "npm",
+      "command": [
+        "qwen",
+        "--acp"
+      ],
+      "home": "real home denied; no writable test home",
+      "before": {
+        "install_exit": 0,
+        "requested": "0.28.6",
+        "version_exit": 0,
+        "version_stdout": "0.28.6"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "0.28.7"
+      },
+      "initialize": {
+        "ok": false,
+        "problem": "exit 1/null"
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "agy",
+      "method": "official installer",
+      "command": [
+        "agy",
+        "acp"
+      ],
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "1.5.18"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "claude",
+      "method": "official installer",
+      "command": [
+        "claude",
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose"
+      ],
+      "before": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "2.1.331 (Claude Code)"
+      },
+      "after": {
+        "install_exit": null,
+        "install_signal": "SIGTERM",
+        "version_exit": 0,
+        "version_stdout": "2.1.331 (Claude Code)"
+      },
+      "initialize": {
+        "ok": true,
+        "reply": "success"
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "cursor",
+      "method": "official installer",
+      "command": [
+        "cursor-agent",
+        "acp"
+      ],
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "2026.11.22-e9042b2"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "goose",
+      "method": "official installer",
+      "command": [
+        "goose",
+        "acp"
+      ],
+      "before": {
+        "install_exit": 1,
+        "version_exit": null
+      },
+      "after": {
+        "install_exit": 1,
+        "version_exit": null
+      },
+      "initialize": null
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "kiro",
+      "method": "official installer",
+      "command": [
+        "kiro-cli",
+        "acp"
+      ],
+      "before": {
+        "install_exit": 1,
+        "version_exit": null
+      },
+      "after": {
+        "install_exit": 1,
+        "version_exit": null
+      },
+      "initialize": null
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "qoder",
+      "method": "official installer",
+      "command": [
+        "qoder",
+        "--acp"
+      ],
+      "before": {
+        "install_exit": 0,
+        "version_exit": null
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": null
+      },
+      "initialize": null
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "@anthropic-ai/claude-code",
+      "method": "npm",
+      "command": [
+        "claude",
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "2.1.331",
+        "version_exit": 0,
+        "version_stdout": "2.1.331 (Claude Code)"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "2.1.332 (Claude Code)"
+      },
+      "initialize": {
+        "ok": true,
+        "reply": "success"
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "@augmentcode/auggie",
+      "method": "npm",
+      "command": [
+        "auggie",
+        "--acp"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "1.2.2",
+        "version_exit": 0,
+        "version_stdout": "1.2.2"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "1.2.3"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "@deepseek-ai/dsh",
+      "method": "npm",
+      "command": [
+        "dsh",
+        "--profile",
+        "acp"
+      ],
+      "after": {
+        "install_exit": null,
+        "install_signal": "SIGTERM"
+      },
+      "initialize": null
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "@github/copilot",
+      "method": "npm",
+      "command": [
+        "copilot",
+        "--acp"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "1.0.116",
+        "version_exit": 0,
+        "version_stdout": "GitHub Copilot CLI 1.0.116."
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "GitHub Copilot CLI 1.0.117."
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "@google/gemini-cli",
+      "method": "npm",
+      "command": [
+        "gemini",
+        "--acp"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "0.71.0",
+        "version_exit": 0,
+        "version_stdout": "0.71.0"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "0.71.1"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "@moonshot-ai/kimi-code",
+      "method": "npm",
+      "command": [
+        "kimi",
+        "acp"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "2.8.0",
+        "version_exit": 0,
+        "version_stdout": "2.8.0"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "2.8.1"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "@openai/codex",
+      "method": "npm",
+      "command": [
+        "codex",
+        "app-server"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "0.171.0",
+        "version_exit": 0,
+        "version_stdout": "codex-cli 0.171.0"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "codex-cli 0.172.0"
+      },
+      "initialize": {
+        "ok": true,
+        "userAgent": "hermesh_probe/0.172.0 (Debian 12.0.0; aarch64) unknown (hermesh_probe; 1.0)"
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "@opencode/cli",
+      "method": "npm",
+      "command": [
+        "opencode",
+        "acp"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "2.4.1",
+        "version_exit": 0,
+        "version_stdout": "opencode v2.4.1"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "opencode v2.4.2"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "@qoder-ai/qodercli",
+      "method": "npm",
+      "command": [
+        "qoder",
+        "--acp"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "1.1.99",
+        "version_exit": 0,
+        "version_stdout": "1.1.99"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "1.1.100"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "@qwen-code/qwen-code",
+      "method": "npm",
+      "command": [
+        "qwen",
+        "--acp"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "0.28.6",
+        "version_exit": 0,
+        "version_stdout": "0.28.6"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "0.28.7"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "@tencent-ai/codebuddy-code",
+      "method": "npm",
+      "command": [
+        "codebuddy",
+        "--acp"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "2.186.0",
+        "version_exit": 0,
+        "version_stdout": "2.186.0"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "2.187.0"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "@xai-official/grok",
+      "method": "npm",
+      "command": [
+        "grok",
+        "--no-auto-update",
+        "agent",
+        "stdio"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "1.0.91",
+        "version_exit": 0,
+        "version_stdout": "grok 1.0.91 (74ad9772d2ff)"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "grok 1.0.92 (b06756fd6256)"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-amd64-emulated",
+      "distribution": "@anthropic-ai/claude-code",
+      "method": "npm",
+      "command": [
+        "claude",
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "2.1.331",
+        "version_exit": 0,
+        "version_stdout": "2.1.331 (Claude Code)"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "2.1.332 (Claude Code)"
+      },
+      "initialize": {
+        "ok": true,
+        "reply": "success"
+      }
+    },
+    {
+      "platform": "linux-amd64-emulated",
+      "distribution": "@github/copilot",
+      "method": "npm",
+      "command": [
+        "copilot",
+        "--acp"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "1.0.116",
+        "version_exit": 0,
+        "version_stdout": "GitHub Copilot CLI 1.0.116."
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "GitHub Copilot CLI 1.0.117."
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-amd64-emulated",
+      "distribution": "@openai/codex",
+      "method": "npm",
+      "command": [
+        "codex",
+        "app-server"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "0.171.0",
+        "version_exit": 0,
+        "version_stdout": "codex-cli 0.171.0"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "codex-cli 0.172.0"
+      },
+      "initialize": {
+        "ok": true,
+        "userAgent": "hermesh_probe/0.172.0 (Debian 12.0.0; x86_64) unknown (hermesh_probe; 1.0)"
+      }
+    },
+    {
+      "platform": "linux-amd64-emulated",
+      "distribution": "@opencode/cli",
+      "method": "npm",
+      "command": [
+        "opencode",
+        "acp"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "2.4.1",
+        "version_exit": 0,
+        "version_stdout": "opencode v2.4.1"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "opencode v2.4.2"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-amd64-emulated",
+      "distribution": "@qwen-code/qwen-code",
+      "method": "npm",
+      "command": [
+        "qwen",
+        "--acp"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "0.28.6",
+        "version_exit": 0,
+        "version_stdout": "0.28.6"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "0.28.7"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "opencode-ai",
+      "method": "npm",
+      "command": [
+        "opencode",
+        "acp"
+      ],
+      "before": {
+        "install_exit": 0,
+        "requested": "1.19.5",
+        "version_exit": 0,
+        "version_stdout": "1.19.5"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "1.19.6"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "@deepseek-ai/dsh",
+      "method": "npm",
+      "command": [
+        "dsh",
+        "--profile",
+        "acp"
+      ],
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "0.2.2-rc.5"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "goose",
+      "method": "official installer",
+      "command": [
+        "goose",
+        "acp"
+      ],
+      "image_variant": "with unzip/bzip2",
+      "before": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "1.61.0"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "1.61.1"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "kiro",
+      "method": "official installer",
+      "command": [
+        "kiro-cli",
+        "acp"
+      ],
+      "image_variant": "with unzip/bzip2",
+      "before": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "kiro-cli 3.0.0"
+      },
+      "after": {
+        "install_exit": 1,
+        "version_exit": 0,
+        "version_stdout": "kiro-cli 3.0.0"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    },
+    {
+      "platform": "linux-arm64",
+      "distribution": "qoder",
+      "method": "official installer",
+      "command": [
+        "qodercli",
+        "--acp"
+      ],
+      "image_variant": "with unzip/bzip2",
+      "before": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "1.1.99"
+      },
+      "after": {
+        "install_exit": 0,
+        "version_exit": 0,
+        "version_stdout": "1.1.100"
+      },
+      "initialize": {
+        "ok": true,
+        "protocol": 1
+      }
+    }
+  ]
+}

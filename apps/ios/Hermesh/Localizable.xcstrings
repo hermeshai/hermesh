@@ -2180,6 +2180,16 @@
         }
       }
     },
+    "Account": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "账号"
+          }
+        }
+      }
+    },
     "Account and Devices": {
       "localizations": {
         "zh-Hans": {
@@ -3782,6 +3792,26 @@
         }
       }
     },
+    "Cancel Task": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消任务"
+          }
+        }
+      }
+    },
+    "Cancelled": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已取消"
+          }
+        }
+      }
+    },
     "Cancelled — fall back to manual login": {
       "localizations": {
         "zh-Hans": {
@@ -4144,6 +4174,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "已在别的 worktree 签出"
+          }
+        }
+      }
+    },
+    "Checking Requirements": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查安装条件"
           }
         }
       }
@@ -5996,6 +6036,16 @@
         }
       }
     },
+    "Disable Automatic Updates": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭自动更新"
+          }
+        }
+      }
+    },
     "Discard": {
       "localizations": {
         "zh-Hans": {
@@ -6404,6 +6454,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在修改"
+          }
+        }
+      }
+    },
+    "Enable Automatic Updates": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启自动更新"
           }
         }
       }
@@ -8620,6 +8680,16 @@
         }
       }
     },
+    "Install": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装"
+          }
+        }
+      }
+    },
     "Install Hermesh on Linux": {
       "localizations": {
         "zh-Hans": {
@@ -8710,12 +8780,32 @@
         }
       }
     },
+    "Installation and Updates": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装与更新"
+          }
+        }
+      }
+    },
     "Installed": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "已安装"
+          }
+        }
+      }
+    },
+    "Installed Version": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已安装版本"
           }
         }
       }
@@ -8756,6 +8846,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "打断这一轮？"
+          }
+        }
+      }
+    },
+    "Interrupted": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已中断"
           }
         }
       }
@@ -9530,6 +9630,16 @@
         }
       }
     },
+    "Latest Task": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近任务"
+          }
+        }
+      }
+    },
     "Left": {
       "localizations": {
         "zh-Hans": {
@@ -9767,6 +9877,16 @@
     },
     "Mac": {
       "shouldTranslate": false
+    },
+    "Machine": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "机器"
+          }
+        }
+      }
     },
     "Machine / project": {
       "localizations": {
@@ -10868,6 +10988,16 @@
         }
       }
     },
+    "No provider tasks yet.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有提供方任务。"
+          }
+        }
+      }
+    },
     "No sessions": {
       "localizations": {
         "zh-Hans": {
@@ -11958,6 +12088,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "概览"
+          }
+        }
+      }
+    },
+    "Package": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "软件包"
           }
         }
       }
@@ -13852,6 +13992,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在运行"
+          }
+        }
+      }
+    },
+    "Running Installer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在安装"
           }
         }
       }
@@ -16130,6 +16280,26 @@
         }
       }
     },
+    "Target Version": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目标版本"
+          }
+        }
+      }
+    },
+    "Task History": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "任务记录"
+          }
+        }
+      }
+    },
     "Task Worktrees": {
       "localizations": {
         "zh-Hans": {
@@ -18352,6 +18522,16 @@
         }
       }
     },
+    "Updates are managed by the original installer.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此工具由原安装渠道更新。"
+          }
+        }
+      }
+    },
     "Updating from %@…": {
       "localizations": {
         "zh-Hans": {
@@ -18622,12 +18802,32 @@
         }
       }
     },
+    "Verify Command-Line Tool": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "验证命令行工具"
+          }
+        }
+      }
+    },
     "Verify Manually": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "手动验证"
+          }
+        }
+      }
+    },
+    "Verifying Command-Line Tool": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在验证命令行工具"
           }
         }
       }
@@ -18738,6 +18938,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "等待 %@ 连接…"
+          }
+        }
+      }
+    },
+    "Waiting for Machine to Be Idle": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待机器空闲"
           }
         }
       }

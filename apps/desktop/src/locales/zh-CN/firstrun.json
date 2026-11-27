@@ -151,6 +151,7 @@
     "searching_linux": "正在查找本机上的 Agent 提供方",
     "searchingBody": "看看装了哪些、版本多少、有没有登录。第一次检查会慢一些。",
     "agents": "Agent 提供方",
+    "otherProviders": "其他提供方（{{count}}）",
     "notInstalled": "没有安装 · 装好后 Hermesh 会自己发现",
     "missing": "没有安装的 Agent",
     "signedIn": "已登录",

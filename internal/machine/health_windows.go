@@ -51,3 +51,5 @@ func workspaceBytes(ctx context.Context, path string) (uint64, error) {
 	})
 	return total, err
 }
+
+func providerLocalDisk(string) bool { return false }

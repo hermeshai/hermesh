@@ -378,6 +378,30 @@ func admin(c *identityv1.AdminCommand, h Hints, typ string, w words) (Card, erro
 			return Card{Title: w.f("Release idle worktrees on %s automatically", target), Why: w.f("Tasks’ worktrees idle for 7 days with no local changes are deleted there; their branches stay.")}, nil
 		}
 		return Card{Title: w.f("Stop releasing idle worktrees on %s", target), Why: w.f("Worktrees stay until released by hand.")}, nil
+	case *identityv1.AdminCommand_MaintainProvider:
+		op := x.MaintainProvider
+		var title string
+		switch op.Action {
+		case "install":
+			title = w.f("Install %s on %s", agentTitle(op.Provider), target)
+		case "update":
+			title = w.f("Update %s on %s", agentTitle(op.Provider), target)
+		case "verify":
+			title = w.f("Verify %s on %s", agentTitle(op.Provider), target)
+		case "enable_auto":
+			title = w.f("Enable automatic updates for %s on %s", agentTitle(op.Provider), target)
+		case "disable_auto":
+			title = w.f("Disable automatic updates for %s on %s", agentTitle(op.Provider), target)
+		case "cancel":
+			title = w.f("Cancel maintenance of %s on %s", agentTitle(op.Provider), target)
+		default:
+			return Card{}, &Refused{typ, "unknown provider operation"}
+		}
+		card := Card{Title: title}
+		if op.TargetVersion != "" {
+			card.Lines = []string{w.f("Version: %s", op.TargetVersion)}
+		}
+		return card, nil
 	case *identityv1.AdminCommand_SetAgentDefaults:
 		d := x.SetAgentDefaults
 		return Card{Title: w.f("Set the model %s runs with on %s", agentTitle(d.Agent), target),

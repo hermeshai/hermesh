@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hermesh · 环境中的 Agent Provider</title>
+<style>
+:root{color-scheme:dark;--canvas:#131416;--side:#1a1b1e;--panel:#202124;--row:#26272b;--line:#36373c;--text:#f1f1f3;--muted:#b0b1b9;--sub:#94969f;--green:#88d5ae;--blue:#a7baff;--gold:#eac38b;--mono:"SFMono-Regular",Consolas,monospace}
+*{box-sizing:border-box}body{margin:0;background:var(--canvas);color:var(--text);font:14px/1.5 "Inter",-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}button,input{font:inherit}button{cursor:pointer;color:inherit;background:#35363b;border:1px solid #48494e;border-radius:8px;padding:7px 13px}button:hover:enabled{filter:brightness(1.18)}button:disabled{cursor:default;opacity:.44}button:focus-visible,summary:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
+.shell{max-width:1080px;margin:clamp(16px,7vh,84px) auto 0;border:1px solid #3a3b3f;border-radius:16px;overflow:hidden;background:var(--panel);box-shadow:0 20px 64px #0005}
+.titlebar{height:45px;background:#232427;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 18px;gap:7px;color:var(--muted);font-size:12px}.titlebar i{width:10px;height:10px;border-radius:50%;background:#e3877f}.titlebar i:nth-child(2){background:#dcb66f}.titlebar i:nth-child(3){background:#82ba8a}.titlebar span{margin-left:12px}.titlebar small{margin-left:auto;color:var(--sub);font-size:12px}
+.layout{display:grid;grid-template-columns:216px minmax(0,1fr);min-height:566px}aside{padding:24px 12px;background:var(--side);border-right:1px solid var(--line)}aside h2{font-weight:550;font-size:12px;color:var(--muted);margin:0 10px 12px}.machine{width:100%;text-align:left;display:flex;align-items:center;gap:11px;padding:10px;margin:2px 0;background:transparent;border:1px solid transparent}.machine[aria-current=true]{background:#303137;border-color:#3e3f46}.machine strong,.machine small{display:block}.machine strong{font-weight:550;font-size:14px}.machine small{font-size:11px;color:var(--sub);margin-top:2px}.device{width:24px;height:24px;display:grid;place-items:center;color:#c6c8d0}.device svg{width:21px;height:21px}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green)}.dot.off{background:#888991}.machine .dot{margin-left:auto}
+main{padding:27px clamp(18px,4vw,44px) 32px;min-width:0}.crumb{color:var(--sub);font-size:12px}.crumb span{color:#686a73;margin:0 7px}h1{font-size:29px;font-weight:630;letter-spacing:-1px;margin:11px 0 3px}.meta{display:flex;align-items:center;gap:9px;flex-wrap:wrap;color:var(--muted);font-size:12px}.meta code{font:12px var(--mono)}.status{color:var(--green)}.offline{color:var(--gold)}h2{font-size:14px;font-weight:570;margin:23px 0 9px}.group{border-radius:11px;border:1px solid var(--line);overflow:hidden;background:var(--row)}.row{display:flex;align-items:center;gap:13px;padding:15px 16px;min-height:67px}.row+.row{border-top:1px solid var(--line)}.logo{height:33px;width:33px;border-radius:9px;background:#f4f4f5;object-fit:contain;padding:6px}.info{min-width:0;flex:1}.info b{font-size:15px;font-weight:570}.info small{display:block;color:var(--muted);font-size:12px;margin-top:2px;overflow-wrap:anywhere}.row button{font-size:12px;font-weight:550;white-space:nowrap}.install,.primary{background:#c6d2ff;color:#161e39;border-color:transparent}.quiet{background:transparent;border-color:#44464d;color:var(--muted)}.notice,.job{margin-top:16px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#292a2f;font-size:13px}.notice{color:var(--gold)}.job header{display:flex;align-items:center;justify-content:space-between}.job b{font-weight:550}.job small{color:var(--muted)}.job progress{width:100%;height:5px;accent-color:var(--blue);display:block;margin:8px 0 4px}.job details{margin-top:7px;color:var(--muted);font-size:12px}summary{cursor:pointer;width:fit-content}ol{padding-left:20px}.foot{color:var(--sub);font-size:12px;margin:12px 2px 0}
+.tools{max-width:1080px;margin:13px auto 24px;color:var(--muted);font-size:12px}.tools summary{margin-left:4px}.controls{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:10px 4px}.controls button{font-size:12px}.controls label{display:flex;gap:6px;align-items:center}
+dialog{width:min(450px,92vw);background:#27282c;color:var(--text);border:1px solid #45464d;border-radius:14px;padding:24px;box-shadow:0 30px 85px #0008}dialog::backdrop{background:#090a0caa}dialog h2{margin:0;font-size:20px}dialog p{color:var(--muted);font-size:13px}dl{background:#202125;border:1px solid var(--line);border-radius:9px;padding:6px 12px}dl div{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:7px 0}dl div+div{border-top:1px solid var(--line)}dt{white-space:nowrap;color:var(--muted);font-size:12px}dd{margin:0;text-align:right;font-size:13px;overflow-wrap:anywhere}dialog footer{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}dialog code{font-family:var(--mono);font-size:12px}.option{display:flex;gap:8px;align-items:center;font-size:13px}input{accent-color:#a2b6ff}.soft{color:var(--blue)}
+@media(max-width:1120px){.shell,.tools{margin-left:16px;margin-right:16px}}@media(max-width:720px){.shell{margin:8px}.layout{display:block;min-height:0}aside{padding:10px;border-right:0;border-bottom:1px solid var(--line)}aside h2{margin:0 4px 6px}nav{display:flex;gap:3px}.machine{flex:1;min-width:0;padding:6px;gap:4px}.machine strong{font-size:12px}.machine small{font-size:10px}.machine .device{display:none}.machine .dot{width:5px;height:5px}main{padding:18px 13px 24px}h1{font-size:25px}.row{padding:12px 10px;gap:9px}.tools{margin-left:12px}.meta{gap:5px}.titlebar{height:35px}.row button{padding:6px 9px}}
+select{background:#28292d;color:var(--text);font:inherit;border:1px solid var(--line);padding:4px;border-radius:5px}
+.job .badge{font-size:12px;color:var(--blue)}.job .badge.warn{color:var(--gold)}.job header{gap:12px}.job code,.events time{font-family:var(--mono)}.phases{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:0;margin:14px 0;list-style:none}.phases li{color:var(--sub);font-size:12px}.phases i{display:block;height:3px;border-radius:4px;background:#46474f;margin-bottom:6px}.phases .complete i{background:var(--green)}.phases .active i{background:var(--blue)}.phases .fault i{background:var(--gold)}.task-detail{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px}.task-detail button{flex:none;font-size:12px}.events{padding:0;list-style:none}.events time{color:var(--sub);padding-right:10px}.events li{margin:4px 0}
+[hidden]{display:none!important}
+.activity-nav{margin:20px 0 0;border-top:1px solid var(--line);padding-top:13px}.activity-nav button{display:flex;align-items:center;gap:11px;width:100%;padding:9px 12px;background:transparent;border:0;text-align:left;color:var(--muted)}.activity-nav button[aria-current=page]{background:#303137;color:var(--text)}.activity-nav svg{width:19px;height:19px}.activity-nav span{margin-left:auto;color:var(--gold);font:12px var(--mono)}
+.row{min-height:76px}.row .menu-action{background:transparent;border:0;color:var(--muted);padding:6px;font-size:18px;line-height:1}.row .phase-link{background:none;border:0;color:var(--blue);padding:5px;font-weight:450}.row .attention{color:var(--gold)}.phase-link:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block;margin-right:6px}.row .info small{font-variant-numeric:tabular-nums}
+.history-list{border-top:1px solid var(--line);margin-top:18px}.history-row{display:grid;grid-template-columns:32px minmax(0,1fr) auto 12px;align-items:center;gap:12px;text-align:left;width:100%;padding:14px 2px;background:none;border:0;border-bottom:1px solid var(--line);border-radius:0}.history-row:hover:enabled{background:var(--row)}.history-row strong{display:block;font-size:14px;font-weight:530}.history-row small,.history-row .chevron{color:var(--sub)}.history-row em{font-style:normal;color:var(--muted);font-size:12px}.history-row .attention{color:var(--gold)}.back{border:0;color:var(--blue);padding:4px 0;background:transparent}.job{background:transparent;border:0;border-top:1px solid var(--line);border-radius:0;padding:18px 0}.job header b{font-size:18px}.job .phases{margin:24px 0}.job details{border-top:1px solid var(--line);padding-top:12px;margin-top:18px}.empty{padding:28px 0;color:var(--sub)}
+@media(max-width:720px){.activity-nav{margin:7px 0 0;padding:3px 0 0}.activity-nav button{width:auto;padding:4px 6px;font-size:12px}.activity-nav svg{width:15px;height:15px}.row{min-height:72px;gap:7px}.history-row{gap:6px}.row .phase-link{padding:4px}.row .info small{font-size:11px}}
+</style>
+</head>
+<body>
+<div class="shell">
+<header class="titlebar"><i></i><i></i><i></i><span>Hermesh 设置</span><small>交互演示 · 模拟环境</small></header>
+<div class="layout">
+<aside><h2>我的环境</h2><nav aria-label="机器"></nav>
+<div class="activity-nav"><button id="show-activity"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>任务记录 <span id="counter"></span></button></div></aside>
+<main><section id="environment"><div class="crumb">设置<span>›</span>环境<span>›</span><b id="crumb"></b></div>
+<h1>Agent Provider</h1><div id="meta" class="meta"></div>
+<div id="content"></div></section>
+<section id="activity" hidden><div class="crumb">设置<span>›</span>所有环境</div><h1 tabindex="-1">任务记录</h1><div id="ledger"></div></section></main>
+</div></div>
+<details class="tools"><summary>演示控制</summary><div class="controls"><button id="connect"></button><label><input id="busy" type="checkbox">此环境有活动会话</label><label>下次任务场景 <select id="scenario"><option value="">正常执行</option><option value="denied">安装目录不可写</option><option value="network">下载失败</option><option value="timeout">下载超时</option><option value="verify">CLI 复检失败</option></select></label><button id="reset">重置演示</button></div></details>
+<dialog aria-labelledby="dialog-title"><div id="sheet"></div></dialog>
+<script>
+const $ = selector => document.querySelector(selector);
+const names = { qoder: 'Qoder', gemini: 'Gemini CLI', cursor: 'Cursor' };
+const logos = {"qoder": "data:image/png;base64,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", "gemini": "data:image/png;base64,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", "cursor": "data:image/png;base64,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"};
+const systems = {
+  linux: { name: '开发服务器', os: 'Ubuntu 24.04', arch: 'x86_64', user: 'dev@build-linux', place: '远程' },
+  mac: { name: '我的 Mac', os: 'macOS', arch: 'arm64', user: 'yee@homebook', place: '本机' },
+  win: { name: '办公工作站', os: 'Windows 11', arch: 'x64', user: 'dev@office-win', place: '远程' }
+};
+const icons = {
+  linux: '<rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M6 6.5h2m-2 11h2"/>',
+  mac: '<rect x="4" y="4" width="16" height="12" rx="2"/><path d="M2 19h20"/>',
+  win: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M12 17v4m-5 0h10"/>'
+};
+function initial() {
+  const machines = {};
+  for (const id of Object.keys(systems)) {
+    machines[id] = { online: id !== 'win', qoder: '', gemini: '0.40.0', cursor: '1.0.0', auto: false, busy: false, scenario: '', needsCheck: {}, jobs: [] };
+  }
+  return { selected: 'linux', machines };
+}
+const storageKey = 'hermesh-provider-demo-v3';
+let state;
+try { state = JSON.parse(sessionStorage.getItem(storageKey)) || initial(); } catch { state = initial(); }
+function save() { try { sessionStorage.setItem(storageKey, JSON.stringify(state)); } catch {} }
+const targetVersion = { gemini: '0.41.0', qoder: '1.1.0' };
+const channel = id => id === 'mac' ? 'Homebrew' : 'npm';
+const actionName = op => ({install:'安装', update:'更新', verify:'复检'})[op];
+const latest = (m,key) => m.jobs.find(j => j.key === key);
+const live = m => m.jobs.find(j => j.status === 'running' || j.status === 'waiting');
+const stamp = time => new Date(time).toLocaleTimeString('zh-CN', {hour12:false});
+let view = 'environment', selectedJob = '', logOpen = false;
+const phases = ['检查环境', '下载 CLI', '写入安装目录', '验证 CLI'];
+const messages = ['检查平台、安装来源和目录权限', '从安装来源下载 CLI', '安装程序正在写入文件，请等待它退出', '检查版本并进行启动协议握手'];
+const issues = {
+  denied:  { stage: 0, reason: '目标账户没有安装目录的写权限', help: '在目标机器上配置用户可写的安装目录后重试。' },
+  network: { stage: 1, reason: '下载失败', help: '检查目标机器能否访问安装源，恢复后重试。' },
+  timeout: { stage: 1, reason: '下载超时', help: '目标机器等待安装源响应超时，下载已结束。检查代理或网络后重试。' },
+  verify:  { stage: 3, reason: 'CLI 复检失败', help: '文件已写入，启动协议握手失败。检查目标机器的 CLI 和运行环境后，可单独重新检测。' }
+};
+// The demo clock stands in for events emitted by the worker on the target machine.
+const phaseMs = 1400;
+function note(job, time, text) { job.events.push({ time, text }); }
+function startAttempt(m, job, stage, message) {
+  const now = Date.now();
+  job.attempt++;
+  job.stage = stage;
+  job.since = now;
+  job.status = 'running';
+  job.issue = m.scenario;
+  m.scenario = '';
+  note(job, now, message);
+  note(job, now, messages[stage]);
+}
+function begin(id, key, op, automatic = false) {
+  const m = state.machines[id];
+  if (!m.online || live(m)) return;
+  const job = { id: crypto.getRandomValues(new Uint32Array(1))[0].toString(16), key, op, automatic, attempt: 0, stage: 0, events: [] };
+  m.jobs.unshift(job);
+  if (op === 'update' && m.busy) {
+    job.status = 'waiting';
+    note(job, Date.now(), '等待此机器上的活动会话结束');
+  } else {
+    startAttempt(m, job, m.needsCheck[key] ? 3 : 0, '目标机器已接收任务');
+  }
+  save(); render();
+}
+function advance(m, now) {
+  const j = live(m);
+  if (j?.status === 'waiting' && !m.busy) {
+    startAttempt(m, j, 0, '会话已结束，开始更新');
+    return true;
+  }
+  if (j?.status !== 'running') return false;
+  let changed = false;
+  while (j.status === 'running') {
+    const duration = j.issue === 'timeout' && j.stage === 1 ? 3 * phaseMs : phaseMs;
+    const end = j.since + duration;
+    if (now < end) break;
+    changed = true;
+    if (issues[j.issue]?.stage === j.stage) {
+      j.status = 'failed';
+      note(j, end, issues[j.issue].reason);
+    } else if (++j.stage === phases.length) {
+      j.status = 'done';
+      delete m.needsCheck[j.key];
+      note(j, end, '已完成 · 已验证 CLI');
+    } else {
+      if (j.stage === 3) {
+        m[j.key] = targetVersion[j.key];
+        m.needsCheck[j.key] = true;
+      }
+      note(j, end, messages[j.stage]);
+    }
+    j.since = end;
+  }
+  return changed;
+}
+function tick() {
+  let changed = false;
+  for (const [id, m] of Object.entries(state.machines)) {
+    // Keep the last report on disconnect. Catch up once this machine reconnects.
+    if (!m.online) continue;
+    if (advance(m, Date.now())) changed = true;
+    const j = latest(m,'gemini');
+    if (m.auto && !m.busy && m.gemini !== targetVersion.gemini &&
+        !live(m) && !['failed','cancelled'].includes(j?.status)) {
+      begin(id, 'gemini', 'update', true);
+    }
+  }
+  if (changed) { save(); render(); }
+}
+function statusText(m,j) {
+  switch (j.status) {
+    case 'waiting': return m.online ? '等待会话结束' : '等待重连';
+    case 'running': return m.online ? phases[j.stage] : '等待重连';
+    case 'failed': return issues[j.issue].reason;
+    case 'cancelled': return '已取消';
+    default: return '已完成';
+  }
+}
+function providerRow(id, key) {
+  const m = state.machines[id], version = m[key], job = latest(m,key);
+  let desc = '', button = '';
+  const disabled = !m.online || live(m) ? ' disabled' : '';
+  if (key === 'qoder') {
+    desc = version ? 'v'+version+' · 待登录 · 厂商管理更新' : id === 'mac' ? '已发现桌面 App，还差命令行工具' : '官方命令行工具';
+    if (!version) button = '<button class="install" data-install'+disabled+'>安装 CLI</button>';
+  } else if (key === 'gemini') {
+    const available = version !== targetVersion[key];
+    desc = 'v'+version+' · '+channel(id)+(available?' · 可更新至 v'+targetVersion[key]:' · 已是最新');
+    if (m.auto) desc += ' · 空闲时自动更新';
+    if (available) button = '<button data-update'+disabled+'>'+(m.busy?'空闲时更新':'更新')+'</button>';
+  } else {
+    desc = 'v'+version+' · 由 Cursor 管理自动更新';
+  }
+  if (job && ['waiting','running','failed'].includes(job.status)) {
+    const failed = job.status === 'failed';
+    const label = job.status === 'running' && m.online ? actionName(job.op)+'中' : failed ? '需要处理' : statusText(m,job);
+    if (job.status === 'running' && m.online) desc = (version ? 'v'+version+' · ' : '')+phases[job.stage];
+    if (failed) desc = issues[job.issue].reason + (m.needsCheck[key] ? ' · CLI 已写入' : '');
+    button = '<button class="phase-link '+(failed?'attention':'')+'" data-job="'+job.id+'">'+label+'</button>';
+  }
+  const settings = key === 'gemini' ? '<button class="menu-action" data-settings title="更新设置" aria-label="Gemini CLI 更新设置"'+(!m.online?' disabled':'')+'>⋯</button>' : '';
+  return '<div class="row" data-provider="'+key+'"><img class="logo" alt="" src="'+logos[key]+'"><div class="info"><b>'+names[key]+'</b><small>'+desc+'</small></div>'+button+settings+'</div>';
+}
+function taskDetail(id, j) {
+  const sys = systems[id], m = state.machines[id];
+  const running = j.status === 'running', waiting = j.status === 'waiting';
+  const frozen = (running || waiting) && !m.online, failed = j.status === 'failed';
+  const badge = statusText(m,j);
+  let detail = j.events.at(-1).text, action = '';
+  if (frozen) {
+    detail = '等待重新连接。最后一次回报：'+j.events.at(-1).text+'。';
+  } else if (failed) {
+    detail = issues[j.issue].help;
+    if (m.online && latest(m,j.key) === j && !live(m) && !(j.op === 'update' && m.busy && j.stage < 3)) {
+      action = '<button data-retry>' + (j.stage === 3 ? '重新检测' : '重试') + '</button>';
+    }
+  } else if (waiting || (running && j.stage < 2)) {
+    action = '<button data-cancel>取消任务</button>';
+  }
+  const bars = phases.map((p,i) => {
+    const active = i === j.stage, css = i < j.stage ? 'complete' : active && !waiting && j.status !== 'cancelled' ? (failed?'fault':'active') : '';
+    return '<li class="' + css + '"><i></i>' + p + '</li>';
+  }).join('');
+  const logs = j.events.map(event => '<li><time>'+stamp(event.time)+'</time>'+event.text+'</li>').join('');
+  return '<section class="job" aria-label="目标机器任务"><header><b>'+names[j.key]+' · '+(j.automatic?'自动':'')+actionName(j.op)+'</b><span class="badge '+(failed||frozen?'warn':'')+'">'+badge+'</span></header>'+
+    '<small>'+sys.name+' · '+sys.user+' · 任务 <code>'+j.id+'</code>'+(j.attempt?' · 第 '+j.attempt+' 次执行':'')+'</small><ol class="phases">'+bars+'</ol>'+
+    '<div class="task-detail"><span>'+detail+'</span>'+action+'</div><details '+(logOpen?'open':'')+'><summary>任务记录 · 最后回报 '+stamp(j.events.at(-1).time)+'</summary><ol class="events">'+logs+'</ol></details></section>';
+}
+function renderActivity() {
+  const records = Object.entries(state.machines).flatMap(([id,m]) => m.jobs.map(j => ({id,m,j})));
+  records.sort((a,b) => b.j.events[0].time - a.j.events[0].time);
+  const count = records.filter(({m,j}) => live(m) === j || (j.status === 'failed' && latest(m,j.key) === j)).length;
+  $('#counter').textContent = count || '';
+  $('#show-activity').setAttribute('aria-current',view === 'activity' ? 'page' : 'false');
+  $('#environment').hidden = view !== 'environment';
+  $('#activity').hidden = view !== 'activity';
+  if (view !== 'activity') return;
+  const selected = records.find(({j}) => j.id === selectedJob);
+  if (selected) {
+    $('#ledger').innerHTML = '<button class="back" data-back>‹ 所有任务</button>' + taskDetail(selected.id,selected.j);
+    return;
+  }
+  const rows = records.map(({id,m,j}) => '<button class="history-row" data-job="'+j.id+'"><img class="logo" alt="" src="'+logos[j.key]+'"><span><strong>'+names[j.key]+' · '+(j.automatic?'自动':'')+actionName(j.op)+'</strong><small>'+systems[id].name+' · '+stamp(j.events[0].time)+'</small></span><em class="'+(j.status==='failed'?'attention':'')+'">'+statusText(m,j)+'</em><span class="chevron">›</span></button>');
+  $('#ledger').innerHTML = rows.length ? '<div class="history-list">'+rows.join('')+'</div>' : '<p class="empty">暂无安装或更新记录</p>';
+}
+function showActivity(job = '') {
+  view = 'activity'; selectedJob = job; logOpen = false; render();
+  $('#activity h1').focus({preventScroll:true});
+}
+function controlsTarget() {
+  if (view === 'activity' && selectedJob) {
+    return Object.keys(systems).find(id => state.machines[id].jobs.some(job => job.id === selectedJob));
+  }
+  return state.selected;
+}
+function render() {
+  const id = state.selected, sys = systems[id], m = state.machines[id];
+  $('nav').innerHTML = Object.entries(systems).map(([key, s]) => '<button class="machine" data-machine="'+key+'" aria-current="'+(key===id && view==='environment')+'"><span class="device"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">'+icons[key]+'</svg></span><span><strong>'+s.name+'</strong><small>'+s.place+' · '+s.os+'</small></span><i class="dot '+(state.machines[key].online?'':'off')+'"></i></button>').join('');
+  $('#crumb').textContent = sys.name;
+  $('#meta').innerHTML = '<i class="dot '+(m.online?'':'off')+'"></i><span class="'+(m.online?'status':'offline')+'">'+(m.online?'在线':'离线')+'</span> · '+sys.place+'环境 · <code>'+sys.user+'</code> · '+sys.os+' / '+sys.arch;
+  let html = m.online ? '' : '<div class="notice">机器离线，以下是上次检测结果。重新连接后可操作。</div>';
+  for (const installed of [true,false]) {
+    const keys = Object.keys(names).filter(k => Boolean(m[k] && !(live(m)?.key === k && live(m).op === 'install')) === installed);
+    if (keys.length) html += '<section><h2>'+(installed?'已安装':'可安装')+'</h2><div class="group">'+keys.map(k => providerRow(id,k)).join('')+'</div></section>';
+  }
+  $('#content').innerHTML = html + '<p class="foot">安装与更新由「'+sys.name+'」上的 Hermesh 执行。</p>';
+  renderActivity();
+  const controlId = controlsTarget(), target = state.machines[controlId];
+  $('#connect').textContent = (target.online?'模拟断开':'模拟连接')+'「'+systems[controlId].name+'」';
+  $('#busy').checked = target.busy;
+  $('#scenario').value = target.scenario;
+}
+const dialog = $('dialog');
+function openSheet(install) {
+  const id = state.selected, sys = systems[id], m = state.machines[id];
+  const method = install ? (id==='win'?'官方 PowerShell 安装程序':'官方用户级安装脚本') : (id==='mac'?'brew upgrade gemini-cli':'npm install -g @google/gemini-cli@latest');
+  const line = (label,value) => '<div><dt>'+label+'</dt><dd>'+value+'</dd></div>';
+  $('#sheet').innerHTML = '<h2 id="dialog-title">'+(install?'在「'+sys.name+'」安装 Qoder CLI？':'Gemini CLI 更新设置')+'</h2><dl>'+
+    line('执行环境',sys.name+' · '+sys.place)+line('执行账户','<code>'+sys.user+'</code>')+line('安装来源',install?'Qoder 官方':channel(id))+line('执行方式',method)+'</dl>'+
+    (install?'':'<label class="option"><input id="auto" type="checkbox" '+(m.auto?'checked':'')+'>此环境空闲时自动更新 Gemini CLI</label>')+
+    '<footer><button data-close>取消</button><button class="primary" id="apply">'+(install?'在此机器安装':'保存更新设置')+'</button></footer>';
+  $('#apply').onclick = () => {
+    dialog.close();
+    if (install) begin(id,'qoder','install');
+    else { m.auto = $('#auto').checked; save(); render(); tick(); }
+  };
+  $('[data-close]').onclick = () => dialog.close();
+  dialog.showModal();
+}
+document.addEventListener('click', e => {
+  const machine = e.target.closest('[data-machine]');
+  if (machine) {
+    state.selected = machine.dataset.machine; view = 'environment'; save(); render();
+    document.querySelector('[data-machine][aria-current="true"]').focus(); return;
+  }
+  const item = e.target.closest('[data-job]');
+  if (item) { showActivity(item.dataset.job); return; }
+  if (e.target.closest('#show-activity,[data-back]')) { showActivity(); return; }
+  if (e.target.closest('[data-install]')) openSheet(true);
+  if (e.target.closest('[data-update]')) begin(state.selected,'gemini','update');
+  if (e.target.closest('[data-settings]')) openSheet(false);
+  const control = e.target.closest('[data-retry],[data-cancel]');
+  if (!control) return;
+  const m = Object.values(state.machines).find(m => m.jobs.some(j => j.id === selectedJob));
+  const j = m?.jobs.find(j => j.id === selectedJob);
+  if (!j || !m.online) return;
+  advance(m,Date.now());
+  if (control.hasAttribute('data-retry') && j.status === 'failed' && latest(m,j.key) === j && !live(m) && !(m.busy && j.op === 'update' && j.stage < 3)) {
+    startAttempt(m,j,j.stage === 3 ? 3 : 0,j.stage === 3 ? '重新检测已写入的 CLI' : '目标机器已接受重试');
+  } else if (control.hasAttribute('data-cancel') && (j.status === 'waiting' || (j.status === 'running' && j.stage < 2))) {
+    j.status = 'cancelled';
+    note(j,Date.now(),'目标机器已停止任务，安装文件尚未写入');
+  }
+  save(); render();
+});
+$('#ledger').addEventListener('toggle', e => { if(e.target.tagName==='DETAILS' && e.target.isConnected) logOpen=e.target.open; }, true);
+$('#connect').onclick = () => { const m = state.machines[controlsTarget()]; advance(m,Date.now()); m.online = !m.online; save(); render(); tick(); };
+$('#busy').onchange = () => { state.machines[controlsTarget()].busy = $('#busy').checked; save(); render(); tick(); };
+$('#scenario').onchange = () => { state.machines[controlsTarget()].scenario = $('#scenario').value; save(); };
+$('#reset').onclick = () => { state = initial(); view = 'environment'; selectedJob = ''; logOpen = false; save(); render(); };
+render(); tick(); setInterval(tick,250);
+</script>
+</body>
+</html>

@@ -22,7 +22,6 @@ import (
 	rtcodex "github.com/hermeshai/hermesh/internal/runtime/codex"
 	rther "github.com/hermeshai/hermesh/internal/runtime/her"
 	"github.com/hermeshai/hermesh/internal/runtime/scripted"
-	"github.com/hermeshai/hermesh/internal/shellenv"
 )
 
 type Limits struct {
@@ -80,8 +79,10 @@ type LimitsReader interface {
 	ReadLimits(ctx context.Context) *rt.Limits
 }
 
-func DefaultDiscoverers() map[string]AgentDiscoverer {
-	pathEnv := shellenv.Path()
+// DefaultDiscoverers builds probes for callers outside a managed machine.
+func DefaultDiscoverers() map[string]AgentDiscoverer { return defaultDiscoverers(rt.SearchPath("")) }
+
+func defaultDiscoverers(pathEnv string) map[string]AgentDiscoverer {
 	cl := rtclaude.NewDriver(pathEnv)
 	if b := os.Getenv("HERMESH_CLAUDE_BIN"); b != "" {
 		cl.Binary = b
@@ -131,7 +132,7 @@ func buildRuntimeDrivers(cfg Config) (map[string]rt.Driver, bool) {
 		}
 		return d, true
 	}
-	pathEnv := shellenv.Path()
+	pathEnv := providerPath(cfg.DataDir)
 	cl := rtclaude.NewDriver(pathEnv)
 	if b := os.Getenv("HERMESH_CLAUDE_BIN"); b != "" {
 		cl.Binary = b

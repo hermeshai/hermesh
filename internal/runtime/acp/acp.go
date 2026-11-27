@@ -234,7 +234,7 @@ func scriptThere(script string) bool {
 	}
 }
 
-var versionRE = regexp.MustCompile(`\d+\.\d+\.\d+[-\w.]*`)
+var versionRE = regexp.MustCompile(`\d+\.\d+\.\d+(?:[-+][0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?`)
 
 func (p *Provider) Discover(ctx context.Context) runtime.Info {
 	if p.Name() == "antigravity" {
@@ -5396,4 +5396,10 @@ func (s *session) handleElicitation(tctx context.Context, params json.RawMessage
 		return
 	}
 	reply(map[string]any{"action": "accept", "content": buildElicitationContent(metas, res.Answers)})
+}
+
+// ProtocolCommand resolves the same executable, arguments and environment as a new ACP session.
+func (p *Provider) ProtocolCommand(ctx context.Context, env []string) (string, []string, []string) {
+	launch := p.resolveForStart(ctx, env)
+	return launch.bin, launch.acpArgs(), launch.env
 }

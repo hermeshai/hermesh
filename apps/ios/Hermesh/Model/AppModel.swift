@@ -179,6 +179,14 @@ final class AppModel {
     var machines: [Machine] = [] {
         didSet { if herLater, machines.contains(where: \.her.enabled) { herLater = false } } // she runs now: the choice is over
     }
+    // Read the last maintenance report while a machine is unreachable.
+    func providerMachine(_ machine: Machine) -> Machine {
+        guard !machine.hasStatus, let last = knownMachineStatus[machine.machineID] else { return machine }
+        var held = machine
+        held.status = last
+        held.online = false
+        return held
+    }
     var clients: [Client] = []
     var devices: [Device] = []
     var projects: [Project] = []
@@ -1464,6 +1472,18 @@ final class AppModel {
             try await api.setPaused(m.machineID, paused)
             machines = (try? await api.machines()) ?? machines
             show(paused ? String(localized: "“\(m.machineName)” takes no new sessions") : String(localized: "“\(m.machineName)” takes new sessions again"))
+        } catch { report(error) }
+    }
+
+    func maintainProvider(machine: String, operation: Hermesh_Identity_V1_MaintainProvider) async {
+        guard let api else { return }
+        var request = Hermesh_Local_V1_MaintainProviderRequest()
+        request.machineID = machine
+        request.operation = operation
+        signer.expect(.provider(machine, operation))
+        do {
+            let _: Hermesh_Local_V1_MaintainProviderResponse = try await api.call("MaintainProvider", request, timeout: signingTimeout)
+            machines = (try? await api.machines()) ?? machines
         } catch { report(error) }
     }
 

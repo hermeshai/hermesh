@@ -1,0 +1,203 @@
+{
+  "date": "2026-11-27",
+  "iphone_remote_maintenance": {
+    "date": "2026-11-28",
+    "device": "iPhone 17 Pro simulator, iOS 26.0",
+    "target": "independent macOS arm64 test daemon",
+    "provider": "opencode",
+    "versions": ["2.4.1", "2.4.2"],
+    "successful_receipts": ["install", "update", "enable_auto", "disable_auto", "verify"],
+    "xctest": "passed",
+    "xctest_seconds": 178.898,
+    "enclosing_go_test": "failed in app-wide string catalog check; 10 distinct pre-existing missing localizations"
+  },
+  "clean_linux_arm64_rerun": {
+    "managed_installs": 4,
+    "managed_updates": 4,
+    "remote_protocol_checks": 16,
+    "test_seconds": 140.69
+  },
+  "account_fixture": "isolated target, no vendor credentials or saved model configuration",
+  "additional_account_tests": {
+    "date": "2026-11-27",
+    "machine": "yee-homebook",
+    "platform": "macOS arm64",
+    "test": "TestProviderAccountTurns",
+    "providers": [
+      {"id": "codex", "version": "0.171.0", "model_turn": "ready", "millis": 12062},
+      {"id": "antigravity", "version": "1.5.18", "model_turn": "ready", "millis": 7902}
+    ]
+  },
+  "electron_remote_checks": {
+    "passed": 16,
+    "seconds": 58.0
+  },
+  "model_prompt": "Reply with the single word ready, and nothing else. Use no tools.",
+  "providers": [
+    {
+      "id": "claude",
+      "version": "2.1.332",
+      "remote_protocol": "passed",
+      "model_turn": "login_required",
+      "previous_version": "2.1.331"
+    },
+    {
+      "id": "codex",
+      "version": "0.172.0",
+      "remote_protocol": "passed",
+      "model_turn": "401_missing_bearer",
+      "previous_version": "0.171.0"
+    },
+    {
+      "id": "copilot",
+      "version": "1.0.117",
+      "remote_protocol": "passed",
+      "model_turn": "login_required",
+      "previous_version": "1.0.116"
+    },
+    {
+      "id": "opencode",
+      "version": "2.4.2",
+      "remote_protocol": "passed",
+      "model_turn": "ready",
+      "previous_version": "2.4.1"
+    },
+    {
+      "id": "gemini",
+      "version": "0.71.1",
+      "remote_protocol": "passed",
+      "model_turn": "missing_api_key"
+    },
+    {
+      "id": "antigravity",
+      "version": "1.5.18",
+      "remote_protocol": "passed",
+      "model_turn": "login_required"
+    },
+    {
+      "id": "cursor",
+      "version": "2026.11.22-e9042b2",
+      "remote_protocol": "passed",
+      "model_turn": "headless_login_required"
+    },
+    {
+      "id": "qwen",
+      "version": "0.28.7",
+      "remote_protocol": "passed",
+      "model_turn": "login_or_model_required"
+    },
+    {
+      "id": "goose",
+      "version": "1.61.1",
+      "remote_protocol": "passed",
+      "model_turn": "GOOSE_PROVIDER_missing"
+    },
+    {
+      "id": "auggie",
+      "version": "1.2.3",
+      "remote_protocol": "passed",
+      "model_turn": "missing_model_key"
+    },
+    {
+      "id": "kimi",
+      "version": "2.8.1",
+      "remote_protocol": "passed",
+      "model_turn": "login_required"
+    },
+    {
+      "id": "kiro",
+      "version": "3.6.2",
+      "remote_protocol": "passed",
+      "model_turn": "login_or_api_key_required"
+    },
+    {
+      "id": "qoder",
+      "version": "1.1.100",
+      "remote_protocol": "passed",
+      "model_turn": "login_required"
+    },
+    {
+      "id": "deepseek",
+      "version": "0.2.2-rc.5",
+      "remote_protocol": "passed",
+      "model_turn": "deepseek_official_route_key_missing"
+    },
+    {
+      "id": "codebuddy",
+      "version": "2.187.0",
+      "remote_protocol": "passed",
+      "model_turn": "login_required"
+    },
+    {
+      "id": "grok",
+      "version": "1.0.92",
+      "remote_protocol": "passed",
+      "model_turn": "login_required"
+    }
+  ],
+  "passing_subtest_seconds": {
+    "linux_arm64": {
+      "install-claude": 7.07,
+      "install-codex": 6.08,
+      "install-copilot": 5.25,
+      "install-opencode": 7.66,
+      "update-claude": 14.22,
+      "update-codex": 0.0,
+      "update-copilot": 4.05,
+      "update-opencode": 4.84,
+      "verify-claude": 2.03,
+      "verify-codex": 0.83,
+      "verify-gemini": 5.25,
+      "verify-antigravity": 2.84,
+      "verify-cursor": 3.23,
+      "verify-copilot": 1.62,
+      "verify-opencode": 1.22,
+      "verify-qwen": 2.03,
+      "verify-goose": 0.82,
+      "verify-auggie": 2.02,
+      "verify-kimi": 3.24,
+      "verify-kiro": 0.82,
+      "verify-qoder": 4.04,
+      "verify-deepseek": 2.03,
+      "verify-codebuddy": 4.04,
+      "verify-grok": 0.82
+    },
+    "linux_amd64_emulated": {
+      "install-claude": 19.42,
+      "install-codex": 16.95,
+      "install-copilot": 21.8,
+      "install-opencode": 46.23,
+      "update-claude": 22.53,
+      "update-codex": 19.41,
+      "update-copilot": 84.32,
+      "update-opencode": 139.75,
+      "verify-claude": 8.13,
+      "verify-codex": 6.91,
+      "verify-copilot": 10.96,
+      "verify-opencode": 8.91
+    },
+    "macos_arm64": {
+      "install-claude": 25.33,
+      "install-codex": 41.83,
+      "install-copilot": 32.15,
+      "install-opencode": 16.09,
+      "update-claude": 18.92,
+      "update-codex": 0.0,
+      "update-copilot": 23.75,
+      "update-opencode": 18.92,
+      "verify-claude": 2.04,
+      "verify-codex": 1.22,
+      "verify-copilot": 2.03,
+      "verify-opencode": 0.82
+    }
+  },
+  "auto_update": "Codex enabled on old release and updated on target restart. update-codex duration is observation time, not install latency.",
+  "electron_macos_lifecycle": {
+    "paired_target": "separate daemon on macOS arm64",
+    "installs": 4,
+    "manual_updates": 3,
+    "automatic_updates": 1,
+    "seconds": 132.51,
+    "final_rerun_seconds": 121.20
+  }
+}

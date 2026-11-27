@@ -482,6 +482,9 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		rw.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(rw).Encode(v)
 	}
+	if os.Getenv("HERMESH_IPHONE_GREP") == "testProviderMaintenance" {
+		iphoneProviderRelease(t, w, mux)
+	}
 	mux.HandleFunc("GET /address", func(rw http.ResponseWriter, _ *http.Request) { reply(rw, map[string]string{"address": w.addr}) })
 	// What the owner set for an agent's sessions on the Mac.
 	mux.HandleFunc("GET /agent-defaults", func(rw http.ResponseWriter, r *http.Request) {

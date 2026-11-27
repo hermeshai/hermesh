@@ -36,8 +36,6 @@ import (
 	"github.com/hermeshai/hermesh/internal/paths"
 	rt "github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/internal/runtime/acp"
-	rtclaude "github.com/hermeshai/hermesh/internal/runtime/claude"
-	rtcodex "github.com/hermeshai/hermesh/internal/runtime/codex"
 	"github.com/hermeshai/hermesh/internal/runtime/scripted"
 	"github.com/hermeshai/hermesh/internal/service"
 	"github.com/hermeshai/hermesh/internal/shellenv"
@@ -724,23 +722,7 @@ func discoverers() map[string]machine.AgentDiscoverer {
 		}
 		return ps
 	}
-	ps := machine.DefaultDiscoverers()
-	if b := os.Getenv("HERMESH_CODEX_BIN"); b != "" {
-		d := rtcodex.NewDriver(shellenv.Path())
-		d.Binary = b
-		ps["codex"] = d
-	}
-	if b := os.Getenv("HERMESH_CLAUDE_BIN"); b != "" {
-		d := rtclaude.NewDriver(shellenv.Path())
-		d.Binary = b
-		ps["claude"] = d
-	}
-	for _, a := range acp.Agents {
-		if b := os.Getenv("HERMESH_" + strings.ToUpper(a.Name) + "_BIN"); b != "" {
-			ps[a.Name] = &acp.Provider{Agent: a, PathEnv: shellenv.Path(), Binary: b}
-		}
-	}
-	return ps
+	return nil // machine.Open builds probes with this machine’s managed bin directory.
 }
 
 // herBin is the her program (docs/her-server.md §6.4): $HERMESH_HER_BIN, as

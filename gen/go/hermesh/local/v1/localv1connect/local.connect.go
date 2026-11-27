@@ -113,6 +113,9 @@ const (
 	// LocalServiceSetMachinePausedProcedure is the fully-qualified name of the LocalService's
 	// SetMachinePaused RPC.
 	LocalServiceSetMachinePausedProcedure = "/hermesh.local.v1.LocalService/SetMachinePaused"
+	// LocalServiceMaintainProviderProcedure is the fully-qualified name of the LocalService's
+	// MaintainProvider RPC.
+	LocalServiceMaintainProviderProcedure = "/hermesh.local.v1.LocalService/MaintainProvider"
 	// LocalServiceSetAgentDefaultsProcedure is the fully-qualified name of the LocalService's
 	// SetAgentDefaults RPC.
 	LocalServiceSetAgentDefaultsProcedure = "/hermesh.local.v1.LocalService/SetAgentDefaults"
@@ -300,6 +303,7 @@ type LocalServiceClient interface {
 	SetMachinePaused(context.Context, *v1.SetMachinePausedRequest) (*v1.SetMachinePausedResponse, error)
 	// What a coding agent's sessions on a machine run with when the client
 	// starting one names no model (a setting, no Touch ID).
+	MaintainProvider(context.Context, *v1.MaintainProviderRequest) (*v1.MaintainProviderResponse, error)
 	SetAgentDefaults(context.Context, *v1.SetAgentDefaultsRequest) (*v1.SetAgentDefaultsResponse, error)
 	RemoveMachine(context.Context, *v1.RemoveMachineRequest) (*v1.RemoveMachineResponse, error)
 	// Checks this Mac's coding agents again (installed, version, signed in),
@@ -582,6 +586,12 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("SetMachinePaused")),
 			connect.WithClientOptions(opts...),
 		),
+		maintainProvider: connect.NewClient[v1.MaintainProviderRequest, v1.MaintainProviderResponse](
+			httpClient,
+			baseURL+LocalServiceMaintainProviderProcedure,
+			connect.WithSchema(localServiceMethods.ByName("MaintainProvider")),
+			connect.WithClientOptions(opts...),
+		),
 		setAgentDefaults: connect.NewClient[v1.SetAgentDefaultsRequest, v1.SetAgentDefaultsResponse](
 			httpClient,
 			baseURL+LocalServiceSetAgentDefaultsProcedure,
@@ -862,6 +872,7 @@ type localServiceClient struct {
 	listMachines             *connect.Client[v1.ListMachinesRequest, v1.ListMachinesResponse]
 	renameMachine            *connect.Client[v1.RenameMachineRequest, v1.RenameMachineResponse]
 	setMachinePaused         *connect.Client[v1.SetMachinePausedRequest, v1.SetMachinePausedResponse]
+	maintainProvider         *connect.Client[v1.MaintainProviderRequest, v1.MaintainProviderResponse]
 	setAgentDefaults         *connect.Client[v1.SetAgentDefaultsRequest, v1.SetAgentDefaultsResponse]
 	removeMachine            *connect.Client[v1.RemoveMachineRequest, v1.RemoveMachineResponse]
 	checkAgents              *connect.Client[v1.CheckAgentsRequest, v1.CheckAgentsResponse]
@@ -1152,6 +1163,15 @@ func (c *localServiceClient) RenameMachine(ctx context.Context, req *v1.RenameMa
 // SetMachinePaused calls hermesh.local.v1.LocalService.SetMachinePaused.
 func (c *localServiceClient) SetMachinePaused(ctx context.Context, req *v1.SetMachinePausedRequest) (*v1.SetMachinePausedResponse, error) {
 	response, err := c.setMachinePaused.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// MaintainProvider calls hermesh.local.v1.LocalService.MaintainProvider.
+func (c *localServiceClient) MaintainProvider(ctx context.Context, req *v1.MaintainProviderRequest) (*v1.MaintainProviderResponse, error) {
+	response, err := c.maintainProvider.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
@@ -1593,6 +1613,7 @@ type LocalServiceHandler interface {
 	SetMachinePaused(context.Context, *v1.SetMachinePausedRequest) (*v1.SetMachinePausedResponse, error)
 	// What a coding agent's sessions on a machine run with when the client
 	// starting one names no model (a setting, no Touch ID).
+	MaintainProvider(context.Context, *v1.MaintainProviderRequest) (*v1.MaintainProviderResponse, error)
 	SetAgentDefaults(context.Context, *v1.SetAgentDefaultsRequest) (*v1.SetAgentDefaultsResponse, error)
 	RemoveMachine(context.Context, *v1.RemoveMachineRequest) (*v1.RemoveMachineResponse, error)
 	// Checks this Mac's coding agents again (installed, version, signed in),
@@ -1869,6 +1890,12 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		LocalServiceSetMachinePausedProcedure,
 		svc.SetMachinePaused,
 		connect.WithSchema(localServiceMethods.ByName("SetMachinePaused")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceMaintainProviderHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceMaintainProviderProcedure,
+		svc.MaintainProvider,
+		connect.WithSchema(localServiceMethods.ByName("MaintainProvider")),
 		connect.WithHandlerOptions(opts...),
 	)
 	localServiceSetAgentDefaultsHandler := connect.NewUnaryHandlerSimple(
@@ -2177,6 +2204,8 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceRenameMachineHandler.ServeHTTP(w, r)
 		case LocalServiceSetMachinePausedProcedure:
 			localServiceSetMachinePausedHandler.ServeHTTP(w, r)
+		case LocalServiceMaintainProviderProcedure:
+			localServiceMaintainProviderHandler.ServeHTTP(w, r)
 		case LocalServiceSetAgentDefaultsProcedure:
 			localServiceSetAgentDefaultsHandler.ServeHTTP(w, r)
 		case LocalServiceRemoveMachineProcedure:
@@ -2382,6 +2411,10 @@ func (UnimplementedLocalServiceHandler) RenameMachine(context.Context, *v1.Renam
 
 func (UnimplementedLocalServiceHandler) SetMachinePaused(context.Context, *v1.SetMachinePausedRequest) (*v1.SetMachinePausedResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.SetMachinePaused is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) MaintainProvider(context.Context, *v1.MaintainProviderRequest) (*v1.MaintainProviderResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.MaintainProvider is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) SetAgentDefaults(context.Context, *v1.SetAgentDefaultsRequest) (*v1.SetAgentDefaultsResponse, error) {

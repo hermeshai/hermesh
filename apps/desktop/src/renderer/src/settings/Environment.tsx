@@ -17,6 +17,7 @@ import { machineAnswers } from "../skew";
 import { useNow, useStore, type Store } from "../store";
 import { EnvHer } from "./EnvHer";
 import { Projects } from "./Projects";
+import { ProviderHistory } from "./ProviderMaintenance";
 import { Provider, Providers } from "./Providers";
 import { StayOnline } from "./StayOnline";
 import { Storage, useWorkspaces } from "./Storage";
@@ -38,6 +39,7 @@ export function envTitle(t: TFunction<"settings">, m?: Machine): string {
 /** What the title bar says for an environment's item ("<id>/providers/codex": Codex). */
 export function envItemTitle(t: TFunction<"settings">, item: string, m?: Machine): string {
   const [, sub, x] = item.split("/");
+  if (sub === "providers" && x === "history") return t("maintenance.history");
   if (sub === "providers") return x ? codingAgentTitle(x) : t("env.providers");
   if (sub === "projects") return t("env.projects");
   if (sub === "her") return t("env.her");
@@ -88,7 +90,8 @@ export function Environment({ item, go }: { item: string; go: (item: string) => 
   const [id, sub, x] = item.split("/");
   const m = st.machines.find((y) => y.machineId === id);
   if (!m) return <NotEnvironment />;
-  if (sub === "providers" && x) return <Provider m={m} agent={x} />;
+  if (sub === "providers" && x === "history") return <ProviderHistory />;
+  if (sub === "providers" && x) return <Provider key={m.machineId + x} m={m} agent={x} />;
   if (sub === "providers") return <Providers m={m} open={(a) => go(`${id}/providers/${a}`)} />;
   if (sub === "projects") return <Projects m={m} />;
   if (sub === "her") return <EnvHer m={m} />;

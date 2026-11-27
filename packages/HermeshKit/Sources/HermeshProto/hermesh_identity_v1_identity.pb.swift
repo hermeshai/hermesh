@@ -837,6 +837,14 @@ public nonisolated struct Hermesh_Identity_V1_AdminCommand: Sendable {
     set {command = .setWorkspacePolicy(newValue)}
   }
 
+  public var maintainProvider: Hermesh_Identity_V1_MaintainProvider {
+    get {
+      if case .maintainProvider(let v)? = command {return v}
+      return Hermesh_Identity_V1_MaintainProvider()
+    }
+    set {command = .maintainProvider(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Command: Equatable, Sendable {
@@ -851,12 +859,35 @@ public nonisolated struct Hermesh_Identity_V1_AdminCommand: Sendable {
     case createFolder(Hermesh_Identity_V1_CreateFolder)
     case setMaxRuntimeMode(Hermesh_Identity_V1_SetMaxRuntimeMode)
     case setWorkspacePolicy(Hermesh_Identity_V1_SetWorkspacePolicy)
+    case maintainProvider(Hermesh_Identity_V1_MaintainProvider)
 
   }
 
   public init() {}
 
   fileprivate var _expiresAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+}
+
+/// Owner-signed request. The target chooses the package and executable.
+public nonisolated struct Hermesh_Identity_V1_MaintainProvider: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var requestID: String = String()
+
+  public var provider: String = String()
+
+  /// install, update, verify, enable_auto, disable_auto
+  public var action: String = String()
+
+  public var expectedVersion: String = String()
+
+  public var targetVersion: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
 }
 
 public nonisolated struct Hermesh_Identity_V1_AddProject: Sendable {
@@ -2088,7 +2119,7 @@ nonisolated extension Hermesh_Identity_V1_EraseAck: SwiftProtobuf.Message, Swift
 
 nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AdminCommand"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}command_id\0\u{3}target_machine_id\0\u{3}expires_at\0\u{4}\u{6}add_project\0\u{3}remove_project\0\u{4}\u{2}set_paused\0\u{3}set_name\0\u{3}set_agent_defaults\0\u{3}set_her\0\u{3}set_her_assistant_mode\0\u{3}set_her_command_connector\0\u{3}create_folder\0\u{3}set_max_runtime_mode\0\u{3}set_workspace_policy\0\u{b}rename_machine\0\u{c}\u{c}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}command_id\0\u{3}target_machine_id\0\u{3}expires_at\0\u{4}\u{6}add_project\0\u{3}remove_project\0\u{4}\u{2}set_paused\0\u{3}set_name\0\u{3}set_agent_defaults\0\u{3}set_her\0\u{3}set_her_assistant_mode\0\u{3}set_her_command_connector\0\u{3}create_folder\0\u{3}set_max_runtime_mode\0\u{3}set_workspace_policy\0\u{3}maintain_provider\0\u{b}rename_machine\0\u{c}\u{c}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2243,6 +2274,19 @@ nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, S
           self.command = .setWorkspacePolicy(v)
         }
       }()
+      case 22: try {
+        var v: Hermesh_Identity_V1_MaintainProvider?
+        var hadOneofValue = false
+        if let current = self.command {
+          hadOneofValue = true
+          if case .maintainProvider(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.command = .maintainProvider(v)
+        }
+      }()
       default: break
       }
     }
@@ -2310,6 +2354,10 @@ nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, S
       guard case .setWorkspacePolicy(let v)? = self.command else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 21)
     }()
+    case .maintainProvider?: try {
+      guard case .maintainProvider(let v)? = self.command else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 22)
+    }()
     case nil: break
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -2321,6 +2369,56 @@ nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, S
     if lhs.targetMachineID != rhs.targetMachineID {return false}
     if lhs._expiresAt != rhs._expiresAt {return false}
     if lhs.command != rhs.command {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_MaintainProvider: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".MaintainProvider"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}request_id\0\u{1}provider\0\u{1}action\0\u{3}expected_version\0\u{3}target_version\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.requestID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.provider) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.action) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.expectedVersion) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.targetVersion) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.requestID.isEmpty {
+      try visitor.visitSingularStringField(value: self.requestID, fieldNumber: 1)
+    }
+    if !self.provider.isEmpty {
+      try visitor.visitSingularStringField(value: self.provider, fieldNumber: 2)
+    }
+    if !self.action.isEmpty {
+      try visitor.visitSingularStringField(value: self.action, fieldNumber: 3)
+    }
+    if !self.expectedVersion.isEmpty {
+      try visitor.visitSingularStringField(value: self.expectedVersion, fieldNumber: 4)
+    }
+    if !self.targetVersion.isEmpty {
+      try visitor.visitSingularStringField(value: self.targetVersion, fieldNumber: 5)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_MaintainProvider, rhs: Hermesh_Identity_V1_MaintainProvider) -> Bool {
+    if lhs.requestID != rhs.requestID {return false}
+    if lhs.provider != rhs.provider {return false}
+    if lhs.action != rhs.action {return false}
+    if lhs.expectedVersion != rhs.expectedVersion {return false}
+    if lhs.targetVersion != rhs.targetVersion {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

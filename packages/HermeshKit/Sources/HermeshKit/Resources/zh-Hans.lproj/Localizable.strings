@@ -184,3 +184,11 @@
 "Limit what threads may do on %@" = "限制%@上会话的权限";
 "At most: %@" = "最多：%@";
 "Once approved, whoever starts them, its threads ask before anything beyond this." = "批准后，无论谁发起，超出这个范围的操作都要先问。";
+
+"Install %@ on %@" = "安装 %1$@ 到 %2$@";
+"Update %@ on %@" = "更新 %1$@（%2$@）";
+"Verify %@ on %@" = "验证 %1$@（%2$@）";
+"Enable automatic updates for %@ on %@" = "开启 %1$@ 的自动更新（%2$@）";
+"Disable automatic updates for %@ on %@" = "关闭 %1$@ 的自动更新（%2$@）";
+"Cancel maintenance of %@ on %@" = "取消 %1$@ 的维护任务（%2$@）";
+"Hermesh runs this operation as the machine’s user." = "Hermesh 将以目标机器上的用户身份执行此操作。";

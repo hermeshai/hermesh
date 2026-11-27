@@ -93,6 +93,7 @@ service LocalService {
   rpc SetMachinePaused(SetMachinePausedRequest) returns (SetMachinePausedResponse);
   // What a coding agent's sessions on a machine run with when the client
   // starting one names no model (a setting, no Touch ID).
+  rpc MaintainProvider(MaintainProviderRequest) returns (MaintainProviderResponse);
   rpc SetAgentDefaults(SetAgentDefaultsRequest) returns (SetAgentDefaultsResponse);
   rpc RemoveMachine(RemoveMachineRequest) returns (RemoveMachineResponse);
   // Checks this Mac's coding agents again (installed, version, signed in),
@@ -761,6 +762,12 @@ message SetMachinePausedRequest {
 }
 
 message SetMachinePausedResponse {}
+
+message MaintainProviderRequest {
+  string machine_id = 1;
+  hermesh.identity.v1.MaintainProvider operation = 2;
+}
+message MaintainProviderResponse {}
 
 message SetAgentDefaultsRequest {
   string machine_id = 1;

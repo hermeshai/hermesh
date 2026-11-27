@@ -71,3 +71,17 @@ func userProcessesIn(procDir string, uid uint32) (procCount, error) {
 	}
 	return pc, nil
 }
+
+// Permit machine-owned installations on known local filesystems, including
+// a container's private overlay. Network and unidentified mounts stay read-only.
+func providerLocalDisk(dir string) bool {
+	var fs unix.Statfs_t
+	if unix.Statfs(dir, &fs) != nil {
+		return false
+	}
+	switch uint64(fs.Type) {
+	case unix.EXT4_SUPER_MAGIC, unix.XFS_SUPER_MAGIC, unix.BTRFS_SUPER_MAGIC, unix.TMPFS_MAGIC, unix.OVERLAYFS_SUPER_MAGIC, unix.F2FS_SUPER_MAGIC:
+		return true
+	}
+	return false
+}

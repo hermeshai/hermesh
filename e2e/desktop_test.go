@@ -135,6 +135,9 @@ func TestDesktop(t *testing.T) {
 	specs, _ := filepath.Glob(filepath.Join(dir, "e2e", "*.spec.ts"))
 	for _, spec := range specs {
 		name := strings.TrimSuffix(filepath.Base(spec), ".spec.ts")
+		if name == "provider-maintenance" { // Uses the separately paired TestProviderMaintenanceReal target.
+			continue
+		}
 		if name == "packaged" || name == "update" || name == "her" || name == "her-notifications" || name == "her-chatgpt" || name == "her-older" || name == "her-before" || name == "her-reply" || name == "progress" || name == "her-deliveries" || name == "her-page" || name == "her-conversations" || name == "her-long" || name == "coldstart" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer, TestDesktopHerChatGPT, TestDesktopHerOlder, TestDesktopHerBeforeHer, TestDesktopHerReply, TestDesktopHerProgress, TestDesktopHerDeliveries, TestDesktopHerPage, TestDesktopHerLong, TestDesktopColdStart
 			continue
 		}
@@ -519,6 +522,8 @@ func desktopWorld(t *testing.T, fresh, limited, wake bool, titleGen ...bool) des
 	// owner's limits: not installed, as on CI.
 	missing := filepath.Join(t.TempDir(), "not-installed")
 	env = append(env, "HERMESH_CLAUDE_BIN="+missing, "HERMESH_ANTIGRAVITY_BIN="+missing)
+	// The provider list fixture has Gemini installed and two folded, missing CLIs.
+	env = append(env, "HERMESH_AUGGIE_BIN="+missing, "HERMESH_DEEPSEEK_BIN="+missing)
 	if runtime.GOOS != "windows" { // a shell script
 		env = append(env, "HERMESH_CODEX_BIN="+codex)
 	}

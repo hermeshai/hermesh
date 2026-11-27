@@ -465,6 +465,20 @@ public enum SigningPreview {
         case .setName(let n):
             return Card(type: type, title: String(localized: "Rename \(target) to “\(n.name)”", bundle: .hermeshKit), who: who, lines: [],
                         why: String(localized: "The machine takes the new name; its projects and access stay the same.", bundle: .hermeshKit))
+        case .maintainProvider(let op):
+            let agent = codingAgentTitle(op.provider)
+            let title: String
+            switch op.action {
+            case "install": title = String(localized: "Install \(agent) on \(target)", bundle: .hermeshKit)
+            case "update": title = String(localized: "Update \(agent) on \(target)", bundle: .hermeshKit)
+            case "verify": title = String(localized: "Verify \(agent) on \(target)", bundle: .hermeshKit)
+            case "enable_auto": title = String(localized: "Enable automatic updates for \(agent) on \(target)", bundle: .hermeshKit)
+            case "disable_auto": title = String(localized: "Disable automatic updates for \(agent) on \(target)", bundle: .hermeshKit)
+            case "cancel": title = String(localized: "Cancel maintenance of \(agent) on \(target)", bundle: .hermeshKit)
+            default: throw Refusal.unsupported(type)
+            }
+            return Card(type: type, title: title, who: who, lines: op.targetVersion.isEmpty ? [] : [op.targetVersion],
+                        why: String(localized: "Hermesh runs this operation as the machine’s user.", bundle: .hermeshKit))
         case .setAgentDefaults(let d):
             let agent = codingAgentTitle(d.agent)
             let same = String(localized: "Same as \(agent)", bundle: .hermeshKit)

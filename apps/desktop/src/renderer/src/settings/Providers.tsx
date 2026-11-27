@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Machine } from "@hermesh/proto/local";
 import { codingAgentTitle } from "@hermesh/core";
 import { AgentLogo, AgentTile, Mark } from "@hermesh/ui";
-import { BrokenState, Defaults, broken, logins, sortAgents, whyBroken } from "../AgentList";
+import { BrokenState, Defaults, broken, logins, sortAgents, useMissingAgentList, whyBroken } from "../AgentList";
 import { useCheckAgents, useRecheckAgents } from "../agents";
 import { local } from "../api";
+import { ProviderMaintenance } from "./ProviderMaintenance";
 import { Icon } from "../icons";
 
 // An environment's agent providers (docs/settings-environments.md §5.5): each installed one
@@ -16,7 +17,11 @@ export function Providers({ m, open }: { m: Machine; open: (agent: string) => vo
   const { t: f } = useTranslation("firstrun");
   const agents = sortAgents(m.status?.agents);
   const { installed, troubled, checking, missing, known } = agents;
+  const missingList = useMissingAgentList(agents);
   useCheckAgents(m.local);
+  useEffect(() => {
+    if (!m.local && m.online && !known) void local.checkAgents({ machineId: m.machineId }).catch(() => {});
+  }, [m.machineId, m.local, m.online, known]);
   const row = (name: string, value: React.ReactNode, sub?: React.ReactNode, go = true) => (
     <button key={name} className="frow go" role="listitem" aria-label={codingAgentTitle(name)} disabled={!go} onClick={() => open(name)}>
       <AgentTile agent={name} size={26} />
@@ -47,22 +52,26 @@ export function Providers({ m, open }: { m: Machine; open: (agent: string) => vo
       {known && missing.length > 0 && (
         <div>
           <div className="fhead">{t("providers.notInstalled")}</div>
-          <div className="fgroup" role="list" aria-label={t("providers.notInstalled")}>
-            {missing.map((name) => (
+          <div className="fgroup" role="list" aria-label={t("providers.notInstalled")} hidden={!missingList.names.length}>
+            {missingList.names.map((name) => (
               <div key={name} className="frow muted" role="listitem" aria-label={codingAgentTitle(name)}>
                 <span className="set-gray"><AgentLogo agent={name} size={16} /></span>
                 <div className="ft">
                   <div className="fn">{codingAgentTitle(name)}</div>
                   <div className="fdesc">{t("providers.notInstalledRow")}</div>
                 </div>
+                {m.status?.providerMaintenance.some((c) => c.provider === name && c.package) &&
+                  <button type="button" className="btn" onClick={() => open(name)}>{t("maintenance.installDetail")}</button>}
               </div>
             ))}
           </div>
+          {missingList.toggle}
         </div>
       )}
-      {m.local && (
+      {!!m.status?.providerMaintenance.length && <div className="set-acts"><button className="btn" onClick={() => open("history")}>{t("maintenance.history")}</button></div>}
+      {(m.local || m.online) && (
         <div className="set-acts">
-          <button className="btn push" onClick={() => void local.checkAgents({}).catch(() => {})}>{t("providers.recheck")}</button>
+          <button className="btn push" onClick={() => void local.checkAgents({ machineId: m.machineId }).catch(() => {})}>{t("providers.recheck")}</button>
         </div>
       )}
     </div>
@@ -92,13 +101,14 @@ export function Provider({ m, agent }: { m: Machine; agent: string }) {
             </>
           )}
         </span>
-        {a && (broken(a) ? <span className="set-pill"><BrokenState a={a} /></span> : (
+        {a && (a.available || broken(a)) && (broken(a) ? <span className="set-pill"><BrokenState a={a} /></span> : (
           <span className={`set-pill ${a.loggedIn ? "on" : "warn"}`}>
             <i />
             {f(a.loggedIn ? "prepare.signedIn" : "prepare.notSignedIn")}
           </span>
         ))}
       </div>
+      <ProviderMaintenance machine={m} agent={agent} />
       {a && broken(a) && <p className="set-foot">{whyBroken(a, f)}</p>}
       {a && a.available && !a.loggedIn && (
         <div className="set-banner" role="status">

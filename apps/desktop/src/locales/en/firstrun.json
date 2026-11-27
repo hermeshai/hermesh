@@ -151,6 +151,7 @@
     "searching_linux": "Looking for Agent Providers on This Computer",
     "searchingBody": "Checking installed agents, versions, and sign-in status. The first check takes a moment.",
     "agents": "Agent providers",
+    "otherProviders": "Other providers ({{count}})",
     "notInstalled": "Not installed · detected automatically once installed",
     "missing": "Agents not installed",
     "signedIn": "Signed in",

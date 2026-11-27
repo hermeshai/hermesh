@@ -55,6 +55,7 @@ export function BrokenState({ a }: { a: AgentStatus }) {
 
 /** Claude Code and Codex first, then the order Hermesh lists them in. */
 const order = (name: string) => codingAgentIds.indexOf(name);
+const collapsedWhenMissing = new Set(["auggie", "deepseek", "gemini"]);
 
 /**
  * A machine's agents sorted out: installed (ready first), still being checked
@@ -67,7 +68,27 @@ export function sortAgents(agents: AgentStatus[] | undefined) {
   const checking = (agents ?? []).filter((a) => a.checking && !a.available).sort((a, b) => order(a.name) - order(b.name));
   const listed = (id: string) => [...installed, ...troubled, ...checking].some((a) => a.name === id);
   const missing = codingAgentIds.filter((id) => !listed(id));
-  return { installed, troubled, checking, missing, searching: !agents || (installed.length === 0 && checking.length > 0), known: !!agents?.length };
+  const moreMissing = missing.filter((id) => {
+    const defaults = agents?.find((a) => a.name === id)?.defaults;
+    return collapsedWhenMissing.has(id) && !(defaults?.model || defaults?.effort || defaults?.speed);
+  });
+  return { installed, troubled, checking, missing, moreMissing, searching: !agents || (installed.length === 0 && checking.length > 0), known: !!agents?.length };
+}
+
+/** Only the discovery list folds providers; their installed rows and session choices stay available. */
+export function useMissingAgentList({ missing, moreMissing }: ReturnType<typeof sortAgents>) {
+  const { t } = useTranslation("firstrun");
+  const [expanded, setExpanded] = useState(false);
+  const visible = missing.filter((id) => !moreMissing.includes(id));
+  return {
+    names: expanded ? [...visible, ...moreMissing] : visible,
+    toggle: moreMissing.length > 0 && (
+      <button type="button" className="ag-add ag-more" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+        <Icon name={expanded ? "chevD" : "chevR"} />
+        {t("prepare.otherProviders", { count: moreMissing.length })}
+      </button>
+    ),
+  };
 }
 
 /**
@@ -78,6 +99,7 @@ export function sortAgents(agents: AgentStatus[] | undefined) {
 export function AgentList({ agents, unknown, onOpen }: { agents: ReturnType<typeof sortAgents>; unknown?: ReactNode; onOpen: (agent: string) => void }) {
   const { t } = useTranslation("firstrun");
   const { installed, troubled, checking, missing, known } = agents;
+  const missingList = useMissingAgentList(agents);
   return (
     <>
       <div className="ag-list" role="list" aria-label={t("prepare.agents")}>
@@ -140,13 +162,14 @@ export function AgentList({ agents, unknown, onOpen }: { agents: ReturnType<type
         <>
           <div className="ag-group">{t("prepare.notInstalled")}</div>
           <div className="ag-missing" role="list" aria-label={t("prepare.missing")}>
-            {missing.map((name) => (
+            {missingList.names.map((name) => (
               <div key={name} role="listitem" aria-label={codingAgentTitle(name)}>
                 <AgentLogo agent={name} size={16} />
                 {codingAgentTitle(name)}
               </div>
             ))}
           </div>
+          {missingList.toggle}
         </>
       )}
     </>

@@ -88,6 +88,8 @@ type Machine struct {
 	audit     *Audit
 	sessions  *kernel.Engine
 
+	maintenance providerManager
+
 	changesOnce      sync.Once
 	changeLog        *changeLog
 	wsCache          workspaceCache
@@ -189,7 +191,7 @@ func Open(cfg Config) (*Machine, error) {
 		cfg.Logger = slog.Default()
 	}
 	if cfg.Discoverers == nil {
-		cfg.Discoverers = DefaultDiscoverers()
+		cfg.Discoverers = defaultDiscoverers(providerPath(cfg.DataDir))
 	}
 	if cfg.Limits == (Limits{}) {
 		cfg.Limits = DefaultLimits()
@@ -227,6 +229,10 @@ func Open(cfg Config) (*Machine, error) {
 		return nil, err
 	}
 	if err := n.openSessions(); err != nil {
+		return nil, err
+	}
+	if err := n.openProviderManager(); err != nil {
+		n.Close()
 		return nil, err
 	}
 	return n, nil
@@ -285,6 +291,7 @@ func (n *Machine) loadState() error {
 }
 
 func (n *Machine) Close() error {
+	n.stopProviderManager()
 	n.screen.Stop()
 	n.stopHerLink()
 	n.her.Stop()
@@ -600,9 +607,12 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 	for _, name := range append(AgentNames(), "fake") {
 		// Claude Code and Codex are always listed; other agents when found
 		// (working or not), when their app lacks the CLI, or while their
-		// first check is under way.
+		// first check is under way. Keep a missing provider visible when
+		// the owner has configured its session defaults on this machine.
 		i, ok := n.infos[name]
-		if (ok && (i.Available || i.Problem != rt.ProblemNotFound || name == "claude" || name == "codex")) || (!ok && n.pending[name]) {
+		d := n.defaults[name]
+		configured := d.GetModel() != "" || d.GetEffort() != "" || d.GetSpeed() != 0
+		if (ok && (i.Available || i.Problem != rt.ProblemNotFound || name == "claude" || name == "codex" || configured)) || (!ok && n.pending[name]) {
 			a := &machinev1.AgentStatus{Name: name, Available: i.Available, Version: i.Version,
 				LoggedIn: i.LoggedIn, Detail: i.Detail, Checking: n.pending[name], Problem: machinev1.AgentProblem(i.Problem), Binary: i.Binary, Limits: n.limits[name]}
 			n.agentModels(a, i)
@@ -624,6 +634,7 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 	st.Screen = n.screenStatus()
 	st.DirectAddrs, st.DirectQuicAddrs = n.directStatusAddrs()
 	st.Methods = adminMethods()
+	n.providerStatus(st)
 	return st
 }
 

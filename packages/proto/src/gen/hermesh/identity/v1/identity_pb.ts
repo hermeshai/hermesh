@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file hermesh/identity/v1/identity.proto.
  */
 export const file_hermesh_identity_v1_identity: GenFile = /*@__PURE__*/
-  fileDesc("CiJoZXJtZXNoL2lkZW50aXR5L3YxL2lkZW50aXR5LnByb3RvEhNoZXJtZXNoLmlkZW50aXR5LnYxIoQBCgZTaWduZWQSDAoEdHlwZRgBIAEoCRIMCgRib2R5GAIgASgMEhUKDXNpZ25lcl9rZXlfaWQYAyABKAkSNAoDYWxnGAQgASgOMicuaGVybWVzaC5pZGVudGl0eS52MS5TaWduYXR1cmVBbGdvcml0aG0SEQoJc2lnbmF0dXJlGAUgASgMIj4KB1Jvb3RLZXkSEgoKcHVibGljX2tleRgBIAEoDBINCgVsYWJlbBgCIAEoCRIQCghwbGF0Zm9ybRgDIAEoCSKoAQoIUm9vdENlcnQSEAoIb3duZXJfaWQYASABKAkSLwoJcm9vdF9rZXlzGAMgAygLMhwuaGVybWVzaC5pZGVudGl0eS52MS5Sb290S2V5Eg8KB3ZlcnNpb24YBCABKAQSLQoJaXNzdWVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEoECAIQA1ITcmVjb3ZlcnlfcHVibGljX2tleSI3CglSb290Q2hhaW4SKgoFY2VydHMYASADKAsyGy5oZXJtZXNoLmlkZW50aXR5LnYxLlNpZ25lZCJ8Cg9Pd25lckRldmljZUNlcnQSEAoIb3duZXJfaWQYASABKAkSGQoRZGV2aWNlX3B1YmxpY19rZXkYAiABKAwSDQoFbGFiZWwYAyABKAkSLQoJaXNzdWVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCK8AQoQUHVzaFJlZ2lzdHJhdGlvbhIQCghvd25lcl9pZBgBIAEoCRIZChFkZXZpY2VfcHVibGljX2tleRgCIAEoDBINCgV0b2tlbhgDIAEoCRITCgtlbnZpcm9ubWVudBgEIAEoCRIZChFub3RpY2VfcHVibGljX2tleRgFIAEoDBINCgVraW5kcxgGIAMoCRItCglpc3N1ZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIvsBCg5QYWlyaW5nUmVxdWVzdBIuCgRraW5kGAEgASgOMiAuaGVybWVzaC5pZGVudGl0eS52MS5QYWlyaW5nS2luZBIaChJzdWJqZWN0X3B1YmxpY19rZXkYAiABKAwSDQoFbGFiZWwYAyABKAkSEAoIaG9zdG5hbWUYBCABKAkSEAoIcGxhdGZvcm0YBSABKAkSEAoIb3duZXJfaWQYBiABKAkSLgoKY3JlYXRlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFQoNY29uZmlybV9tYXRjaBgIIAEoCBIRCgljdXN0b2RpYW4YCSABKAkiqQEKC01hY2hpbmVDZXJ0EhAKCG93bmVyX2lkGAEgASgJEhIKCm1hY2hpbmVfaWQYAiABKAkSGgoSbWFjaGluZV9wdWJsaWNfa2V5GAMgASgMEi0KCWlzc3VlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFQoNZGV2aWNlX2tleV9pZBgGIAEoCUoECAQQBVIMbWFjaGluZV9uYW1lIpkECgVHcmFudBIQCghvd25lcl9pZBgBIAEoCRIQCghncmFudF9pZBgCIAEoCRIPCgd2ZXJzaW9uGAMgASgEEhEKCWNsaWVudF9pZBgEIAEoCRIZChFjbGllbnRfcHVibGljX2tleRgFIAEoDBIUCgxjbGllbnRfbGFiZWwYBiABKAkSEwoLbWFjaGluZV9pZHMYByADKAkSEwoLcHJvamVjdF9pZHMYCCADKAkSDgoGYWdlbnRzGAkgAygJEjwKD3Rhc2tfdmlzaWJpbGl0eRgLIAEoDjIjLmhlcm1lc2guaWRlbnRpdHkudjEuVGFza1Zpc2liaWxpdHkSHwoXbWF4X2NvbmN1cnJlbnRfc2Vzc2lvbnMYDCABKA0SLgoKbm90X2JlZm9yZRgNIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgOIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEQoJY3VzdG9kaWFuGA8gASgJEhMKC2NsaWVudF9pY29uGBAgASgJEhQKDGNsaWVudF9pbWFnZRgRIAEoDBIWCg5oZXJfbWFjaGluZV9pZBgSIAEoCRI6ChBtYXhfcnVudGltZV9tb2RlGBMgASgOMiAuaGVybWVzaC5pZGVudGl0eS52MS5SdW50aW1lTW9kZUoECAoQC1IGcHJlc2V0Il8KCkVyYXNlT3JkZXISEAoIb3duZXJfaWQYASABKAkSEAoIZXJhc2VfaWQYAiABKAkSLQoJaXNzdWVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJzCghFcmFzZUFjaxIQCghlcmFzZV9pZBgBIAEoCRISCgpwdWJsaWNfa2V5GAIgASgMEg8KB3N1YmplY3QYAyABKAkSMAoLZGV2aWNlX2NlcnQYBCABKAsyGy5oZXJtZXNoLmlkZW50aXR5LnYxLlNpZ25lZCLbBgoMQWRtaW5Db21tYW5kEhAKCG93bmVyX2lkGAEgASgJEhIKCmNvbW1hbmRfaWQYAiABKAkSGQoRdGFyZ2V0X21hY2hpbmVfaWQYAyABKAkSLgoKZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASNgoLYWRkX3Byb2plY3QYCiABKAsyHy5oZXJtZXNoLmlkZW50aXR5LnYxLkFkZFByb2plY3RIABI8Cg5yZW1vdmVfcHJvamVjdBgLIAEoCzIiLmhlcm1lc2guaWRlbnRpdHkudjEuUmVtb3ZlUHJvamVjdEgAEjQKCnNldF9wYXVzZWQYDSABKAsyHi5oZXJtZXNoLmlkZW50aXR5LnYxLlNldFBhdXNlZEgAEjAKCHNldF9uYW1lGA4gASgLMhwuaGVybWVzaC5pZGVudGl0eS52MS5TZXROYW1lSAASQAoSc2V0X2FnZW50X2RlZmF1bHRzGA8gASgLMiIuaGVybWVzaC5pZGVudGl0eS52MS5BZ2VudERlZmF1bHRzSAASLgoHc2V0X2hlchgQIAEoCzIbLmhlcm1lc2guaWRlbnRpdHkudjEuU2V0SGVySAASSgoWc2V0X2hlcl9hc3Npc3RhbnRfbW9kZRgRIAEoCzIoLmhlcm1lc2guaWRlbnRpdHkudjEuU2V0SGVyQXNzaXN0YW50TW9kZUgAElAKGXNldF9oZXJfY29tbWFuZF9jb25uZWN0b3IYEiABKAsyKy5oZXJtZXNoLmlkZW50aXR5LnYxLlNldEhlckNvbW1hbmRDb25uZWN0b3JIABI6Cg1jcmVhdGVfZm9sZGVyGBMgASgLMiEuaGVybWVzaC5pZGVudGl0eS52MS5DcmVhdGVGb2xkZXJIABJGChRzZXRfbWF4X3J1bnRpbWVfbW9kZRgUIAEoCzImLmhlcm1lc2guaWRlbnRpdHkudjEuU2V0TWF4UnVudGltZU1vZGVIABJHChRzZXRfd29ya3NwYWNlX3BvbGljeRgVIAEoCzInLmhlcm1lc2guaWRlbnRpdHkudjEuU2V0V29ya3NwYWNlUG9saWN5SABCCQoHY29tbWFuZEoECAwQDVIOcmVuYW1lX21hY2hpbmUipAEKCkFkZFByb2plY3QSEgoKcHJvamVjdF9pZBgBIAEoCRIMCgRwYXRoGAIgASgJEhgKEGRlZmF1bHRfYmFzZV9yZWYYAyABKAkSMQoJd29ya3NwYWNlGAQgASgOMh4uaGVybWVzaC5pZGVudGl0eS52MS5Xb3Jrc3BhY2USEwoLZGVzY3JpcHRpb24YBSABKAkSEgoGYWdlbnRzGAYgAygJQgIYASIjCg1SZW1vdmVQcm9qZWN0EhIKCnByb2plY3RfaWQYASABKAkiFwoHU2V0TmFtZRIMCgRuYW1lGAEgASgJIhsKCVNldFBhdXNlZBIOCgZwYXVzZWQYASABKAgiKgoSU2V0V29ya3NwYWNlUG9saWN5EhQKDGF1dG9fcmVsZWFzZRgBIAEoCCIoCgZTZXRIZXISDwoHZW5hYmxlZBgBIAEoCBINCgVlcmFzZRgCIAEoCCI+ChNTZXRIZXJBc3Npc3RhbnRNb2RlEg4KBmJvdF9pZBgBIAEoCRIXCg9wZXJtaXNzaW9uX21vZGUYAiABKAkixAEKFlNldEhlckNvbW1hbmRDb25uZWN0b3ISDAoEbmFtZRgBIAEoCRIPCgdjb21tYW5kGAIgASgJEgwKBGFyZ3MYAyADKAkSQQoDZW52GAQgAygLMjQuaGVybWVzaC5pZGVudGl0eS52MS5TZXRIZXJDb21tYW5kQ29ubmVjdG9yLkVudkVudHJ5Eg4KBnJlbW92ZRgFIAEoCBoqCghFbnZFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIm0KDUFnZW50RGVmYXVsdHMSDQoFYWdlbnQYASABKAkSDQoFbW9kZWwYAiABKAkSDgoGZWZmb3J0GAMgASgJEi4KBXNwZWVkGAQgASgOMh8uaGVybWVzaC5pZGVudGl0eS52MS5BZ2VudFNwZWVkIuoBCg5SZXZvY2F0aW9uTGlzdBIQCghvd25lcl9pZBgBIAEoCRIZChFyZXZva2VkX2dyYW50X2lkcxgCIAMoCRIbChNyZXZva2VkX21hY2hpbmVfaWRzGAMgAygJElUKEm1pbl9ncmFudF92ZXJzaW9ucxgEIAMoCzI5Lmhlcm1lc2guaWRlbnRpdHkudjEuUmV2b2NhdGlvbkxpc3QuTWluR3JhbnRWZXJzaW9uc0VudHJ5GjcKFU1pbkdyYW50VmVyc2lvbnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAQ6AjgBIooCCgtDcmVkZW50aWFscxIyCgpyb290X2NoYWluGAUgASgLMh4uaGVybWVzaC5pZGVudGl0eS52MS5Sb290Q2hhaW4SFAoMbWFjaGluZV9uYW1lGAYgASgJEjMKDG1hY2hpbmVfY2VydBgCIAEoCzIbLmhlcm1lc2guaWRlbnRpdHkudjEuU2lnbmVkSAASLAoFZ3JhbnQYAyABKAsyGy5oZXJtZXNoLmlkZW50aXR5LnYxLlNpZ25lZEgAEjIKC2RldmljZV9jZXJ0GAQgASgLMhsuaGVybWVzaC5pZGVudGl0eS52MS5TaWduZWRIAEIJCgdzdWJqZWN0SgQIARACUglyb290X2NlcnQimAEKC0NvbnRhY3RDYXJkEhAKCG93bmVyX2lkGAEgASgJEhEKCWNsaWVudF9pZBgCIAEoCRIZChFjbGllbnRfcHVibGljX2tleRgDIAEoDBIMCgRuYW1lGAQgASgJEgwKBGtpbmQYBSABKAkSLQoJaXNzdWVkX2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCKVAQoRSW5ib3hSZWdpc3RyYXRpb24SEAoIb3duZXJfaWQYASABKAkSDQoFaW5ib3gYAiABKAkSGAoQaW5ib3hfcHVibGljX2tleRgDIAEoDBIWCg50YWtlc19tZXNzYWdlcxgEIAEoCRItCglpc3N1ZWRfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIswBCgdDb250YWN0EikKBGNhcmQYASABKAsyGy5oZXJtZXNoLmlkZW50aXR5LnYxLlNpZ25lZBIwCgtkZXZpY2VfY2VydBgCIAEoCzIbLmhlcm1lc2guaWRlbnRpdHkudjEuU2lnbmVkEjEKDG1hY2hpbmVfY2VydBgDIAEoCzIbLmhlcm1lc2guaWRlbnRpdHkudjEuU2lnbmVkEjEKDHJlZ2lzdHJhdGlvbhgEIAEoCzIbLmhlcm1lc2guaWRlbnRpdHkudjEuU2lnbmVkIocBChBTeW5jUmVnaXN0cmF0aW9uEhAKCG93bmVyX2lkGAEgASgJEhkKEWRldmljZV9wdWJsaWNfa2V5GAIgASgMEhcKD3N5bmNfcHVibGljX2tleRgDIAEoDBItCglpc3N1ZWRfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIjUKCldyYXBwZWRLZXkSFQoNZGV2aWNlX2tleV9pZBgBIAEoCRIQCghocGtlX2tleRgCIAEoDCLfAQoNRGVsdGFFbnZlbG9wZRIQCghvd25lcl9pZBgBIAEoCRISCgptYWNoaW5lX2lkGAIgASgJEhEKCXN0cmVhbV9pZBgDIAEoCRITCgttYWNoaW5lX3NlcRgEIAEoBBINCgVub25jZRgFIAEoDBISCgpjaXBoZXJ0ZXh0GAYgASgMEi0KBGtleXMYByADKAsyHy5oZXJtZXNoLmlkZW50aXR5LnYxLldyYXBwZWRLZXkSLgoKY3JlYXRlZF9hdBgIIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiPgoMQ3JlYXRlRm9sZGVyEg4KBnBhcmVudBgBIAEoCRIMCgRuYW1lGAIgASgJEhAKCGdpdF9pbml0GAMgASgIIkMKEVNldE1heFJ1bnRpbWVNb2RlEi4KBG1vZGUYASABKA4yIC5oZXJtZXNoLmlkZW50aXR5LnYxLlJ1bnRpbWVNb2RlKmQKElNpZ25hdHVyZUFsZ29yaXRobRIjCh9TSUdOQVRVUkVfQUxHT1JJVEhNX1VOU1BFQ0lGSUVEEAASKQolU0lHTkFUVVJFX0FMR09SSVRITV9FQ0RTQV9QMjU2X1NIQTI1NhABKncKC1BhaXJpbmdLaW5kEhwKGFBBSVJJTkdfS0lORF9VTlNQRUNJRklFRBAAEhgKFFBBSVJJTkdfS0lORF9NQUNISU5FEAESFwoTUEFJUklOR19LSU5EX0NMSUVOVBACEhcKE1BBSVJJTkdfS0lORF9ERVZJQ0UQAypWCglXb3Jrc3BhY2USGQoVV09SS1NQQUNFX1VOU1BFQ0lGSUVEEAASFgoSV09SS1NQQUNFX1dPUktUUkVFEAESFgoSV09SS1NQQUNFX0lOX1BMQUNFEAIqYwoOVGFza1Zpc2liaWxpdHkSHwobVEFTS19WSVNJQklMSVRZX1VOU1BFQ0lGSUVEEAASFwoTVEFTS19WSVNJQklMSVRZX09XThABEhcKE1RBU0tfVklTSUJJTElUWV9BTEwQAiqaAQoLUnVudGltZU1vZGUSHAoYUlVOVElNRV9NT0RFX1VOU1BFQ0lGSUVEEAASGwoXUlVOVElNRV9NT0RFX1NVUEVSVklTRUQQARIbChdSVU5USU1FX01PREVfQVVUT19FRElUUxACEhUKEVJVTlRJTUVfTU9ERV9BVVRPEAMSHAoYUlVOVElNRV9NT0RFX0ZVTExfQUNDRVNTEAQqWQoKQWdlbnRTcGVlZBIbChdBR0VOVF9TUEVFRF9VTlNQRUNJRklFRBAAEhgKFEFHRU5UX1NQRUVEX1NUQU5EQVJEEAESFAoQQUdFTlRfU1BFRURfRkFTVBACYgZwcm90bzM", [file_google_protobuf_timestamp]);
+  fileDesc("CiJoZXJtZXNoL2lkZW50aXR5L3YxL2lkZW50aXR5LnByb3RvEhNoZXJtZXNoLmlkZW50aXR5LnYxIoQBCgZTaWduZWQSDAoEdHlwZRgBIAEoCRIMCgRib2R5GAIgASgMEhUKDXNpZ25lcl9rZXlfaWQYAyABKAkSNAoDYWxnGAQgASgOMicuaGVybWVzaC5pZGVudGl0eS52MS5TaWduYXR1cmVBbGdvcml0aG0SEQoJc2lnbmF0dXJlGAUgASgMIj4KB1Jvb3RLZXkSEgoKcHVibGljX2tleRgBIAEoDBINCgVsYWJlbBgCIAEoCRIQCghwbGF0Zm9ybRgDIAEoCSKoAQoIUm9vdENlcnQSEAoIb3duZXJfaWQYASABKAkSLwoJcm9vdF9rZXlzGAMgAygLMhwuaGVybWVzaC5pZGVudGl0eS52MS5Sb290S2V5Eg8KB3ZlcnNpb24YBCABKAQSLQoJaXNzdWVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEoECAIQA1ITcmVjb3ZlcnlfcHVibGljX2tleSI3CglSb290Q2hhaW4SKgoFY2VydHMYASADKAsyGy5oZXJtZXNoLmlkZW50aXR5LnYxLlNpZ25lZCJ8Cg9Pd25lckRldmljZUNlcnQSEAoIb3duZXJfaWQYASABKAkSGQoRZGV2aWNlX3B1YmxpY19rZXkYAiABKAwSDQoFbGFiZWwYAyABKAkSLQoJaXNzdWVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCK8AQoQUHVzaFJlZ2lzdHJhdGlvbhIQCghvd25lcl9pZBgBIAEoCRIZChFkZXZpY2VfcHVibGljX2tleRgCIAEoDBINCgV0b2tlbhgDIAEoCRITCgtlbnZpcm9ubWVudBgEIAEoCRIZChFub3RpY2VfcHVibGljX2tleRgFIAEoDBINCgVraW5kcxgGIAMoCRItCglpc3N1ZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIvsBCg5QYWlyaW5nUmVxdWVzdBIuCgRraW5kGAEgASgOMiAuaGVybWVzaC5pZGVudGl0eS52MS5QYWlyaW5nS2luZBIaChJzdWJqZWN0X3B1YmxpY19rZXkYAiABKAwSDQoFbGFiZWwYAyABKAkSEAoIaG9zdG5hbWUYBCABKAkSEAoIcGxhdGZvcm0YBSABKAkSEAoIb3duZXJfaWQYBiABKAkSLgoKY3JlYXRlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFQoNY29uZmlybV9tYXRjaBgIIAEoCBIRCgljdXN0b2RpYW4YCSABKAkiqQEKC01hY2hpbmVDZXJ0EhAKCG93bmVyX2lkGAEgASgJEhIKCm1hY2hpbmVfaWQYAiABKAkSGgoSbWFjaGluZV9wdWJsaWNfa2V5GAMgASgMEi0KCWlzc3VlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFQoNZGV2aWNlX2tleV9pZBgGIAEoCUoECAQQBVIMbWFjaGluZV9uYW1lIpkECgVHcmFudBIQCghvd25lcl9pZBgBIAEoCRIQCghncmFudF9pZBgCIAEoCRIPCgd2ZXJzaW9uGAMgASgEEhEKCWNsaWVudF9pZBgEIAEoCRIZChFjbGllbnRfcHVibGljX2tleRgFIAEoDBIUCgxjbGllbnRfbGFiZWwYBiABKAkSEwoLbWFjaGluZV9pZHMYByADKAkSEwoLcHJvamVjdF9pZHMYCCADKAkSDgoGYWdlbnRzGAkgAygJEjwKD3Rhc2tfdmlzaWJpbGl0eRgLIAEoDjIjLmhlcm1lc2guaWRlbnRpdHkudjEuVGFza1Zpc2liaWxpdHkSHwoXbWF4X2NvbmN1cnJlbnRfc2Vzc2lvbnMYDCABKA0SLgoKbm90X2JlZm9yZRgNIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgOIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEQoJY3VzdG9kaWFuGA8gASgJEhMKC2NsaWVudF9pY29uGBAgASgJEhQKDGNsaWVudF9pbWFnZRgRIAEoDBIWCg5oZXJfbWFjaGluZV9pZBgSIAEoCRI6ChBtYXhfcnVudGltZV9tb2RlGBMgASgOMiAuaGVybWVzaC5pZGVudGl0eS52MS5SdW50aW1lTW9kZUoECAoQC1IGcHJlc2V0Il8KCkVyYXNlT3JkZXISEAoIb3duZXJfaWQYASABKAkSEAoIZXJhc2VfaWQYAiABKAkSLQoJaXNzdWVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJzCghFcmFzZUFjaxIQCghlcmFzZV9pZBgBIAEoCRISCgpwdWJsaWNfa2V5GAIgASgMEg8KB3N1YmplY3QYAyABKAkSMAoLZGV2aWNlX2NlcnQYBCABKAsyGy5oZXJtZXNoLmlkZW50aXR5LnYxLlNpZ25lZCKfBwoMQWRtaW5Db21tYW5kEhAKCG93bmVyX2lkGAEgASgJEhIKCmNvbW1hbmRfaWQYAiABKAkSGQoRdGFyZ2V0X21hY2hpbmVfaWQYAyABKAkSLgoKZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASNgoLYWRkX3Byb2plY3QYCiABKAsyHy5oZXJtZXNoLmlkZW50aXR5LnYxLkFkZFByb2plY3RIABI8Cg5yZW1vdmVfcHJvamVjdBgLIAEoCzIiLmhlcm1lc2guaWRlbnRpdHkudjEuUmVtb3ZlUHJvamVjdEgAEjQKCnNldF9wYXVzZWQYDSABKAsyHi5oZXJtZXNoLmlkZW50aXR5LnYxLlNldFBhdXNlZEgAEjAKCHNldF9uYW1lGA4gASgLMhwuaGVybWVzaC5pZGVudGl0eS52MS5TZXROYW1lSAASQAoSc2V0X2FnZW50X2RlZmF1bHRzGA8gASgLMiIuaGVybWVzaC5pZGVudGl0eS52MS5BZ2VudERlZmF1bHRzSAASLgoHc2V0X2hlchgQIAEoCzIbLmhlcm1lc2guaWRlbnRpdHkudjEuU2V0SGVySAASSgoWc2V0X2hlcl9hc3Npc3RhbnRfbW9kZRgRIAEoCzIoLmhlcm1lc2guaWRlbnRpdHkudjEuU2V0SGVyQXNzaXN0YW50TW9kZUgAElAKGXNldF9oZXJfY29tbWFuZF9jb25uZWN0b3IYEiABKAsyKy5oZXJtZXNoLmlkZW50aXR5LnYxLlNldEhlckNvbW1hbmRDb25uZWN0b3JIABI6Cg1jcmVhdGVfZm9sZGVyGBMgASgLMiEuaGVybWVzaC5pZGVudGl0eS52MS5DcmVhdGVGb2xkZXJIABJGChRzZXRfbWF4X3J1bnRpbWVfbW9kZRgUIAEoCzImLmhlcm1lc2guaWRlbnRpdHkudjEuU2V0TWF4UnVudGltZU1vZGVIABJHChRzZXRfd29ya3NwYWNlX3BvbGljeRgVIAEoCzInLmhlcm1lc2guaWRlbnRpdHkudjEuU2V0V29ya3NwYWNlUG9saWN5SAASQgoRbWFpbnRhaW5fcHJvdmlkZXIYFiABKAsyJS5oZXJtZXNoLmlkZW50aXR5LnYxLk1haW50YWluUHJvdmlkZXJIAEIJCgdjb21tYW5kSgQIDBANUg5yZW5hbWVfbWFjaGluZSJ6ChBNYWludGFpblByb3ZpZGVyEhIKCnJlcXVlc3RfaWQYASABKAkSEAoIcHJvdmlkZXIYAiABKAkSDgoGYWN0aW9uGAMgASgJEhgKEGV4cGVjdGVkX3ZlcnNpb24YBCABKAkSFgoOdGFyZ2V0X3ZlcnNpb24YBSABKAkipAEKCkFkZFByb2plY3QSEgoKcHJvamVjdF9pZBgBIAEoCRIMCgRwYXRoGAIgASgJEhgKEGRlZmF1bHRfYmFzZV9yZWYYAyABKAkSMQoJd29ya3NwYWNlGAQgASgOMh4uaGVybWVzaC5pZGVudGl0eS52MS5Xb3Jrc3BhY2USEwoLZGVzY3JpcHRpb24YBSABKAkSEgoGYWdlbnRzGAYgAygJQgIYASIjCg1SZW1vdmVQcm9qZWN0EhIKCnByb2plY3RfaWQYASABKAkiFwoHU2V0TmFtZRIMCgRuYW1lGAEgASgJIhsKCVNldFBhdXNlZBIOCgZwYXVzZWQYASABKAgiKgoSU2V0V29ya3NwYWNlUG9saWN5EhQKDGF1dG9fcmVsZWFzZRgBIAEoCCIoCgZTZXRIZXISDwoHZW5hYmxlZBgBIAEoCBINCgVlcmFzZRgCIAEoCCI+ChNTZXRIZXJBc3Npc3RhbnRNb2RlEg4KBmJvdF9pZBgBIAEoCRIXCg9wZXJtaXNzaW9uX21vZGUYAiABKAkixAEKFlNldEhlckNvbW1hbmRDb25uZWN0b3ISDAoEbmFtZRgBIAEoCRIPCgdjb21tYW5kGAIgASgJEgwKBGFyZ3MYAyADKAkSQQoDZW52GAQgAygLMjQuaGVybWVzaC5pZGVudGl0eS52MS5TZXRIZXJDb21tYW5kQ29ubmVjdG9yLkVudkVudHJ5Eg4KBnJlbW92ZRgFIAEoCBoqCghFbnZFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIm0KDUFnZW50RGVmYXVsdHMSDQoFYWdlbnQYASABKAkSDQoFbW9kZWwYAiABKAkSDgoGZWZmb3J0GAMgASgJEi4KBXNwZWVkGAQgASgOMh8uaGVybWVzaC5pZGVudGl0eS52MS5BZ2VudFNwZWVkIuoBCg5SZXZvY2F0aW9uTGlzdBIQCghvd25lcl9pZBgBIAEoCRIZChFyZXZva2VkX2dyYW50X2lkcxgCIAMoCRIbChNyZXZva2VkX21hY2hpbmVfaWRzGAMgAygJElUKEm1pbl9ncmFudF92ZXJzaW9ucxgEIAMoCzI5Lmhlcm1lc2guaWRlbnRpdHkudjEuUmV2b2NhdGlvbkxpc3QuTWluR3JhbnRWZXJzaW9uc0VudHJ5GjcKFU1pbkdyYW50VmVyc2lvbnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAQ6AjgBIooCCgtDcmVkZW50aWFscxIyCgpyb290X2NoYWluGAUgASgLMh4uaGVybWVzaC5pZGVudGl0eS52MS5Sb290Q2hhaW4SFAoMbWFjaGluZV9uYW1lGAYgASgJEjMKDG1hY2hpbmVfY2VydBgCIAEoCzIbLmhlcm1lc2guaWRlbnRpdHkudjEuU2lnbmVkSAASLAoFZ3JhbnQYAyABKAsyGy5oZXJtZXNoLmlkZW50aXR5LnYxLlNpZ25lZEgAEjIKC2RldmljZV9jZXJ0GAQgASgLMhsuaGVybWVzaC5pZGVudGl0eS52MS5TaWduZWRIAEIJCgdzdWJqZWN0SgQIARACUglyb290X2NlcnQimAEKC0NvbnRhY3RDYXJkEhAKCG93bmVyX2lkGAEgASgJEhEKCWNsaWVudF9pZBgCIAEoCRIZChFjbGllbnRfcHVibGljX2tleRgDIAEoDBIMCgRuYW1lGAQgASgJEgwKBGtpbmQYBSABKAkSLQoJaXNzdWVkX2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCKVAQoRSW5ib3hSZWdpc3RyYXRpb24SEAoIb3duZXJfaWQYASABKAkSDQoFaW5ib3gYAiABKAkSGAoQaW5ib3hfcHVibGljX2tleRgDIAEoDBIWCg50YWtlc19tZXNzYWdlcxgEIAEoCRItCglpc3N1ZWRfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIswBCgdDb250YWN0EikKBGNhcmQYASABKAsyGy5oZXJtZXNoLmlkZW50aXR5LnYxLlNpZ25lZBIwCgtkZXZpY2VfY2VydBgCIAEoCzIbLmhlcm1lc2guaWRlbnRpdHkudjEuU2lnbmVkEjEKDG1hY2hpbmVfY2VydBgDIAEoCzIbLmhlcm1lc2guaWRlbnRpdHkudjEuU2lnbmVkEjEKDHJlZ2lzdHJhdGlvbhgEIAEoCzIbLmhlcm1lc2guaWRlbnRpdHkudjEuU2lnbmVkIocBChBTeW5jUmVnaXN0cmF0aW9uEhAKCG93bmVyX2lkGAEgASgJEhkKEWRldmljZV9wdWJsaWNfa2V5GAIgASgMEhcKD3N5bmNfcHVibGljX2tleRgDIAEoDBItCglpc3N1ZWRfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIjUKCldyYXBwZWRLZXkSFQoNZGV2aWNlX2tleV9pZBgBIAEoCRIQCghocGtlX2tleRgCIAEoDCLfAQoNRGVsdGFFbnZlbG9wZRIQCghvd25lcl9pZBgBIAEoCRISCgptYWNoaW5lX2lkGAIgASgJEhEKCXN0cmVhbV9pZBgDIAEoCRITCgttYWNoaW5lX3NlcRgEIAEoBBINCgVub25jZRgFIAEoDBISCgpjaXBoZXJ0ZXh0GAYgASgMEi0KBGtleXMYByADKAsyHy5oZXJtZXNoLmlkZW50aXR5LnYxLldyYXBwZWRLZXkSLgoKY3JlYXRlZF9hdBgIIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiPgoMQ3JlYXRlRm9sZGVyEg4KBnBhcmVudBgBIAEoCRIMCgRuYW1lGAIgASgJEhAKCGdpdF9pbml0GAMgASgIIkMKEVNldE1heFJ1bnRpbWVNb2RlEi4KBG1vZGUYASABKA4yIC5oZXJtZXNoLmlkZW50aXR5LnYxLlJ1bnRpbWVNb2RlKmQKElNpZ25hdHVyZUFsZ29yaXRobRIjCh9TSUdOQVRVUkVfQUxHT1JJVEhNX1VOU1BFQ0lGSUVEEAASKQolU0lHTkFUVVJFX0FMR09SSVRITV9FQ0RTQV9QMjU2X1NIQTI1NhABKncKC1BhaXJpbmdLaW5kEhwKGFBBSVJJTkdfS0lORF9VTlNQRUNJRklFRBAAEhgKFFBBSVJJTkdfS0lORF9NQUNISU5FEAESFwoTUEFJUklOR19LSU5EX0NMSUVOVBACEhcKE1BBSVJJTkdfS0lORF9ERVZJQ0UQAypWCglXb3Jrc3BhY2USGQoVV09SS1NQQUNFX1VOU1BFQ0lGSUVEEAASFgoSV09SS1NQQUNFX1dPUktUUkVFEAESFgoSV09SS1NQQUNFX0lOX1BMQUNFEAIqYwoOVGFza1Zpc2liaWxpdHkSHwobVEFTS19WSVNJQklMSVRZX1VOU1BFQ0lGSUVEEAASFwoTVEFTS19WSVNJQklMSVRZX09XThABEhcKE1RBU0tfVklTSUJJTElUWV9BTEwQAiqaAQoLUnVudGltZU1vZGUSHAoYUlVOVElNRV9NT0RFX1VOU1BFQ0lGSUVEEAASGwoXUlVOVElNRV9NT0RFX1NVUEVSVklTRUQQARIbChdSVU5USU1FX01PREVfQVVUT19FRElUUxACEhUKEVJVTlRJTUVfTU9ERV9BVVRPEAMSHAoYUlVOVElNRV9NT0RFX0ZVTExfQUNDRVNTEAQqWQoKQWdlbnRTcGVlZBIbChdBR0VOVF9TUEVFRF9VTlNQRUNJRklFRBAAEhgKFEFHRU5UX1NQRUVEX1NUQU5EQVJEEAESFAoQQUdFTlRfU1BFRURfRkFTVBACYgZwcm90bzM", [file_google_protobuf_timestamp]);
 
 /**
  * Signed wraps a serialized message together with a signature over
@@ -661,6 +661,12 @@ export type AdminCommand = Message<"hermesh.identity.v1.AdminCommand"> & {
      */
     value: SetWorkspacePolicy;
     case: "setWorkspacePolicy";
+  } | {
+    /**
+     * @generated from field: hermesh.identity.v1.MaintainProvider maintain_provider = 22;
+     */
+    value: MaintainProvider;
+    case: "maintainProvider";
   } | { case: undefined; value?: undefined };
 };
 
@@ -670,6 +676,47 @@ export type AdminCommand = Message<"hermesh.identity.v1.AdminCommand"> & {
  */
 export const AdminCommandSchema: GenMessage<AdminCommand> = /*@__PURE__*/
   messageDesc(file_hermesh_identity_v1_identity, 11);
+
+/**
+ * Owner-signed request. The target chooses the package and executable.
+ *
+ * @generated from message hermesh.identity.v1.MaintainProvider
+ */
+export type MaintainProvider = Message<"hermesh.identity.v1.MaintainProvider"> & {
+  /**
+   * @generated from field: string request_id = 1;
+   */
+  requestId: string;
+
+  /**
+   * @generated from field: string provider = 2;
+   */
+  provider: string;
+
+  /**
+   * install, update, verify, enable_auto, disable_auto
+   *
+   * @generated from field: string action = 3;
+   */
+  action: string;
+
+  /**
+   * @generated from field: string expected_version = 4;
+   */
+  expectedVersion: string;
+
+  /**
+   * @generated from field: string target_version = 5;
+   */
+  targetVersion: string;
+};
+
+/**
+ * Describes the message hermesh.identity.v1.MaintainProvider.
+ * Use `create(MaintainProviderSchema)` to create a new message.
+ */
+export const MaintainProviderSchema: GenMessage<MaintainProvider> = /*@__PURE__*/
+  messageDesc(file_hermesh_identity_v1_identity, 12);
 
 /**
  * @generated from message hermesh.identity.v1.AddProject
@@ -720,7 +767,7 @@ export type AddProject = Message<"hermesh.identity.v1.AddProject"> & {
  * Use `create(AddProjectSchema)` to create a new message.
  */
 export const AddProjectSchema: GenMessage<AddProject> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 12);
+  messageDesc(file_hermesh_identity_v1_identity, 13);
 
 /**
  * @generated from message hermesh.identity.v1.RemoveProject
@@ -737,7 +784,7 @@ export type RemoveProject = Message<"hermesh.identity.v1.RemoveProject"> & {
  * Use `create(RemoveProjectSchema)` to create a new message.
  */
 export const RemoveProjectSchema: GenMessage<RemoveProject> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 13);
+  messageDesc(file_hermesh_identity_v1_identity, 14);
 
 /**
  * The machine's name, as people and agents call it (agents address
@@ -757,7 +804,7 @@ export type SetName = Message<"hermesh.identity.v1.SetName"> & {
  * Use `create(SetNameSchema)` to create a new message.
  */
 export const SetNameSchema: GenMessage<SetName> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 14);
+  messageDesc(file_hermesh_identity_v1_identity, 15);
 
 /**
  * @generated from message hermesh.identity.v1.SetPaused
@@ -774,7 +821,7 @@ export type SetPaused = Message<"hermesh.identity.v1.SetPaused"> & {
  * Use `create(SetPausedSchema)` to create a new message.
  */
 export const SetPausedSchema: GenMessage<SetPaused> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 15);
+  messageDesc(file_hermesh_identity_v1_identity, 16);
 
 /**
  * SetWorkspacePolicy is a setting: whether the machine releases idle
@@ -794,7 +841,7 @@ export type SetWorkspacePolicy = Message<"hermesh.identity.v1.SetWorkspacePolicy
  * Use `create(SetWorkspacePolicySchema)` to create a new message.
  */
 export const SetWorkspacePolicySchema: GenMessage<SetWorkspacePolicy> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 16);
+  messageDesc(file_hermesh_identity_v1_identity, 17);
 
 /**
  * SetHer turns Her on or off for the machine (docs/her-server.md §5.2): on, its
@@ -823,7 +870,7 @@ export type SetHer = Message<"hermesh.identity.v1.SetHer"> & {
  * Use `create(SetHerSchema)` to create a new message.
  */
 export const SetHerSchema: GenMessage<SetHer> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 17);
+  messageDesc(file_hermesh_identity_v1_identity, 18);
 
 /**
  * SetHerAssistantMode sets how freely one of Her's assistants acts: her's
@@ -851,7 +898,7 @@ export type SetHerAssistantMode = Message<"hermesh.identity.v1.SetHerAssistantMo
  * Use `create(SetHerAssistantModeSchema)` to create a new message.
  */
 export const SetHerAssistantModeSchema: GenMessage<SetHerAssistantMode> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 18);
+  messageDesc(file_hermesh_identity_v1_identity, 19);
 
 /**
  * SetHerCommandConnector adds, changes or removes a connector that her starts
@@ -897,7 +944,7 @@ export type SetHerCommandConnector = Message<"hermesh.identity.v1.SetHerCommandC
  * Use `create(SetHerCommandConnectorSchema)` to create a new message.
  */
 export const SetHerCommandConnectorSchema: GenMessage<SetHerCommandConnector> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 19);
+  messageDesc(file_hermesh_identity_v1_identity, 20);
 
 /**
  * AgentDefaults is what a coding agent's sessions on the machine run with
@@ -940,7 +987,7 @@ export type AgentDefaults = Message<"hermesh.identity.v1.AgentDefaults"> & {
  * Use `create(AgentDefaultsSchema)` to create a new message.
  */
 export const AgentDefaultsSchema: GenMessage<AgentDefaults> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 20);
+  messageDesc(file_hermesh_identity_v1_identity, 21);
 
 /**
  * RevocationList only ever reduces permissions, so machines accept it from the
@@ -976,7 +1023,7 @@ export type RevocationList = Message<"hermesh.identity.v1.RevocationList"> & {
  * Use `create(RevocationListSchema)` to create a new message.
  */
 export const RevocationListSchema: GenMessage<RevocationList> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 21);
+  messageDesc(file_hermesh_identity_v1_identity, 22);
 
 /**
  * Credentials are embedded in the E2E TLS certificate extension and in the
@@ -1028,7 +1075,7 @@ export type Credentials = Message<"hermesh.identity.v1.Credentials"> & {
  * Use `create(CredentialsSchema)` to create a new message.
  */
 export const CredentialsSchema: GenMessage<Credentials> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 22);
+  messageDesc(file_hermesh_identity_v1_identity, 23);
 
 /**
  * ContactCard names one of the owner's agents, for the others to write to
@@ -1078,7 +1125,7 @@ export type ContactCard = Message<"hermesh.identity.v1.ContactCard"> & {
  * Use `create(ContactCardSchema)` to create a new message.
  */
 export const ContactCardSchema: GenMessage<ContactCard> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 23);
+  messageDesc(file_hermesh_identity_v1_identity, 24);
 
 /**
  * InboxRegistration is an inbox's key, signed by the inbox's identity key
@@ -1127,7 +1174,7 @@ export type InboxRegistration = Message<"hermesh.identity.v1.InboxRegistration">
  * Use `create(InboxRegistrationSchema)` to create a new message.
  */
 export const InboxRegistrationSchema: GenMessage<InboxRegistration> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 24);
+  messageDesc(file_hermesh_identity_v1_identity, 25);
 
 /**
  * Contact is one of the owner's inboxes as a sender checks it: an agent's
@@ -1163,7 +1210,7 @@ export type Contact = Message<"hermesh.identity.v1.Contact"> & {
  * Use `create(ContactSchema)` to create a new message.
  */
 export const ContactSchema: GenMessage<Contact> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 25);
+  messageDesc(file_hermesh_identity_v1_identity, 26);
 
 /**
  * SyncRegistration registers a trusted device's X25519 key for decrypting
@@ -1204,7 +1251,7 @@ export type SyncRegistration = Message<"hermesh.identity.v1.SyncRegistration"> &
  * Use `create(SyncRegistrationSchema)` to create a new message.
  */
 export const SyncRegistrationSchema: GenMessage<SyncRegistration> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 26);
+  messageDesc(file_hermesh_identity_v1_identity, 27);
 
 /**
  * WrappedKey is a 32-byte AES-256-GCM data encryption key HPKE-sealed to one
@@ -1233,7 +1280,7 @@ export type WrappedKey = Message<"hermesh.identity.v1.WrappedKey"> & {
  * Use `create(WrappedKeySchema)` to create a new message.
  */
 export const WrappedKeySchema: GenMessage<WrappedKey> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 27);
+  messageDesc(file_hermesh_identity_v1_identity, 28);
 
 /**
  * DeltaEnvelope is a machine-signed, end-to-end encrypted state delta stored
@@ -1300,7 +1347,7 @@ export type DeltaEnvelope = Message<"hermesh.identity.v1.DeltaEnvelope"> & {
  * Use `create(DeltaEnvelopeSchema)` to create a new message.
  */
 export const DeltaEnvelopeSchema: GenMessage<DeltaEnvelope> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 28);
+  messageDesc(file_hermesh_identity_v1_identity, 29);
 
 /**
  * A setting: a new empty folder in a folder under the machine's home folder,
@@ -1335,7 +1382,7 @@ export type CreateFolder = Message<"hermesh.identity.v1.CreateFolder"> & {
  * Use `create(CreateFolderSchema)` to create a new message.
  */
 export const CreateFolderSchema: GenMessage<CreateFolder> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 29);
+  messageDesc(file_hermesh_identity_v1_identity, 30);
 
 /**
  * A setting: the broadest permission mode the machine's threads may run in,
@@ -1355,7 +1402,7 @@ export type SetMaxRuntimeMode = Message<"hermesh.identity.v1.SetMaxRuntimeMode">
  * Use `create(SetMaxRuntimeModeSchema)` to create a new message.
  */
 export const SetMaxRuntimeModeSchema: GenMessage<SetMaxRuntimeMode> = /*@__PURE__*/
-  messageDesc(file_hermesh_identity_v1_identity, 30);
+  messageDesc(file_hermesh_identity_v1_identity, 31);
 
 /**
  * @generated from enum hermesh.identity.v1.SignatureAlgorithm

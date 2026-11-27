@@ -48,12 +48,18 @@ struct Confirmation: Identifiable {
 enum Expectation: Equatable {
     case code(String)
     case types(Set<String>)
+    case provider(String, Hermesh_Identity_V1_MaintainProvider)
     case firstSetup
 
     func matches(_ c: Confirmation) -> Bool {
         guard c.refusals.isEmpty, !c.cards.isEmpty else { return false }
         switch self {
         case .code(let code): return c.cards.contains { $0.code == code }
+        case .provider(let machine, let op):
+            guard c.requests.count == 1, let request = c.requests.first,
+                  request.type == SigningPreview.adminCommand,
+                  let command = try? SigningPreview.strict(request, Hermesh_Identity_V1_AdminCommand.self) else { return false }
+            return command.targetMachineID == machine && command.command == .maintainProvider(op)
         case .types(let t): return c.requests.allSatisfy { t.contains($0.type) }
         case .firstSetup: return c.summary != nil || c.requests.allSatisfy { $0.type == SigningPreview.pairingRequest || $0.type == SigningPreview.ownerDeviceCert }
         }

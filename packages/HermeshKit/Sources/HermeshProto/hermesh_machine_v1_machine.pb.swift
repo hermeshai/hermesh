@@ -656,6 +656,16 @@ public nonisolated struct Hermesh_Machine_V1_MachineStatus: @unchecked Sendable 
     set {_uniqueStorage()._methods = newValue}
   }
 
+  public var providerMaintenance: [Hermesh_Machine_V1_ProviderMaintenance] {
+    get {_storage._providerMaintenance}
+    set {_uniqueStorage()._providerMaintenance = newValue}
+  }
+
+  public var providerOperations: [Hermesh_Machine_V1_ProviderOperation] {
+    get {_storage._providerOperations}
+    set {_uniqueStorage()._providerOperations = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -845,6 +855,55 @@ public nonisolated struct Hermesh_Machine_V1_MachineProblem: Sendable {
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+}
+
+public nonisolated struct Hermesh_Machine_V1_ProviderMaintenance: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var provider: String = String()
+
+  public var package: String = String()
+
+  public var targetVersion: String = String()
+
+  public var managedVersion: String = String()
+
+  public var autoUpdate: Bool = false
+
+  public var account: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Machine_V1_ProviderOperation: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var request: Hermesh_Identity_V1_MaintainProvider {
+    get {_request ?? Hermesh_Identity_V1_MaintainProvider()}
+    set {_request = newValue}
+  }
+  /// Returns true if `request` has been explicitly set.
+  public var hasRequest: Bool {self._request != nil}
+  /// Clears the value of `request`. Subsequent reads from it will return its default value.
+  public mutating func clearRequest() {self._request = nil}
+
+  public var phase: String = String()
+
+  public var detail: String = String()
+
+  public var updatedUnixMs: Int64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _request: Hermesh_Identity_V1_MaintainProvider? = nil
 }
 
 public nonisolated struct Hermesh_Machine_V1_AgentStatus: @unchecked Sendable {
@@ -2137,7 +2196,7 @@ nonisolated extension Hermesh_Machine_V1_GetInfoResponse: SwiftProtobuf.Message,
 
 nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".MachineStatus"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}protocol_version\0\u{1}platform\0\u{1}agents\0\u{3}running_sessions\0\u{3}max_sessions\0\u{1}paused\0\u{1}version\0\u{2}\u{2}sessions\0\u{2}\u{3}name\0\u{1}problems\0\u{1}her\0\u{1}screen\0\u{3}direct_addrs\0\u{3}direct_quic_addrs\0\u{4}\u{2}max_runtime_mode\0\u{1}methods\0\u{b}host\0\u{b}agent_processes\0\u{b}started_at\0\u{b}threads\0\u{c}\u{8}\u{1}\u{c}\u{a}\u{1}\u{c}\u{b}\u{1}\u{c}\u{12}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}protocol_version\0\u{1}platform\0\u{1}agents\0\u{3}running_sessions\0\u{3}max_sessions\0\u{1}paused\0\u{1}version\0\u{2}\u{2}sessions\0\u{2}\u{3}name\0\u{1}problems\0\u{1}her\0\u{1}screen\0\u{3}direct_addrs\0\u{3}direct_quic_addrs\0\u{4}\u{2}max_runtime_mode\0\u{1}methods\0\u{3}provider_maintenance\0\u{3}provider_operations\0\u{b}host\0\u{b}agent_processes\0\u{b}started_at\0\u{b}threads\0\u{c}\u{8}\u{1}\u{c}\u{a}\u{1}\u{c}\u{b}\u{1}\u{c}\u{12}\u{1}")
 
   fileprivate class _StorageClass {
     var _name: String = String()
@@ -2156,6 +2215,8 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
     var _directQuicAddrs: [String] = []
     var _maxRuntimeMode: Hermesh_Identity_V1_RuntimeMode = .unspecified
     var _methods: [String] = []
+    var _providerMaintenance: [Hermesh_Machine_V1_ProviderMaintenance] = []
+    var _providerOperations: [Hermesh_Machine_V1_ProviderOperation] = []
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -2182,6 +2243,8 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
       _directQuicAddrs = source._directQuicAddrs
       _maxRuntimeMode = source._maxRuntimeMode
       _methods = source._methods
+      _providerMaintenance = source._providerMaintenance
+      _providerOperations = source._providerOperations
     }
   }
 
@@ -2216,6 +2279,8 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
         case 17: try { try decoder.decodeRepeatedStringField(value: &_storage._directQuicAddrs) }()
         case 19: try { try decoder.decodeSingularEnumField(value: &_storage._maxRuntimeMode) }()
         case 20: try { try decoder.decodeRepeatedStringField(value: &_storage._methods) }()
+        case 21: try { try decoder.decodeRepeatedMessageField(value: &_storage._providerMaintenance) }()
+        case 22: try { try decoder.decodeRepeatedMessageField(value: &_storage._providerOperations) }()
         default: break
         }
       }
@@ -2276,6 +2341,12 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
       if !_storage._methods.isEmpty {
         try visitor.visitRepeatedStringField(value: _storage._methods, fieldNumber: 20)
       }
+      if !_storage._providerMaintenance.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._providerMaintenance, fieldNumber: 21)
+      }
+      if !_storage._providerOperations.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._providerOperations, fieldNumber: 22)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -2301,6 +2372,8 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
         if _storage._directQuicAddrs != rhs_storage._directQuicAddrs {return false}
         if _storage._maxRuntimeMode != rhs_storage._maxRuntimeMode {return false}
         if _storage._methods != rhs_storage._methods {return false}
+        if _storage._providerMaintenance != rhs_storage._providerMaintenance {return false}
+        if _storage._providerOperations != rhs_storage._providerOperations {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -2606,6 +2679,110 @@ nonisolated extension Hermesh_Machine_V1_MachineProblem: SwiftProtobuf.Message, 
     if lhs.culprit != rhs.culprit {return false}
     if lhs.culpritCount != rhs.culpritCount {return false}
     if lhs.detail != rhs.detail {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Machine_V1_ProviderMaintenance: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ProviderMaintenance"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}provider\0\u{1}package\0\u{3}target_version\0\u{3}managed_version\0\u{3}auto_update\0\u{1}account\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.provider) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.package) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.targetVersion) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.managedVersion) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.autoUpdate) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.account) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.provider.isEmpty {
+      try visitor.visitSingularStringField(value: self.provider, fieldNumber: 1)
+    }
+    if !self.package.isEmpty {
+      try visitor.visitSingularStringField(value: self.package, fieldNumber: 2)
+    }
+    if !self.targetVersion.isEmpty {
+      try visitor.visitSingularStringField(value: self.targetVersion, fieldNumber: 3)
+    }
+    if !self.managedVersion.isEmpty {
+      try visitor.visitSingularStringField(value: self.managedVersion, fieldNumber: 4)
+    }
+    if self.autoUpdate != false {
+      try visitor.visitSingularBoolField(value: self.autoUpdate, fieldNumber: 5)
+    }
+    if !self.account.isEmpty {
+      try visitor.visitSingularStringField(value: self.account, fieldNumber: 6)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Machine_V1_ProviderMaintenance, rhs: Hermesh_Machine_V1_ProviderMaintenance) -> Bool {
+    if lhs.provider != rhs.provider {return false}
+    if lhs.package != rhs.package {return false}
+    if lhs.targetVersion != rhs.targetVersion {return false}
+    if lhs.managedVersion != rhs.managedVersion {return false}
+    if lhs.autoUpdate != rhs.autoUpdate {return false}
+    if lhs.account != rhs.account {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Machine_V1_ProviderOperation: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ProviderOperation"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}request\0\u{1}phase\0\u{1}detail\0\u{3}updated_unix_ms\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._request) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.phase) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.detail) }()
+      case 4: try { try decoder.decodeSingularInt64Field(value: &self.updatedUnixMs) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._request {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if !self.phase.isEmpty {
+      try visitor.visitSingularStringField(value: self.phase, fieldNumber: 2)
+    }
+    if !self.detail.isEmpty {
+      try visitor.visitSingularStringField(value: self.detail, fieldNumber: 3)
+    }
+    if self.updatedUnixMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.updatedUnixMs, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Machine_V1_ProviderOperation, rhs: Hermesh_Machine_V1_ProviderOperation) -> Bool {
+    if lhs._request != rhs._request {return false}
+    if lhs.phase != rhs.phase {return false}
+    if lhs.detail != rhs.detail {return false}
+    if lhs.updatedUnixMs != rhs.updatedUnixMs {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

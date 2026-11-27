@@ -43,3 +43,8 @@ func userProcesses() (procCount, error) {
 	}
 	return pc, nil
 }
+
+func providerLocalDisk(dir string) bool {
+	var fs unix.Statfs_t
+	return unix.Statfs(dir, &fs) == nil && uint64(fs.Flags)&unix.MNT_LOCAL != 0
+}

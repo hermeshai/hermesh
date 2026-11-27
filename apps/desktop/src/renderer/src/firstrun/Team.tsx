@@ -5,7 +5,7 @@ import { Workspace } from "@hermesh/proto/identity";
 import type { Machine } from "@hermesh/proto/local";
 import { AgentLogo, Mark } from "@hermesh/ui";
 import { local } from "../api";
-import { logins, ready, sortAgents } from "../AgentList";
+import { logins, ready, sortAgents, useMissingAgentList } from "../AgentList";
 import { useCheckAgents, useRecheckAgents } from "../agents";
 import { Icon } from "../icons";
 import { useStore } from "../store";
@@ -56,6 +56,7 @@ export function Team({ m, next }: { m: Machine; next: () => void }) {
   const { t } = useTranslation("firstrun");
   const st = useStore();
   const agents = sortAgents(m.status?.agents);
+  const missingList = useMissingAgentList(agents);
   const projects = st.projects.filter((p) => p.machineId === m.machineId).sort((a, b) => a.projectId.localeCompare(b.projectId));
   const readyCount = agents.installed.filter(ready).length;
   const [ran, setRan] = useState(false);
@@ -85,7 +86,7 @@ export function Team({ m, next }: { m: Machine; next: () => void }) {
           {none ? t("team.noneBody") : t("team.sub")}
         </p>
         <div className="fr-grp fr-team" role="list" aria-label={t("team.agents")}>
-          {(none ? agents.missing.map((name) => ({ name, available: false, loggedIn: false, version: "" })) : agents.installed).map((a, i) => (
+          {(none ? missingList.names.map((name) => ({ name, available: false, loggedIn: false, version: "" })) : agents.installed).map((a, i) => (
             <div key={a.name} className="fr-row lead in" role="listitem" style={rise(i + 2)} aria-label={codingAgentTitle(a.name)}>
               <AgentLogo agent={a.name} size={30} />
               <div className="t">
@@ -114,6 +115,7 @@ export function Team({ m, next }: { m: Machine; next: () => void }) {
             </div>
           ))}
         </div>
+        {none && missingList.toggle}
         <div className="fr-group in" style={rise(5)}>
           {t("team.projects")}
         </div>
