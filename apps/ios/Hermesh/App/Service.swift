@@ -297,6 +297,13 @@ extension AppAPI {
         return res.diff
     }
 
+    func refreshGitStatus(_ sessionIDs: [String], machineID: String = "") async throws -> Hermesh_Session_V1_RefreshGitStatusResponse {
+        var r = Hermesh_Session_V1_RefreshGitStatusRequest()
+        r.machineID = machineID
+        r.sessionIds = sessionIDs
+        return try await call("\(sessionSvc)/RefreshGitStatus", r, timeout: 15)
+    }
+
     // MARK: LocalService
 
     /// Work counted over a range, from what the core holds (docs/work-stats.md §7).

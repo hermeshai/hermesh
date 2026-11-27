@@ -201,3 +201,166 @@ public func nextStreamRowEnd(_ text: String, from: String.Index, flushTail: Bool
     }
     return end > lead ? end : nil
 }
+
+private let anyFence = #/^ {0,3}(`{3,}|~{3,})(.*)$/#
+private let standaloneImg = #/^!\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\]\((?:<[^>\n]+>|(?:[^()\n]|\([^()\n]*\))+)\)$/#
+private let slideMarker = #/<!--\s*slide\s*-->/#.ignoresCase()
+private let localDestPrefix = #/^(?:\/|~\/|\.\.?\/|file:\/\/|[A-Za-z]:[\\\/])/#.ignoresCase()
+private let linkTitleQuote = #/\s+["']/#
+
+private func findClosingParen(_ line: Substring, from start: String.Index) -> String.Index? {
+    var depth = 1
+    var j = start
+    while j < line.endIndex {
+        if line[j] == "(" { depth += 1 }
+        else if line[j] == ")" {
+            depth -= 1
+            if depth == 0 { return j }
+        }
+        j = line.index(after: j)
+    }
+    return nil
+}
+
+private func encodeLocalLinkSpaces(_ line: Substring) -> String {
+    guard line.contains("]("), line.contains(" ") else { return String(line) }
+    var out = ""
+    var i = line.startIndex
+    while i < line.endIndex {
+        if line[i] == "`" {
+            var ticks = 0
+            var j = i
+            while j < line.endIndex, line[j] == "`" { ticks += 1; j = line.index(after: j) }
+            let marker = String(repeating: "`", count: ticks)
+            if let close = line[j...].range(of: marker) {
+                out += line[i ..< close.upperBound]
+                i = close.upperBound
+                continue
+            }
+        }
+        if line[i] == "]" {
+            let next = line.index(after: i)
+            if next < line.endIndex, line[next] == "(" {
+                let start = line.index(after: next)
+                if let close = findClosingParen(line, from: start), close > start {
+                    let trimmed = line[start ..< close].trimmingCharacters(in: .whitespaces)
+                    if trimmed.contains(" "), !trimmed.hasPrefix("<"),
+                       trimmed.firstMatch(of: localDestPrefix) != nil,
+                       trimmed.firstMatch(of: linkTitleQuote) == nil {
+                        out += "](" + trimmed.replacingOccurrences(of: " ", with: "%20") + ")"
+                        i = line.index(after: close)
+                        continue
+                    }
+                }
+            }
+        }
+        out.append(line[i])
+        i = line.index(after: i)
+    }
+    return out
+}
+
+private func splitCarouselSlides(_ lines: [Substring]) -> [String] {
+    var slides: [[String]] = [[]]
+    var inner = ""
+    for line in lines {
+        let m = line.wholeMatch(of: anyFence)
+        if let m, inner.isEmpty, !(m.output.1.first == "`" && m.output.2.contains("`")) {
+            inner = String(m.output.1)
+            slides[slides.count - 1].append(String(line))
+            continue
+        }
+        if !inner.isEmpty {
+            if let m, m.output.1.first == inner.first, m.output.1.count >= inner.count,
+               m.output.2.trimmingCharacters(in: .whitespaces).isEmpty {
+                inner = ""
+            }
+            slides[slides.count - 1].append(String(line))
+            continue
+        }
+        if line.contains(slideMarker) {
+            var rest = line[...]
+            while let hit = rest.firstMatch(of: slideMarker) {
+                slides[slides.count - 1].append(encodeLocalLinkSpaces(rest[..<hit.range.lowerBound]))
+                slides.append([])
+                rest = rest[hit.range.upperBound...]
+            }
+            slides[slides.count - 1].append(encodeLocalLinkSpaces(rest))
+            continue
+        }
+        slides[slides.count - 1].append(encodeLocalLinkSpaces(line))
+    }
+    return slides
+        .map { $0.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+}
+
+/// Unwraps Antigravity ````carousel ... <!-- slide --> ... ```` blocks into standard Markdown
+/// and percent-encodes unescaped spaces in local file/image destinations (e.g. `Application Support`):
+/// pure-image slides merge into one paragraph so Hermesh renders them as an inline horizontal
+/// carousel strip + Lightbox; mixed code/prose slides separate with horizontal rules.
+public func unwrapCarousels(_ text: String) -> String {
+    guard text.range(of: "carousel", options: .caseInsensitive) != nil || (text.contains("](") && text.contains(" ")) else { return text }
+    let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+    var out: [String] = []
+    var outer = ""
+    var carouselFence = ""
+    var buf: [Substring] = []
+
+    func flushCarousel() {
+        let slides = splitCarouselSlides(buf)
+        buf.removeAll(keepingCapacity: true)
+        guard !slides.isEmpty else { return }
+        let allImages = slides.allSatisfy { s in
+            s.split(separator: "\n", omittingEmptySubsequences: true)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+                .allSatisfy { $0.wholeMatch(of: standaloneImg) != nil }
+        }
+        if allImages {
+            let imgs = slides.flatMap { s in
+                s.split(separator: "\n", omittingEmptySubsequences: true)
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+            }
+            out.append(imgs.joined(separator: "\n"))
+        } else {
+            out.append(slides.joined(separator: "\n\n---\n\n"))
+        }
+    }
+
+    for line in lines {
+        let m = line.wholeMatch(of: anyFence)
+        if !carouselFence.isEmpty {
+            if let m, m.output.1.first == carouselFence.first, m.output.1.count >= carouselFence.count,
+               m.output.2.trimmingCharacters(in: .whitespaces).isEmpty {
+                carouselFence = ""
+                flushCarousel()
+            } else {
+                buf.append(line)
+            }
+            continue
+        }
+        if !outer.isEmpty {
+            if let m, m.output.1.first == outer.first, m.output.1.count >= outer.count,
+               m.output.2.trimmingCharacters(in: .whitespaces).isEmpty {
+                outer = ""
+            }
+            out.append(String(line))
+            continue
+        }
+        if let m, !(m.output.1.first == "`" && m.output.2.contains("`")) {
+            if m.output.2.trimmingCharacters(in: .whitespaces).lowercased() == "carousel" {
+                carouselFence = String(m.output.1)
+                buf.removeAll(keepingCapacity: true)
+                continue
+            }
+            outer = String(m.output.1)
+            out.append(String(line))
+            continue
+        }
+        out.append(encodeLocalLinkSpaces(line))
+    }
+    if !carouselFence.isEmpty { flushCarousel() }
+    return out.joined(separator: "\n")
+}

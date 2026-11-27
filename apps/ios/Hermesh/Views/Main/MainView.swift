@@ -9,11 +9,14 @@ import os
 /// darkest layer; the page rises above it as a lighter card that fades back.
 struct MainView: View {
     @Environment(AppModel.self) private var model
+    @State private var screenWidth: CGFloat = 0
 
     var body: some View {
         @Bindable var model = model
         SideMenu(model: model, open: $model.drawerOpen, panAnywhere: model.path.isEmpty)
+            .environment(\.screenWidth, screenWidth)
             .ignoresSafeArea(edges: model.isDemo ? [.top, .horizontal] : .all)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { screenWidth = $0 }
             // Over the menu and the page alike: a session archived from the menu says so where it can be seen.
             .overlay(alignment: .bottom) {
                 if let t = model.toast {
@@ -671,6 +674,8 @@ extension EnvironmentValues {
     var barsOnTheSide: Bool {
         if #available(iOS 27.1, *) { toolbarVerticalEdge != nil } else { false }
     }
+    /// Full hardware screen width of the root container, used to align split boundaries with iPhone Duo's center fold.
+    @Entry var screenWidth: CGFloat = 0
 }
 
 /// Beside the expanded menu, in the menu button's place on a root page: the page takes the menu's room, and the menu

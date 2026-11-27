@@ -2,6 +2,8 @@
 // takes no clicks, drawn "lighter". Speeds are per frame at 60fps and lives in frames; a particle
 // fades in over its first sixth and out over its last 30%. Nothing at all under reduced motion.
 
+import { isWindowHidden, onWindowHiddenChange } from "../visibility";
+
 type Shape = "dot" | "bar" | "ring";
 
 type P = {
@@ -43,6 +45,10 @@ const pick = <T>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 let canvas: HTMLCanvasElement | null = null;
 let ctx: CanvasRenderingContext2D | null = null;
 let root: HTMLElement | null = null;
+let rootRO: ResizeObserver | null = null;
+let cachedW = 0;
+let cachedH = 0;
+let ambColor = "#ffffff";
 let ps: P[] = [];
 let amb: Ambient[] = [];
 let ambient = false;
@@ -58,16 +64,18 @@ export const aurora = () => [css("--aurora-0"), css("--aurora-1"), css("--aurora
 
 function size(): [number, number] {
   if (!canvas || !root || !ctx) return [0, 0];
-  const w = root.clientWidth;
-  const h = root.clientHeight;
+  const w = cachedW || root.clientWidth;
+  const h = cachedH || root.clientHeight;
   const d = window.devicePixelRatio || 1;
-  if (canvas.width !== Math.round(w * d) || canvas.height !== Math.round(h * d)) {
-    canvas.width = Math.round(w * d);
-    canvas.height = Math.round(h * d);
+  const pw = Math.round(w * d);
+  const ph = Math.round(h * d);
+  if (canvas.width !== pw || canvas.height !== ph) {
+    canvas.width = pw;
+    canvas.height = ph;
     canvas.style.width = `${w}px`;
     canvas.style.height = `${h}px`;
+    ctx.setTransform(d, 0, 0, d, 0, 0);
   }
-  ctx.setTransform(d, 0, 0, d, 0, 0);
   return [w, h];
 }
 
@@ -107,7 +115,7 @@ function tick(t: number) {
   ctx.clearRect(0, 0, w, h);
   ctx.globalCompositeOperation = "lighter";
   if (ambient) {
-    const c = css("--amb") || "#ffffff";
+    const c = ambColor;
     for (const p of amb) {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
@@ -154,11 +162,11 @@ function tick(t: number) {
   });
   ps.push(...born);
   ctx.globalAlpha = 1;
-  if ((ps.length || ambient) && !document.hidden) raf = requestAnimationFrame(tick);
+  if ((ps.length || ambient) && !isWindowHidden()) raf = requestAnimationFrame(tick);
 }
 
 function run() {
-  if (raf || still() || !ctx) return;
+  if (raf || still() || !ctx || isWindowHidden()) return;
   last = 0;
   raf = requestAnimationFrame(tick);
 }
@@ -172,21 +180,41 @@ function at(el: Element): [number, number, number] {
 
 const particle = (o: Partial<P> & Pick<P, "x" | "y" | "z" | "c" | "s" | "life">): P => ({ vx: 0, vy: 0, g: 0, drag: 1, r: 0, vr: 0, l: 0, age: 0, wait: 0, ...o });
 
-document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && (ps.length || ambient)) run();
-});
+if (typeof document !== "undefined") {
+  onWindowHiddenChange((hidden) => {
+    if (hidden) {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+    } else if (ps.length || ambient) {
+      run();
+    }
+  });
+}
 
 export const fx = {
   /** The canvas to draw on, over root (the first run's window); null when it goes. */
   attach(c: HTMLCanvasElement | null, r: HTMLElement | null) {
+    rootRO?.disconnect();
+    rootRO = null;
     canvas = c;
     root = r;
     ctx = c?.getContext("2d") ?? null;
+    cachedW = r?.clientWidth ?? 0;
+    cachedH = r?.clientHeight ?? 0;
+    if (r && typeof ResizeObserver === "function") {
+      rootRO = new ResizeObserver(() => {
+        cachedW = r.clientWidth;
+        cachedH = r.clientHeight;
+      });
+      rootRO.observe(r);
+    }
     if (!c) {
       this.reset();
       ambient = false;
       if (raf) cancelAnimationFrame(raf);
       raf = 0;
+    } else {
+      ambColor = css("--amb") || "#ffffff";
     }
   },
   /** Runs f after ms, unless the page changes first (reset). */
@@ -202,8 +230,11 @@ export const fx = {
   /** 34 white lights that rise slowly behind the first run (§5.2). */
   ambient(on: boolean) {
     ambient = on && !still();
-    if (ambient && !amb.length) {
-      amb = Array.from({ length: 34 }, () => ({ x: rnd(0, 720), y: rnd(0, 660), vx: rnd(-0.06, 0.06), vy: rnd(-0.2, -0.05), z: rnd(0.6, 1.5), a: rnd(0.15, 0.5), t: rnd(0, 6) }));
+    if (ambient) {
+      ambColor = css("--amb") || "#ffffff";
+      if (!amb.length) {
+        amb = Array.from({ length: 34 }, () => ({ x: rnd(0, 720), y: rnd(0, 660), vx: rnd(-0.06, 0.06), vy: rnd(-0.2, -0.05), z: rnd(0.6, 1.5), a: rnd(0.15, 0.5), t: rnd(0, 6) }));
+      }
     }
     run();
   },

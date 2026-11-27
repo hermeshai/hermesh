@@ -9,8 +9,18 @@ import SwiftProtobuf
 public typealias Session = Hermesh_Session_V1_Session
 public typealias SessionEvent = Hermesh_Session_V1_SessionEvent
 public typealias SessionStatus = Hermesh_Session_V1_SessionStatus
+public typealias GitState = Hermesh_Session_V1_GitState
+public typealias GitStatus = Hermesh_Session_V1_GitStatus
 public typealias Question = Hermesh_Session_V1_Question
 public typealias SessionCursor = Hermesh_Session_V1_SessionCursor
+
+public enum GitMark: String, Equatable, Sendable {
+    case pushed, merged
+}
+
+public enum DiffBlock: String, Equatable, Sendable {
+    case add, del, empty
+}
 
 /// A timestamp's date; nil for an unset timestamp.
 public func dateOf(_ ts: Google_Protobuf_Timestamp, set: Bool = true) -> Date? {
@@ -67,6 +77,72 @@ public extension Session {
     var herParentID: String? {
         lineage.relationship == herAgent && !lineage.parentSessionID.isEmpty ? lineage.parentSessionID : nil
     }
+
+    /// The sidebar row's delivered-code mark: shown only when a settled session's
+    /// code has been pushed to a remote or merged into the base branch.
+    var gitMark: GitMark? {
+        guard !needsAttention, !isActive, status != .unspecified, hasGitStatus else { return nil }
+        return switch gitStatus.state {
+        case .pushed: .pushed
+        case .merged: .merged
+        default: nil
+        }
+    }
+}
+
+/// GitHub-style 5-square proportional diff bar for +insertions / -deletions.
+public func diffBarBlocks(insertions: UInt32, deletions: UInt32) -> [DiffBlock] {
+    let ins = Int(insertions), del = Int(deletions)
+    let total = ins + del
+    if total == 0 { return Array(repeating: .empty, count: 5) }
+    let addCount: Int
+    let delCount: Int
+    if total < 5 {
+        addCount = ins
+        delCount = del
+    } else {
+        var a = Int((Double(ins) / Double(total) * 5.0).rounded(.toNearestOrAwayFromZero))
+        if ins > 0 && a == 0 { a = 1 }
+        if del > 0 && a == 5 { a = 4 }
+        addCount = a
+        delCount = 5 - a
+    }
+    var out = Array(repeating: DiffBlock.add, count: addCount) + Array(repeating: DiffBlock.del, count: delCount)
+    if out.count < 5 { out.append(contentsOf: Array(repeating: .empty, count: 5 - out.count)) }
+    return out
+}
+
+/// Settled non-archived sessions whose local Git status may have advanced
+/// outside Hermesh (e.g. manual commit/push/merge in terminal or IDE).
+public func sessionsNeedingGitRefresh(
+    _ sessions: [Session],
+    selectedID: String? = nil,
+    unreachable: Set<String> = [],
+    limit: Int = 20
+) -> [String] {
+    guard limit > 0 else { return [] }
+    func eligible(_ s: Session) -> Bool {
+        if s.isActive || s.status == .archived || s.status == .unspecified || unreachable.contains(s.machineID) {
+            return false
+        }
+        let st = s.hasGitStatus ? s.gitStatus.state : .unspecified
+        return st == .unspecified || st == .dirty || st == .unpushed || st == .pushed
+    }
+    var out: [String] = []
+    var seen: Set<String> = []
+    if let selectedID, let sel = sessions.first(where: { $0.sessionID == selectedID }), eligible(sel) {
+        seen.insert(sel.sessionID)
+        out.append(sel.sessionID)
+    }
+    for s in sessions {
+        if out.count >= limit { break }
+        if seen.contains(s.sessionID) { continue }
+        if eligible(s) {
+            seen.insert(s.sessionID)
+            out.append(s.sessionID)
+        }
+    }
+    return out
 }
 
 /// The list with changes applied (a page, or what a watch pushed): each

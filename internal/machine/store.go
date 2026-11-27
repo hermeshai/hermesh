@@ -15,7 +15,8 @@ import (
 	"github.com/hermeshai/hermesh/pkg/metrics"
 )
 
-var migrations = []string{`
+var migrations = []sqlitedb.Migration{
+	{Version: 1, Description: "initial_machine_schema", SQL: `
 CREATE TABLE kv (key TEXT PRIMARY KEY, value BLOB NOT NULL);
 CREATE TABLE projects (
   project_id TEXT PRIMARY KEY,
@@ -62,24 +63,33 @@ CREATE TABLE idempotency (
   PRIMARY KEY (client_id, key)
 );
 CREATE TABLE grants_seen (grant_id TEXT PRIMARY KEY, version INTEGER NOT NULL);
-`, `
+`},
+	{Version: 2, Description: "add_workspace_column", SQL: `
 ALTER TABLE projects ADD COLUMN workspace INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE sessions ADD COLUMN workspace INTEGER NOT NULL DEFAULT 1;
-`, `
+`},
+	{Version: 3, Description: "add_session_question_timeout", SQL: `
 ALTER TABLE sessions ADD COLUMN question_timeout INTEGER NOT NULL DEFAULT -1;
-`, `
+`},
+	{Version: 4, Description: "add_project_description", SQL: `
 ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT '';
-`, `
+`},
+	{Version: 5, Description: "add_session_result", SQL: `
 ALTER TABLE sessions ADD COLUMN result TEXT NOT NULL DEFAULT '';
-`, `
+`},
+	{Version: 6, Description: "drop_session_preset", SQL: `
 ALTER TABLE sessions DROP COLUMN preset;
-`, `
+`},
+	{Version: 7, Description: "add_session_title", SQL: `
 ALTER TABLE sessions ADD COLUMN title TEXT NOT NULL DEFAULT '';
-`, `
+`},
+	{Version: 8, Description: "index_sessions_by_update", SQL: `
 CREATE INDEX sessions_by_update ON sessions(updated_at, session_id);
-`, `
+`},
+	{Version: 9, Description: "add_project_agents", SQL: `
 ALTER TABLE projects ADD COLUMN agents TEXT NOT NULL DEFAULT '';
-`, `
+`},
+	{Version: 10, Description: "create_turn_usage", SQL: `
 CREATE TABLE turn_usage (
   session_id TEXT NOT NULL,
   turn INTEGER NOT NULL,
@@ -89,7 +99,8 @@ CREATE TABLE turn_usage (
   PRIMARY KEY (session_id, turn)
 );
 CREATE INDEX turn_usage_by_end ON turn_usage(ended_at);
-`, `
+`},
+	{Version: 11, Description: "create_deleted_sessions", SQL: `
 CREATE TABLE deleted_sessions (
   session_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
@@ -98,7 +109,8 @@ CREATE TABLE deleted_sessions (
   grant_id TEXT NOT NULL,
   deleted_at INTEGER NOT NULL
 );
-`, `
+`},
+	{Version: 12, Description: "create_tool_outputs", SQL: `
 CREATE TABLE tool_outputs (
   session_id TEXT NOT NULL,
   call_id TEXT NOT NULL,
@@ -106,17 +118,22 @@ CREATE TABLE tool_outputs (
   data BLOB NOT NULL,
   PRIMARY KEY (session_id, call_id)
 );
-`, `
+`},
+	{Version: 13, Description: "add_session_effort_and_speed", SQL: `
 ALTER TABLE sessions ADD COLUMN effort TEXT NOT NULL DEFAULT '';
 ALTER TABLE sessions ADD COLUMN speed INTEGER NOT NULL DEFAULT 0;
-`, `
+`},
+	{Version: 14, Description: "add_turn_usage_started_at", SQL: `
 ALTER TABLE turn_usage ADD COLUMN started_at INTEGER NOT NULL DEFAULT 0;
-`, `
+`},
+	{Version: 15, Description: "add_session_conversation", SQL: `
 ALTER TABLE sessions ADD COLUMN conversation TEXT NOT NULL DEFAULT '';
-`, `
+`},
+	{Version: 16, Description: "add_session_agent_model_and_effort", SQL: `
 ALTER TABLE sessions ADD COLUMN agent_model TEXT NOT NULL DEFAULT '';
 ALTER TABLE sessions ADD COLUMN agent_effort TEXT NOT NULL DEFAULT '';
-`, `
+`},
+	{Version: 17, Description: "create_work_metrics_tables", SQL: `
 DROP INDEX turn_usage_by_end;
 DROP TABLE turn_usage;
 DELETE FROM kv WHERE key = 'turn_usage_backfilled';
@@ -161,9 +178,11 @@ CREATE TABLE work_hours (
   seq INTEGER NOT NULL
 );
 CREATE INDEX work_hours_by_seq ON work_hours(seq);
-`, `
+`},
+	{Version: 18, Description: "clear_project_agents", SQL: `
 UPDATE projects SET agents = '';
-`}
+`},
+}
 
 // Store manages machine-level KV, projects, grant replay protection, and work
 // counts. Session runtime state and events live in internal/kernel/store.
@@ -195,6 +214,13 @@ func OpenStore(path string) (*Store, error) {
 		return nil, err
 	}
 	walOnce.Do(func() {
+		metrics.Default.GaugeFunc("hermesh_machine_db_bytes", func() int64 {
+			st, err := os.Stat(path)
+			if err != nil {
+				return 0
+			}
+			return st.Size()
+		})
 		metrics.Default.GaugeFunc("hermesh_machine_wal_bytes", func() int64 {
 			st, err := os.Stat(path + "-wal")
 			if err != nil {

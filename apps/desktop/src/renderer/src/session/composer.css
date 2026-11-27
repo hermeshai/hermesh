@@ -20,7 +20,7 @@
 .th-todo-row.in_progress .th-todo-ic{color:var(--l2)}
 .th-todo-row.completed .th-todo-ic{color:var(--accent-t)}
 .th-todo-row.failed .th-todo-ic{color:var(--red)}
-.th-todo-spin{animation:spin 3.2s linear infinite}
+.th-todo-spin{display:inline-flex;will-change:transform;transform-origin:center;animation:spin 3.2s linear infinite}
 .th-todo-text{flex:1;min-width:0;overflow-wrap:anywhere}
 .wake-h{max-width:100%;min-width:0;cursor:pointer}
 .wake-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -28,6 +28,9 @@
 
 /* ---------- The composer (docs/thread-composer.md §4): Her's box (her.css .cmp), the line under it ---------- */
 .th{--pill:var(--win);--pill-bd:var(--menu-bd)}
+@media (prefers-color-scheme:light){
+  :root[data-light-style="soft"] .th{--pill:#ffffff;--pill-bd:rgba(32,33,39,.10)}
+}
 @media (prefers-color-scheme:dark){
   .th{--pill:var(--win2)}
   :root[data-dark-style="black"] .th{--pill:#15151a;--pill-bd:rgba(255,255,255,.08)}
@@ -43,8 +46,10 @@
 @keyframes th-work-in{from{opacity:0}to{opacity:1}}
 /* A session at work, at the end of its conversation: the mark, what it does, for how long. One more row of it: as far
    under the last one as rows are apart (app.css .tr), starting where they start. */
-.th-work{display:flex;align-items:center;gap:8px;font-size:14px;line-height:19px;color:var(--l2);padding:var(--sp-2) 0 0}
-.th-work .el{font-size:12.5px;color:var(--l3);font-variant-numeric:tabular-nums}
+.th-work{display:flex;align-items:flex-start;gap:8px;min-width:0;font-size:14px;line-height:19px;color:var(--l2);padding:var(--sp-2) 0 0}
+.th-work>.mark,.th-work>.conn-i,.th-work>.conn-ring{flex:none;margin-top:.5px}
+.th-work-t,.th-work .conn-t{min-width:0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+.th-work .el{flex:none;white-space:nowrap;font-size:12.5px;line-height:19px;color:var(--l3);font-variant-numeric:tabular-nums}
 .th-ask h1{margin:0;max-width:var(--conversation-width);font-size:28px;line-height:1.3;font-weight:var(--font-weight-semibold);letter-spacing:-.01em;text-wrap:balance}
 .th-pick{display:inline-flex;align-items:center;gap:4px;max-width:100%;vertical-align:bottom;border:0;padding:0 2px;margin:0 2px;background:none;color:inherit;font:inherit;letter-spacing:inherit;border-bottom:1.5px solid var(--l4);border-radius:0;cursor:pointer}
 .th-pick:hover,.th-pick[aria-expanded="true"]{border-bottom-color:var(--l2)}
@@ -76,10 +81,23 @@
 .th-off{width:6px;height:6px;border-radius:50%;background:var(--l4);flex:none}
 .th-where{height:22px;margin-left:10px;display:inline-flex;align-items:center;gap:5px;color:var(--l3);font-size:12.5px;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .th-where .ic{width:13px;height:13px;flex:none}
-/* Over a new session's box: where it works, and on which branch. */
+/* Over a new session's box: where it works (one click toggles, hover explains), and on which branch. */
 .th-place{display:flex;align-items:center;gap:2px;min-width:0;padding:0 10px;margin-bottom:-4px}
 .th-place .mb{height:26px;padding:0 7px;gap:5px}
 .th-place .mb .lbl{max-width:280px}
+.th-wt-wrap{position:relative;display:inline-flex;flex:none}
+.th-wtbtn:active{transform:scale(.965)}
+.th-wt-slot{display:inline-flex;align-items:center;gap:5px;animation:th-wt-in .16s var(--ease-out, cubic-bezier(.2,0,0,1))}
+@keyframes th-wt-in{from{opacity:.3;transform:translateY(3px)}to{opacity:1;transform:none}}
+.th-swap{display:inline-flex;color:var(--l3);transition:transform .32s cubic-bezier(.34,1.45,.64,1),color .14s}
+.th-swap .ic{width:11.5px;height:11.5px;stroke-width:1.6}
+.th-wtbtn:hover .th-swap{color:var(--l2)}
+.th-wttip{position:absolute;left:0;bottom:calc(100% + 6px);z-index:25;padding:5px 9px;border-radius:7px;background:var(--win3, #2c2c31);color:var(--l1);box-shadow:0 0 0 .5px var(--menu-bd),0 6px 18px rgba(0,0,0,.22);font-size:11.5px;line-height:1.45;white-space:nowrap;pointer-events:none;opacity:0;transform:translateY(3px);transition:opacity .15s ease,transform .15s ease}
+@media (prefers-color-scheme:light){.th-wttip{background:var(--win)}}
+.th-wttip b{font-weight:var(--font-weight-semibold)}
+.th-wttip span{color:var(--l2);margin-left:5px}
+.th-wt-wrap:hover .th-wttip,.th-wt-wrap:has(:focus-visible) .th-wttip{opacity:1;transform:none;transition-delay:.18s}
+@media (prefers-reduced-motion:reduce){.th-wt-slot{animation:none}.th-swap,.th-wttip{transition:none}}
 .th-br b,.th-mono{font-family:var(--mono);font-weight:var(--font-weight-normal);font-size:12px}
 .th-br b{color:var(--l1)}
 .th-slash{display:flex;gap:6px;flex-wrap:wrap;padding:6px 2px 0}
@@ -157,8 +175,7 @@
 .bgc .srow{align-items:center;padding:7px 9px;font-size:13.5px;color:var(--l1)}
 .bgc .srow .sdot{width:6px;height:6px}
 .bgc .stitle.run{flex:0 1 auto;margin-right:auto}
-.bgc .stitle .shine::before{color:var(--l1)}
-.bgc .stitle .shine.band::before{color:var(--l3)}
+.bgc .stitle .shine{color:var(--l1)}
 .bgc .smeta{font-size:12px;line-height:16px}
 .bgc .smeta:empty{display:none}
 .bgc .smeta.w{color:var(--orange)}

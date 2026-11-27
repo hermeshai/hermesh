@@ -234,7 +234,13 @@ final class AppModel {
     var path: [Route] = []
     /// The root page scrolled far enough that its title is small.
     var rootTitleSmall = false
-    var drawerOpen = false
+    var drawerOpen = false {
+        didSet {
+            if drawerOpen && !oldValue {
+                Task { await refreshGitStatus() }
+            }
+        }
+    }
     /// How a wide screen is shared (regular width, wider than tall): the menu stands beside the page, expanded
     /// or as its rail (docs/iphone-app.md). Nil on any other screen.
     var wide: WideLayout?
@@ -318,6 +324,8 @@ final class AppModel {
     @ObservationIgnored private var foregroundAt: Date?
     @ObservationIgnored private var loggedFirstReset = false
     @ObservationIgnored private var knownMachineStatus: [String: Hermesh_Machine_V1_MachineStatus] = [:]
+    @ObservationIgnored private var gitRefreshBusy = false
+    @ObservationIgnored private var gitRefreshLast = Date.distantPast
 
     // MARK: Lifecycle
 
@@ -374,6 +382,7 @@ final class AppModel {
             isBackgroundPaused = false
             begin()
             her.resume()
+            Task { await refreshGitStatus() }
             return
         }
         // Short app switch (< 15 s): streams and Go core stayed live during the grace window!
@@ -381,6 +390,7 @@ final class AppModel {
             flushNetworkChange()
             begin()
             her.resume()
+            Task { await refreshGitStatus() }
             appConnLog.info("app.foreground instant_grace=true")
             return
         }
@@ -405,6 +415,7 @@ final class AppModel {
             flushNetworkChange()
             begin()
             her.resume()
+            Task { await refreshGitStatus() }
             Task { await askForNotifications() }
         }
     }
@@ -756,6 +767,28 @@ final class AppModel {
         heldSessions = mergeSessions(heldSessions, page.sessions)
     }
 
+    /// Refreshes local Git delivery state for settled sessions whose worktrees may have
+    /// been committed, pushed, or merged outside Hermesh since their last turn ended.
+    func refreshGitStatus(force: Bool = false) async {
+        guard phase == .ready, active, let api, !gitRefreshBusy else { return }
+        let now = Date()
+        guard force || now.timeIntervalSince(gitRefreshLast) >= 1.5 else { return }
+        let ids = sessionsNeedingGitRefresh(
+            heldSessions,
+            selectedID: chosenSession,
+            unreachable: Set(unreachable.map(\.machineID)),
+            limit: 20
+        )
+        guard !ids.isEmpty else { return }
+        gitRefreshBusy = true
+        gitRefreshLast = now
+        defer { gitRefreshBusy = false }
+        if let res = try? await api.refreshGitStatus(ids), !res.sessions.isEmpty {
+            heldSessions = mergeSessions(heldSessions, res.sessions)
+            if watched { saveSoon() }
+        }
+    }
+
     private func watch() async {
         while !Task.isCancelled {
             guard let api else { return }
@@ -837,6 +870,9 @@ final class AppModel {
         if r.reset {
             let readNow = Set(machines.filter { $0.online && $0.unreachable.isEmpty && !$0.syncing }.map(\.machineID))
             heldSessions = mergeSessions(resetSessions(heldSessions, r.sessions, next: r.hasNext ? r.next : nil, readNow: readNow), [], deleted: r.deletedSessionIds)
+            if active {
+                Task { await refreshGitStatus(force: true) }
+            }
         } else if !r.sessions.isEmpty || !r.deletedSessionIds.isEmpty {
             heldSessions = mergeSessions(heldSessions, r.sessions, deleted: r.deletedSessionIds)
         }
@@ -919,7 +955,7 @@ final class AppModel {
     func senderName(_ clientID: String) -> String {
         if clientID == "owner" { return String(localized: "You") }
         if let c = clients.first(where: { $0.clientID == clientID }), !c.herMachineID.isEmpty { return "Her" }
-        return clientLabel(clientID)
+        return AgentLogo.name(clientLabel(clientID))
     }
 
     /// A session's second line in lists: who sent the work to which coding agent, and the project.
@@ -1263,6 +1299,7 @@ final class AppModel {
     func addProject(_ r: Hermesh_Local_V1_AddProjectRequest) async throws {
         signer.expect(.types([SigningPreview.adminCommand]))
         try await api?.addProject(r)
+        SessionChoices.forgetWorktree(machine: r.machineID, project: r.projectID)
     }
 
     func createFolder(machine: String, parent: String, name: String, gitInit: Bool) async throws {
@@ -1273,6 +1310,7 @@ final class AppModel {
     func removeProject(machine: String, project: String) async throws {
         signer.expect(.types([SigningPreview.adminCommand]))
         try await api?.removeProject(machine: machine, project: project)
+        SessionChoices.forgetWorktree(machine: machine, project: project)
     }
 
     /// Adds p again, working another way (adding again changes it). A project is for every agent provider

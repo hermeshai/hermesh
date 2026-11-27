@@ -394,13 +394,15 @@ the window (§3.3) goes into it.
 - **信息面板** (ⓘ, the app's `info` glyph; it was `infoCard`, too like the panel's own): the environment
   and context cards. It cannot be shown while the side panel is open: the button is greyed, ⌥⌘0 does
   nothing, and opening the panel puts the cards away (as before).
-- **侧边面板** (`panelRight`, the side bar's glyph mirrored): shows and puts away the panel. The 文件 button
-  and the panel's own close button are gone.
+- **侧边面板** (`panelRight`, the side bar's glyph mirrored): shows the panel from the toolbar's right
+  end while closed; while open (including maximized), it moves to the right end of the panel's strip
+  after ⤢ so opening and putting away stay at the same corner of the window. The 文件 button is gone.
 
 **The panel** (`session/files/SidePanel.tsx`, state in `panel.ts`):
 
 - The strip: one tab per thing open (kind glyph, name, close), ＋ for a new tab (a native menu of
-  kinds: today only 项目文件), and ⤢ to take the window but the side bar. Under it, the tab's own bar.
+  kinds: today only 项目文件), ⤢ to take the window but the side bar, and the panel's toggle at its right
+  end to put it away. Under it, the tab's own bar.
 - Each session keeps its tabs. Opened empty, the panel starts with 项目文件; the last tab closed, it goes.
 - **Files tab**: a file (code at its lines, Markdown and SVG as they look or their source, a picture, a
   PDF) with the folder's tree beside it, shown or hidden by the bar's tree button; hidden when a reply
@@ -428,8 +430,8 @@ closed and the panel back with 项目文件; the page's view hidden under the Li
 
 ## 15. The iPhone, narrow and wide (2026-11-27)
 
-Prototype: [side-panel-iphone-demo.html](side-panel-iphone-demo.html). The same ideas as the Mac's side panel (§14),
-in the iPhone's ways, by the screen it has (as the menu is, docs/iphone-app.md), not by the device.
+Prototypes: [side-panel-iphone-demo.html](side-panel-iphone-demo.html), [side-panel-iphone-v2-demo.html](side-panel-iphone-v2-demo.html).
+The same ideas as the Mac's side panel (§14), in the iPhone's ways, by the screen it has (as the menu is, docs/iphone-app.md), not by the device.
 
 **A narrow screen** (an iPhone; iPhone Duo upright or closed): pages are pushed.
 
@@ -446,14 +448,24 @@ in the iPhone's ways, by the screen it has (as the menu is, docs/iphone-app.md),
 **A wide screen** (regular width, on its side: iPhone Duo open, a Pro Max turned): the session's side panel
 (`SessionSidePanel`), beside the conversation, as on the Mac.
 
-- The bar's 侧边面板 button (`sidebar.right`) beside ⋯ shows and puts it away; opening it shrinks the menu to its rail
-  (`menuRail`, as `WidenPageButton` does) to give it room. Opened empty, it starts with 项目文件.
-- A strip of glass tabs that scrolls sideways (the one in front has its close button), ＋ (a system menu of kinds:
-  today 项目文件), and 放大 / 缩小: enlarged, the panel takes the page and the conversation steps aside.
-- Under the strip the tab's own bar: a file's path, 源码, the tree's button and ⋯; a page's address and ⋯; 项目文件's
-  folder. A files tab's tree is a column on its right, hidden at first; a file picked there opens in the tab.
-- A reply's file, ⋯ › 项目文件, and a folder tag open tabs here instead of pushing pages. The tabs and the tree are
-  the session's (`SessionFilesModel`), kept while its page is away.
+- **Hiding and showing**: the bar's 侧边面板 button (`sidebar.right`, switching to the panel-hide glyph when open)
+  shows and puts away the panel while keeping its open tabs; opening it shrinks the menu to its rail (`menuRail`, as
+  `WidenPageButton` does) to give it room, and an empty panel starts with 项目文件. Swiping right from the panel's
+  leading edge puts it away too.
+- **iPhone Duo (`barsOnTheSide`)**: the split between the conversation and the side panel aligns with the physical
+  center fold (`screenWidth / 2`). Window and contextual panel controls move into the system's right vertical bar
+  (`ToolbarItemGroup(placement: .topBarPinnedTrailing)` with `.axisBehavior(.verticalPreferred)`): a pinned window
+  capsule (收起侧边面板, 放大 / 缩小), a contextual tab capsule (＋ 新建标签页, Markdown / SVG 源码), and a single
+  sectioned `⋯` menu (the active file's 分享… and 复制路径 over 当前会话's items, avoiding duplicate `⋯` buttons).
+  The panel's own top is then a single slim strip of glass tabs.
+- **Other wide screens** (a Pro Max turned, bars along the top): a compact glass capsule at the trailing end of the
+  tab strip holds ＋, 放大 / 缩小 and 收起侧边面板 (so an enlarged panel still hides in one tap), beside 源码 and ⋯.
+- **Unified bottom tree drawer**: instead of a 200 pt column beside the file (which crushes code and deep folder names
+  on a phone), a files tab gives the file the panel's full width and places the same `SessionFileDrawerBar` at its
+  foot; pulling it up raises `SessionPanelDrawer` within the side panel (medium and large detents by dragging the
+  grabber, `⌄` to close), and a file picked there opens in the tab and closes the drawer.
+- A reply's file, ⋯ › 项目文件, and a folder tag open tabs (or the drawer) here instead of pushing pages. The tabs and
+  the tree are the session's (`SessionFilesModel`), kept while its page is away.
 
 **The owner's own files**: a `.html`, `.svg`, Markdown, code or text sent with a prompt opens as a reply's would: its
 page (`SessionAttachmentPage`, named with 附件 · its size) on a narrow screen, a tab on a wide one. A page runs on its

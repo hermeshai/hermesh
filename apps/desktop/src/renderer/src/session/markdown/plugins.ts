@@ -27,10 +27,13 @@ export function contentExtensions() {
     if (node.type === "blockquote") {
       const first = node.children[0];
       const text = first?.type === "paragraph" ? first.children[0] : undefined;
-      const mark = text?.type === "text" ? /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:\n|$)/.exec(text.value) : null;
+      const mark = text?.type === "text" ? /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:[ \t]+|\n|$)/i.exec(text.value) : null;
       if (mark && text?.type === "text") {
-        text.value = text.value.slice(mark[0].length);
-        node.data = { ...node.data, hProperties: { className: ["md-callout"], "data-kind": mark[1].toLowerCase() } };
+        const rest = text.value.slice(mark[0].length);
+        if (rest.length > 0 || (first?.type === "paragraph" && first.children.length > 1) || node.children.length > 1) {
+          text.value = rest;
+          node.data = { ...node.data, hProperties: { className: ["md-callout"], "data-kind": mark[1]!.toLowerCase() } };
+        }
       }
     }
     const directive = node as unknown as { type: string; name: string; attributes?: Record<string, string>; data?: Record<string, unknown> };

@@ -27,8 +27,18 @@ export function setGatewayPaused(on: boolean) {
 }
 
 const calls = new Map<string, number>();
+let bytesUp = 0;
+let bytesDown = 0;
+let streamErrors = 0;
 /** The calls forwarded so far, by method (for tests: idle windows make none, docs/state-sync.md §8). */
 export const forwardedCalls = () => Object.fromEntries(calls);
+export const gatewayPerfStats = () => ({
+  openUpstream: open,
+  bytesUp,
+  bytesDown,
+  streamErrors,
+  calls: Object.fromEntries(calls),
+});
 
 export function allowed(apiPath: string): boolean {
   const m = /^\/([\w.]+)\/(\w+)$/.exec(apiPath);
@@ -47,6 +57,7 @@ export async function forward(req: Request, apiPath: string, socket: string, cor
   const method = apiPath.slice(apiPath.lastIndexOf("/") + 1);
   calls.set(method, (calls.get(method) ?? 0) + 1);
   const body = Buffer.from(await req.arrayBuffer());
+  bytesUp += body.length;
   const headers: Record<string, string> = { "content-length": String(body.length) };
   for (const h of forwardedHeaders) {
     const v = req.headers.get(h);
@@ -70,7 +81,12 @@ export async function forward(req: Request, apiPath: string, socket: string, cor
     };
     up = http.request({ socketPath: socket, path: apiPath, method: "POST", headers }, (res) => {
       down = res;
-      res.on("close", finish);
+      const sock = res.socket;
+      const startRead = sock?.bytesRead ?? 0;
+      res.on("close", () => {
+        bytesDown += Math.max(0, (sock?.bytesRead ?? startRead) - startRead);
+        finish();
+      });
       const out = new Headers(cors);
       for (const [k, v] of Object.entries(res.headers)) {
         if (typeof v === "string" && (k.startsWith("connect-") || k === "content-type" || k.startsWith("grpc-"))) out.set(k, v);
@@ -80,6 +96,7 @@ export async function forward(req: Request, apiPath: string, socket: string, cor
     });
     active.add(drop);
     up.on("error", (err) => {
+      streamErrors++;
       finish();
       resolve(new Response(JSON.stringify({ code: "unavailable", message: `hermeshd: ${err.message}` }), {
         status: 503,

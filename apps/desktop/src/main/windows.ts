@@ -3,9 +3,10 @@ import { app, BrowserWindow, screen, session, shell, type WebContents } from "el
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { usesSidebarMaterial, windowBackgroundOf } from "../shared/appearance";
 import { consoleURL, inConsole, opensOutside } from "../shared/herConsole";
 import { i18n } from "../shared/i18n";
-import { preferences } from "./notify";
+import { activePalette, clearAppearancePreview, preferences } from "./notify";
 import { platform } from "./platform";
 
 export const origin = "app://hermesh";
@@ -61,21 +62,46 @@ function secure(win: BrowserWindow) {
     return { action: "deny" };
   });
   // Its titles go grey while another window has the focus, as macOS titles do.
-  const focus = () => wc.send("window-focus", win.isFocused());
+  const focus = () => !win.isDestroyed() && wc.send("window-focus", win.isFocused());
+  const visible = () => !win.isDestroyed() && wc.send("window-visible", win.isVisible() && !win.isMinimized());
   win.on("focus", focus);
   win.on("blur", focus);
-  wc.on("did-finish-load", focus);
+  win.on("show", visible);
+  win.on("hide", visible);
+  win.on("minimize", visible);
+  win.on("restore", visible);
+  wc.on("did-finish-load", () => {
+    focus();
+    visible();
+  });
 }
 
 function webPreferences() {
+  const p = preferences();
   return {
     preload: path.join(import.meta.dirname, "../preload/index.cjs"),
     sandbox: true,
     contextIsolation: true,
     nodeIntegration: false,
     spellcheck: false,
-    additionalArguments: [`--hermesh-user=${os.userInfo().username}`, `--hermesh-version=${app.getVersion()}`, `--hermesh-lang=${language()}`, `--hermesh-material=${platform.material ? 1 : 0}`, `--hermesh-appearance=${preferences().appearance}`],
+    additionalArguments: [
+      `--hermesh-user=${os.userInfo().username}`,
+      `--hermesh-version=${app.getVersion()}`,
+      `--hermesh-lang=${language()}`,
+      `--hermesh-material=${platform.material ? 1 : 0}`,
+      `--hermesh-appearance=${p.appearance}`,
+      `--hermesh-preferred-light=${p.preferredLight ?? "light"}`,
+      `--hermesh-preferred-dark=${p.preferredDark ?? "dark"}`,
+    ],
   };
+}
+
+export function syncWindowsAppearance() {
+  const palette = activePalette();
+  const glass = platform.material && usesSidebarMaterial(palette);
+  const bg = windowBackgroundOf(palette);
+  for (const w of [main, settings]) if (w && !w.isDestroyed()) platform.applyMaterial(w, glass, bg);
+  for (const w of auxiliary.values()) if (!w.isDestroyed()) w.setBackgroundColor(bg);
 }
 
 export function mainWindow(): BrowserWindow | undefined {
@@ -201,7 +227,10 @@ export function showSettings(tab?: string) {
   });
   secure(settings);
   settings.once("ready-to-show", () => settings?.show());
-  settings.on("closed", () => (settings = undefined));
+  settings.on("closed", () => {
+    settings = undefined;
+    clearAppearancePreview();
+  });
   settings.loadURL(page(`#settings${tab ? "/" + tab : ""}`));
 }
 

@@ -29,18 +29,19 @@ struct NeedsDeck: View {
                     if needs.count > 2 { edge(inset: 42, drop: 16, opacity: 0.42) }
                     if needs.count > 1 { edge(inset: 28, drop: 8, opacity: 0.72) }
                     ScrollView(.horizontal) {
-                        HStack(spacing: 0) {
+                        HStack(spacing: 12) {
                             ForEach(needs) { need in
                                 NeedCard(need: need, team: team, step: step)
-                                    .padding(.horizontal, 16)
                                     .containerRelativeFrame(.horizontal)
                             }
                         }
                         .scrollTargetLayout()
                     }
-                    .scrollTargetBehavior(.paging)
+                    .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
                     .scrollPosition(id: $front)
                     .scrollIndicators(.hidden)
+                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    .padding(.horizontal, 16)
                 }
                 // What shows of the cards further down: a tap brings the next one up.
                 if needs.count > 1 {

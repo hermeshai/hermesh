@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>工作目录切换 · Mac &amp; iPhone 设计对齐</title>
+<style>
+@font-face{font-family:"Google Sans Flex";src:url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-flex.ttf") format("truetype");font-style:oblique 0deg 10deg;font-weight:100 1000}
+@font-face{font-family:"Google Sans Code";src:url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-code.ttf") format("truetype");font-weight:300 800}
+:root{
+  --mac-font:"Google Sans Flex","Google Sans",system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+  --ios-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --mono:"Google Sans Code",ui-monospace,"SF Mono",Menlo,Monaco,monospace;
+  --ease:cubic-bezier(.2,0,0,1);
+  --spring:cubic-bezier(.34,1.45,.64,1);
+}
+[data-theme=light]{
+  --page:#e8eaf0;--page-fg:#1b1c22;--page-fg2:#62646f;--page-bd:rgba(0,0,0,.09);--page-btn:rgba(20,24,40,.07);--page-bar:rgba(244,245,248,.88);
+  --win:#fff;--win2:#f4f4f7;--win3:#ebebf0;
+  --ios-bg:#fbfbfc;--ios-sheet:#f4f4f6;--ios-group:#fff;
+  --l1:rgba(0,0,0,.86);--l2:rgba(0,0,0,.55);--l3:rgba(0,0,0,.32);--l4:rgba(0,0,0,.14);
+  --sep:rgba(0,0,0,.08);--fill:rgba(0,0,0,.048);--fill2:rgba(0,0,0,.08);--fill3:rgba(0,0,0,.12);
+  --accent:#3d5bff;--accent-t:#2d4ae6;--accent-bg:rgba(61,91,255,.10);
+  --pill:#fff;--pill-bd:rgba(0,0,0,.10);
+  --menu-bg:rgba(252,252,254,.92);--menu-sh:0 0 0 .5px rgba(0,0,0,.11),0 12px 32px rgba(10,20,50,.14),0 2px 6px rgba(10,20,50,.06);
+  --glass:rgba(250,250,252,.80);--glass-sh:0 0 0 .5px rgba(0,0,0,.10),0 10px 28px rgba(20,24,40,.10),0 2px 6px rgba(20,24,40,.05);
+  --plate:#fff;--plate-sh:0 0 0 .5px rgba(0,0,0,.08),0 1px 3px rgba(0,0,0,.12);
+  --slice-sh:0 0 0 .5px rgba(0,0,0,.14),0 10px 30px rgba(10,20,50,.09);
+  --hi:transparent;--lift:0 .5px 1px rgba(0,0,0,.05),0 2px 6px rgba(10,20,50,.05);--lift-f:0 .5px 1px rgba(0,0,0,.06),0 3px 10px rgba(10,20,50,.08);
+  --tip-bg:rgba(24,25,30,.92);--tip-fg:#f5f5f8;--tip-fg2:rgba(255,255,255,.62);
+}
+[data-theme=dark]{
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--page-bd:rgba(255,255,255,.09);--page-btn:rgba(255,255,255,.08);--page-bar:rgba(20,21,26,.88);
+  --win:#1e1e21;--win2:#29292d;--win3:#36363c;
+  --ios-bg:#000;--ios-sheet:#1c1c1f;--ios-group:#2a2a2e;
+  --l1:rgba(255,255,255,.90);--l2:rgba(255,255,255,.56);--l3:rgba(255,255,255,.34);--l4:rgba(255,255,255,.15);
+  --sep:rgba(255,255,255,.09);--fill:rgba(255,255,255,.055);--fill2:rgba(255,255,255,.09);--fill3:rgba(255,255,255,.15);
+  --accent:#4a66ff;--accent-t:#8fa2ff;--accent-bg:rgba(91,121,255,.16);
+  --pill:#29292d;--pill-bd:rgba(255,255,255,.12);
+  --menu-bg:rgba(36,36,40,.94);--menu-sh:0 0 0 .5px rgba(255,255,255,.12),0 14px 36px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.35);
+  --glass:rgba(32,32,36,.82);--glass-sh:0 0 0 .5px rgba(255,255,255,.11),0 10px 30px rgba(0,0,0,.52);
+  --plate:#3a3a40;--plate-sh:0 0 0 .5px rgba(255,255,255,.14),0 1px 4px rgba(0,0,0,.38);
+  --slice-sh:0 0 0 .5px rgba(255,255,255,.12),0 12px 32px rgba(0,0,0,.42);
+  --hi:rgba(255,255,255,.08);--lift:0 .5px 1px rgba(0,0,0,.3),0 2px 6px rgba(0,0,0,.14);--lift-f:0 .5px 1px rgba(0,0,0,.34),0 3px 10px rgba(0,0,0,.2);
+  --tip-bg:rgba(42,42,48,.96);--tip-fg:rgba(255,255,255,.94);--tip-fg2:rgba(255,255,255,.56);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:14px/1.55 var(--mac-font);-webkit-font-smoothing:antialiased;padding-bottom:96px;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+svg{display:block}
+
+/* ---------- Page shell ---------- */
+.top{max-width:1360px;margin:0 auto;padding:28px 24px 8px}
+.top h1{font-size:21px;font-weight:650;margin:0 0 6px;letter-spacing:-.01em}
+.top p{margin:0;color:var(--page-fg2);font-size:13.5px;line-height:1.7;max-width:86ch}
+.top p b{color:var(--page-fg);font-weight:600}
+
+.fam{max-width:1360px;margin:0 auto;padding:26px 24px 30px;display:grid;grid-template-columns:256px minmax(0,1fr);gap:26px;align-items:start}
+.fam+.fam{border-top:1px solid var(--page-bd)}
+.fam-h{position:sticky;top:20px}
+.tag{display:inline-flex;align-items:center;gap:5px;font:600 11px/20px var(--mono);letter-spacing:.04em;color:var(--page-fg2);padding:0 8px;border-radius:6px;background:var(--page-btn)}
+.tag.rec{background:var(--accent-bg);color:var(--accent-t)}
+.fam-h h2{font-size:19px;line-height:1.3;margin:9px 0 8px;font-weight:650}
+.fam-h p{font-size:13px;color:var(--page-fg2);margin:0 0 10px;line-height:1.68}
+.fam-h ul{margin:0;padding-left:17px;font-size:12.5px;line-height:1.68;color:var(--page-fg2)}
+.fam-h li{margin:4px 0}
+.fam-h li b{color:var(--page-fg);font-weight:600}
+
+.pair{display:grid;grid-template-columns:minmax(0,1.28fr) minmax(0,402px);gap:20px;align-items:stretch;min-width:0}
+body[data-dev=mac] .pair{grid-template-columns:minmax(0,780px);justify-content:start}
+body[data-dev=mac] .col-ios{display:none}
+body[data-dev=ios] .pair{grid-template-columns:minmax(0,402px);justify-content:start}
+body[data-dev=ios] .col-mac{display:none}
+@media (max-width:1160px){.fam{grid-template-columns:1fr;gap:16px}.fam-h{position:static}}
+@media (max-width:900px){.pair{grid-template-columns:minmax(0,1fr)}.col-ios{justify-self:center;width:100%;max-width:402px}}
+@media (max-width:520px){.top,.fam,.summary{padding-left:14px;padding-right:14px}.ctl{justify-content:flex-start;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}}
+
+.dev-col{display:flex;flex-direction:column;gap:7px;min-width:0}
+.dev-cap{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--page-fg2);padding:0 2px}
+.dev-cap b{color:var(--page-fg);font-weight:600}
+.dev-cap .hint{font-size:11.5px;opacity:.85}
+
+.ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.38;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* ---------- Mac Window Slice (exact tokens from composer.css + app.css) ---------- */
+.mac-slice{position:relative;height:300px;background:var(--win);border-radius:14px;overflow:hidden;box-shadow:var(--slice-sh);font:13px/1.38 var(--mac-font);font-variation-settings:"ROND" 0,"slnt" 0,"wdth" 92;color:var(--l1);user-select:none}
+.mac-ask{position:absolute;inset:0 0 112px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:0 24px;text-align:center}
+.mac-ask h3{margin:0;font-size:24px;line-height:1.3;font-weight:560;letter-spacing:-.01em}
+.mac-ask h3 u{text-decoration:none;border-bottom:1.5px solid var(--l4);padding:0 2px 1px}
+.mac-env{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--l2)}
+.mac-env .ic{width:13.5px;height:13.5px}
+.mac-zone{position:absolute;left:0;right:0;bottom:0;padding:16px 18px 16px;background:linear-gradient(to bottom,transparent,var(--win) 20px)}
+.mac-zcol{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:10px;position:relative}
+.th-place{display:flex;align-items:center;gap:2px;min-width:0;padding:0 10px;margin-bottom:-4px;position:relative}
+.mb{position:relative;height:26px;border-radius:6px;padding:0 7px;display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--l2);white-space:nowrap;min-width:0;transition:color .14s,background .14s,transform .12s ease}
+.mb:hover,.mb.open{background:var(--fill);color:var(--l1)}
+.mb:active{transform:scale(.965)}
+.mb .ic{width:14px;height:14px}
+.mb .trail{width:11.5px;height:11.5px;stroke-width:1.65;color:var(--l3);transition:transform .34s var(--spring),color .14s}
+.mb:hover .trail{color:var(--l2)}
+.mb .mono{font:400 12px var(--mono);color:var(--l1)}
+.mb.br-btn{min-width:0;overflow:hidden}
+.mb.br-btn .lbl{overflow:hidden;text-overflow:ellipsis}
+
+/* Mac Composer Box (§17) */
+.mac-cmp{border-radius:18px;background:var(--pill);box-shadow:inset 0 .5px 0 var(--hi),0 0 0 .5px var(--pill-bd),var(--lift);display:flex;flex-direction:column;transition:box-shadow .2s var(--ease)}
+.mac-cmp:focus-within{box-shadow:inset 0 .5px 0 var(--hi),0 0 0 .5px var(--l4),var(--lift-f)}
+.mac-in{border:0;outline:0;resize:none;background:none;color:var(--l1);font:14.5px/21px var(--mac-font);padding:13px 16px 4px;min-height:54px;caret-color:var(--accent)}
+.mac-in::placeholder{color:var(--l3)}
+.mac-bar{display:flex;align-items:center;padding:0 8px 8px 9px;gap:2px}
+.mac-ib{width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--l3);transition:background .14s,color .14s}
+.mac-ib:hover{background:var(--fill);color:var(--l1)}
+.mac-model{height:28px;padding:0 7px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--l1)}
+.mac-model:hover{background:var(--fill)}
+.mac-model .dot-logo{width:14px;height:14px;border-radius:4px;background:#d97757;color:#fff;font:700 9px/14px var(--mac-font);text-align:center;flex:none}
+.mac-model .lv{color:var(--l3)}
+.mac-model .lv::before{content:"·";margin-right:5px}
+.mac-model .chev{width:11px;height:11px;stroke-width:1.7;color:var(--l3)}
+.mac-send{margin-left:auto;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--l3)}
+.mac-send.ready{background:var(--accent);color:#fff}
+.mac-send .ic{width:15px;height:15px;stroke-width:2}
+
+/* Mac Hover Tooltip (explains current state + click to switch) */
+.mac-tip{position:absolute;left:10px;bottom:calc(100% + 7px);z-index:25;max-width:calc(100% - 20px);padding:6px 10px;border-radius:8px;background:var(--tip-bg);color:var(--tip-fg);box-shadow:0 6px 20px rgba(0,0,0,.28),0 0 0 .5px rgba(255,255,255,.12);font-size:11.5px;line-height:1.45;pointer-events:none;opacity:0;transform:translateY(3px);transition:opacity .15s ease,transform .15s ease}
+.mac-tip b{font-weight:560}
+.mac-tip em{font-style:normal;color:var(--tip-fg2);margin-left:6px}
+.mac-tip.show{opacity:1;transform:none}
+
+/* ---------- iPhone Slice (402pt width, exact SessionPage.swift layout) ---------- */
+.ios-slice{position:relative;width:100%;max-width:402px;height:300px;background:var(--ios-bg);border-radius:32px;overflow:hidden;box-shadow:0 0 0 5px #1e1e22,0 0 0 6px rgba(255,255,255,.10),var(--slice-sh);font:16px/1.35 var(--ios-font);color:var(--l1);user-select:none;-webkit-user-select:none}
+.ios-slice .ic{stroke-width:1.68}
+.ios-ask{position:absolute;inset:0 0 112px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:12px 24px 0;text-align:center}
+.ios-ask h3{margin:0;font-size:22px;font-weight:650;line-height:1.25;letter-spacing:-.01em}
+.ios-ask h3 u{text-decoration-color:var(--l3);text-underline-offset:4px;text-decoration-thickness:1.5px}
+.ios-env{display:inline-flex;align-items:center;gap:5px;font-size:13.5px;color:var(--l2)}
+.ios-env .ic{width:15px;height:15px}
+.ios-dock{position:absolute;left:0;right:0;bottom:18px;padding:0 12px;display:flex;flex-direction:column;gap:7px;z-index:4}
+.ios-place{display:flex;align-items:center;gap:6px;padding:0 6px;min-width:0;position:relative}
+.ios-chip{height:31px;padding:0 10px;border-radius:999px;background:var(--fill2);display:inline-flex;align-items:center;gap:4.5px;font-size:13px;color:var(--l1);white-space:nowrap;flex:none;transition:transform .14s var(--spring),background .15s}
+.ios-chip:active{transform:scale(.95);background:var(--fill3)}
+.ios-chip .ic{width:14.5px;height:14.5px}
+.ios-chip .trail{width:11.5px;height:11.5px;stroke-width:1.85;color:var(--l3);transition:transform .34s var(--spring)}
+.ios-br{height:30px;padding:0 10px;border-radius:999px;background:var(--fill);display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--l2);white-space:nowrap;min-width:0;overflow:hidden;transition:transform .12s}
+.ios-br:active{transform:scale(.96)}
+.ios-br .ic{width:14px;height:14px;flex:none}
+.ios-br .lbl{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ios-br .mono{font:500 12px var(--mono);color:var(--l1)}
+.ios-br .chev{width:10.5px;height:10.5px;stroke-width:2;color:var(--l3);flex:none}
+
+.ios-box{background:var(--glass);border-radius:24px;box-shadow:var(--glass-sh);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);padding:6px;display:flex;align-items:center;gap:8px}
+.ios-plus,.ios-send{width:35px;height:35px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none}
+.ios-plus{background:var(--fill2);color:var(--l1)}
+.ios-send{background:var(--accent);color:#fff;opacity:.42}
+.ios-in{flex:1;min-width:0;border:0;outline:0;background:none;color:var(--l1);font:16px/21px var(--ios-font);padding:4px 2px}
+.ios-in::placeholder{color:var(--l3)}
+.ios-home{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);width:120px;height:4.5px;border-radius:3px;background:var(--l3);opacity:.55}
+
+/* iPhone Transient Whisper Toast (optional on tap) */
+.ios-whisper{position:absolute;left:18px;right:18px;bottom:106px;z-index:15;display:flex; justify-content:flex-start;pointer-events:none}
+.ios-whisper span{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:14px;background:var(--menu-bg);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);box-shadow:var(--menu-sh);font-size:12px;color:var(--l2);opacity:0;transform:translateY(6px) scale(.96);transition:opacity .2s var(--ease),transform .22s var(--spring)}
+.ios-whisper span b{color:var(--l1);font-weight:600}
+.ios-whisper.on span{opacity:1;transform:none}
+
+/* ---------- Animated slot flip for label & icon ---------- */
+.slot-wrap{display:inline-flex;align-items:center;gap:5px;animation:slotIn .18s var(--ease)}
+@keyframes slotIn{from{opacity:.25;transform:translateY(3.5px)}to{opacity:1;transform:none}}
+.br-anim{display:inline-flex;align-items:center;gap:4px;min-width:0;overflow:hidden;animation:brFade .18s var(--ease)}
+@keyframes brFade{from{opacity:.35}to{opacity:1}}
+
+/* ---------- Scheme B: Dual-icon micro-slider inside button ---------- */
+.dual-track{position:relative;display:inline-grid;grid-template-columns:1fr 1fr;width:36px;height:19px;padding:1.5px;border-radius:999px;background:var(--fill2);flex:none}
+.ios-chip .dual-track{width:40px;height:22px;padding:2px;margin-left:-5px;background:var(--fill2)}
+.dual-plate{position:absolute;top:1.5px;bottom:1.5px;left:1.5px;width:calc(50% - 1.5px);border-radius:999px;background:var(--plate);box-shadow:var(--plate-sh);transition:transform .32s var(--spring)}
+.ios-chip .dual-plate{top:2px;bottom:2px;left:2px;width:calc(50% - 2px)}
+.dual-track.wt .dual-plate{transform:translateX(100%)}
+.dual-track i{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;color:var(--l3);transition:color .16s}
+.dual-track i.on{color:var(--l1)}
+.dual-track .ic{width:11.5px;height:11.5px;stroke-width:1.55}
+.ios-chip .dual-track .ic{width:12.5px;height:12.5px;stroke-width:1.65}
+
+/* ---------- Scheme C: Compact 2-segment toggle ---------- */
+.seg2{position:relative;display:inline-grid;grid-template-columns:1fr 1fr;height:26px;padding:2px;border-radius:7px;background:var(--fill);flex:none;cursor:pointer}
+.ios-seg2{height:31px;border-radius:999px;background:var(--fill2);padding:2.5px}
+.seg2-plate{position:absolute;top:2px;bottom:2px;left:2px;width:calc(50% - 2px);border-radius:5.5px;background:var(--plate);box-shadow:var(--plate-sh);transition:transform .32s var(--spring)}
+.ios-seg2 .seg2-plate{top:2.5px;bottom:2.5px;left:2.5px;width:calc(50% - 2.5px);border-radius:999px}
+.seg2.wt .seg2-plate{transform:translateX(100%)}
+.seg2>span{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:0 7px;font-size:12px;color:var(--l2);white-space:nowrap;transition:color .16s}
+.ios-seg2>span{padding:0 8px;font-size:12px}
+.seg2>span.on{color:var(--l1);font-weight:550}
+.seg2 .ic{width:12.5px;height:12.5px}
+
+/* ---------- Popover menus (for Baseline dropdown, iPhone long-press context menu, and Branch preview) ---------- */
+.pop-scrim{position:absolute;inset:0;z-index:28;background:transparent}
+.ios-slice .pop-scrim.ctx{background:rgba(0,0,0,.18);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);animation:brFade .15s ease}
+.pop-menu{position:absolute;left:10px;bottom:104px;z-index:30;width:276px;max-width:calc(100% - 20px);padding:5px;border-radius:12px;background:var(--menu-bg);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);box-shadow:var(--menu-sh);transform-origin:16% 100%;animation:popUp .16s var(--spring)}
+.ios-slice .pop-menu{left:12px;bottom:106px;width:288px;max-width:calc(100% - 24px);padding:6px 0;border-radius:18px}
+.pop-menu.br-pop{left:96px;width:264px;max-width:calc(100% - 106px)}
+.ios-slice .pop-menu.br-pop{left:36px;width:288px;max-width:calc(100% - 48px)}
+@keyframes popUp{from{opacity:0;transform:scale(.88) translateY(6px)}to{opacity:1;transform:none}}
+.pop-h{padding:5px 10px 4px;font-size:11.5px;color:var(--l3);font-weight:500}
+.ios-slice .pop-h{padding:4px 16px 6px;font-size:12px}
+.pop-mi{width:100%;display:flex;align-items:flex-start;gap:8px;padding:7px 9px;border-radius:8px;text-align:left;transition:background .1s}
+.pop-mi:hover{background:var(--fill2)}
+.ios-slice .pop-mi{border-radius:0;padding:9px 16px;gap:10px}
+.ios-slice .pop-mi+.pop-mi{border-top:.5px solid var(--sep)}
+.pop-ck{width:15px;padding-top:2px;color:var(--accent-t);flex:none}
+.pop-ck .ic{width:14px;height:14px;stroke-width:1.9}
+.pop-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:1.5px}
+.pop-t b{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:550;color:var(--l1)}
+.ios-slice .pop-t b{font-size:14.5px}
+.pop-t b .ic{width:14px;height:14px;color:var(--l2)}
+.pop-t span{font-size:11.5px;color:var(--l2);line-height:1.35}
+.pop-t code{font:12px var(--mono);color:var(--l1)}
+.pop-tag{margin-left:auto;font-size:11px;color:var(--l3);padding-top:1px}
+
+/* ---------- Summary notes ---------- */
+.summary{max-width:1360px;margin:6px auto 0;padding:24px 24px 12px;border-top:1px solid var(--page-bd);display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px 32px;font-size:13px;line-height:1.68}
+.summary h3{margin:0 0 6px;font-size:14px;font-weight:650}
+.summary p,.summary ul{margin:0;color:var(--page-fg2)}
+.summary ul{padding-left:18px}
+.summary li{margin:4px 0}
+.summary b{color:var(--page-fg);font-weight:600}
+
+/* ---------- Bottom Control Bar ---------- */
+.ctl{position:fixed;left:0;right:0;bottom:0;z-index:90;background:var(--page-bar);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid var(--page-bd);padding:9px 16px calc(9px + env(safe-area-inset-bottom));display:flex;flex-wrap:wrap;gap:7px 20px;align-items:center;justify-content:center;font-size:12.5px}
+.ctl .g{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.ctl .g>b{color:var(--page-fg2);font-weight:500;margin-right:3px}
+.ctl button{height:26px;padding:0 10px;border-radius:7px;background:var(--page-btn);display:inline-flex;align-items:center;gap:4px;transition:background .12s,color .12s}
+.ctl button .ic{width:12.5px;height:12.5px}
+.ctl button.on{background:var(--accent);color:#fff}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body data-dev="both">
+
+<header class="top">
+  <h1>工作目录：点一下直接切换（Mac &amp; iPhone 设计对齐）</h1>
+  <p>「当前目录」与「独立 worktree」只有两个互斥状态。去掉两项下拉菜单、改为<b>单击 / 点按直接切换</b>后，操作从「点开菜单 → 找另一项 → 再点一下」缩成一步，旁边紧挨着的分支按钮也会实时在 <b>main</b> 与 <b>基于 main</b> 之间联动。下面在真实比例的 Mac 与 iPhone 输入框上对比三种方案，每个按钮都能直接点、悬停（Mac）或长按/右键（iPhone）。</p>
+</header>
+
+<main id="app"></main>
+
+<section class="summary">
+  <div>
+    <h3>为什么提示图标推荐「⇄」而不是「↻」或「⌄」？</h3>
+    <ul>
+      <li><b>⌄（下箭头）</b>：代表展开下拉菜单，和右边的分支菜单撞车，点了直接变字会像菜单坏了。</li>
+      <li><b>↻（循环箭头）</b>：跟在「📁 当前目录」后面极易看成「刷新目录」。</li>
+      <li><b>⇄（双向互换）</b>：语义明确是「两态对调」，与右边分支的 <b>⌄ / ›</b> 一眼区分（底部工具栏可切换三款图标直观对比）。</li>
+    </ul>
+  </div>
+  <div>
+    <h3>去掉下拉菜单后，原来的两句解释放哪？</h3>
+    <ul>
+      <li><b>Mac（有指针）</b>：悬停时浮出轻量提示，写出当前含义与点击结果（如「直接在项目目录里修改 · 点击切为独立 worktree」）。</li>
+      <li><b>iPhone（无悬停）</b>：点一下秒切 + 轻触感震动；<b>长按胶囊</b>弹出原生 Context Menu 展示两项完整说明（底部也可开关「点按时浮现 1.6s 轻提示」对比体感）。</li>
+    </ul>
+  </div>
+  <div>
+    <h3>无障碍与键盘支持（实现时一并补齐）</h3>
+    <ul>
+      <li>语义角色从菜单按钮改为双态切换按钮，读屏直接播报当前值与「点按切换工作目录」。</li>
+      <li>右侧分支按钮保持不变（仍可点开搜分支、开「从远程开始」），Demo 里点分支也能预览联动效果。</li>
+    </ul>
+  </div>
+</section>
+
+<div class="ctl">
+  <div class="g"><b>端</b><button data-k="dev" data-v="both" class="on">双端同屏</button><button data-k="dev" data-v="mac">仅 Mac</button><button data-k="dev" data-v="ios">仅 iPhone</button></div>
+  <div class="g"><b>方案 A 图标</b><button data-k="glyph" data-v="swapH" class="on"><span id="gSwapH"></span>左右互换</button><button data-k="glyph" data-v="swapV"><span id="gSwapV"></span>上下翻牌</button><button data-k="glyph" data-v="cycle"><span id="gCycle"></span>双弧循环</button></div>
+  <div class="g"><b>分支长度</b><button data-k="br" data-v="short" class="on">main</button><button data-k="br" data-v="long">origin/feat/auth-redirect</button></div>
+  <div class="g"><b>iPhone 点按提示</b><button data-k="whisper" data-v="1" class="on">1.6s 轻提示 + 长按菜单</button><button data-k="whisper" data-v="0">静默秒切（仅长按菜单）</button></div>
+  <div class="g"><b>同步状态</b><button data-flip-all="0" class="on">当前目录</button><button data-flip-all="1">独立 worktree</button></div>
+  <div class="g"><b>外观</b><button data-k="theme" data-v="dark" class="on">深色</button><button data-k="theme" data-v="light">浅色</button></div>
+</div>
+
+<script>
+const P = {
+  folder: '<path d="M1.8 4.4c0-.7.5-1.2 1.2-1.2h3l1.4 1.5H13c.7 0 1.2.5 1.2 1.2V12c0 .7-.5 1.2-1.2 1.2H3c-.7 0-1.2-.5-1.2-1.2z"/>',
+  branch: '<circle cx="4.8" cy="3.8" r="1.5"/><circle cx="4.8" cy="12.2" r="1.5"/><circle cx="11.2" cy="5.4" r="1.5"/><path d="M4.8 5.3v5.4M11.2 6.9c0 2.4-2.2 3-6.4 3.7"/>',
+  curve: '<circle cx="4.2" cy="4.2" r="1.6"/><circle cx="11.8" cy="11.8" r="1.6"/><path d="M4.2 5.8v2.2c0 2.2 1.6 3.8 3.8 3.8h2.2"/>',
+  chevD: '<path d="M4.5 6.3L8 9.8l3.5-3.5"/>',
+  chevR: '<path d="M6.3 4.5L9.8 8l-3.5 3.5"/>',
+  plus: '<path d="M8 3v10M3 8h10"/>',
+  up: '<path d="M8 13V3M4.2 6.8L8 3l3.8 3.8"/>',
+  laptop: '<rect x="3" y="3.3" width="10" height="7" rx="1.2"/><path d="M1.4 12.7h13.2"/>',
+  check: '<path d="M3.2 8.4l3.1 3.1 6.5-6.9"/>',
+  /* Candidate switch affordance icons on 16×16 grid */
+  swapH: '<path d="M2.5 4.8h10.5M10.4 2.4L13 4.8l-2.6 2.4M13.5 11.2H3M5.6 8.8L3 11.2l2.6 2.4"/>',
+  swapV: '<path d="M5.2 13.2V3M2.8 5.5L5.2 3l2.4 2.5M10.8 2.8V13M8.4 10.5l2.4 2.5 2.4-2.5"/>',
+  cycle: '<path d="M3.1 6.7A5 5 0 0 1 12.3 5.2M12.6 2.7v2.7H9.9M12.9 9.3A5 5 0 0 1 3.7 10.8M3.4 13.3v-2.7h2.7"/>',
+};
+const ic = (name, cls = "", style = "") => `<svg class="ic ${cls}" viewBox="0 0 16 16" aria-hidden="true"${style ? ` style="${style}"` : ""}>${P[name]}</svg>`;
+
+document.getElementById("gSwapH").innerHTML = ic("swapH");
+document.getElementById("gSwapV").innerHTML = ic("swapV");
+document.getElementById("gCycle").innerHTML = ic("cycle");
+
+const CFG = {
+  dev: "both",
+  glyph: "swapH",
+  br: "short",
+  whisper: "1",
+  theme: "dark",
+};
+
+const SCHEMES = [
+  {
+    id: "a",
+    tag: "方案 A · 推荐",
+    rec: true,
+    name: "单胶囊直切 + 互换标 ⇄",
+    desc: "保持现在极简的单按钮宽度，把下拉箭头 ⌄ 换成双向互换标 ⇄，点一下直接切换。",
+    points: [
+      "<b>一眼区分动作：</b>左边 ⇄ 代表「点按即切」，右边 ⌄ / › 代表「展开选分支」，不再两个下拉箭头撞车。",
+      "<b>不挤占分支宽度：</b>宽度与现在几乎一致（约 110px），iPhone 上遇到长分支名也不会截断。",
+      "<b>解释不丢失：</b>Mac 悬停看说明；iPhone 点一下秒切，拿不准时<b>长按</b>（桌面可用右键试）仍可弹出完整说明菜单。",
+    ],
+  },
+  {
+    id: "b",
+    tag: "方案 B",
+    rec: false,
+    name: "双图标微滑轨",
+    desc: "去掉尾部箭头，把左侧图标做成微缩双格滑块（沿用「推理强度」的滑块语言），点整颗按钮滑向另一档。",
+    points: [
+      "<b>提前看见另一档：</b>半透明露出的另一个图标直接暗示「一共两档、点一下滑过去」。",
+      "<b>手感统一：</b>和模型面板顶部的滑块属于同一套微动效。",
+      "<b>取舍：</b>比方案 A 宽约 18px；Mac 输入框上方原本是无底幽灵按钮，常驻小滑槽视觉存在感略重一点。",
+    ],
+  },
+  {
+    id: "c",
+    tag: "方案 C",
+    rec: false,
+    name: "紧凑双档分段开关",
+    desc: "把「当前目录」与「独立 worktree」同时平铺成双段胶囊，点任意一侧切换。",
+    points: [
+      "<b>零隐藏状态：</b>两个选项的文字同时摆在明面上，无需猜测另一档叫什么。",
+      "<b>取舍（切到长分支名可看）：</b>Mac 宽栏放得下，但 iPhone 窄屏（402pt）并排摆两段中文会把右侧分支胶囊挤得很窄，视觉重心也偏重。",
+    ],
+  },
+  {
+    id: "now",
+    tag: "对照 · 现状",
+    rec: false,
+    name: "现在的两项下拉菜单",
+    desc: "目前应用里的做法：点开菜单 → 看两行说明 → 再点另一项关闭菜单（共两步）。",
+    points: [
+      "<b>优点：</b>每次点开都能读到两行小字说明。",
+      "<b>痛点：</b>只有非此即彼的两个状态却要走完整菜单流程；左 ⌄ 右 ⌄ 视觉完全同质。",
+    ],
+  },
+];
+
+// Independent interactive state per scheme & platform so clicking feels snappy and real
+const STATE = {};
+SCHEMES.forEach((s) => {
+  STATE[s.id] = {
+    mac: { wt: false, turns: 0, menu: null, br: "main", remote: false },
+    ios: { wt: false, turns: 0, menu: null, br: "main", remote: false, whisperTimer: null, whisperText: "" },
+  };
+});
+
+const COPY = {
+  offLabel: "当前目录",
+  offHint: "直接在项目目录里修改",
+  offNext: "点击切为独立 worktree",
+  onLabel: "独立 worktree",
+  onHint: "每个任务一个分支，不碰你正在改的文件",
+  onNext: "点击切为当前目录",
+};
+
+function branchName(st) {
+  if (CFG.br === "long") return st.wt ? (st.remote ? "origin/feat/auth-redirect" : "feat/auth-redirect") : "feat/auth-redirect";
+  return st.wt ? (st.remote ? "origin/main" : st.br) : st.br;
+}
+
+function renderControl(schemeId, plat, st) {
+  const wt = st.wt;
+  const label = wt ? COPY.onLabel : COPY.offLabel;
+  const leadIcon = wt ? "branch" : "folder";
+  const rot = `transform:rotate(${st.turns * 180}deg)`;
+
+  if (schemeId === "a") {
+    if (plat === "mac") {
+      return `<button class="mb wt-btn" data-act="toggle" aria-pressed="${wt}">
+        <span class="slot-wrap" key="${st.turns}">${ic(leadIcon)}<span class="lbl">${label}</span></span>
+        ${ic(CFG.glyph, "trail", rot)}
+      </button>`;
+    }
+    return `<button class="ios-chip wt-btn" data-act="toggle" data-ctx="1" aria-pressed="${wt}">
+      <span class="slot-wrap">${ic(leadIcon)}<span>${label}</span></span>
+      ${ic(CFG.glyph, "trail", rot)}
+    </button>`;
+  }
+
+  if (schemeId === "b") {
+    const track = `<span class="dual-track ${wt ? "wt" : ""}"><span class="dual-plate"></span><i class="${!wt ? "on" : ""}">${ic("folder")}</i><i class="${wt ? "on" : ""}">${ic("branch")}</i></span>`;
+    if (plat === "mac") {
+      return `<button class="mb wt-btn" data-act="toggle" aria-pressed="${wt}" style="padding-left:4px;gap:6px">
+        ${track}<span class="slot-wrap"><span class="lbl">${label}</span></span>
+      </button>`;
+    }
+    return `<button class="ios-chip wt-btn" data-act="toggle" data-ctx="1" aria-pressed="${wt}" style="gap:6px">
+      ${track}<span class="slot-wrap"><span>${label}</span></span>
+    </button>`;
+  }
+
+  if (schemeId === "c") {
+    if (plat === "mac") {
+      return `<button class="seg2 ${wt ? "wt" : ""} wt-btn" data-act="toggle" aria-pressed="${wt}">
+        <i class="seg2-plate"></i>
+        <span class="${!wt ? "on" : ""}">${ic("folder")}当前目录</span>
+        <span class="${wt ? "on" : ""}">${ic("branch")}独立 worktree</span>
+      </button>`;
+    }
+    return `<button class="seg2 ios-seg2 ${wt ? "wt" : ""} wt-btn" data-act="toggle" aria-pressed="${wt}">
+      <i class="seg2-plate"></i>
+      <span class="${!wt ? "on" : ""}">${ic("folder")}当前目录</span>
+      <span class="${wt ? "on" : ""}">${ic("branch")}Worktree</span>
+    </button>`;
+  }
+
+  // Baseline "now": opens dropdown menu
+  if (plat === "mac") {
+    return `<button class="mb ${st.menu === "wt" ? "open" : ""}" data-act="menu-wt" aria-expanded="${st.menu === "wt"}">
+      ${ic(leadIcon)}<span class="lbl">${label}</span>${ic("chevD", "trail")}
+    </button>`;
+  }
+  return `<button class="ios-chip" data-act="menu-wt" aria-expanded="${st.menu === "wt"}">
+    ${ic(leadIcon)}<span>${label}</span>${ic("chevD", "trail")}
+  </button>`;
+}
+
+function renderPopover(schemeId, plat, st) {
+  if (!st.menu) return "";
+  const isCtx = st.menu === "ctx";
+  if (st.menu === "wt" || isCtx) {
+    return `<div class="pop-scrim ${isCtx ? "ctx" : ""}" data-act="close"></div>
+      <div class="pop-menu" role="menu">
+        <div class="pop-h">${isCtx ? "工作目录 · 长按说明菜单" : "工作目录"}</div>
+        <button class="pop-mi" data-act="pick-wt" data-val="0">
+          <span class="pop-ck">${!st.wt ? ic("check") : ""}</span>
+          <span class="pop-t"><b>${ic("folder")}当前目录</b><span>直接在项目目录里修改</span></span>
+        </button>
+        <button class="pop-mi" data-act="pick-wt" data-val="1">
+          <span class="pop-ck">${st.wt ? ic("check") : ""}</span>
+          <span class="pop-t"><b>${ic("branch")}独立 worktree</b><span>每个任务一个分支，不碰你正在改的文件</span></span>
+        </button>
+      </div>`;
+  }
+  if (st.menu === "br") {
+    const branches = ["main", "feat/auth-redirect", "fix/sqlite-wal"];
+    return `<div class="pop-scrim" data-act="close"></div>
+      <div class="pop-menu br-pop" role="menu">
+        <div class="pop-h">${st.wt ? "新分支基于" : "在哪个分支上工作"}</div>
+        ${branches.map((b) => `
+          <button class="pop-mi" data-act="pick-br" data-val="${b}">
+            <span class="pop-ck">${st.br === b ? ic("check") : ""}</span>
+            <span class="pop-t"><code>${b}</code></span>
+            <span class="pop-tag">${b === "main" ? "当前 · 默认" : ""}</span>
+          </button>
+        `).join("")}
+      </div>`;
+  }
+  return "";
+}
+
+function renderMacCard(s) {
+  const st = STATE[s.id].mac;
+  const br = branchName(st);
+  const tipMain = st.wt ? COPY.onHint : COPY.offHint;
+  const tipSub = st.wt ? COPY.onNext : COPY.offNext;
+  return `<div class="dev-col col-mac">
+    <div class="dev-cap"><b>Mac</b><span class="hint">${s.id === "now" ? "点击展开两项菜单" : "单击直接切换 · 悬停显示说明"}</span></div>
+    <div class="mac-slice" data-scheme="${s.id}" data-plat="mac">
+      <div class="mac-ask">
+        <h3>要在 <u>hermesh</u> 里做什么？</h3>
+        <div class="mac-env">${ic("laptop")}MacBook Pro${ic("chevR", "", "width:11px;height:11px;color:var(--l3)")}</div>
+      </div>
+      ${renderPopover(s.id, "mac", st)}
+      <div class="mac-zone">
+        <div class="mac-zcol">
+          <div class="th-place">
+            ${s.id !== "now" ? `<div class="mac-tip"><b>${tipMain}</b><em>· ${tipSub}</em></div>` : ""}
+            ${renderControl(s.id, "mac", st)}
+            <button class="mb br-btn ${st.menu === "br" ? "open" : ""}" data-act="menu-br">
+              ${ic("branch")}
+              <span class="lbl br-anim">${st.wt ? `基于 <span class="mono">${br}</span>` : `<span class="mono">${br}</span>`}</span>
+              ${ic("chevD", "trail")}
+            </button>
+          </div>
+          <div class="mac-cmp">
+            <textarea class="mac-in" rows="1" placeholder="描述要开发、调试或规划的任务…"></textarea>
+            <div class="mac-bar">
+              <button class="mac-ib" tabindex="-1" aria-label="添加附件">${ic("plus")}</button>
+              <button class="mac-model" tabindex="-1"><span class="dot-logo">C</span><span>Opus 4.6</span><span class="lv">高</span>${ic("chevD", "chev")}</button>
+              <button class="mac-send" tabindex="-1" aria-label="发送">${ic("up")}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderIosCard(s) {
+  const st = STATE[s.id].ios;
+  const br = branchName(st);
+  const ctxHint = s.id === "a" || s.id === "b" ? "点按切换 · 长按/右键看说明" : s.id === "c" ? "点按分段切换" : "点按展开原生菜单";
+  return `<div class="dev-col col-ios">
+    <div class="dev-cap"><b>iPhone</b><span class="hint">${ctxHint}</span></div>
+    <div class="ios-slice" data-scheme="${s.id}" data-plat="ios">
+      <div class="ios-ask">
+        <h3>要在 <u>hermesh</u> 里做什么？</h3>
+        <div class="ios-env">${ic("laptop")}MacBook Pro${ic("chevR", "", "width:12px;height:12px;color:var(--l3)")}</div>
+      </div>
+      ${renderPopover(s.id, "ios", st)}
+      <div class="ios-whisper ${st.whisperText ? "on" : ""}"><span>${st.whisperText}</span></div>
+      <div class="ios-dock">
+        <div class="ios-place">
+          ${renderControl(s.id, "ios", st)}
+          <button class="ios-br" data-act="menu-br">
+            ${ic("curve")}
+            <span class="lbl br-anim">${st.wt ? `基于 <span class="mono">${br}</span>` : `<span class="mono">${br}</span>`}</span>
+            ${ic("chevR", "chev")}
+          </button>
+        </div>
+        <div class="ios-box">
+          <button class="ios-plus" tabindex="-1" aria-label="添加">${ic("plus")}</button>
+          <input class="ios-in" placeholder="描述要构建、调试或规划的内容">
+          <button class="ios-send" tabindex="-1" aria-label="发送">${ic("up")}</button>
+        </div>
+      </div>
+      <div class="ios-home"></div>
+    </div>
+  </div>`;
+}
+
+function renderAll() {
+  const app = document.getElementById("app");
+  app.innerHTML = SCHEMES.map((s) => `
+    <section class="fam">
+      <div class="fam-h">
+        <span class="tag ${s.rec ? "rec" : ""}">${s.tag}</span>
+        <h2>${s.name}</h2>
+        <p>${s.desc}</p>
+        <ul>${s.points.map((pt) => `<li>${pt}</li>`).join("")}</ul>
+      </div>
+      <div class="pair">
+        ${renderMacCard(s)}
+        ${renderIosCard(s)}
+      </div>
+    </section>
+  `).join("");
+}
+
+function updateToggleInPlace(schemeId, plat) {
+  const slice = document.querySelector(`[data-scheme="${schemeId}"][data-plat="${plat}"]`);
+  if (!slice) return;
+  const st = STATE[schemeId][plat];
+  const wt = st.wt;
+  const label = wt ? COPY.onLabel : COPY.offLabel;
+  const leadIcon = wt ? "branch" : "folder";
+  const br = branchName(st);
+
+  // Close any open popover first
+  slice.querySelectorAll(".pop-scrim,.pop-menu").forEach((el) => el.remove());
+
+  const btn = slice.querySelector(".wt-btn");
+  if (btn) {
+    btn.setAttribute("aria-pressed", String(wt));
+    if (schemeId === "a") {
+      const slot = btn.querySelector(".slot-wrap");
+      if (slot) {
+        slot.style.animation = "none";
+        slot.innerHTML = plat === "mac" ? `${ic(leadIcon)}<span class="lbl">${label}</span>` : `${ic(leadIcon)}<span>${label}</span>`;
+        void slot.offsetWidth;
+        slot.style.animation = "";
+      }
+      const trail = btn.querySelector(".trail");
+      if (trail) trail.style.transform = `rotate(${st.turns * 180}deg)`;
+    } else if (schemeId === "b") {
+      const track = btn.querySelector(".dual-track");
+      if (track) {
+        track.classList.toggle("wt", wt);
+        const icons = track.querySelectorAll("i");
+        if (icons[0]) icons[0].classList.toggle("on", !wt);
+        if (icons[1]) icons[1].classList.toggle("on", wt);
+      }
+      const slot = btn.querySelector(".slot-wrap");
+      if (slot) {
+        slot.style.animation = "none";
+        slot.innerHTML = plat === "mac" ? `<span class="lbl">${label}</span>` : `<span>${label}</span>`;
+        void slot.offsetWidth;
+        slot.style.animation = "";
+      }
+    } else if (schemeId === "c") {
+      btn.classList.toggle("wt", wt);
+      const segs = btn.querySelectorAll(":scope > span:not(.seg2-plate)");
+      if (segs[0]) segs[0].classList.toggle("on", !wt);
+      if (segs[1]) segs[1].classList.toggle("on", wt);
+    }
+  }
+
+  // Update adjacent branch chip smoothly
+  const brLbl = slice.querySelector(".br-anim");
+  if (brLbl) {
+    brLbl.style.animation = "none";
+    brLbl.innerHTML = wt ? `基于 <span class="mono">${br}</span>` : `<span class="mono">${br}</span>`;
+    void brLbl.offsetWidth;
+    brLbl.style.animation = "";
+  }
+
+  // Update Mac tooltip text in place
+  if (plat === "mac") {
+    const tip = slice.querySelector(".mac-tip");
+    if (tip) {
+      tip.innerHTML = `<b>${wt ? COPY.onHint : COPY.offHint}</b><em>· ${wt ? COPY.onNext : COPY.offNext}</em>`;
+      tip.classList.add("show");
+    }
+  }
+
+  // Update iPhone whisper toast in place
+  if (plat === "ios") {
+    const w = slice.querySelector(".ios-whisper");
+    if (w) {
+      const sp = w.querySelector("span");
+      if (sp && st.whisperText) sp.innerHTML = st.whisperText;
+      w.classList.toggle("on", Boolean(st.whisperText));
+    }
+  }
+}
+
+function rerenderSlice(schemeId, plat) {
+  const scheme = SCHEMES.find((x) => x.id === schemeId);
+  const old = document.querySelector(`[data-scheme="${schemeId}"][data-plat="${plat}"]`)?.parentElement;
+  if (!old || !scheme) return;
+  const tmp = document.createElement("div");
+  tmp.innerHTML = plat === "mac" ? renderMacCard(scheme) : renderIosCard(scheme);
+  old.replaceWith(tmp.firstElementChild);
+}
+
+function triggerWhisper(st, schemeId) {
+  clearTimeout(st.whisperTimer);
+  if (CFG.whisper !== "1") {
+    st.whisperText = "";
+    return;
+  }
+  st.whisperText = st.wt
+    ? `<b>独立 worktree</b> · ${COPY.onHint}`
+    : `<b>当前目录</b> · ${COPY.offHint}`;
+  st.whisperTimer = setTimeout(() => {
+    st.whisperText = "";
+    const w = document.querySelector(`[data-scheme="${schemeId}"][data-plat="ios"] .ios-whisper`);
+    if (w) w.classList.remove("on");
+  }, 1650);
+}
+
+// Delegated interactions: click, hover tooltip on Mac, long-press / contextmenu on iPhone
+let pressTimer = null;
+let longPressed = false;
+
+document.addEventListener("pointerdown", (e) => {
+  const ctxBtn = e.target.closest("[data-ctx='1']");
+  if (!ctxBtn || e.button === 2) return;
+  longPressed = false;
+  clearTimeout(pressTimer);
+  pressTimer = setTimeout(() => {
+    const slice = ctxBtn.closest("[data-scheme]");
+    if (!slice) return;
+    longPressed = true;
+    navigator.vibrate?.(12);
+    const { scheme, plat } = slice.dataset;
+    STATE[scheme][plat].menu = "ctx";
+    rerenderSlice(scheme, plat);
+  }, 420);
+});
+["pointerup", "pointercancel", "pointermove"].forEach((ev) =>
+  document.addEventListener(ev, (e) => {
+    if (ev === "pointermove" && Math.hypot(e.movementX || 0, e.movementY || 0) < 4) return;
+    clearTimeout(pressTimer);
+  })
+);
+
+document.addEventListener("contextmenu", (e) => {
+  const ctxBtn = e.target.closest("[data-ctx='1']");
+  if (!ctxBtn) return;
+  e.preventDefault();
+  clearTimeout(pressTimer);
+  const slice = ctxBtn.closest("[data-scheme]");
+  const { scheme, plat } = slice.dataset;
+  STATE[scheme][plat].menu = "ctx";
+  rerenderSlice(scheme, plat);
+});
+
+document.addEventListener("click", (e) => {
+  const flipBtn = e.target.closest(".ctl button[data-flip-all]");
+  if (flipBtn) {
+    const targetWt = flipBtn.dataset.flipAll === "1";
+    flipBtn.parentElement.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === flipBtn));
+    SCHEMES.forEach((s) => {
+      ["mac", "ios"].forEach((p) => {
+        if (STATE[s.id][p].wt !== targetWt) {
+          STATE[s.id][p].wt = targetWt;
+          STATE[s.id][p].turns += 1;
+          STATE[s.id][p].menu = null;
+          if (s.id === "now") rerenderSlice(s.id, p);
+          else updateToggleInPlace(s.id, p);
+        }
+      });
+    });
+    return;
+  }
+
+  const ctlBtn = e.target.closest(".ctl button[data-k]");
+  if (ctlBtn) {
+    const { k, v } = ctlBtn.dataset;
+    CFG[k] = v;
+    if (k === "theme") document.documentElement.dataset.theme = v;
+    if (k === "dev") document.body.dataset.dev = v;
+    ctlBtn.parentElement.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === ctlBtn));
+    renderAll();
+    return;
+  }
+
+  const actEl = e.target.closest("[data-act]");
+  if (!actEl) return;
+  if (longPressed) {
+    longPressed = false;
+    return;
+  }
+  const slice = actEl.closest("[data-scheme]");
+  if (!slice) return;
+  const { scheme, plat } = slice.dataset;
+  const st = STATE[scheme][plat];
+  const act = actEl.dataset.act;
+
+  if (act === "toggle") {
+    st.wt = !st.wt;
+    st.turns += 1;
+    st.menu = null;
+    navigator.vibrate?.(6);
+    if (plat === "ios") triggerWhisper(st, scheme);
+    updateToggleInPlace(scheme, plat);
+  } else if (act === "menu-wt") {
+    st.menu = st.menu === "wt" ? null : "wt";
+    rerenderSlice(scheme, plat);
+  } else if (act === "menu-br") {
+    st.menu = st.menu === "br" ? null : "br";
+    rerenderSlice(scheme, plat);
+  } else if (act === "pick-wt") {
+    st.wt = actEl.dataset.val === "1";
+    st.turns += 1;
+    st.menu = null;
+    rerenderSlice(scheme, plat);
+  } else if (act === "pick-br") {
+    st.br = actEl.dataset.val;
+    st.menu = null;
+    rerenderSlice(scheme, plat);
+  } else if (act === "close") {
+    st.menu = null;
+    rerenderSlice(scheme, plat);
+  }
+});
+
+// Mac hover tooltip handling
+let hoverTimer = null;
+document.addEventListener("mouseover", (e) => {
+  const btn = e.target.closest(".mac-slice .wt-btn");
+  if (!btn) return;
+  const tip = btn.closest(".th-place")?.querySelector(".mac-tip");
+  if (!tip) return;
+  clearTimeout(hoverTimer);
+  hoverTimer = setTimeout(() => tip.classList.add("show"), 180);
+});
+document.addEventListener("mouseout", (e) => {
+  const btn = e.target.closest(".mac-slice .wt-btn");
+  if (!btn || btn.contains(e.relatedTarget)) return;
+  clearTimeout(hoverTimer);
+  const tip = btn.closest(".th-place")?.querySelector(".mac-tip");
+  if (tip) tip.classList.remove("show");
+});
+
+// Enable send button tint when typing in demo boxes
+document.addEventListener("input", (e) => {
+  if (e.target.matches(".mac-in")) {
+    e.target.closest(".mac-cmp")?.querySelector(".mac-send")?.classList.toggle("ready", e.target.value.trim().length > 0);
+  } else if (e.target.matches(".ios-in")) {
+    const send = e.target.closest(".ios-box")?.querySelector(".ios-send");
+    if (send) send.style.opacity = e.target.value.trim().length > 0 ? "1" : ".42";
+  }
+});
+
+renderAll();
+</script>
+</body>
+</html>

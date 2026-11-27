@@ -129,17 +129,7 @@ struct StepView: View {
             .background(Palette.fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         case .question(_, let q, let r):
             if let r {
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Image(systemName: "questionmark.circle").foregroundStyle(.secondary)
-                        Text(asked(q))
-                    }
-                    Text(resolutionTitle(r, name: { AgentLogo.name(model.clientLabel($0)) })).foregroundStyle(.secondary)
-                }
-                .font(.footnote)
-                .padding(.horizontal, 12).padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Palette.fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                SettledQuestionCard(question: q, resolution: r)
             }
         case .turnEnd(_, let end, _):
             if end.isError, isInterruption(end.hasFailure ? end.failure : nil) {
@@ -166,11 +156,122 @@ struct StepView: View {
             : label.map { String(localized: "\(AgentLogo.name($0)) interrupted this turn") } ?? String(localized: "This turn was interrupted")
         return TurnNote(text: text)
     }
+}
 
-    private func asked(_ q: Question) -> AttributedString {
-        var s = AttributedString(String(localized: "Agent asked:"))
-        s.inlinePresentationIntent = .stronglyEmphasized
-        return s + AttributedString(" " + q.items.map(\.text).joined(separator: " "))
+/// Settled question card (Style A): calm secondary question prompt over a highlighted checked answer row
+/// with the Recommended badge preserved inline and zero redundant top header clutter.
+struct SettledQuestionCard: View {
+    @Environment(AppModel.self) private var model
+    let question: Question
+    let resolution: QuestionResolved
+
+    var body: some View {
+        let nameOf: (String) -> String = { AgentLogo.name(model.clientLabel($0)) }
+        let rows = settledQuestionRows(question, resolution: resolution, name: nameOf)
+        let byOther: String? = (resolution.by.isEmpty || resolution.by == "owner") ? nil : nameOf(resolution.by)
+
+        VStack(alignment: .leading, spacing: 10) {
+            if let byOther, resolution.resolution == .answered {
+                Text("\(byOther) answered")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(Array(rows.enumerated()), id: \.offset) { i, row in
+                if i > 0 {
+                    Rectangle().fill(Palette.separator).frame(height: 0.5)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    if !row.prompt.isEmpty {
+                        Text(verbatim: row.prompt)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if row.status == .answered {
+                        answerBox(choices: row.choices, status: row.status, statusText: "")
+                    } else if !row.statusText.isEmpty {
+                        answerBox(choices: [], status: row.status, statusText: row.statusText)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 13).padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settled-question")
+    }
+
+    @ViewBuilder private func answerBox(choices: [ParsedOptionLabel], status: SettledQuestionRow.StatusKind, statusText: String) -> some View {
+        let answered = status == .answered
+        HStack(alignment: .top, spacing: 8) {
+            answerMark(status)
+                .padding(.top, 1.5)
+            Group {
+                if answered {
+                    joinedChoicesText(choices)
+                        .foregroundStyle(.primary)
+                } else {
+                    Text(verbatim: statusText)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 11).padding(.vertical, 8.5)
+        .background(answered ? Palette.fill2 : Color.clear, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
+    }
+
+    @ViewBuilder private func answerMark(_ status: SettledQuestionRow.StatusKind) -> some View {
+        switch status {
+        case .answered:
+            Image(systemName: "checkmark")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.green)
+                .frame(width: 18, height: 18)
+                .background(Color.green.opacity(0.15), in: .circle)
+                .overlay(Circle().strokeBorder(Color.green.opacity(0.3), lineWidth: 0.5))
+        case .timedOut:
+            Image(systemName: "clock")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.orange)
+                .frame(width: 18, height: 18)
+                .background(Color.orange.opacity(0.15), in: .circle)
+        default:
+            Image(systemName: "minus")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 18, height: 18)
+                .background(Palette.fill2, in: .circle)
+        }
+    }
+
+    private func joinedChoicesText(_ choices: [ParsedOptionLabel]) -> some View {
+        let baseFont: Font = .subheadline.weight(.medium)
+        let badgeFont: Font = .caption2.weight(.semibold)
+        let sep = String(localized: " · ")
+        let combined = choices.enumerated().reduce(Text(verbatim: "")) { acc, entry in
+            let prefix = entry.offset == 0 ? Text(verbatim: "") : Text(verbatim: sep).font(baseFont).foregroundStyle(.secondary)
+            let p = entry.element
+            let itemText: Text
+            if p.recommended {
+                let badge = Text(verbatim: "\u{00A0}\(String(localized: "Recommended"))\u{00A0}")
+                    .font(badgeFont)
+                    .foregroundStyle(Color.accentColor)
+                    .customAttribute(RecommendedBadgeAttribute(selected: false))
+                let space = Text(verbatim: " ").font(baseFont)
+                let label = Text(verbatim: p.text).font(baseFont)
+                itemText = Text("\(badge)\(space)\(label)")
+            } else {
+                itemText = Text(verbatim: p.text).font(baseFont)
+            }
+            return Text("\(acc)\(prefix)\(itemText)")
+        }
+        return combined.textRenderer(RecommendedTextRenderer(accent: .accentColor))
     }
 }
 
@@ -564,31 +665,46 @@ struct BarIcon: View {
 private struct SidePanelButton: View {
     @Environment(AppModel.self) private var model
     let sessionID: String
+    var inBar = false
 
     var body: some View {
         let files = model.sessionFiles.model(sessionID, api: model.api)
-        Button {
-            withAnimation(.snappy) {
-                if files.panelOpen {
-                    files.panelOpen = false
-                    files.panelMax = false
-                } else if files.tabs.isEmpty {
-                    files.openProject()
-                } else {
-                    files.panelOpen = true
+        Group {
+            if inBar {
+                Button(action: { toggle(files) }) {
+                    (files.panelOpen ? sidePanelHideImage() : Image(systemName: "sidebar.right"))
+                        .foregroundStyle(files.panelOpen ? Color.accentColor : .primary)
                 }
+            } else {
+                Button(action: { toggle(files) }) {
+                    (files.panelOpen ? sidePanelHideImage() : Image(systemName: "sidebar.right"))
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(files.panelOpen ? Color.accentColor : .primary)
+                        .frame(width: 44, height: 44)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
             }
-            if files.panelOpen { model.menuRail = true }
-        } label: {
-            Image(systemName: "sidebar.right").font(.body.weight(.medium)).foregroundStyle(files.panelOpen ? Color.accentColor : .primary)
-                .frame(width: 44, height: 44)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .contentShape(.circle)
         }
-        .buttonStyle(.plain)
         .accessibilityLabel(files.panelOpen ? String(localized: "Hide Side Panel") : String(localized: "Show Side Panel"))
         .accessibilityAddTraits(files.panelOpen ? .isSelected : [])
         .accessibilityIdentifier("session-side-panel")
+    }
+
+    private func toggle(_ files: SessionFilesModel) {
+        withAnimation(.snappy) {
+            if files.panelOpen {
+                files.panelOpen = false
+                files.panelMax = false
+                files.panelDrawer = false
+            } else if files.tabs.isEmpty {
+                files.openProject()
+            } else {
+                files.panelOpen = true
+            }
+        }
+        if files.panelOpen { model.menuRail = true }
     }
 }
 
@@ -602,10 +718,10 @@ private struct SessionMore: View {
 
     var body: some View {
         // The session's folder (docs/session-files.md §4, §15): a level at a time on a narrow screen; on a wide one,
-        // 项目文件 in the side panel.
+        // pulls up the bottom tree drawer over an open file tab or starts 项目文件 in the side panel.
         Button("Project Files", systemImage: "folder") {
             if model.wide != nil {
-                model.sessionFiles.model(session.sessionID, api: model.api).openProject()
+                model.sessionFiles.model(session.sessionID, api: model.api).showProjectFiles()
                 model.menuRail = true
             } else {
                 model.path.append(.sessionFolder(session.sessionID, ""))
@@ -624,7 +740,9 @@ private struct SessionMore: View {
     }
 }
 
-/// With the system's bars on the side (iPhone Duo): a session's buttons there, as every page's are.
+/// With the system's bars on the side (iPhone Duo): a session's buttons there, as every page's are. When unfolded
+/// on its side (`model.wide != nil`), window and contextual side-panel tools group into vertical Liquid Glass capsules
+/// along the trailing bar, keeping Hide Side Panel pinned and merging file actions into a single sectioned `⋯` menu.
 private struct SessionSideItems: ToolbarContent {
     @Environment(AppModel.self) private var model
     let session: Session?
@@ -635,22 +753,128 @@ private struct SessionSideItems: ToolbarContent {
     var body: some ToolbarContent {
         if model.path.isEmpty { MenuToolbarItem() }
         if let session {
-            if let tasks = backgroundTasks, tasks.running {
+            if #available(iOS 27.1, *), model.wide != nil {
+                SessionDuoWideItems(session: session, files: model.sessionFiles.model(session.sessionID, api: model.api),
+                                    renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
+            } else {
+                if let tasks = backgroundTasks, tasks.running {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Background Tasks", systemImage: "terminal", action: tasks.open)
+                            .accessibilityIdentifier("thread-background-tasks")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Background Tasks", systemImage: "terminal", action: tasks.open)
-                        .accessibilityIdentifier("thread-background-tasks")
+                    Menu {
+                        SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                    .accessibilityLabel("More")
+                    .accessibilityIdentifier("session-more")
                 }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
-                } label: {
-                    Image(systemName: "ellipsis")
-                }
-                .accessibilityLabel("More")
-                .accessibilityIdentifier("session-more")
             }
         }
+    }
+}
+
+@available(iOS 27.1, *)
+private struct SessionDuoWideItems: ToolbarContent {
+    @Environment(AppModel.self) private var model
+    let session: Session
+    @Bindable var files: SessionFilesModel
+    @Binding var renaming: Bool
+    @Binding var deleting: Bool
+    let backgroundTasks: SessionBar.BackgroundTasks?
+
+    private var activeIndex: Int? { files.tabs.firstIndex { $0.id == files.activeTab } }
+    private var activeTab: PanelTab? { activeIndex.map { files.tabs[$0] } }
+    private var sourceable: Bool {
+        guard let t = activeTab, t.kind == .files, !t.path.isEmpty else { return false }
+        let v = fileView(t.path)
+        return v == .markdown || v == .svg
+    }
+
+    var body: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarPinnedTrailing) {
+            SidePanelButton(sessionID: session.sessionID, inBar: true)
+            if files.panelOpen {
+                Button {
+                    withAnimation(.snappy) { files.panelMax.toggle() }
+                } label: {
+                    Image(systemName: files.panelMax ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                }
+                .accessibilityLabel(files.panelMax ? String(localized: "Shrink") : String(localized: "Enlarge"))
+                .accessibilityIdentifier("side-panel-max")
+            }
+        }
+        .axisBehavior(.verticalPreferred)
+        if files.panelOpen {
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Menu {
+                    Button("Project Files", systemImage: "list.bullet.indent") { files.openProject() }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel(String(localized: "New Tab"))
+                .accessibilityIdentifier("side-panel-new")
+                if let i = activeIndex, sourceable {
+                    Button {
+                        files.tabs[i].source.toggle()
+                    } label: {
+                        Image(systemName: files.tabs[i].source ? "eye" : "chevron.left.forwardslash.chevron.right")
+                    }
+                    .accessibilityLabel(files.tabs[i].source ? String(localized: "Preview") : String(localized: "Source"))
+                    .accessibilityIdentifier("file-source")
+                }
+            }
+            .axisBehavior(.verticalPreferred)
+        }
+        ToolbarSpacer(.fixed, placement: .topBarTrailing)
+        if let tasks = backgroundTasks, tasks.running {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Background Tasks", systemImage: "terminal", action: tasks.open)
+                    .accessibilityIdentifier("thread-background-tasks")
+            }
+            .axisBehavior(.verticalPreferred)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                if files.panelOpen, let tab = activeTab {
+                    if let a = tab.attachment {
+                        Section(fileBaseName(a.name)) {
+                            Button("Share…", systemImage: "square.and.arrow.up") {
+                                Task {
+                                    files.sharing = await SessionAttachmentStore.shared.previewURL(api: model.api, sessionID: files.sessionID,
+                                                                                                   machineID: session.machineID, ref: a)
+                                }
+                            }
+                            .accessibilityIdentifier("file-share")
+                        }
+                        Section(String(localized: "Current Session")) {
+                            SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
+                        }
+                    } else if !tab.path.isEmpty {
+                        Section(fileBaseName(tab.path)) {
+                            SessionFileMenu(sessionID: files.sessionID, run: tab.run, path: tab.path,
+                                            folder: files.folders[tab.id] ?? "", sharing: $files.sharing)
+                        }
+                        Section(String(localized: "Current Session")) {
+                            SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
+                        }
+                    } else {
+                        SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
+                    }
+                } else {
+                    SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .accessibilityLabel("More")
+            .accessibilityIdentifier("session-more")
+        }
+        .axisBehavior(.verticalPreferred)
     }
 }
 
@@ -839,12 +1063,13 @@ extension View {
         id: String,
         ready: Bool,
         spoken: Int = 0,
+        waitingAgent: String? = nil,
         atEnd: Binding<Bool>,
         position: Binding<ScrollPosition>,
         scrollBox: ConversationScrollBox,
         @ViewBuilder bottom: @escaping () -> Bottom
     ) -> some View {
-        modifier(FollowsEnd(id: id, ready: ready, spoken: spoken, atEnd: atEnd, position: position, scrollBox: scrollBox, bottom: bottom))
+        modifier(FollowsEnd(id: id, ready: ready, spoken: spoken, waitingAgent: waitingAgent, atEnd: atEnd, position: position, scrollBox: scrollBox, bottom: bottom))
     }
 }
 
@@ -852,6 +1077,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
     let id: String
     let ready: Bool
     let spoken: Int
+    let waitingAgent: String?
     @Binding var atEnd: Bool
     @Binding var position: ScrollPosition
     let scrollBox: ConversationScrollBox
@@ -930,7 +1156,9 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
                     scheduleAlign(markPositioned: false)
                 }
             }
-            .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, far in away = far }
+            .onScrollGeometryChange(for: Bool.self) { g in
+                fromEnd(g) > (waitingAgent != nil ? 140 : 240)
+            } action: { _, far in away = far }
             .onDisappear {
                 alignTask?.cancel()
                 alignTask = nil
@@ -938,7 +1166,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 0) { bottom() }
                     .frame(maxWidth: .infinity)
-                    .toEndButton(away && !atEnd) {
+                    .toEndButton(away && !atEnd, waitingAgent: waitingAgent) {
                         atEnd = true
                         away = false
                         positioned = true

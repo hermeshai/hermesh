@@ -45,4 +45,7 @@ func TestLinkSocket(t *testing.T) {
 	if got := Link("/home/dev/.config/hermesh"); got != "/home/dev/.config/hermesh/link/link.sock" {
 		t.Fatal(got)
 	}
+	if p := DesktopPerf(long); len(p) > 100 || strings.HasPrefix(p, long) {
+		t.Fatalf("DesktopPerf(%q) = %q", long, p)
+	}
 }

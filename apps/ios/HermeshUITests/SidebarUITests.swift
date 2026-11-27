@@ -83,7 +83,7 @@ final class SidebarUITests: XCTestCase {
         let menuShot2 = XCUIScreen.main.screenshot()
         attach(menuShot, name: "sidebar-running-row")
         // Leading logo: a brand-blue squircle orbit is visible and moves over time.
-        let leading = CGRect(x: row.frame.minX + 10, y: row.frame.midY - 15, width: 36, height: 30)
+        let leading = CGRect(x: row.frame.minX + 14, y: row.frame.midY - 15, width: 44, height: 30)
         let orbit = blueOrbitStats(first: menuShot.image, second: menuShot2.image, rectInPoints: leading)
         XCTAssertGreaterThan(orbit.bluePixels, 8, "expected brand-blue orbit pixels around running provider icon (got \(orbit.bluePixels))")
         XCTAssertGreaterThan(orbit.changedPixels, 6, "expected running provider icon orbit to animate over time (got \(orbit.changedPixels))")
@@ -158,6 +158,84 @@ final class SidebarUITests: XCTestCase {
         let byStatus = app.buttons["By Status"]
         XCTAssertTrue(byStatus.waitForExistence(timeout: 5))
         byStatus.tap()
+    }
+
+    func testGitStatusMarksAndLongPressPreviewCard() {
+        launchDemo(["-DemoGitStatus", "YES"])
+        openDrawer()
+
+        let pushedRow = app.buttons["session-Git Pushed Task"]
+        let mergedRow = app.buttons["session-Git Merged Task"]
+        let unpushedRow = app.buttons["session-Git Unpushed Task"]
+        let dirtyTitle = "Git Dirty Task — Refactor sidebar delivery perception and long-press status card"
+        let dirtyRow = app.buttons["session-\(dirtyTitle)"]
+        let cleanRow = app.buttons["session-Git Clean Task"]
+
+        for row in [pushedRow, mergedRow, unpushedRow, dirtyRow, cleanRow] {
+            XCTAssertTrue(row.waitForExistence(timeout: 10), "expected \(row.identifier) in sidebar")
+        }
+
+        // Delivered-only sidebar marks: only pushed & merged expose row status marks; unpushed/dirty/clean stay unmarked.
+        XCTAssertEqual(pushedRow.value as? String, "Pushed")
+        XCTAssertEqual(mergedRow.value as? String, "Merged")
+        XCTAssertEqual((unpushedRow.value as? String) ?? "", "")
+        XCTAssertEqual((dirtyRow.value as? String) ?? "", "")
+        XCTAssertEqual((cleanRow.value as? String) ?? "", "")
+        attach(XCUIScreen.main.screenshot(), name: "sidebar-git-marks")
+
+        // Long-press a pushed session: read-only Git preview platter + native context menu actions appear, with zero buttons inside the preview card.
+        pushedRow.press(forDuration: 0.85)
+        let preview = app.otherElements["Preview"].firstMatch
+        XCTAssertTrue(preview.waitForExistence(timeout: 5), "long-press Git status preview card")
+        for expected in [
+            "Git Pushed Task",
+            "Committed & pushed",
+            "+42",
+            "−8",
+            "hermesh/pushed",
+            "origin/hermesh/pushed",
+            "7b2e91f",
+            "feat(sidebar): sync pushed git mark",
+            "Synced to remote branch origin/hermesh/pushed",
+        ] {
+            XCTAssertTrue(
+                preview.descendants(matching: .any).matching(NSPredicate(format: "label == %@", expected)).firstMatch.exists,
+                "expected '\(expected)' inside preview platter"
+            )
+        }
+        XCTAssertEqual(preview.buttons.count, 0, "preview card must remain strictly read-only without action buttons")
+        XCTAssertTrue(app.buttons["Rename"].waitForExistence(timeout: 5), "native context menu actions remain below preview")
+        attach(XCUIScreen.main.screenshot(), name: "sidebar-git-preview-pushed")
+
+        // Dismiss context menu by tapping outside near top-right.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.12)).tap()
+        XCTAssertTrue(app.buttons["Rename"].waitForNonExistence(timeout: 5))
+
+        // Long-press a dirty session with a long truncated row title: preview shows full multi-line title + uncommitted file status.
+        dirtyRow.press(forDuration: 0.85)
+        XCTAssertTrue(preview.waitForExistence(timeout: 5), "long-press preview for dirty session")
+        XCTAssertTrue(
+            preview.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "3 uncommitted files")).firstMatch.exists,
+            "expected uncommitted files label in preview"
+        )
+        let fullTitle = preview.descendants(matching: .any).matching(NSPredicate(format: "label == %@", dirtyTitle)).firstMatch
+        XCTAssertTrue(fullTitle.exists, "expected full untruncated title in preview")
+        XCTAssertGreaterThan(fullTitle.frame.height, 26, "long title wraps across multiple lines in preview card")
+        attach(XCUIScreen.main.screenshot(), name: "sidebar-git-preview-dirty")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.12)).tap()
+        XCTAssertTrue(app.buttons["Rename"].waitForNonExistence(timeout: 5))
+
+        // Also check light mode sidebar marks + merged preview card.
+        setAppearance("light")
+        attach(XCUIScreen.main.screenshot(), name: "sidebar-git-marks-light")
+        mergedRow.press(forDuration: 0.85)
+        XCTAssertTrue(preview.waitForExistence(timeout: 5), "long-press preview for merged session in light mode")
+        XCTAssertTrue(
+            preview.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Merged into main")).firstMatch.exists,
+            "expected Merged into main in preview"
+        )
+        attach(XCUIScreen.main.screenshot(), name: "sidebar-git-preview-merged-light")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.12)).tap()
     }
 
     private func verifyLongSidebar(mode: String) {

@@ -35,7 +35,9 @@
     "toAgent": "交给 Agent · {{keys}}",
     "herAsk": "要 Her 做什么？",
     "herWhere": "Her 在 {{machine}}",
-    "defaultModel": "默认"
+    "defaultModel": "默认",
+    "switchToWorktree": "点击切为独立 worktree",
+    "switchToCheckout": "点击切为当前目录"
   },
   "header": {
     "archive": "归档",

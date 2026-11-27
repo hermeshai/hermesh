@@ -1,6 +1,5 @@
 /* The session page: what the prototype styles in app.css, plus what real data needs. */
-.mini-spin{width:12px;height:12px;border-radius:50%;border:1.6px solid var(--fill3);border-top-color:var(--accent);animation:spin .8s linear infinite;flex:none}
-.tq>.ic{display:inline-block;vertical-align:-2px;margin-right:5px;color:var(--l2)}
+.mini-spin{width:12px;height:12px;border-radius:50%;border:1.6px solid var(--fill3);border-top-color:var(--accent);will-change:transform;animation:spin .8s linear infinite;flex:none}
 .link.plain{color:var(--l1);text-align:left}
 .dl.note .c{color:var(--l3)}
 .um{display:flex;flex-direction:column;align-items:flex-end}
@@ -9,6 +8,6 @@
 .um .um-att:last-child,.um .um-att:has(+ .msg-act),.um .um-att:has(+ .um-wait){margin-bottom:0}
 
 /* The coding agent working: its own logo, breathing. */
-.live-logo{display:inline-flex;animation:live-breathe 2.4s ease-in-out infinite}
+.live-logo{display:inline-flex;will-change:opacity;animation:live-breathe 2.4s ease-in-out infinite}
 @keyframes live-breathe{0%,100%{opacity:1}50%{opacity:.45}}
 @media (prefers-reduced-motion:reduce){.live-logo{animation:none}}

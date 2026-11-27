@@ -1,4 +1,4 @@
-import { app, net, protocol } from "electron";
+import { app, nativeTheme, net, protocol } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { useSystemWords } from "../shared/i18n";
@@ -9,12 +9,13 @@ import { chooseLanguage } from "./language";
 import { setAppMenu } from "./menu";
 import { applyAppearance, migrateStayOnline, posted, stayOnlineListeners, watch } from "./notify";
 import { dataDir, socketPath } from "./paths";
+import { collectDesktopSnapshot, startPerfServer } from "./perf";
 import { platform } from "./platform";
 import { keepSignerRunning } from "./signer";
 import { receiveLink } from "./signin";
 import { showTray, trayState } from "./tray";
 import { startUpdater } from "./updater";
-import { devURL, mainWindow, showMain } from "./windows";
+import { devURL, mainWindow, showMain, syncWindowsAppearance } from "./windows";
 
 const rendererDir = path.join(import.meta.dirname, "../renderer");
 // pdf.js (a PDF over the window) decodes some images with WebAssembly and draws some through blob: URLs.
@@ -82,6 +83,7 @@ app.whenReady().then(async () => {
   // Quitting still reaches ready: nothing of the app's runs for the installer.
   if (installerEvent) return;
   applyAppearance();
+  nativeTheme.on("updated", () => syncWindowsAppearance());
   if (!(await platform.settle())) return;
   platform.registerLinks();
   serve();
@@ -93,7 +95,11 @@ app.whenReady().then(async () => {
   setAppMenu();
   watch();
   const stopSigner = keepSignerRunning(socketPath());
-  app.on("will-quit", stopSigner);
+  const stopPerf = startPerfServer();
+  app.on("will-quit", () => {
+    stopPerf();
+    stopSigner();
+  });
   started = true;
   const url = linkArg(process.argv);
   if (url) receiveLink(url);
@@ -116,5 +122,6 @@ Object.assign(globalThis, {
     notifications: () => posted,
     tray: trayState,
     daemon: () => ({ info: daemonInfo(), start: startBackgroundService, stop: stopBackgroundService }),
+    perfSnapshot: collectDesktopSnapshot,
   },
 });

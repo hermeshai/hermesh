@@ -1,0 +1,1339 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设置 › 通用 · 外观交互原型（内置材质）</title>
+<style>
+:root {
+  --font: "Google Sans Flex", "Google Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+  --mono: "Google Sans Code", ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Desktop wallpapers for testing glass vs solid themes */
+  --wp-aurora:
+    radial-gradient(110% 90% at 12% 18%, rgba(56, 189, 248, .95) 0%, rgba(56, 189, 248, 0) 55%),
+    radial-gradient(95% 90% at 82% 20%, rgba(139, 92, 246, .90) 0%, rgba(139, 92, 246, 0) 56%),
+    radial-gradient(105% 90% at 24% 86%, rgba(244, 114, 182, .85) 0%, rgba(244, 114, 182, 0) 54%),
+    radial-gradient(90% 85% at 86% 84%, rgba(45, 212, 191, .78) 0%, rgba(45, 212, 191, 0) 52%),
+    linear-gradient(135deg, #1d4ed8 0%, #4338ca 48%, #0f172a 100%);
+  --wp-sunset:
+    radial-gradient(115% 90% at 15% 20%, rgba(251, 146, 60, .96) 0%, rgba(251, 146, 60, 0) 56%),
+    radial-gradient(100% 90% at 78% 18%, rgba(244, 63, 94, .90) 0%, rgba(244, 63, 94, 0) 54%),
+    radial-gradient(110% 95% at 22% 88%, rgba(250, 204, 21, .82) 0%, rgba(250, 204, 21, 0) 52%),
+    radial-gradient(100% 90% at 85% 82%, rgba(129, 140, 248, .84) 0%, rgba(129, 140, 248, 0) 56%),
+    linear-gradient(140deg, #7c2d12 0%, #581c87 58%, #1e1b4b 100%);
+  --wp-ocean:
+    radial-gradient(120% 95% at 15% 24%, rgba(34, 211, 238, .92) 0%, rgba(34, 211, 238, 0) 55%),
+    radial-gradient(100% 95% at 80% 20%, rgba(59, 130, 246, .88) 0%, rgba(59, 130, 246, 0) 55%),
+    radial-gradient(110% 90% at 28% 85%, rgba(52, 211, 153, .80) 0%, rgba(52, 211, 153, 0) 52%),
+    linear-gradient(145deg, #0369a1 0%, #1e3a8a 58%, #090d16 100%);
+
+  --wp: var(--wp-aurora);
+
+  /* Fixed miniature backdrop inside the Appearance thumbnails (works identically in Electron without reading OS wallpaper) */
+  --thumb-wp:
+    radial-gradient(circle at 18% 24%, rgba(56, 189, 248, .98) 0%, rgba(56, 189, 248, 0) 52%),
+    radial-gradient(circle at 26% 78%, rgba(244, 114, 182, .94) 0%, rgba(244, 114, 182, 0) 52%),
+    radial-gradient(circle at 78% 22%, rgba(167, 139, 250, .92) 0%, rgba(167, 139, 250, 0) 54%),
+    radial-gradient(circle at 12% 52%, rgba(251, 191, 36, .75) 0%, rgba(251, 191, 36, 0) 46%),
+    linear-gradient(135deg, #2563eb 0%, #4f46e5 52%, #1e1b4b 100%);
+}
+
+[data-wp="sunset"] { --wp: var(--wp-sunset); }
+[data-wp="ocean"]  { --wp: var(--wp-ocean); }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  background: #0b0d13;
+  color: #ececf1;
+  overflow-x: hidden;
+}
+button, select { font: inherit; color: inherit; }
+button { border: 0; background: none; padding: 0; cursor: default; }
+svg { display: block; flex: none; }
+
+/* ==========================================================================
+   4 Curated Themes (Palette + Intended Sidebar Material Unified)
+   - light: Crisp White + Liquid Glass Sidebar
+   - soft:  FinxWork Mist Paper + Solid Matte Sidebar
+   - dark:  Native Charcoal + Liquid Glass Sidebar
+   - black: FinxWork Onyx Black + Solid Matte Sidebar
+   ========================================================================== */
+
+/* 1. 浅色 — 液态玻璃侧边栏 + 纯白内容底 */
+.theme-light {
+  --win: #ffffff;
+  --win2: #f4f4f7;
+  --win3: #ebebf0;
+  --side: #f4f4f7;
+  --side-head: #f4f4f7;
+  --side-tint: rgba(248, 249, 252, .68);
+  --side-glass-filter: blur(28px) saturate(1.9) brightness(1.28);
+  --side-sel: rgba(0, 0, 0, .075);
+  --side-fg: rgba(0, 0, 0, .76);
+  --side-sel-fg: rgba(0, 0, 0, .95);
+  --side-sel-sh: none;
+  --l1: rgba(0, 0, 0, .86);
+  --l2: rgba(0, 0, 0, .54);
+  --l3: rgba(0, 0, 0, .34);
+  --l4: rgba(0, 0, 0, .14);
+  --sep: rgba(0, 0, 0, .075);
+  --fill: rgba(0, 0, 0, .045);
+  --fill2: rgba(0, 0, 0, .075);
+  --fill3: rgba(0, 0, 0, .12);
+  --accent: #3d5bff;
+  --accent-fg: #2d4ae6;
+  --accent-bg: rgba(61, 91, 255, .10);
+  --green: #17924f;
+  --orange: #d0700a;
+  --btn: #ffffff;
+  --btn-sh: 0 0 0 .5px rgba(0, 0, 0, .14), 0 1px 1.5px rgba(0, 0, 0, .08);
+  --field-bd: rgba(0, 0, 0, .15);
+  --pill: #ffffff;
+  --pill-bd: rgba(0, 0, 0, .10);
+  --cmp-sh: 0 .5px 1px rgba(0, 0, 0, .05), 0 2px 8px rgba(10, 20, 50, .06), 0 0 0 .5px rgba(0, 0, 0, .10);
+  --bub: #e7ebf2;
+  --bub-fg: #202127;
+  --code: #f6f7fa;
+  --bar-tint: rgba(255, 255, 255, .76);
+  --shadow-win: 0 0 0 .5px rgba(0, 0, 0, .22), 0 26px 72px rgba(8, 15, 35, .34), 0 8px 24px rgba(8, 15, 35, .16);
+  --t-blue: #6f7f9e; --t-slate: #7d8794; --t-sage: #7b9384; --t-sand: #a08e74; --t-rose: #a07b7b;
+  color-scheme: light;
+}
+
+/* 2. 柔白 — FinxWork 实色侧边栏 + 低眩光雾灰白底 + 纯白悬浮输入框 */
+.theme-soft {
+  --win: #f4f5f7;
+  --win2: #ebedf2;
+  --win3: #e3e7ee;
+  --side: #eef0f4;
+  --side-head: #eef0f4;
+  --side-sel: #e7edf7;
+  --side-fg: #202127;
+  --side-sel-fg: #202127;
+  --side-sel-sh: inset 0 0 0 .5px rgba(47, 111, 214, .28);
+  --l1: #202127;
+  --l2: #60636d;
+  --l3: #727580;
+  --l4: rgba(32, 33, 39, .14);
+  --sep: rgba(32, 33, 39, .068);
+  --fill: rgba(32, 33, 39, .042);
+  --fill2: rgba(32, 33, 39, .072);
+  --fill3: rgba(32, 33, 39, .12);
+  --accent: #2f6fd6;
+  --accent-fg: #285fb8;
+  --accent-bg: rgba(47, 111, 214, .10);
+  --green: #17924f;
+  --orange: #d0700a;
+  --btn: #ffffff;
+  --btn-sh: inset 0 1px 0 rgba(255, 255, 255, .8), 0 0 0 .5px rgba(32, 33, 39, .12), 0 1px 2px rgba(32, 33, 39, .05);
+  --field-bd: rgba(32, 33, 39, .14);
+  --pill: #ffffff;
+  --pill-bd: rgba(32, 33, 39, .10);
+  --cmp-sh: inset 0 1px 0 rgba(255, 255, 255, .85), 0 0 0 1px rgba(32, 33, 39, .10), 0 6px 18px -8px rgba(32, 33, 39, .12);
+  --bub: #e7ebf2;
+  --bub-fg: #202127;
+  --code: #ebedf2;
+  --bar-tint: rgba(244, 245, 247, .76);
+  --shadow-win: 0 0 0 .5px rgba(20, 24, 34, .22), 0 26px 72px rgba(8, 15, 35, .34), 0 8px 24px rgba(8, 15, 35, .16);
+  --t-blue: #667899; --t-slate: #737e8c; --t-sage: #718a7b; --t-sand: #97856b; --t-rose: #987373;
+  color-scheme: light;
+}
+
+/* 3. 深色 — 液态玻璃侧边栏 + 原生深灰底 */
+.theme-dark {
+  --win: #1e1e21;
+  --win2: #29292d;
+  --win3: #323237;
+  --side: #25252a;
+  --side-head: #25252a;
+  --side-tint: rgba(30, 30, 36, .62);
+  --side-glass-filter: blur(28px) saturate(1.85) brightness(0.78);
+  --side-sel: rgba(255, 255, 255, .11);
+  --side-fg: rgba(255, 255, 255, .78);
+  --side-sel-fg: #ffffff;
+  --side-sel-sh: none;
+  --l1: rgba(255, 255, 255, .88);
+  --l2: rgba(255, 255, 255, .55);
+  --l3: rgba(255, 255, 255, .34);
+  --l4: rgba(255, 255, 255, .14);
+  --sep: rgba(255, 255, 255, .09);
+  --fill: rgba(255, 255, 255, .05);
+  --fill2: rgba(255, 255, 255, .085);
+  --fill3: rgba(255, 255, 255, .14);
+  --accent: #4a66ff;
+  --accent-fg: #8fa2ff;
+  --accent-bg: rgba(91, 121, 255, .16);
+  --green: #3fcf86;
+  --orange: #ffab3d;
+  --btn: rgba(255, 255, 255, .12);
+  --btn-sh: 0 0 0 .5px rgba(255, 255, 255, .08);
+  --field-bd: rgba(255, 255, 255, .16);
+  --pill: #29292d;
+  --pill-bd: rgba(255, 255, 255, .11);
+  --cmp-sh: inset 0 1px 0 rgba(255, 255, 255, .06), 0 0 0 .5px rgba(255, 255, 255, .12), 0 6px 18px rgba(0, 0, 0, .28);
+  --bub: #303034;
+  --bub-fg: #f0f0ed;
+  --code: #161619;
+  --bar-tint: rgba(30, 30, 33, .66);
+  --shadow-win: 0 0 0 .5px rgba(255, 255, 255, .15), 0 28px 76px rgba(0, 0, 0, .62), 0 10px 26px rgba(0, 0, 0, .38);
+  --t-blue: #56627c; --t-slate: #5c6470; --t-sage: #5a6e62; --t-sand: #786b58; --t-rose: #785c5c;
+  color-scheme: dark;
+}
+
+/* 4. 暗黑 — FinxWork 实色侧边栏 + Onyx 深黑底 + 微高光描边 */
+.theme-black {
+  --win: #070709;
+  --win2: #131317;
+  --win3: #1f1f24;
+  --side: #111114;
+  --side-head: #111114;
+  --side-sel: linear-gradient(180deg, #202025, #1c1c21);
+  --side-fg: #bcbdc6;
+  --side-sel-fg: #f5f5f7;
+  --side-sel-sh: inset 0 0 0 .5px rgba(255, 255, 255, .055);
+  --l1: #f5f5f7;
+  --l2: #bcbdc6;
+  --l3: #87888f;
+  --l4: rgba(255, 255, 255, .16);
+  --sep: rgba(255, 255, 255, .065);
+  --fill: rgba(255, 255, 255, .042);
+  --fill2: rgba(255, 255, 255, .075);
+  --fill3: rgba(255, 255, 255, .12);
+  --accent: #2f71e3;
+  --accent-fg: #8ab4f8;
+  --accent-bg: rgba(47, 113, 227, .16);
+  --green: #7aae66;
+  --orange: #f3c949;
+  --btn: #24252a;
+  --btn-sh: inset 0 1px 0 rgba(255, 255, 255, .08), 0 0 0 .5px rgba(255, 255, 255, .08);
+  --field-bd: rgba(255, 255, 255, .13);
+  --pill: #15151a;
+  --pill-bd: rgba(255, 255, 255, .09);
+  --cmp-sh: inset 0 1px 0 rgba(255, 255, 255, .04), 0 0 0 1px rgba(255, 255, 255, .09), 0 8px 24px -8px rgba(0, 0, 0, .42);
+  --bub: #1f1f24;
+  --bub-fg: #f5f5f7;
+  --code: #0d0d11;
+  --bar-tint: rgba(7, 7, 9, .78);
+  --shadow-win: 0 0 0 .5px rgba(255, 255, 255, .14), 0 28px 76px rgba(0, 0, 0, .72), 0 10px 26px rgba(0, 0, 0, .45);
+  --t-blue: #4c5a74; --t-slate: #505864; --t-sage: #4e6256; --t-sand: #6e614e; --t-rose: #6e5252;
+  color-scheme: dark;
+}
+
+/* ==========================================================================
+   Desktop Stage (Wallpaper + Overlapping/Side-by-side Live Windows)
+   ========================================================================== */
+
+.desktop {
+  min-height: 100vh;
+  background: var(--wp);
+  background-attachment: fixed;
+  padding: 38px 20px 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.mac-menubar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 26px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, .92);
+  background: rgba(12, 14, 24, .32);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border-bottom: .5px solid rgba(255, 255, 255, .14);
+  z-index: 50;
+}
+.mac-menubar b { font-weight: 650; }
+.mac-menubar .right { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 12px; opacity: .9; }
+
+.stage {
+  width: 100%;
+  max-width: 1120px;
+  position: relative;
+}
+
+.stage[data-layout="stack"] {
+  min-height: 620px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.stage[data-layout="stack"] .win-main {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: min(760px, 74%);
+  height: 590px;
+  z-index: 1;
+}
+.stage[data-layout="stack"] .win-set {
+  position: relative;
+  margin-left: auto;
+  margin-top: 28px;
+  width: min(756px, 84%);
+  min-height: 540px;
+  z-index: 2;
+}
+.stage[data-layout="stack"].front-main .win-main { z-index: 3; }
+
+.stage[data-layout="split"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+  gap: 18px;
+  align-items: stretch;
+}
+.stage[data-layout="split"] .win-main,
+.stage[data-layout="split"] .win-set {
+  position: relative;
+  width: 100%;
+  min-height: 570px;
+}
+
+.stage[data-layout="settings"] {
+  display: flex;
+  justify-content: center;
+}
+.stage[data-layout="settings"] .win-main { display: none; }
+.stage[data-layout="settings"] .win-set {
+  width: min(760px, 100%);
+  min-height: 540px;
+}
+
+@media (max-width: 860px) {
+  .stage[data-layout="stack"] {
+    min-height: 0;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .stage[data-layout="stack"] .win-set {
+    margin: 0;
+    width: 100%;
+    order: 1;
+  }
+  .stage[data-layout="stack"] .win-main {
+    position: relative;
+    width: 100%;
+    height: 440px;
+    order: 2;
+  }
+  .stage[data-layout="split"] {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   Shared Hermesh Window Chrome & Liquid Glass Sidebar (.vibrant)
+   ========================================================================== */
+
+.app-win {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-win);
+  color: var(--l1);
+  display: grid;
+  transition: color .18s var(--ease), box-shadow .22s var(--ease);
+}
+
+.app-win .side {
+  position: relative;
+  isolation: isolate;
+  background: var(--side);
+  border-right: .5px solid var(--sep);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  transition: background-color .22s var(--ease);
+}
+
+.app-win.vibrant .side {
+  background: var(--side-tint);
+  backdrop-filter: var(--side-glass-filter);
+  -webkit-backdrop-filter: var(--side-glass-filter);
+}
+.app-win.vibrant .side::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--wp);
+  background-attachment: fixed;
+  filter: blur(32px) saturate(1.7);
+  opacity: .26;
+  pointer-events: none;
+}
+
+.app-win .pane-main {
+  background: var(--win);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  transition: background-color .2s var(--ease);
+}
+
+.lights {
+  height: 44px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+.lights i:nth-child(1) { background: #ff5f57; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.15); }
+.lights i:nth-child(2) { background: #febc2e; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.15); }
+.lights i:nth-child(3) { background: #28c840; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.15); }
+.app-win.inactive .lights i { background: var(--fill3); box-shadow: none; }
+
+/* ==========================================================================
+   Main Window (Behind: Sidebar + Conversation Surface)
+   ========================================================================== */
+
+.win-main {
+  grid-template-columns: 236px minmax(0, 1fr);
+}
+.m-side-top {
+  height: 44px;
+  padding: 0 10px 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.m-side-top .lights { padding: 0; height: auto; margin-right: 4px; }
+.tb-ic {
+  width: 26px; height: 26px; border-radius: 7px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--l2); cursor: pointer;
+}
+.tb-ic:hover { background: var(--fill2); color: var(--l1); }
+.m-nav { padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 3px; }
+.nav-i {
+  display: flex; align-items: center; gap: 8px;
+  height: 30px; padding: 0 9px; border-radius: 8px;
+  color: var(--side-fg); font-size: 13px; text-align: left; width: 100%;
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+.nav-i:hover { background: var(--fill); }
+.nav-i.sel {
+  background: var(--side-sel);
+  color: var(--side-sel-fg);
+  box-shadow: var(--side-sel-sh);
+  font-weight: 500;
+}
+.grp-h {
+  position: sticky; top: 0;
+  padding: 12px 10px 4px;
+  font-size: 11.5px; font-weight: 500; color: var(--l2);
+  background: var(--side-head);
+  display: flex; align-items: center; gap: 5px;
+  transition: background-color .2s var(--ease);
+}
+.app-win.vibrant .grp-h { position: static; background: transparent; }
+
+.m-list { flex: 1; overflow: hidden; padding: 0 8px; display: flex; flex-direction: column; gap: 2px; }
+.srow {
+  padding: 6px 9px; border-radius: 8px;
+  display: flex; flex-direction: column; gap: 2px;
+  color: var(--side-fg);
+  transition: background .15s, box-shadow .15s;
+}
+.srow.sel {
+  background: var(--side-sel);
+  color: var(--side-sel-fg);
+  box-shadow: var(--side-sel-sh);
+}
+.srow-top { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+.srow-top .st { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow.sel .st { font-weight: 500; }
+.srow-sub { padding-left: 21px; font-size: 11.5px; color: var(--l2); display: flex; justify-content: space-between; }
+.sdot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex: none; }
+.sdot.idle { background: var(--l4); }
+.m-foot {
+  margin: auto 6px 6px; padding: 8px 9px;
+  border-top: .5px solid var(--sep);
+  display: flex; align-items: center; gap: 8px; font-size: 12.5px;
+}
+.m-foot .av {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #6d3cf0);
+  color: #fff; font-size: 11px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.ctool {
+  height: 44px; padding: 0 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--bar-tint);
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  border-bottom: .5px solid var(--sep);
+  font-size: 13.5px; font-weight: 500;
+}
+.chat-body {
+  flex: 1; padding: 18px 22px;
+  display: flex; flex-direction: column; gap: 14px;
+  overflow: hidden;
+}
+.um-bub {
+  align-self: flex-end;
+  max-width: 78%;
+  background: var(--bub);
+  color: var(--bub-fg);
+  padding: 8px 13px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  transition: background-color .18s var(--ease), color .18s var(--ease);
+}
+.am-msg {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--l1);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cblock {
+  background: var(--code);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  padding: 8px 11px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--l2);
+  transition: background-color .18s var(--ease);
+}
+.cblock .kw { color: var(--accent-fg); }
+.cmp-zone { padding: 0 18px 14px; margin-top: auto; }
+.cmp-box {
+  background: var(--pill);
+  border-radius: 12px;
+  box-shadow: var(--cmp-sh);
+  padding: 10px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: background-color .18s var(--ease), box-shadow .18s var(--ease);
+}
+.cmp-ph { color: var(--l3); font-size: 13px; }
+.cmp-bar { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--l2); }
+.cmp-send {
+  margin-left: auto;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  transition: background-color .18s var(--ease);
+}
+
+/* ==========================================================================
+   Settings Window ("通用") — Unified Single-Row Visual Appearance Picker
+   ========================================================================== */
+
+.win-set {
+  grid-template-columns: 204px minmax(0, 1fr);
+}
+.set-nav { padding: 0 8px 10px; display: flex; flex-direction: column; gap: 1px; }
+.set-me {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 7px; border-radius: 9px; margin-bottom: 10px;
+}
+.set-me .av {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: linear-gradient(135deg, #2f6bf0, #6d3cf0);
+  color: #fff; font-weight: 600; font-size: 14px;
+  display: flex; align-items: center; justify-content: center; flex: none;
+}
+.set-me b { display: block; font-size: 13px; font-weight: 600; }
+.set-me small { display: block; font-size: 11px; color: var(--l2); }
+.set-tile {
+  width: 22px; height: 22px; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; flex: none;
+}
+.set-head { font-size: 11px; font-weight: 600; color: var(--l3); padding: 12px 7px 3px; }
+
+.set-top {
+  height: 44px; padding: 0 14px;
+  display: flex; align-items: center; gap: 4px; flex: none;
+}
+.set-nb {
+  width: 26px; height: 26px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--l2); opacity: .35;
+}
+.set-top h1 { margin: 0 0 0 4px; font-size: 13.5px; font-weight: 600; }
+
+.set-body {
+  flex: 1;
+  padding: 6px 26px 26px;
+  overflow-y: auto;
+}
+.form {
+  max-width: 520px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.fgroup {
+  background: var(--win2);
+  border-radius: 12px;
+  transition: background-color .2s var(--ease);
+}
+.frow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  min-height: 44px;
+  border-top: .5px solid var(--sep);
+}
+.frow:first-child { border-top: 0; }
+.frow .ft { flex: 1; min-width: 0; }
+.set-foot { margin: -11px 12px 0; font-size: 11.5px; color: var(--l2); line-height: 1.5; }
+
+/* ---------- Appearance Row: 5 Desktop+Window-Corner Thumbnails ---------- */
+
+.look-block {
+  padding: 13px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.look-head {
+  font-size: 13px;
+  color: var(--l1);
+}
+
+.look-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 9px;
+}
+@media (max-width: 520px) {
+  .look-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+.look-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  cursor: pointer;
+  outline: none;
+}
+
+/* Each thumbnail is a miniature desktop (with colourful wallpaper exposed around the window's top-left corner).
+   - Glass themes (浅色, 深色): wallpaper visibly flows across the window edge and blurs inside the sidebar!
+   - Solid themes (柔白, 暗黑): wallpaper stops sharply at the window edge; sidebar is crisp opaque matte! */
+.look-stage {
+  position: relative;
+  width: 100%;
+  height: 64px;
+  border-radius: 8.5px;
+  overflow: hidden;
+  background: var(--thumb-wp);
+  box-shadow: 0 0 0 1px var(--field-bd), 0 2px 5px rgba(0, 0, 0, .07);
+  transition: box-shadow .16s var(--ease), transform .16s var(--ease);
+}
+.look-card:hover .look-stage {
+  box-shadow: 0 0 0 1.5px var(--l3), 0 4px 10px rgba(0, 0, 0, .12);
+}
+.look-card[aria-checked="true"] .look-stage {
+  box-shadow: 0 0 0 2px var(--accent), 0 4px 12px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+.look-card:focus-visible .look-stage {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.look-cap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--l2);
+  white-space: nowrap;
+  transition: color .15s;
+}
+.look-card:hover .look-cap { color: var(--l1); }
+.look-card[aria-checked="true"] .look-cap {
+  color: var(--l1);
+  font-weight: 550;
+}
+/* Quiet dot showing which Day & Night themes "跟随系统" pairs */
+.look-pair-dot {
+  width: 4.5px;
+  height: 4.5px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+  transform: scale(0.3);
+  margin-left: -4.5px;
+  transition: opacity .18s var(--ease), transform .18s var(--ease), margin-left .18s var(--ease);
+}
+.look-card.paired .look-pair-dot {
+  opacity: .85;
+  transform: scale(1);
+  margin-left: 0;
+}
+
+/* Offset miniature window inside the desktop thumbnail (9px wallpaper on left, 7px on top) */
+.mini-win {
+  position: absolute;
+  left: 9px;
+  top: 7px;
+  right: -1px;
+  bottom: -1px;
+  border-radius: 6.5px 0 0 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 33% 67%;
+  box-shadow: -2px -1px 7px rgba(0, 0, 0, .28), 0 0 0 .6px var(--m-sep);
+}
+
+/* 1. 浅色 (Glass sidebar + pure #fff) */
+.m-light {
+  --m-win: #ffffff;
+  --m-side: rgba(250, 251, 254, .64);
+  --m-filter: blur(6px) saturate(1.95) brightness(1.30);
+  --m-side-hi: inset 1px 1px 0 rgba(255, 255, 255, .45);
+  --m-sel: rgba(0, 0, 0, .10);
+  --m-sep: rgba(0, 0, 0, .10);
+  --m-bub: #dce3f2;
+  --m-ink: rgba(20, 22, 30, .62);
+  --m-ink2: rgba(20, 22, 30, .30);
+  --m-code: #f2f4f8;
+  --m-pill: #ffffff;
+  --m-pill-sh: 0 0 0 .7px rgba(0, 0, 0, .13), 0 1px 2px rgba(0, 0, 0, .06);
+  --m-acc: #3d5bff;
+}
+
+/* 2. 柔白 (Solid #dfe3ec sidebar + #ebedf2 mist ground + floating #fff composer) */
+.m-soft {
+  --m-win: #ebedf2;
+  --m-side: #dfe3ec;
+  --m-filter: none;
+  --m-side-hi: none;
+  --m-sel: #cce0fa;
+  --m-sep: rgba(32, 33, 39, .12);
+  --m-bub: #d6dfee;
+  --m-ink: rgba(32, 33, 39, .66);
+  --m-ink2: rgba(32, 33, 39, .34);
+  --m-code: #dfe4ed;
+  --m-pill: #ffffff;
+  --m-pill-sh: 0 0 0 .7px rgba(32, 33, 39, .10), 0 1.5px 3px rgba(32, 33, 39, .10);
+  --m-acc: #2f6fd6;
+}
+
+/* 3. 深色 (Glass dark sidebar + #202025 charcoal) */
+.m-dark {
+  --m-win: #202025;
+  --m-side: rgba(30, 30, 38, .56);
+  --m-filter: blur(6px) saturate(1.9) brightness(0.82);
+  --m-side-hi: inset 1px 1px 0 rgba(255, 255, 255, .14);
+  --m-sel: rgba(255, 255, 255, .16);
+  --m-sep: rgba(255, 255, 255, .14);
+  --m-bub: #34343c;
+  --m-ink: rgba(255, 255, 255, .72);
+  --m-ink2: rgba(255, 255, 255, .34);
+  --m-code: #17171b;
+  --m-pill: #2c2c33;
+  --m-pill-sh: 0 0 0 .7px rgba(255, 255, 255, .12);
+  --m-acc: #4a66ff;
+}
+
+/* 4. 暗黑 (Solid #121216 sidebar + #070709 Onyx + rimmed #15151b composer) */
+.m-black {
+  --m-win: #070709;
+  --m-side: #121216;
+  --m-filter: none;
+  --m-side-hi: none;
+  --m-sel: #23232b;
+  --m-sep: rgba(255, 255, 255, .12);
+  --m-bub: #1f1f25;
+  --m-ink: rgba(245, 245, 247, .84);
+  --m-ink2: rgba(245, 245, 247, .38);
+  --m-code: #0e0e13;
+  --m-pill: #15151b;
+  --m-pill-sh: inset 0 .5px 0 rgba(255, 255, 255, .10), 0 0 0 .7px rgba(255, 255, 255, .15);
+  --m-acc: #2f71e3;
+}
+
+.mw-side {
+  padding: 5px 3.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-right: .6px solid var(--m-sep);
+  background: var(--m-side);
+  backdrop-filter: var(--m-filter);
+  -webkit-backdrop-filter: var(--m-filter);
+  box-shadow: var(--m-side-hi);
+}
+.mw-dots { display: flex; gap: 2px; margin-bottom: 2px; }
+.mw-dots i { width: 3px; height: 3px; border-radius: 50%; display: block; }
+.mw-dots i:nth-child(1) { background: #ff5f57; }
+.mw-dots i:nth-child(2) { background: #febc2e; }
+.mw-dots i:nth-child(3) { background: #28c840; }
+
+.mw-nav { height: 3.5px; border-radius: 2px; background: var(--m-ink2); opacity: .48; width: 74%; }
+.mw-nav.sel {
+  height: 5px; width: 100%; opacity: 1;
+  background: var(--m-sel);
+}
+.mw-nav.short { width: 56%; }
+
+.mw-body {
+  background: var(--m-win);
+  padding: 5px 5px 4.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.mw-bub {
+  align-self: flex-end;
+  width: 48%;
+  height: 5.5px;
+  border-radius: 3px;
+  background: var(--m-bub);
+}
+.mw-l1 { width: 76%; height: 3px; border-radius: 1.5px; background: var(--m-ink); }
+.mw-code { width: 88%; height: 6.5px; border-radius: 2.5px; background: var(--m-code); }
+.mw-pill {
+  margin-top: auto;
+  height: 8.5px;
+  border-radius: 3.5px;
+  background: var(--m-pill);
+  box-shadow: var(--m-pill-sh);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 2.5px;
+}
+.mw-pill i {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--m-acc); display: block;
+}
+
+/* "跟随系统" Card: Day & Night cascading miniature windows over wallpaper.
+   Each half faithfully renders its own theme's material (glass for 浅色/深色, solid for 柔白/暗黑)! */
+.sys-win {
+  position: absolute;
+  width: 74%;
+  height: 75%;
+  border-radius: 5.5px;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 33% 67%;
+  box-shadow: 0 0 0 .6px rgba(0, 0, 0, .20), 0 3px 8px rgba(0, 0, 0, .26);
+  transition: opacity .22s var(--ease), transform .22s var(--ease);
+}
+.sys-win.day {
+  top: 5px;
+  left: 5px;
+  z-index: 2;
+}
+.sys-win.night {
+  right: -1px;
+  bottom: -1px;
+  border-radius: 5.5px 0 0 0;
+  z-index: 1;
+  box-shadow: -2px -1px 8px rgba(0, 0, 0, .42), 0 0 0 .6px rgba(255, 255, 255, .20);
+}
+.sys-stage.night-now .sys-win.night { z-index: 3; }
+.sys-stage.night-now .sys-win.day   { opacity: .90; }
+
+/* Standard controls in Settings › General below Appearance */
+.psel {
+  appearance: none; -webkit-appearance: none;
+  border: 0;
+  background-color: var(--fill2);
+  color: var(--l1);
+  height: 24px;
+  border-radius: 7px;
+  padding: 0 24px 0 9px;
+  font-size: 12px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 13px) 10px, calc(100% - 9px) 10px;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+}
+.sw {
+  width: 34px; height: 20px; border-radius: 999px;
+  background: var(--fill3); position: relative; flex: none;
+  transition: background .2s; cursor: pointer;
+}
+.sw::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  transition: transform .2s var(--ease);
+}
+.sw.on { background: var(--accent); }
+.sw.on::after { transform: translateX(14px); }
+
+/* ==========================================================================
+   Bottom Demo Environment Bar (Simulate OS Day/Night, Wallpaper, Layout)
+   ========================================================================== */
+
+.demo-dock {
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 14px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(14, 16, 24, .76);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  box-shadow: 0 0 0 .5px rgba(255, 255, 255, .18), 0 12px 32px rgba(0, 0, 0, .45);
+  color: rgba(255, 255, 255, .88);
+  font-size: 12px;
+  max-width: calc(100vw - 24px);
+}
+.dock-g { display: inline-flex; align-items: center; gap: 4px; }
+.dock-g > span { color: rgba(255, 255, 255, .54); margin-right: 2px; }
+.dock-btn {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, .78);
+  background: rgba(255, 255, 255, .08);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+}
+.dock-btn:hover { background: rgba(255, 255, 255, .15); color: #fff; }
+.dock-btn.on { background: #fff; color: #0f172a; font-weight: 600; }
+.dock-sep { width: 1px; height: 14px; background: rgba(255, 255, 255, .16); }
+</style>
+</head>
+<body data-wp="aurora">
+
+<header class="mac-menubar">
+  <b></b>
+  <b>Hermesh</b>
+  <span>文件</span>
+  <span>编辑</span>
+  <span>显示</span>
+  <span>窗口</span>
+  <div class="right">
+    <span id="menubar-status">当前生效：跟随系统（浅色 · 液态玻璃）</span>
+  </div>
+</header>
+
+<main class="desktop">
+  <div class="stage" id="stage" data-layout="stack">
+
+    <!-- 1. Hermesh Main Window -->
+    <section class="app-win win-main inactive theme-light vibrant" id="win-main" aria-label="Hermesh 主窗口">
+      <aside class="side">
+        <div class="m-side-top">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <span class="tb-ic" title="边栏">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></svg>
+          </span>
+        </div>
+        <div class="m-nav">
+          <button class="nav-i" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>
+            Her
+          </button>
+          <button class="nav-i" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            概览
+          </button>
+        </div>
+        <div class="m-list">
+          <div class="grp-h">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            hermesh
+          </div>
+          <div class="srow sel">
+            <div class="srow-top"><span class="sdot"></span><span class="st">优化主题与侧栏材质表达</span></div>
+            <div class="srow-sub"><span>main</span><span>刚刚</span></div>
+          </div>
+          <div class="srow">
+            <div class="srow-top"><span class="sdot idle"></span><span class="st">补充工作目录自动释放测试</span></div>
+            <div class="srow-sub"><span>feat/storage</span><span>2 小时前</span></div>
+          </div>
+          <div class="grp-h">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            finxwork
+          </div>
+          <div class="srow">
+            <div class="srow-top"><span class="sdot idle"></span><span class="st">统一柔和灰白阅读表面变量</span></div>
+            <div class="srow-sub"><span>tokens.css</span><span>昨天</span></div>
+          </div>
+        </div>
+        <div class="m-foot">
+          <span class="av">Y</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">yipengfei</div>
+            <div style="font-size:11px;color:var(--l2)">2 个环境在线</div>
+          </div>
+        </div>
+      </aside>
+
+      <div class="pane-main">
+        <div class="ctool">
+          <span>优化主题与侧栏材质表达</span>
+          <button class="tb-ic" id="btn-open-settings" title="切回设置窗口" style="width:auto;padding:0 8px;font-size:12px;gap:4px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
+            设置
+          </button>
+        </div>
+        <div class="chat-body">
+          <div class="um-bub">暗黑色配液态玻璃不好看，不拆独立开关了，把材质收回到每套主题自身的设计里。</div>
+          <div class="am-msg">
+            <div>每套主题绑定各自最契合的材质：<b>浅色 / 深色</b> 保持原生液态玻璃侧边栏，<b>柔白 / 暗黑</b> 保持纯粹实色表面与吸顶分组：</div>
+            <div class="cblock"><span class="kw">浅色 · 深色</span> → vibrancy: "sidebar"  (液态玻璃透底)<br><span class="kw">柔白 · 暗黑</span> → vibrancy: null       (实色纸墨层次)</div>
+          </div>
+        </div>
+        <div class="cmp-zone">
+          <div class="cmp-box">
+            <div class="cmp-ph">继续输入指令，查看输入框在页面底色上的浮起层次…</div>
+            <div class="cmp-bar">
+              <span>＋</span>
+              <span>Gemini 4 · 高</span>
+              <span class="cmp-send">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Hermesh Settings Window ("通用") -->
+    <section class="app-win win-set theme-light vibrant" id="win-set" aria-label="设置窗口">
+      <aside class="side">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <nav class="set-nav" aria-label="设置">
+          <div class="set-me">
+            <span class="av">Y</span>
+            <span><b>yipengfei</b><small>账号与设备</small></span>
+          </div>
+          <button class="nav-i sel" type="button">
+            <span class="set-tile" style="background:var(--t-slate)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
+            </span>
+            通用
+          </button>
+          <button class="nav-i" type="button">
+            <span class="set-tile" style="background:var(--t-rose)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/></svg>
+            </span>
+            通知
+          </button>
+          <button class="nav-i" type="button">
+            <span class="set-tile" style="background:var(--t-sand)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M17 6l3 3M15 8l2 2"/></svg>
+            </span>
+            授权
+          </button>
+          <div class="set-head">环境</div>
+          <button class="nav-i" type="button">
+            <span class="set-tile" style="background:var(--t-blue)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>
+            </span>
+            这台 Mac
+          </button>
+        </nav>
+      </aside>
+
+      <div class="pane-main">
+        <div class="set-top">
+          <span class="set-nb"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m15 6-6 6 6 6"/></svg></span>
+          <span class="set-nb"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 6 6 6-6 6"/></svg></span>
+          <h1>通用</h1>
+        </div>
+
+        <div class="set-body">
+          <div class="form">
+
+            <!-- 单一分组：一排 5 张微缩桌面窗口卡（无多余开关，材质差异直接在缩略图左上壁纸边缘自解释） + 语言 -->
+            <div class="fgroup">
+              <div class="look-block">
+                <div class="look-head">外观</div>
+                <div class="look-grid" id="look-grid" role="radiogroup" aria-label="外观"></div>
+              </div>
+
+              <div class="frow">
+                <div class="ft">语言</div>
+                <select class="psel" aria-label="语言">
+                  <option>跟随系统（简体中文）</option>
+                  <option>English</option>
+                  <option>简体中文</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="fgroup">
+              <div class="frow">
+                <div class="ft">自动下载更新</div>
+                <button class="sw on" type="button" role="switch" aria-checked="true" aria-label="自动下载更新" onclick="this.classList.toggle('on')"></button>
+              </div>
+            </div>
+            <p class="set-foot">下载好后，退出或重新启动 Hermesh 时安装</p>
+
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<div class="demo-dock" role="toolbar" aria-label="演示环境切换">
+  <div class="dock-g" id="ctl-os">
+    <span>系统时段</span>
+    <button class="dock-btn on" data-os="light" type="button">☀ 日间</button>
+    <button class="dock-btn" data-os="dark" type="button">☾ 夜间</button>
+  </div>
+  <span class="dock-sep"></span>
+  <div class="dock-g" id="ctl-wp">
+    <span>桌面壁纸</span>
+    <button class="dock-btn on" data-wp="aurora" type="button">极光</button>
+    <button class="dock-btn" data-wp="sunset" type="button">暖霞</button>
+    <button class="dock-btn" data-wp="ocean" type="button">深海</button>
+  </div>
+  <span class="dock-sep"></span>
+  <div class="dock-g" id="ctl-layout">
+    <span>视图</span>
+    <button class="dock-btn on" data-layout="stack" type="button">双窗层叠</button>
+    <button class="dock-btn" data-layout="split" type="button">并排全览</button>
+    <button class="dock-btn" data-layout="settings" type="button">仅设置窗</button>
+  </div>
+</div>
+
+<script>
+const LOOKS = [
+  { id: "system", label: "跟随系统" },
+  { id: "light",  label: "浅色", glass: true },
+  { id: "soft",   label: "柔白", glass: false },
+  { id: "dark",   label: "深色", glass: true },
+  { id: "black",  label: "暗黑", glass: false },
+];
+
+const PALETTES = ["m-light", "m-soft", "m-dark", "m-black"];
+
+const state = {
+  appearance: "system",
+  preferredLight: "light", // "light" | "soft"
+  preferredDark: "dark",   // "dark"  | "black"
+  osScheme: "light",       // "light" | "dark"
+  peekAppearance: null,
+};
+
+function resolvePalette(appearance) {
+  if (appearance === "system") {
+    return state.osScheme === "dark" ? state.preferredDark : state.preferredLight;
+  }
+  return appearance;
+}
+
+function isGlassPalette(palette) {
+  return palette === "light" || palette === "dark";
+}
+
+function miniAnatomyHTML() {
+  return `<span class="mw-side">
+      <span class="mw-dots"><i></i><i></i><i></i></span>
+      <span class="mw-nav sel"></span>
+      <span class="mw-nav"></span>
+      <span class="mw-nav short"></span>
+    </span>
+    <span class="mw-body">
+      <span class="mw-bub"></span>
+      <span class="mw-l1"></span>
+      <span class="mw-code"></span>
+      <span class="mw-pill"><i></i></span>
+    </span>`;
+}
+
+function mountControls() {
+  const lookGrid = document.getElementById("look-grid");
+  lookGrid.innerHTML = LOOKS.map((item) => {
+    const stage = item.id === "system"
+      ? `<span class="look-stage sys-stage" aria-hidden="true">
+          <span class="sys-win day m-light">${miniAnatomyHTML()}</span>
+          <span class="sys-win night m-dark">${miniAnatomyHTML()}</span>
+        </span>`
+      : `<span class="look-stage" aria-hidden="true">
+          <span class="mini-win m-${item.id}">${miniAnatomyHTML()}</span>
+        </span>`;
+    return `<button class="look-card" type="button" role="radio" aria-checked="false" data-look="${item.id}">
+      ${stage}
+      <span class="look-cap"><span>${item.label}</span><i class="look-pair-dot" aria-hidden="true"></i></span>
+    </button>`;
+  }).join("");
+}
+
+function syncUI() {
+  const effectiveApp = state.peekAppearance ?? state.appearance;
+  const activePalette = resolvePalette(effectiveApp);
+  const glass = isGlassPalette(activePalette);
+
+  const dayPair = effectiveApp === "light" || effectiveApp === "soft" ? effectiveApp : state.preferredLight;
+  const nightPair = effectiveApp === "dark" || effectiveApp === "black" ? effectiveApp : state.preferredDark;
+
+  document.querySelectorAll("#look-grid .look-card").forEach((btn) => {
+    const id = btn.dataset.look;
+    const checked = state.appearance === id;
+    btn.setAttribute("aria-checked", String(checked));
+    btn.tabIndex = checked ? 0 : -1;
+
+    const paired = state.appearance === "system" && (id === state.preferredLight || id === state.preferredDark);
+    btn.classList.toggle("paired", paired);
+
+    if (id === "system") {
+      const sysStage = btn.querySelector(".sys-stage");
+      sysStage.classList.toggle("night-now", state.osScheme === "dark");
+      const dayWin = btn.querySelector(".sys-win.day");
+      const nightWin = btn.querySelector(".sys-win.night");
+      dayWin.classList.remove(...PALETTES);
+      dayWin.classList.add(`m-${dayPair}`);
+      nightWin.classList.remove(...PALETTES);
+      nightWin.classList.add(`m-${nightPair}`);
+    }
+  });
+
+  for (const id of ["win-main", "win-set"]) {
+    const el = document.getElementById(id);
+    el.classList.remove("theme-light", "theme-soft", "theme-dark", "theme-black");
+    el.classList.add(`theme-${activePalette}`);
+    el.classList.toggle("vibrant", glass);
+  }
+
+  const names = { light: "浅色", soft: "柔白", dark: "深色", black: "暗黑" };
+  const matText = glass ? "液态玻璃" : "实色";
+  const peeking = state.peekAppearance !== null;
+  const modeText = effectiveApp === "system"
+    ? `跟随系统（${names[activePalette]} · ${matText}）`
+    : `${names[activePalette]}（${matText}）`;
+  document.getElementById("menubar-status").textContent = `${peeking ? "预览中：" : "当前生效："}${modeText}`;
+}
+
+mountControls();
+syncUI();
+
+const lookGrid = document.getElementById("look-grid");
+let hoverTimer = 0;
+
+function selectLook(next, focus = false) {
+  state.appearance = next;
+  if (next === "light" || next === "soft") state.preferredLight = next;
+  if (next === "dark"  || next === "black") state.preferredDark = next;
+  state.peekAppearance = null;
+  clearTimeout(hoverTimer);
+  syncUI();
+  if (focus) lookGrid.querySelector(`[data-look="${next}"]`)?.focus();
+}
+
+lookGrid.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-look]");
+  if (btn) selectLook(btn.dataset.look);
+});
+
+lookGrid.addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+  e.preventDefault();
+  const idx = LOOKS.findIndex((x) => x.id === state.appearance);
+  const next = LOOKS[(idx + (e.key === "ArrowRight" ? 1 : LOOKS.length - 1)) % LOOKS.length].id;
+  selectLook(next, true);
+});
+
+lookGrid.addEventListener("pointerover", (e) => {
+  const btn = e.target.closest("[data-look]");
+  if (!btn) return;
+  const val = btn.dataset.look;
+  clearTimeout(hoverTimer);
+  hoverTimer = setTimeout(() => {
+    state.peekAppearance = val;
+    syncUI();
+  }, 110);
+});
+
+lookGrid.addEventListener("pointerleave", () => {
+  clearTimeout(hoverTimer);
+  state.peekAppearance = null;
+  syncUI();
+});
+
+const stage = document.getElementById("stage");
+const winMain = document.getElementById("win-main");
+const winSet = document.getElementById("win-set");
+
+winMain.addEventListener("mousedown", (e) => {
+  if (e.target.closest("#btn-open-settings")) return;
+  stage.classList.add("front-main");
+  winMain.classList.remove("inactive");
+  winSet.classList.add("inactive");
+});
+winSet.addEventListener("mousedown", () => {
+  stage.classList.remove("front-main");
+  winSet.classList.remove("inactive");
+  winMain.classList.add("inactive");
+});
+document.getElementById("btn-open-settings").addEventListener("click", () => {
+  stage.classList.remove("front-main");
+  winSet.classList.remove("inactive");
+  winMain.classList.add("inactive");
+});
+
+document.getElementById("ctl-os").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-os]");
+  if (!b) return;
+  state.osScheme = b.dataset.os;
+  document.querySelectorAll("#ctl-os .dock-btn").forEach((el) => el.classList.toggle("on", el === b));
+  syncUI();
+});
+
+document.getElementById("ctl-wp").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-wp]");
+  if (!b) return;
+  document.body.dataset.wp = b.dataset.wp;
+  document.querySelectorAll("#ctl-wp .dock-btn").forEach((el) => el.classList.toggle("on", el === b));
+});
+
+document.getElementById("ctl-layout").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-layout]");
+  if (!b) return;
+  stage.dataset.layout = b.dataset.layout;
+  stage.classList.remove("front-main");
+  winSet.classList.remove("inactive");
+  winMain.classList.toggle("inactive", b.dataset.layout === "stack");
+  document.querySelectorAll("#ctl-layout .dock-btn").forEach((el) => el.classList.toggle("on", el === b));
+});
+</script>
+</body>
+</html>

@@ -24,6 +24,8 @@ const mac = platform.token === "mac";
 let tray: Tray | undefined;
 let panel: BrowserWindow | undefined;
 let shownIcon = "";
+let shownDock = "";
+let shownView = "";
 // Set while the panel's window is made (it is announced before panel is assigned).
 let makingPanel = false;
 // Its renderer goes 30 s after it is hidden: opened again soon it shows at once, idle it costs nothing.
@@ -72,17 +74,51 @@ export function trayState() {
   };
 }
 
+let trayUpdates = 0;
+let trayIconDraws = 0;
+let trayIconDrawMs = 0;
+let dockMenuBuilds = 0;
+let dockMenuBuildMs = 0;
+export const trayPerfStats = () => ({
+  trayUpdates,
+  trayIconDraws,
+  trayIconDrawMs: Math.round(trayIconDrawMs * 100) / 100,
+  dockMenuBuilds,
+  dockMenuBuildMs: Math.round(dockMenuBuildMs * 100) / 100,
+  panelAllocated: panel !== undefined && !panel.isDestroyed(),
+  panelVisible: panel?.isVisible() ?? false,
+});
+
 function update() {
   if (!tray) return;
+  trayUpdates++;
   const v = view();
   const badge = preferences().menuBadge && v.attention > 0;
   const key = `${badge ? "dot" : ""}${v.state === "ok" ? "" : "faded"}`;
   if (key !== shownIcon) {
+    const t0 = performance.now();
     tray.setImage(icon(badge, v.state !== "ok"));
+    trayIconDraws++;
+    trayIconDrawMs += performance.now() - t0;
     shownIcon = key;
   }
-  if (mac) app.dock?.setMenu(dockMenu());
-  panel?.webContents.send("tray-view", v);
+  if (mac) {
+    const dockKey = `${i18n.language}:${daemonControlAvailable() ? daemonState() : "off"}:${preferences().stayOnline ? 1 : 0}`;
+    if (dockKey !== shownDock) {
+      const t0 = performance.now();
+      app.dock?.setMenu(dockMenu());
+      dockMenuBuilds++;
+      dockMenuBuildMs += performance.now() - t0;
+      shownDock = dockKey;
+    }
+  }
+  if (panel && !panel.isDestroyed() && panel.isVisible()) {
+    const vKey = JSON.stringify(v);
+    if (vKey !== shownView) {
+      shownView = vKey;
+      panel.webContents.send("tray-view", v);
+    }
+  }
 }
 
 const live = (s: Session) => s.status !== SessionStatus.ARCHIVED;
@@ -100,10 +136,22 @@ function running(): Session[] {
   return world.sessions.filter((s) => live(s) && !needsAttention(s) && isActive(s)).sort((a, b) => createdDate(b).getTime() - createdDate(a).getTime());
 }
 
+function sessionCounts(): { attentionCount: number; runningCount: number } {
+  let attentionCount = 0;
+  let runningCount = 0;
+  for (const s of world.sessions) {
+    if (!live(s)) continue;
+    if (needsAttention(s)) attentionCount++;
+    else if (isActive(s)) runningCount++;
+  }
+  return { attentionCount, runningCount };
+}
+
 function view(): TrayView {
   const st = world.status;
   const d = daemonState();
   const u = updateInfo().update;
+  const { attentionCount, runningCount } = sessionCounts();
   const state: TrayView["state"] =
     d === "stopped" || d === "starting" || d === "stopping"
       ? d
@@ -117,8 +165,8 @@ function view(): TrayView {
   return {
     state,
     online: world.machines.filter((m) => m.online).length,
-    attention: attention().length + world.pairings.length,
-    running: running().length,
+    attention: attentionCount + world.pairings.length,
+    running: runningCount,
     update: u.state === "ready" ? u.version : "",
     control: world.machines.find((m) => m.local)?.status?.screen?.viewer ?? "",
     manageable: daemonControlAvailable(),
@@ -144,7 +192,9 @@ function toggle() {
   if (!mac && Date.now() - blurredAt < 300) return; // the click on the icon that just closed it
   clearTimeout(closing);
   place(panel);
-  panel.webContents.send("tray-view", view());
+  const v = view();
+  shownView = JSON.stringify(v);
+  panel.webContents.send("tray-view", v);
   panel.show();
 }
 
@@ -261,8 +311,13 @@ function cover(r: number, d: number, scale: number): number {
  * macOS colours a template itself; on Windows it is white on a dark
  * taskbar and black on a light one.
  */
+const iconCache = new Map<string, NativeImage>();
+
 function icon(badge: boolean, faded: boolean): NativeImage {
   const ink = mac || !nativeTheme.shouldUseDarkColorsForSystemIntegratedUI ? 0 : 255;
+  const cacheKey = `${ink}:${badge ? 1 : 0}:${faded ? 1 : 0}`;
+  const cached = iconCache.get(cacheKey);
+  if (cached) return cached;
   const img = nativeImage.createEmpty();
   [glyph1x, glyph2x].forEach((url, i) => {
     const scale = i + 1;
@@ -284,5 +339,6 @@ function icon(badge: boolean, faded: boolean): NativeImage {
     img.addRepresentation({ scaleFactor: scale, width, height, buffer: px });
   });
   if (mac) img.setTemplateImage(true);
+  iconCache.set(cacheKey, img);
   return img;
 }

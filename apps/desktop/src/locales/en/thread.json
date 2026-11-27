@@ -35,7 +35,9 @@
     "toAgent": "Give it to an agent · {{keys}}",
     "herAsk": "What should Her do?",
     "herWhere": "Her on {{machine}}",
-    "defaultModel": "Default"
+    "defaultModel": "Default",
+    "switchToWorktree": "Click to switch to separate worktree",
+    "switchToCheckout": "Click to switch to current checkout"
   },
   "header": {
     "archive": "Archive",

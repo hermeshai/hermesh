@@ -16,6 +16,7 @@ enum SessionChoices {
         var projectID: String?
         var selection: Data?
         var mode: Int?
+        var worktrees: [String: Bool]?
     }
 
     private struct Kept: Codable {
@@ -38,10 +39,45 @@ enum SessionChoices {
         mine(machine)?.selection.flatMap { try? Hermesh_Session_V1_ModelSelection(serializedBytes: $0) }
     }
 
-    static func remember(machine: String, project: String, selection: Hermesh_Session_V1_ModelSelection, mode: Hermesh_Identity_V1_RuntimeMode) {
+    static func worktree(machine: String, project: String) -> Bool? {
+        guard !machine.isEmpty, !project.isEmpty, project != scratchProject else { return nil }
+        return mine(machine)?.worktrees?[project]
+    }
+
+    static func rememberWorktree(machine: String, project: String, worktree: Bool) {
+        guard !machine.isEmpty, !project.isEmpty, project != scratchProject else { return }
         var k = kept
+        var m = k.byMachine[machine] ?? Mine()
+        var w = m.worktrees ?? [:]
+        w[project] = worktree
+        m.worktrees = w
+        k.byMachine[machine] = m
+        kept = k
+    }
+
+    static func forgetWorktree(machine: String, project: String) {
+        guard !machine.isEmpty, !project.isEmpty else { return }
+        var k = kept
+        guard var m = k.byMachine[machine], var w = m.worktrees, w.removeValue(forKey: project) != nil else { return }
+        m.worktrees = w.isEmpty ? nil : w
+        k.byMachine[machine] = m
+        kept = k
+    }
+
+    static func remember(machine: String, project: String, selection: Hermesh_Session_V1_ModelSelection, mode: Hermesh_Identity_V1_RuntimeMode, worktree: Bool? = nil) {
+        guard !machine.isEmpty else { return }
+        var k = kept
+        var m = k.byMachine[machine] ?? Mine()
+        m.projectID = project
+        m.selection = try? selection.serializedData()
+        m.mode = mode.rawValue
+        if !project.isEmpty, project != scratchProject, let worktree {
+            var w = m.worktrees ?? [:]
+            w[project] = worktree
+            m.worktrees = w
+        }
         k.machineID = machine
-        k.byMachine[machine] = Mine(projectID: project, selection: try? selection.serializedData(), mode: mode.rawValue)
+        k.byMachine[machine] = m
         kept = k
     }
 
@@ -72,6 +108,8 @@ enum SessionChoices {
 struct SessionPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.barsOnTheSide) private var sideBars
+    @Environment(\.screenWidth) private var screenWidth
     /// The session shown; empty on a new one.
     let sessionID: String
     private let askedMachine: String
@@ -80,6 +118,8 @@ struct SessionPage: View {
     @State private var machineID = ""
     @State private var projectID = scratchProject
     @State private var place = SessionPlace()
+    @State private var placeEdited = false
+    @State private var worktreeTurns: Double = 0
     @State private var branches: SessionBranches?
     @State private var pickingBranch = false
     @State private var selection = Hermesh_Session_V1_ModelSelection()
@@ -109,6 +149,8 @@ struct SessionPage: View {
     @State private var renaming = false
     @State private var deleting = false
     @State private var showingBackgroundTasks = false
+    @State private var askHeight: CGFloat = 0
+    @State private var askSpace: CGFloat = 0
     /// Messages to a session go out one after another, in the order sent.
     @State private var lastSend: Task<Void, Never>?
     /// A new session's first message, from Send until its machine answers.
@@ -118,6 +160,9 @@ struct SessionPage: View {
     /// Moves when the owner switches between Agent and Her on a new session, animating the prompt in.
     @State private var rise = false
     @Environment(\.accessibilityReduceMotion) private var still
+    /// Horizontal drag offset when swiping the side panel's leading edge right to put it away.
+    @GestureState private var panelDrag: CGFloat = 0
+    @State private var questionTyping = false
     @FocusState private var focused: Bool
 
     init(machineID: String, projectID: String) {
@@ -230,9 +275,16 @@ struct SessionPage: View {
             if reachable && !following { wakeRetry() }
         }
         .task(id: "\(effectiveMachineID)/\(effectiveProjectID)") { await loadProviders() }
-        .onChange(of: model.projects) { SessionChoices.keepProjects(model.projects, machines: model.machines) }
+        .onChange(of: model.projects) {
+            SessionChoices.keepProjects(model.projects, machines: model.machines)
+            if isNew, !placeEdited, let pr = model.projects.first(where: { $0.machineID == machineID && $0.projectID == projectID }) {
+                let want = projectWorktree(pr, remembered: SessionChoices.worktree(machine: machineID, project: projectID))
+                if place.worktree != want { place.worktree = want }
+            }
+        }
         .onChange(of: model.addedProject) {
             guard let added = model.addedProject, added.machineID == machineID else { return }
+            placeEdited = true
             projectID = added.projectID
             place = SessionPlace(worktree: added.worktree)
             model.addedProject = nil
@@ -302,14 +354,32 @@ struct SessionPage: View {
 
     // MARK: A new session
 
+    private var askFits: Bool {
+        askSpace <= 0 || askHeight <= 0 || askSpace >= askHeight + 24
+    }
+
     private var newSession: some View {
         ScrollView {
-            ask
+            Color.clear
                 .frame(maxWidth: .infinity)
-                .containerRelativeFrame(.vertical)
+                .containerRelativeFrame(.vertical) { h, _ in max(0, askSpace > 0 ? askSpace : h) }
+                .overlay {
+                    ask
+                        .fixedSize(horizontal: false, vertical: true)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { askHeight = $0 }
+                        .opacity(askFits ? 1 : 0)
+                        .animation(.easeOut(duration: 0.18), value: askFits)
+                        .allowsHitTesting(askFits)
+                        .accessibilityHidden(!askFits)
+                }
+                .clipped()
                 .contentShape(Rectangle())
                 .onTapGesture { focused = false }
         }
+        .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height } action: { _, h in
+            askSpace = h
+        }
+        .scrollIndicators(.hidden)
         .scrollBounceBehavior(.always)
         .scrollDismissesKeyboard(.immediately)
         .background {
@@ -366,6 +436,7 @@ struct SessionPage: View {
                                 .accessibilityIdentifier("thread-project")
                                 Text("What should we build in · end")
                             }
+                            .accessibilityIdentifier("project-scratch")
                         }
                         .font(.title.weight(.semibold))
                         .multilineTextAlignment(.center)
@@ -477,11 +548,20 @@ struct SessionPage: View {
         let writing = sessionLiveReplies(activeProj)
         let files = model.sessionFiles.model(s.sessionID, api: model.api)
         let codeActions = codeActions(for: s)
+        let pendingReq = s.status == .archived ? nil : pendingRequest(of: activeProj)
+        let fallbackQuestion: Question? = if pendingReq == nil, s.status != .archived, let q = s.pendingQuestion,
+            activeProj?.requests.contains(where: { $0.requestID == q.questionID && $0.status != .pending }) != true {
+            q
+        } else {
+            nil
+        }
+        let hasInlineQuestion = pendingReq?.kind == .userInput || fallbackQuestion != nil
         // A wide screen: the side panel beside the conversation (docs/session-files.md §15), or taking the page.
         let panel = model.wide != nil && files.panelOpen
-        // Enlarged, the panel covers the conversation, which keeps its width and place underneath.
+        // Enlarged, the panel covers the conversation, which keeps its width and place underneath. On iPhone Duo
+        // (`sideBars`), the split aligns with the physical center fold (`screenWidth / 2`).
         return GeometryReader { geo in
-        let panelWidth = min(470, geo.size.width * 0.56)
+        let panelWidth = sidePanelWidth(geo)
         ZStack(alignment: .trailing) {
         ScrollView {
             VStack(alignment: .leading, spacing: 13) {
@@ -514,6 +594,14 @@ struct SessionPage: View {
                     model.path.append(route)
                     return .handled
                 })
+                if let req = pendingReq, req.kind == .userInput {
+                    inlineQuestionPanel(req, s)
+                } else if let q = fallbackQuestion {
+                    QuestionPanel(session: s, question: q, isTyping: $questionTyping) { answers, decline in
+                        if await model.answer(s, answers: answers, decline: decline) { spoken += 1 }
+                    }
+                    .id(q.questionID)
+                }
                 ConnectionLine(machine: machine, linkUp: s.status == .archived || (following && reachable), work: sessionWorkStatus(activeProj, steps: steps))
                 if let f = sessionFailure(currentSession) {
                     FailedView(session: s, failure: f, grant: grant)
@@ -524,21 +612,30 @@ struct SessionPage: View {
             .background(ConversationScrollFinder(box: scrollBox))
         }
         .keyboardAwayOnTap()
-        .followsEnd(id: sessionID, ready: historyReady(s), spoken: spoken, atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
+        .onChange(of: questionTyping) { _, typingNow in
+            if typingNow {
+                focused = false
+                atEnd = true
+                withAnimation(.smooth(duration: 0.2)) { position.scrollTo(edge: .bottom) }
+            }
+        }
+        .onChange(of: hasInlineQuestion) { _, has in
+            if !has && questionTyping { questionTyping = false }
+        }
+        .followsEnd(id: sessionID, ready: historyReady(s), spoken: spoken, waitingAgent: hasInlineQuestion && !questionTyping ? s.agent : nil,
+                    atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
             if s.status != .archived {
                 VStack(spacing: 6) {
-                    if let req = pendingRequest(of: activeProj) {
-                        requestPanel(req, s)
-                    } else if let q = s.pendingQuestion {
-                        QuestionPanel(session: s, question: q) { answers, decline in
-                            if await model.answer(s, answers: answers, decline: decline) { spoken += 1 }
-                        }
-                        .id(q.questionID)
+                    if let req = pendingReq, req.kind != .userInput {
+                        SessionRequestPanel(session: s, request: req) { build in await respondNow(req, build) }
+                            .id(req.requestID)
                     }
                     backgroundBar
                     queue(activeProj)
                     todoCard(activeProj)
-                    box
+                    if !(hasInlineQuestion && questionTyping) {
+                        box
+                    }
                 }
                 .padding(.bottom, 4)
             }
@@ -549,38 +646,74 @@ struct SessionPage: View {
         .sessionDialogs(s, renaming: $renaming, deleting: $deleting)
         .padding(.trailing, panel ? panelWidth : 0)
         if panel {
-            HStack(spacing: 0) {
-                Divider().ignoresSafeArea()
-                SessionSidePanel(files: files)
-            }
-            .frame(width: files.panelMax ? geo.size.width : panelWidth)
-            .transition(.move(edge: .trailing))
+            sidePanelColumn(files: files, width: files.panelMax ? geo.size.width : panelWidth)
         }
         }
+        }
+        .sheet(item: Binding(get: { files.sharing }, set: { files.sharing = $0 })) {
+            HerShareSheet(url: $0).presentationDetents([.medium, .large])
         }
         .fullScreenCover(item: Binding(get: { files.lightbox }, set: { files.lightbox = $0 })) {
             SessionImageLightbox(presentation: $0)
         }
     }
 
-    @ViewBuilder private func requestPanel(_ req: Hermesh_Session_V1_RuntimeRequest, _ s: Session) -> some View {
-        if req.kind == .userInput {
-            QuestionPanel(session: s, question: sessionQuestion(req)) { answers, decline in
-                await respondNow(req) { r in
-                    r.decline = decline
-                    r.decision = decline ? .decline : .acceptOnce
-                    if !decline {
-                        for a in answers {
-                            r.answers[a.itemID] = .with { $0.selectedOptions = a.selected; $0.customText = a.text }
-                        }
+    private func sidePanelWidth(_ geo: GeometryProxy) -> CGFloat {
+        if sideBars, screenWidth > 0 {
+            let fromFold = round(geo.frame(in: .global).maxX - screenWidth / 2)
+            return min(max(320, fromFold), max(320, geo.size.width - 260))
+        }
+        return min(470, round(geo.size.width * 0.54))
+    }
+
+    private func sidePanelColumn(files: SessionFilesModel, width: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            Divider().ignoresSafeArea()
+            SessionSidePanel(files: files)
+        }
+        .frame(width: width)
+        .overlay(alignment: .leading) {
+            if !files.panelMax {
+                Capsule()
+                    .fill(.quaternary)
+                    .frame(width: 3.5, height: 36)
+                    .frame(width: 18)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(.rect)
+                    .gesture(
+                        DragGesture(minimumDistance: 8, coordinateSpace: .global)
+                            .updating($panelDrag) { v, s, _ in s = max(0, v.translation.width) }
+                            .onEnded { v in
+                                if v.translation.width > 72 || v.predictedEndTranslation.width > 140 {
+                                    withAnimation(.snappy(duration: 0.28)) {
+                                        files.panelOpen = false
+                                        files.panelMax = false
+                                        files.panelDrawer = false
+                                    }
+                                }
+                            }
+                    )
+                    .accessibilityIdentifier("side-panel-edge-grip")
+            }
+        }
+        .offset(x: panelDrag)
+        .opacity(panelDrag > 0 ? max(0.38, 1 - Double(panelDrag) / 340) : 1)
+        .transition(.move(edge: .trailing))
+    }
+
+    @ViewBuilder private func inlineQuestionPanel(_ req: Hermesh_Session_V1_RuntimeRequest, _ s: Session) -> some View {
+        QuestionPanel(session: s, question: sessionQuestion(req), isTyping: $questionTyping) { answers, decline in
+            await respondNow(req) { r in
+                r.decline = decline
+                r.decision = decline ? .decline : .acceptOnce
+                if !decline {
+                    for a in answers {
+                        r.answers[a.itemID] = .with { $0.selectedOptions = a.selected; $0.customText = a.text }
                     }
                 }
             }
-            .id(req.requestID)
-        } else {
-            SessionRequestPanel(session: s, request: req) { build in await respondNow(req, build) }
-                .id(req.requestID)
         }
+        .id(req.requestID)
     }
 
     /// Active background tasks or long-lived daemons running after or alongside turns.
@@ -987,18 +1120,36 @@ struct SessionPage: View {
         let project = projects(on: machineID).list.first { $0.projectID == projectID }
         if project?.repo == true || project?.workspace == .worktree {
             HStack(spacing: 6) {
-                Menu {
+                Button {
+                    setWorktree(!place.worktree)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: place.worktree ? "arrow.triangle.branch" : "folder")
+                            .contentTransition(.symbolEffect(.replace))
+                        Text(verbatim: place.worktree ? String(localized: "Separate worktree") : String(localized: "Current checkout"))
+                            .lineLimit(1)
+                        Image(systemName: "arrow.left.arrow.right")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(worktreeTurns * 180))
+                    }
+                    .font(.footnote).foregroundStyle(.primary)
+                    .padding(.horizontal, 10).frame(height: 32)
+                    .background(Palette.fill2, in: Capsule())
+                }
+                .tint(.primary)
+                .sensoryFeedback(.selection, trigger: worktreeTurns)
+                .contextMenu {
                     Section("Working copy") {
-                        Button { place.worktree = false } label: {
-                            Label { Text("Current checkout"); Text("Works on the project’s own folder") } icon: { if !place.worktree { Image(systemName: "checkmark") } }
+                        Button { setWorktree(false) } label: {
+                            Label { Text("Current checkout"); Text("Works on the project’s own folder") } icon: { Image(systemName: !place.worktree ? "checkmark" : "folder") }
                         }
-                        Button { place.worktree = true } label: {
-                            Label { Text("Separate worktree"); Text("A branch of its own; your files are left alone") } icon: { if place.worktree { Image(systemName: "checkmark") } }
+                        Button { setWorktree(true) } label: {
+                            Label { Text("Separate worktree"); Text("A branch of its own; your files are left alone") } icon: { Image(systemName: place.worktree ? "checkmark" : "arrow.triangle.branch") }
                         }
                     }
-                } label: { chip(icon: place.worktree ? "arrow.triangle.branch" : "folder", place.worktree ? String(localized: "Separate worktree") : String(localized: "Current checkout")) }
-                    .tint(.primary)
-                    .accessibilityIdentifier("thread-worktree")
+                }
+                .accessibilityIdentifier("thread-worktree")
                 if let branches {
                     let name = place.chosen(branches)
                     Button {
@@ -1030,18 +1181,21 @@ struct SessionPage: View {
     private var m_icon: String { machine?.local == true ? "laptopcomputer" : "server.rack" }
     private var clamped: Hermesh_Identity_V1_RuntimeMode { clampRuntimeMode(mode, ceiling: ceiling) }
 
-    private func chip(icon: String?, _ title: String) -> some View {
-        HStack(spacing: 4) {
-            if let icon { Image(systemName: icon) }
-            Text(verbatim: title).lineLimit(1)
-            Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+    // MARK: Choosing
+
+    private func setWorktree(_ next: Bool) {
+        placeEdited = true
+        guard place.worktree != next else { return }
+        withAnimation(.spring(duration: 0.3, bounce: 0.25)) {
+            worktreeTurns += 1
+            place.worktree = next
         }
-        .font(.footnote).foregroundStyle(.primary)
-        .padding(.horizontal, 10).frame(height: 32)
-        .background(Palette.fill2, in: Capsule())
+        SessionChoices.rememberWorktree(machine: machineID, project: projectID, worktree: next)
     }
 
-    // MARK: Choosing
+    private func findProject(machine id: String, project pid: String) -> Project? {
+        projects(on: id).list.first { $0.projectID == pid } ?? SessionChoices.lastProjects(id).first { $0.projectID == pid }
+    }
 
     private func pick(machine id: String) {
         machineID = id
@@ -1050,7 +1204,9 @@ struct SessionPage: View {
 
     private func pick(project id: String, in list: [Project]) {
         projectID = id
-        place = SessionPlace(worktree: list.first { $0.projectID == id }?.workspace == .worktree)
+        placeEdited = false
+        let pr = list.first { $0.projectID == id } ?? SessionChoices.lastProjects(machineID).first { $0.projectID == id }
+        place = SessionPlace(worktree: projectWorktree(pr, remembered: SessionChoices.worktree(machine: machineID, project: id)))
     }
 
     private func setMode(_ m: Hermesh_Identity_V1_RuntimeMode) {
@@ -1365,7 +1521,15 @@ struct SessionPage: View {
             let res = try await api.startSession(st.request)
             // An agent's choices are kept for the next session; Her's stay hers (NewSessionWho).
             if st.request.modelSelection.instanceID != herAgent {
-                SessionChoices.remember(machine: st.request.machineID, project: st.request.projectID, selection: selection, mode: clamped)
+                let pr = findProject(machine: st.request.machineID, project: st.request.projectID)
+                let canWt = pr?.repo == true || pr?.workspace == .worktree
+                SessionChoices.remember(
+                    machine: st.request.machineID,
+                    project: st.request.projectID,
+                    selection: selection,
+                    mode: clamped,
+                    worktree: canWt ? st.request.workspace.mode == .worktree : nil
+                )
             }
             // "Sending…", once shown (at 400 ms), stays half a second.
             let took = Date.now.timeIntervalSince(began)

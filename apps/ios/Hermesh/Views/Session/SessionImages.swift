@@ -151,32 +151,43 @@ nonisolated private enum SessionImageDecoder {
         entries["blob\u{0}\(attachment.blobSha256)"]
     }
 
-    func request(api: AppAPI?, sessionID: String, run: String, path: String, retryOffline: Bool = false) {
+    func request(api: AppAPI?, sessionID: String, run: String, path: String, retryOffline: Bool = false, urgent: Bool = false) {
         guard let api, !sessionID.isEmpty, !path.isEmpty else { return }
         let k = key(sessionID: sessionID, run: run, path: path)
-        enqueue(Job(key: k, api: api, sessionID: sessionID, run: run, path: path), retryOffline: retryOffline)
+        enqueue(Job(key: k, api: api, sessionID: sessionID, run: run, path: path), retryOffline: retryOffline, urgent: urgent)
     }
 
     /// A picture the owner sent with a prompt: from this iPhone when it was sent from here or seen before, else its blob.
-    func request(api: AppAPI?, sessionID: String, machineID: String, attachment: Hermesh_Session_V1_AttachmentRef, retryOffline: Bool = false) {
+    func request(api: AppAPI?, sessionID: String, machineID: String, attachment: Hermesh_Session_V1_AttachmentRef, retryOffline: Bool = false, urgent: Bool = false) {
         guard let api, !attachment.blobSha256.isEmpty else { return }
         let k = "blob\u{0}\(attachment.blobSha256)"
-        enqueue(Job(key: k, api: api, sessionID: sessionID, run: "", path: attachment.name, attachment: attachment, machineID: machineID), retryOffline: retryOffline)
+        enqueue(Job(key: k, api: api, sessionID: sessionID, run: "", path: attachment.name, attachment: attachment, machineID: machineID), retryOffline: retryOffline, urgent: urgent)
     }
 
-    private func enqueue(_ job: Job, retryOffline: Bool) {
+    private func enqueue(_ job: Job, retryOffline: Bool, urgent: Bool = false) {
         let k = job.key
         if let existing = entries[k] {
             if case .offline = existing, retryOffline {
                 entries.removeValue(forKey: k)
             } else {
+                if urgent, queuedKeys.contains(k), let idx = queue.firstIndex(where: { $0.key == k }), idx > 0 {
+                    let picked = queue.remove(at: idx)
+                    queue.insert(picked, at: 0)
+                }
                 return
             }
         }
-        guard !inFlightKeys.contains(k), !queuedKeys.contains(k) else { return }
+        if inFlightKeys.contains(k) { return }
+        if queuedKeys.contains(k) {
+            if urgent, let idx = queue.firstIndex(where: { $0.key == k }), idx > 0 {
+                let picked = queue.remove(at: idx)
+                queue.insert(picked, at: 0)
+            }
+            return
+        }
         store(k, .loading)
         queuedKeys.insert(k)
-        queue.append(job)
+        if urgent { queue.insert(job, at: 0) } else { queue.append(job) }
         pump()
     }
 
@@ -349,7 +360,7 @@ struct SessionImageStrip: View {
             if items.count == 1 {
                 SessionInlineImageCard(item: items[0], mode: .single, fromLinks: fromLinks, files: files, run: run, gallery: gallery)
             } else if items.count == 2 {
-                HStack(spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
                     ForEach(Array(items.enumerated()), id: \.offset) { _, it in
                         SessionInlineImageCard(item: it, mode: .pair, fromLinks: fromLinks, files: files, run: run, gallery: gallery)
                     }
@@ -357,24 +368,187 @@ struct SessionImageStrip: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("session-image-row")
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(items.enumerated()), id: \.offset) { _, it in
-                            SessionInlineImageCard(item: it, mode: .strip, fromLinks: fromLinks, files: files, run: run, gallery: gallery)
-                        }
-                    }
-                    .scrollTargetLayout()
-                }
-                .scrollTargetBehavior(.viewAligned)
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("session-image-row")
+                SessionImageStageView(items: items, fromLinks: fromLinks, files: files, run: run, gallery: gallery)
             }
         }
     }
 }
 
 private enum InlineCardMode {
-    case single, pair, strip
+    case single, pair, stage
+}
+
+private func hasDistinctImageCaption(_ caption: String, name: String) -> Bool {
+    let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+    return !trimmed.isEmpty && trimmed.lowercased() != name.lowercased()
+}
+
+private struct SessionImageStageView: View {
+    let items: [ReplyImageItem]
+    let fromLinks: Bool
+    let files: SessionFilesModel
+    let run: String
+    let gallery: [ReplyImageItem]
+
+    @Environment(AppModel.self) private var model
+    @State private var activeIndex = 0
+
+    private var safeIndex: Int {
+        max(0, min(items.count - 1, activeIndex))
+    }
+
+    private var activeItem: ReplyImageItem {
+        items[safeIndex]
+    }
+
+    private var anyCaption: Bool {
+        items.contains { hasDistinctImageCaption($0.caption, name: fileBaseName($0.path)) }
+    }
+
+    var body: some View {
+        let activeName = fileBaseName(activeItem.path)
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .topTrailing) {
+                TabView(selection: $activeIndex) {
+                    ForEach(Array(items.enumerated()), id: \.offset) { idx, it in
+                        SessionInlineImageCard(
+                            item: it,
+                            mode: .stage,
+                            fromLinks: fromLinks,
+                            files: files,
+                            run: run,
+                            gallery: gallery,
+                            urgent: abs(idx - safeIndex) <= 1 || idx == 0
+                        )
+                        .tag(idx)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(height: 214)
+                .background(Palette.code)
+
+                Text(verbatim: "\(safeIndex + 1) / \(items.count)")
+                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(.black.opacity(0.66), in: .capsule)
+                    .overlay(Capsule().strokeBorder(.white.opacity(0.16), lineWidth: 0.5))
+                    .padding(9)
+                    .allowsHitTesting(false)
+                    .accessibilityIdentifier("session-image-counter")
+            }
+
+            if anyCaption {
+                Text(verbatim: activeItem.caption.isEmpty ? activeName : activeItem.caption)
+                    .font(.footnote)
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 8)
+                    .overlay(alignment: .top) { Rectangle().fill(Palette.separator).frame(height: 0.5) }
+                    .accessibilityIdentifier("session-image-caption")
+            }
+
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(Array(items.enumerated()), id: \.offset) { idx, it in
+                            SessionStageThumbButton(
+                                item: it,
+                                index: idx,
+                                selected: idx == safeIndex,
+                                files: files,
+                                run: run
+                            ) {
+                                withAnimation(.snappy(duration: 0.2)) { activeIndex = idx }
+                            }
+                            .id(idx)
+                        }
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 7)
+                }
+                .background(Palette.fill)
+                .overlay(alignment: .top) { Rectangle().fill(Palette.separator).frame(height: 0.5) }
+                .onChange(of: safeIndex) { _, next in
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(next, anchor: .center)
+                    }
+                }
+            }
+        }
+        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("session-image-row")
+    }
+}
+
+private struct SessionStageThumbButton: View {
+    let item: ReplyImageItem
+    let index: Int
+    let selected: Bool
+    let files: SessionFilesModel
+    let run: String
+    let action: () -> Void
+
+    @Environment(AppModel.self) private var model
+
+    private var sessionID: String { files.sessionID }
+    private var machineID: String { model.session(sessionID)?.machineID ?? "" }
+    private var online: Bool {
+        guard let m = model.machines.first(where: { $0.machineID == machineID }) else { return true }
+        return m.local || (model.status.relayConnected && m.online)
+    }
+
+    var body: some View {
+        let info = files.info(run: run, path: item.path)
+        let goneByInfo = info?.kind == .missing || info?.kind == .outside
+        let effectivePath = if let info, !goneByInfo, !info.path.isEmpty { info.path } else { item.path }
+        let state = SessionImageStore.shared.state(sessionID: sessionID, run: run, path: effectivePath)
+
+        Button(action: action) {
+            ZStack {
+                Palette.code
+                if case .ready(let loaded)? = state {
+                    Image(uiImage: loaded.thumbnail)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 54, height: 32)
+                        .clipped()
+                } else if goneByInfo || isNonReadyFailure(state) {
+                    Image(systemName: "photo").font(.caption2).foregroundStyle(.tertiary)
+                } else {
+                    ProgressView().controlSize(.mini)
+                }
+            }
+            .frame(width: 54, height: 32)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .opacity(selected ? 1.0 : 0.54)
+            .overlay {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(selected ? Color.accentColor : Palette.separator, lineWidth: selected ? 2 : 0.5)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: item.caption.isEmpty ? fileBaseName(effectivePath) : item.caption))
+        .accessibilityIdentifier("session-image-thumb-\(index)")
+        .task(id: "\(sessionID)\u{0}\(run)\u{0}\(effectivePath)\u{0}\(online)\u{0}\(goneByInfo)") {
+            guard !goneByInfo else { return }
+            let isOff: Bool = if case .offline? = state { true } else { false }
+            SessionImageStore.shared.request(api: model.api, sessionID: sessionID, run: run, path: effectivePath, retryOffline: isOff && online, urgent: selected)
+        }
+    }
+
+    private func isNonReadyFailure(_ state: SessionImageStore.State?) -> Bool {
+        switch state {
+        case .missing?, .offline?, .tooLarge?, .failed?: true
+        default: false
+        }
+    }
 }
 
 private struct SessionInlineImageCard: View {
@@ -384,6 +558,7 @@ private struct SessionInlineImageCard: View {
     let files: SessionFilesModel
     let run: String
     let gallery: [ReplyImageItem]
+    var urgent = false
 
     @Environment(AppModel.self) private var model
     @State private var sharing: URL?
@@ -427,7 +602,7 @@ private struct SessionInlineImageCard: View {
         .task(id: "\(sessionID)\u{0}\(run)\u{0}\(effectivePath)\u{0}\(online)\u{0}\(goneByInfo)") {
             guard !goneByInfo else { return }
             let isOff: Bool = if case .offline? = state { true } else { false }
-            SessionImageStore.shared.request(api: model.api, sessionID: sessionID, run: run, path: effectivePath, retryOffline: isOff && online)
+            SessionImageStore.shared.request(api: model.api, sessionID: sessionID, run: run, path: effectivePath, retryOffline: isOff && online, urgent: urgent)
         }
     }
 
@@ -442,28 +617,37 @@ private struct SessionInlineImageCard: View {
             Text(verbatim: text).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
+        .frame(maxWidth: mode == .stage ? .infinity : nil, maxHeight: mode == .stage ? .infinity : nil)
+        .background(mode == .stage ? Color.clear : Palette.fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            if mode != .stage {
+                RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5)
+            }
+        }
     }
 
     private var loadingCard: some View {
-        let h: CGFloat = mode == .single ? 200 : 190
+        let h: CGFloat = mode == .single ? 200 : (mode == .stage ? 214 : 184)
         return ProgressView()
-            .frame(maxWidth: mode == .single ? 200 : (mode == .strip ? 168 : .infinity), minHeight: h, maxHeight: h)
-            .background(Palette.fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
+            .frame(maxWidth: mode == .single ? 200 : .infinity, minHeight: h, maxHeight: h)
+            .background(mode == .stage ? Color.clear : Palette.fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                if mode != .stage {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5)
+                }
+            }
     }
 
     @ViewBuilder private func readyCard(_ loaded: SessionImageStore.Loaded, effectivePath: String) -> some View {
         let name = fileBaseName(loaded.resolvedPath)
-        let showCaption = mode != .single && !item.caption.isEmpty && item.caption.lowercased() != name.lowercased()
+        let showPairCaption = mode == .pair && hasDistinctImageCaption(item.caption, name: name)
         let ratio = CGFloat(max(loaded.pixelWidth, 1)) / CGFloat(max(loaded.pixelHeight, 1))
         let open = {
             files.openLightbox(run: run, path: item.path, machineID: machineID, gallery: gallery)
         }
 
         Button(action: open) {
-            ZStack(alignment: .bottomLeading) {
+            VStack(alignment: .leading, spacing: 0) {
                 switch mode {
                 case .single:
                     let maxH: CGFloat = 260
@@ -476,26 +660,32 @@ private struct SessionInlineImageCard: View {
                     Image(uiImage: loaded.thumbnail)
                         .resizable()
                         .scaledToFit()
-                        .frame(maxWidth: .infinity, minHeight: 170, maxHeight: 210)
-                case .strip:
+                        .frame(maxWidth: .infinity, minHeight: 150, maxHeight: 204)
+                        .background(Palette.code)
+                case .stage:
                     Image(uiImage: loaded.thumbnail)
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 168, height: 210)
+                        .frame(maxWidth: .infinity, maxHeight: 214)
                 }
-                if showCaption {
+                if showPairCaption {
                     Text(verbatim: item.caption)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        .padding(7)
+                        .font(.caption.weight(.regular))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .overlay(alignment: .top) { Rectangle().fill(Palette.separator).frame(height: 0.5) }
                 }
             }
-            .background(Palette.fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
+            .background(mode == .stage ? Color.clear : Palette.fill, in: RoundedRectangle(cornerRadius: mode == .stage ? 0 : 14, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: mode == .stage ? 0 : 14, style: .continuous))
+            .overlay {
+                if mode != .stage {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5)
+                }
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: item.caption.isEmpty ? name : item.caption))
@@ -525,6 +715,7 @@ private struct SessionInlineImageCard: View {
 struct SessionImageLightbox: View {
     let presentation: SessionLightboxPresentation
     @Environment(AppModel.self) private var model
+    @Environment(\.sessionFiles) private var envFiles
     @Environment(\.dismiss) private var dismiss
 
     @State private var index: Int
@@ -555,7 +746,7 @@ struct SessionImageLightbox: View {
     }
 
     var body: some View {
-        let files = model.sessionFiles.model(presentation.sessionID, api: model.api)
+        let files = envFiles ?? model.sessionFiles.model(presentation.sessionID, api: model.api)
         let curPath = resolvedAskPath(files: files, item: currentItem)
         let curState = state(of: currentItem, path: curPath)
         let name = fileBaseName(loadedOf(curState)?.resolvedPath ?? curPath)
@@ -766,6 +957,11 @@ private struct LightboxPage: View {
             switch state {
             case nil, .loading?:
                 ProgressView().tint(.white)
+                    .task(id: "\(sessionID)\u{0}\(run)\u{0}\(path)\u{0}\(online)") {
+                        if picture == nil, attachment == nil, state == nil {
+                            SessionImageStore.shared.request(api: model.api, sessionID: sessionID, run: run, path: path)
+                        }
+                    }
             case .ready(let loaded)?:
                 ZoomableImageScrollView(
                     image: fullImage ?? loaded.thumbnail,

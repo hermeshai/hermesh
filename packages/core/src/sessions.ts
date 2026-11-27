@@ -381,8 +381,22 @@ function sortWithManualOrder(
     const tb = mb ? mb[0] : timeOf(b);
     if (ta !== tb) return cmpTime(ta, tb);
     if (ma && mb) return ma[1] - mb[1];
+    if (ma || mb) return ma ? dir : -dir;
     return 0;
   });
+}
+
+/** A session's non-pinned section key (`${group}:${bucket}`) in the given view. */
+export function naturalSectionKey(view: SessionView, s: Session, now: Date, children: readonly Session[] = []): string {
+  const k = {
+    sender: () => s.createdBy,
+    status: () => treeStatus(s, children),
+    date: () => dayOf(s, now, treeUpdated(s, children)),
+    project: () => (isHerConversation(s) ? HER_SECTION : s.projectId),
+    agent: () => s.agent,
+    machine: () => s.machineId,
+  }[view.group]();
+  return `${view.group}:${k}`;
 }
 
 /**
@@ -394,7 +408,16 @@ function sortWithManualOrder(
 export function sessionSections(
   sessions: Session[],
   view: SessionView,
-  o: { archived: boolean; now: Date; machines?: string[]; her?: string[]; alwaysActive?: boolean; pinnedOrder?: readonly string[]; activeOrder?: readonly string[] },
+  o: {
+    archived: boolean;
+    now: Date;
+    machines?: string[];
+    her?: string[];
+    alwaysActive?: boolean;
+    pinnedOrder?: readonly string[];
+    activeOrder?: readonly string[];
+    sectionOrder?: Readonly<Record<string, readonly string[]>>;
+  },
 ): SessionSection[] {
   const by = new Map<string, Session[]>();
   const pinned: Session[] = [];
@@ -450,25 +473,32 @@ export function sessionSections(
     if (view.sort === "updated") return activityDate(s).getTime();
     return isActive(s) && !needsAttention(s) ? createdDate(s).getTime() : updatedDate(s).getTime();
   };
-  const sorted = (list: Session[], isActBucket = false) =>
-    sortWithManualOrder(
+  const sorted = (list: Session[], secId?: string, isActBucket = false) => {
+    const secManual = secId ? o.sectionOrder?.[secId] : undefined;
+    if (secManual && secManual.length > 0) {
+      return sortWithManualOrder(list, timeFor, view.newestFirst, secManual);
+    }
+    return sortWithManualOrder(
       list,
       timeFor,
       view.newestFirst,
       o.activeOrder,
       (s) => isActBucket || (isActive(s) && !needsAttention(s)),
     );
+  };
 
   // By status, the running section stays while nothing runs, empty, so the sidebar always shows it (docs/her-team.md §16).
   const keep = o.alwaysActive && view.group === "status" && (by.size > 0 || pinned.length > 0);
   const out: SessionSection[] = [];
   if (pinned.length) {
     const pinTime = (s: Session) => (view.sort === "updated" ? activityDate(s).getTime() : createdDate(s).getTime());
-    out.push({ grouping: "pinned", key: "pinned", sessions: sortWithManualOrder(pinned, pinTime, view.newestFirst, o.pinnedOrder) });
+    const pinManual = o.sectionOrder?.["pinned:pinned"] ?? o.pinnedOrder;
+    out.push({ grouping: "pinned", key: "pinned", sessions: sortWithManualOrder(pinned, pinTime, view.newestFirst, pinManual) });
   }
   for (const k of order) {
     if (by.has(k) || (keep && k === "active")) {
-      out.push({ grouping: view.group, key: k, sessions: sorted(by.get(k) ?? [], view.group === "status" && k === "active") });
+      const secId = `${view.group}:${k}`;
+      out.push({ grouping: view.group, key: k, sessions: sorted(by.get(k) ?? [], secId, view.group === "status" && k === "active") });
     }
   }
   if (archived.length) out.push({ grouping: "archived", key: "archived", sessions: sorted(archived) });

@@ -14,7 +14,8 @@ import (
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
-var migrations = []string{`
+var migrations = []sqlitedb.Migration{
+	{Version: 1, Description: "initial_relay_schema", SQL: `
 CREATE TABLE meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);
 CREATE TABLE machine_certs (
   machine_id TEXT PRIMARY KEY,
@@ -44,16 +45,19 @@ CREATE TABLE connection_log (
   remote TEXT NOT NULL,
   event TEXT NOT NULL
 );
-`, `
+`},
+	{Version: 2, Description: "add_pairing_owner_and_hint", SQL: `
 ALTER TABLE pairing ADD COLUMN owner_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE pairing ADD COLUMN account_hint TEXT NOT NULL DEFAULT '';
-`, `
+`},
+	{Version: 3, Description: "create_push_targets", SQL: `
 CREATE TABLE push_targets (
   device_key_id TEXT PRIMARY KEY,
   target BLOB NOT NULL,
   updated_at INTEGER NOT NULL
 );
-`, `
+`},
+	{Version: 4, Description: "create_messages_and_contacts", SQL: `
 CREATE TABLE messages (
   id TEXT PRIMARY KEY,
   inbox TEXT NOT NULL,
@@ -75,9 +79,11 @@ CREATE TABLE contact_cards (
   device_cert BLOB NOT NULL,
   updated_at INTEGER NOT NULL
 );
-`, `
+`},
+	{Version: 5, Description: "add_messages_ring", SQL: `
 ALTER TABLE messages ADD COLUMN ring TEXT;
-`, `
+`},
+	{Version: 6, Description: "create_erase_orders", SQL: `
 CREATE TABLE erase_orders (
   owner_id TEXT PRIMARY KEY,
   erase_id TEXT NOT NULL,
@@ -91,7 +97,8 @@ CREATE TABLE erase_acks (
   acked_at INTEGER NOT NULL,
   PRIMARY KEY (erase_id, key_id)
 );
-`, `
+`},
+	{Version: 7, Description: "create_sync_targets_and_deltas", SQL: `
 CREATE TABLE sync_targets (
   device_key_id TEXT PRIMARY KEY,
   target BLOB NOT NULL,
@@ -110,7 +117,8 @@ CREATE TABLE delta_seqs (
   stream_id TEXT PRIMARY KEY,
   next_seq INTEGER NOT NULL
 );
-`}
+`},
+}
 
 // Store is the Backend of a self-hosted relay: one owner, SQLite. It keeps
 // only public, signed objects and metadata, never a secret that could make

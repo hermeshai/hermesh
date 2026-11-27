@@ -8,7 +8,11 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/hermeshai/hermesh/pkg/metrics"
 )
+
+var mProcTableScans = metrics.Default.Counter("hermesh_runtime_proctable_scans_total")
 
 // Agents run their tools in process groups (or sessions) of their own, so
 // killing the agent's group leaves them running, and when the agent dies
@@ -32,7 +36,7 @@ var tracker struct {
 	running bool
 }
 
-const trackEvery = time.Second
+const trackEvery = 3 * time.Second
 
 // track starts remembering pid's descendants.
 func track(pid int) *tracked {
@@ -69,6 +73,7 @@ func trackLoop() {
 			ts = append(ts, t)
 		}
 		tracker.mu.Unlock()
+		mProcTableScans.Inc()
 		procs := listProcs()
 		for _, t := range ts {
 			t.update(procs)

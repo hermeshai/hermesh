@@ -1,0 +1,1876 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="black">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>会话内容区连续多图渲染优化 · 交互原型</title>
+<style>
+@font-face {
+  font-family: "Google Sans Flex";
+  src: url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-flex.ttf") format("truetype");
+  font-style: oblique 0deg 10deg;
+  font-weight: 100 1000;
+}
+@font-face {
+  font-family: "Google Sans Code";
+  src: url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-code.ttf") format("truetype");
+  font-weight: 300 800;
+}
+
+:root {
+  --font-mac: "Google Sans Flex", "Google Sans", -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif;
+  --font-ios: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  --mono: "Google Sans Code", ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --ease-out: cubic-bezier(.2, 0, 0, 1);
+}
+
+/* ---------- Pure Black OLED (Matches user's screenshot) ---------- */
+[data-theme="black"] {
+  --page: #08090d;
+  --page-fg: #ededf2;
+  --page-fg2: #9498a6;
+  --page-fg3: #616574;
+  --page-card: #121319;
+  --page-bd: rgba(255,255,255,.085);
+  --page-bar: rgba(15,16,22,.88);
+
+  --win: #000000;
+  --win2: #111216;
+  --win3: #1a1b21;
+  --side: #0b0b0e;
+  --code: #0b0c10;
+  --pill: #15151a;
+  --pill-bd: rgba(255,255,255,.09);
+
+  --l1: rgba(255,255,255,.92);
+  --l2: rgba(235,235,245,.58);
+  --l3: rgba(235,235,245,.35);
+  --l4: rgba(255,255,255,.15);
+  --sep: rgba(255,255,255,.085);
+  --fill: rgba(255,255,255,.055);
+  --fill2: rgba(255,255,255,.095);
+  --fill3: rgba(255,255,255,.145);
+
+  --accent: #4a66ff;
+  --accent-t: #8fa2ff;
+  --accent-bg: rgba(74,102,255,.18);
+  --ok: #38ce86;
+  --ok-bg: rgba(56,206,134,.15);
+  --warn: #f5a53c;
+  --warn-bg: rgba(245,165,60,.15);
+  --danger: #ff6670;
+  --danger-bg: rgba(255,102,112,.16);
+
+  --shadow-win: 0 0 0 1px rgba(255,255,255,.11), 0 26px 72px rgba(0,0,0,.78);
+  --i-bg: #000000;
+  --i-glass: rgba(30,30,36,.82);
+  --i-glass-bd: rgba(255,255,255,.12);
+}
+
+/* ---------- Dark Gray ---------- */
+[data-theme="dark"] {
+  --page: #0e1015;
+  --page-fg: #ececf1;
+  --page-fg2: #989ba8;
+  --page-fg3: #666977;
+  --page-card: #171922;
+  --page-bd: rgba(255,255,255,.085);
+  --page-bar: rgba(20,21,28,.88);
+
+  --win: #1e1e22;
+  --win2: #26262b;
+  --win3: #303037;
+  --side: #232328;
+  --code: #17171b;
+  --pill: #29292f;
+  --pill-bd: rgba(255,255,255,.12);
+
+  --l1: rgba(255,255,255,.90);
+  --l2: rgba(255,255,255,.57);
+  --l3: rgba(255,255,255,.34);
+  --l4: rgba(255,255,255,.15);
+  --sep: rgba(255,255,255,.09);
+  --fill: rgba(255,255,255,.055);
+  --fill2: rgba(255,255,255,.09);
+  --fill3: rgba(255,255,255,.14);
+
+  --accent: #4a66ff;
+  --accent-t: #95a8ff;
+  --accent-bg: rgba(74,102,255,.18);
+  --ok: #3fcf86;
+  --ok-bg: rgba(63,207,134,.15);
+  --warn: #f5a623;
+  --warn-bg: rgba(245,166,35,.15);
+  --danger: #ff6b75;
+  --danger-bg: rgba(255,107,117,.16);
+
+  --shadow-win: 0 0 0 .5px rgba(255,255,255,.14), 0 24px 68px rgba(0,0,0,.58);
+  --i-bg: #000000;
+  --i-glass: rgba(38,38,44,.78);
+  --i-glass-bd: rgba(255,255,255,.12);
+}
+
+/* ---------- Light ---------- */
+[data-theme="light"] {
+  --page: #e8eaf0;
+  --page-fg: #181920;
+  --page-fg2: #5e616e;
+  --page-fg3: #8a8e9c;
+  --page-card: #ffffff;
+  --page-bd: rgba(0,0,0,.08);
+  --page-bar: rgba(255,255,255,.88);
+
+  --win: #ffffff;
+  --win2: #f5f6f9;
+  --win3: #ebedf3;
+  --side: #f3f4f7;
+  --code: #f6f7fa;
+  --pill: #ffffff;
+  --pill-bd: rgba(0,0,0,.11);
+
+  --l1: rgba(0,0,0,.87);
+  --l2: rgba(0,0,0,.55);
+  --l3: rgba(0,0,0,.34);
+  --l4: rgba(0,0,0,.14);
+  --sep: rgba(0,0,0,.08);
+  --fill: rgba(0,0,0,.045);
+  --fill2: rgba(0,0,0,.075);
+  --fill3: rgba(0,0,0,.12);
+
+  --accent: #3d5bff;
+  --accent-t: #2c4ae8;
+  --accent-bg: rgba(61,91,255,.10);
+  --ok: #16934e;
+  --ok-bg: rgba(22,147,78,.11);
+  --warn: #d97706;
+  --warn-bg: rgba(217,119,6,.11);
+  --danger: #dc2626;
+  --danger-bg: rgba(220,38,38,.10);
+
+  --shadow-win: 0 0 0 .5px rgba(0,0,0,.18), 0 24px 68px rgba(15,23,42,.22);
+  --i-bg: #ffffff;
+  --i-glass: rgba(250,250,252,.82);
+  --i-glass-bd: rgba(0,0,0,.08);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--page);
+  color: var(--page-fg);
+  font: 13.5px/1.55 var(--font-mac);
+  min-height: 100vh;
+  padding-bottom: 118px;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+svg { display: block; flex: none; }
+code { font-family: var(--mono); }
+
+/* ---------- Page Header ---------- */
+.top {
+  max-width: 1640px;
+  margin: 0 auto;
+  padding: 18px 24px 6px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px 20px;
+  flex-wrap: wrap;
+}
+.top-l { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.top h1 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -.015em; }
+.top .sub { font-size: 13px; color: var(--page-fg2); }
+.top-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.pbadge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 9px; border-radius: 99px; font-size: 11.5px; font-weight: 550;
+  background: var(--accent-bg); color: var(--accent-t);
+}
+.pbadge.ok { background: var(--ok-bg); color: var(--ok); }
+.pbadge.warn { background: var(--warn-bg); color: var(--warn); }
+
+.wrap {
+  max-width: 1640px;
+  margin: 0 auto;
+  padding: 10px 24px 20px;
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+#stage {
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* ---------- Right Design Spec Card ---------- */
+.notes {
+  width: 348px;
+  max-width: 100%;
+  flex: none;
+  background: var(--page-card);
+  border: 1px solid var(--page-bd);
+  border-radius: 14px;
+  padding: 15px 17px;
+  font-size: 12.6px;
+  line-height: 1.62;
+}
+.notes h3 { margin: 0 0 6px; font-size: 14px; font-weight: 650; display: flex; align-items: center; gap: 7px; }
+.notes p { margin: 0; color: var(--page-fg2); }
+.notes ul { margin: 6px 0 0; padding-left: 17px; color: var(--page-fg2); }
+.notes li { margin: 4px 0; }
+.notes li b { color: var(--page-fg); font-weight: 600; }
+.notes .blk { margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--page-bd); }
+.notes code { font-size: 11.3px; padding: 1px 5px; border-radius: 4px; background: var(--fill2); color: var(--page-fg); }
+.metric-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 9px; }
+.metric {
+  background: var(--fill);
+  border: .5px solid var(--sep);
+  border-radius: 9px;
+  padding: 7px 9px;
+}
+.metric small { display: block; font-size: 10.8px; color: var(--page-fg3); }
+.metric b { display: block; font-size: 13px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+/* ---------- Mac Window Simulation ---------- */
+.mac {
+  width: 980px;
+  max-width: 100%;
+  height: 736px;
+  border-radius: 13px;
+  overflow: hidden;
+  box-shadow: var(--shadow-win);
+  display: flex;
+  background: var(--win);
+  color: var(--l1);
+  font: 14px/1.6 var(--font-mac);
+  position: relative;
+  user-select: none;
+}
+.mac.compact-win { width: 820px; }
+
+/* Conversation Column (.scol) */
+.scol {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--win);
+  position: relative;
+}
+.scol.split-narrow {
+  flex: 0 0 476px;
+  width: 476px;
+  max-width: 100%;
+}
+.ctool {
+  height: 44px;
+  border-bottom: .5px solid var(--sep);
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 18px;
+  gap: 10px;
+  flex: none;
+}
+.lights { display: flex; gap: 7px; margin-right: 6px; }
+.lights i { width: 11px; height: 11px; border-radius: 50%; background: #ff5f57; display: block; }
+.lights i:nth-child(2) { background: #febc2e; }
+.lights i:nth-child(3) { background: #28c840; }
+.ctitle { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; }
+.ctitle h2 {
+  margin: 0; font-size: 13.5px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.th-where {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--l2); white-space: nowrap;
+}
+.tb-ic {
+  width: 27px; height: 27px; border-radius: 7px;
+  display: grid; place-items: center; color: var(--l2);
+}
+.tb-ic:hover, .tb-ic.on { background: var(--fill2); color: var(--l1); }
+
+.cscroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px 92px;
+  scrollbar-width: thin;
+}
+.mcol {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Simulated Right SidePanel (.sfp) like user's screenshot */
+.sfp {
+  flex: 1;
+  min-width: 0;
+  border-left: .5px solid var(--sep);
+  background: var(--win);
+  display: flex;
+  flex-direction: column;
+}
+.sfp-strip {
+  height: 44px;
+  border-bottom: .5px solid var(--sep);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 6px;
+}
+.sfp-tab {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--fill2);
+  color: var(--l1);
+  font-size: 12.2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 190px;
+}
+.sfp-tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sfp-bar {
+  height: 34px;
+  border-bottom: .5px solid var(--sep);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+}
+.sfp-addr {
+  flex: 1;
+  height: 23px;
+  line-height: 23px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--fill);
+  font: 11.8px var(--mono);
+  color: var(--l2);
+}
+.sfp-preview {
+  flex: 1;
+  padding: 16px;
+  background: var(--page);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sfp-mock-title { font-size: 11.5px; color: var(--l2); font-weight: 500; }
+.sfp-mock-win {
+  flex: 1;
+  border-radius: 12px;
+  border: .5px solid var(--sep);
+  background: var(--win);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.sfp-bub {
+  align-self: flex-end;
+  background: var(--accent);
+  color: #fff;
+  padding: 8px 13px;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 85%;
+}
+.sfp-step { font-size: 12px; color: var(--l2); display: flex; align-items: center; gap: 6px; }
+.sfp-prose { font-size: 13px; color: var(--l1); line-height: 1.58; }
+.sfp-prose code { font-size: 11.5px; padding: 1px 5px; border-radius: 4px; background: var(--fill2); }
+
+/* Markdown Styles inside Chat */
+.md { font-size: 14.5px; line-height: 1.65; color: var(--l1); user-select: text; }
+.md p { margin: 0; }
+.md > * + * { margin-top: 10px; }
+.md hr { border: 0; height: .5px; background: var(--sep); margin: 14px 0; }
+.md h2 { margin: 14px 0 8px; font-size: 17px; line-height: 1.4; font-weight: 650; letter-spacing: -.01em; }
+.md code.inl { font-size: .88em; padding: 1px 5px; border-radius: 4px; background: var(--fill2); font-family: var(--mono); }
+.fref {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 6px; border-radius: 5px;
+  background: var(--fill); box-shadow: inset 0 0 0 .5px var(--sep);
+  color: var(--accent-t); font-size: .91em; cursor: pointer;
+}
+.fref:hover { background: var(--fill2); }
+.fref small { color: var(--l2); font-family: var(--mono); font-size: .86em; }
+
+.md-tbl {
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.52;
+}
+.md-tbl table { width: 100%; border-collapse: collapse; }
+.md-tbl th, .md-tbl td { padding: 7px 10px; border-bottom: .5px solid var(--sep); text-align: left; vertical-align: top; }
+.md-tbl th { background: var(--win2); font-weight: 600; color: var(--l1); }
+.md-tbl tr:last-child td { border-bottom: 0; }
+
+/* Bottom Composer Overlay */
+.mcmp-zone {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 20px 24px 14px;
+  background: linear-gradient(transparent, var(--win) 28px);
+  pointer-events: none;
+}
+.mcmp {
+  pointer-events: auto;
+  max-width: 720px; margin: 0 auto;
+  background: var(--pill);
+  border-radius: 16px;
+  box-shadow: 0 0 0 .5px var(--pill-bd), 0 4px 14px rgba(0,0,0,.22);
+  padding: 8px 12px;
+  display: flex; align-items: center; gap: 8px;
+  color: var(--l3); font-size: 13.5px;
+}
+.mcmp .send {
+  margin-left: auto; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--fill2); display: grid; place-items: center; color: var(--l3);
+}
+
+/* ==========================================================================
+   0. CURRENT BUG REPRODUCTION (.simg-row single-line flex squeeze)
+   ========================================================================== */
+.simg-row-old {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  user-select: none;
+}
+.simg-row-old.pain-ring {
+  outline: 1.5px dashed rgba(255, 102, 112, .65);
+  outline-offset: 6px;
+  border-radius: 8px;
+}
+.simg-card-old {
+  min-width: 0;
+  flex: 1.83 1 0;
+  max-height: 280px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 9px;
+  background: var(--fill);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  cursor: zoom-in;
+}
+.simg-card-old.portrait { flex: 0.46 1 0; }
+.simg-card-old svg { width: 100%; height: auto; display: block; }
+.simg-cap-old {
+  position: absolute;
+  left: 6px;
+  bottom: 5px;
+  max-width: calc(100% - 12px);
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(15,16,20,.72);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* Unmerged vertical stack pain when \n\n separates images */
+.simg-stack-old {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  user-select: none;
+}
+.simg-stack-old .single-big {
+  max-width: min(440px, 100%);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--fill);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  cursor: zoom-in;
+}
+.simg-stack-old .single-big svg { width: 100%; height: auto; display: block; }
+
+/* ==========================================================================
+   OPTION A: ADAPTIVE SNAP GALLERY STRIP (2-up Pair / 3+ Horizontal Snap Strip)
+   ========================================================================== */
+.sga-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  user-select: none;
+}
+.sga-wrap {
+  position: relative;
+  user-select: none;
+}
+.sga-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 11.8px;
+  color: var(--l2);
+}
+.sga-head-l { display: inline-flex; align-items: center; gap: 6px; }
+.sga-head-r { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; color: var(--l3); }
+.sga-track {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  padding: 1px 2px 3px;
+}
+.sga-track::-webkit-scrollbar { display: none; }
+
+.sga-card {
+  flex: 0 0 286px;
+  max-width: 78%;
+  scroll-snap-align: start;
+  border-radius: 11px;
+  overflow: hidden;
+  background: var(--win2);
+  box-shadow: inset 0 0 0 .5px var(--sep), 0 2px 10px rgba(0,0,0,.12);
+  display: flex;
+  flex-direction: column;
+  cursor: zoom-in;
+  transition: transform .15s var(--ease-out), box-shadow .15s;
+}
+.sga-card.portrait { flex: 0 0 158px; }
+.sga-pair .sga-card { flex: initial; max-width: none; }
+.sga-card:hover {
+  transform: translateY(-1px);
+  box-shadow: inset 0 0 0 .5px var(--l4), 0 8px 22px rgba(0,0,0,.22);
+}
+.sga-pic {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2544 / 1390;
+  background: var(--code);
+  overflow: hidden;
+}
+.sga-card.portrait .sga-pic { aspect-ratio: 390 / 844; max-height: 248px; }
+.sga-pic svg { width: 100%; height: 100%; display: block; }
+.sga-idx {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  padding: 1.5px 6.5px;
+  border-radius: 99px;
+  background: rgba(12,13,18,.66);
+  backdrop-filter: blur(10px);
+  color: rgba(255,255,255,.92);
+  font-size: 10.5px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.14);
+}
+.sga-cap {
+  padding: 6.5px 10px 7.5px;
+  border-top: .5px solid var(--sep);
+  font-size: 11.8px;
+  line-height: 1.42;
+  color: var(--l2);
+  min-height: 46px;
+}
+.sga-cap > span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sga-cap b { color: var(--l1); font-weight: 580; }
+
+.sga-arrow {
+  position: absolute;
+  top: calc(50% - 16px);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(24,25,32,.78);
+  backdrop-filter: blur(14px);
+  color: #fff;
+  box-shadow: 0 0 0 .5px rgba(255,255,255,.18), 0 4px 14px rgba(0,0,0,.36);
+  display: grid;
+  place-items: center;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity .15s, background .15s;
+}
+.sga-wrap:hover .sga-arrow { opacity: 1; }
+.sga-arrow:hover { background: rgba(48,50,64,.94); }
+.sga-arrow.prev { left: 8px; }
+.sga-arrow.next { right: 8px; }
+
+/* ==========================================================================
+   OPTION B: FOCUS STAGE + FILMSTRIP THUMBNAIL BAR
+   ========================================================================== */
+.sgb {
+  border-radius: 12px;
+  background: var(--win2);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  overflow: hidden;
+  max-width: 580px;
+  user-select: none;
+}
+.sgb-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2544 / 1390;
+  background: var(--code);
+  display: grid;
+  place-items: center;
+  cursor: zoom-in;
+  overflow: hidden;
+}
+.sgb-stage.portrait {
+  aspect-ratio: auto;
+  height: 276px;
+  padding: 8px 0;
+}
+.sgb-stage svg { width: 100%; height: 100%; display: block; }
+.sgb-stage.portrait svg { width: auto; height: 100%; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+.sgb-pill {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: rgba(12,13,18,.68);
+  backdrop-filter: blur(12px);
+  color: rgba(255,255,255,.94);
+  font-size: 11px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.15);
+}
+.sgb-nav {
+  position: absolute;
+  top: 50%;
+  margin-top: -15px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(20,21,28,.72);
+  backdrop-filter: blur(12px);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 0 .5px rgba(255,255,255,.16);
+  transition: background .14s;
+}
+.sgb-nav:hover { background: rgba(46,48,60,.92); }
+.sgb-nav.prev { left: 9px; }
+.sgb-nav.next { right: 9px; }
+
+.sgb-cap {
+  padding: 8px 12px;
+  border-top: .5px solid var(--sep);
+  font-size: 12.4px;
+  line-height: 1.48;
+  color: var(--l1);
+  min-height: 44px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.sgb-cap-txt {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sgb-open-hint {
+  flex: none;
+  font-size: 11.2px;
+  color: var(--accent-t);
+  white-space: nowrap;
+  padding-top: 1px;
+}
+
+.sgb-strip {
+  display: flex;
+  gap: 6px;
+  padding: 7px 10px 9px;
+  border-top: .5px solid var(--sep);
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--fill);
+}
+.sgb-strip::-webkit-scrollbar { display: none; }
+.sgb-thumb {
+  flex: 0 0 58px;
+  height: 33px;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  opacity: .52;
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  transition: opacity .14s, transform .14s, box-shadow .14s;
+}
+.sgb-thumb.portrait { flex: 0 0 32px; height: 48px; }
+.sgb-thumb:hover { opacity: .82; }
+.sgb-thumb.on {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.sgb-thumb svg { width: 100%; height: 100%; display: block; }
+
+/* ==========================================================================
+   OPTION C: RESPONSIVE BENTO GRID + "+N" OVERFLOW FOLD
+   ========================================================================== */
+.sgc-wrap { user-select: none; }
+.sgc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+.sgc-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.sgc-card {
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--win2);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  cursor: zoom-in;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: transform .14s var(--ease-out);
+}
+.sgc-card:hover { transform: translateY(-1px); }
+.sgc-pic {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2544 / 1390;
+  background: var(--code);
+  overflow: hidden;
+}
+.sgc-card.portrait .sgc-pic { aspect-ratio: 390 / 844; max-height: 230px; }
+.sgc-pic svg { width: 100%; height: 100%; display: block; }
+.sgc-cap {
+  padding: 5px 8.5px;
+  border-top: .5px solid var(--sep);
+  font-size: 11.4px;
+  color: var(--l2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sgc-more-veil {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 12, 18, .64);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: #fff;
+  cursor: pointer;
+  transition: background .15s;
+}
+.sgc-more-veil:hover { background: rgba(16, 20, 32, .74); }
+.sgc-more-veil b { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.sgc-more-veil span { font-size: 11.5px; color: rgba(255,255,255,.78); }
+.sgc-foot {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.8px;
+  color: var(--l2);
+}
+.sgc-toggle {
+  color: var(--accent-t);
+  font-weight: 550;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+.sgc-toggle:hover { background: var(--fill2); }
+
+/* ==========================================================================
+   2x2 MATRIX PANORAMA VIEW
+   ========================================================================== */
+.matrix {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 490px));
+  gap: 16px;
+  justify-content: center;
+  width: 100%;
+}
+@media (max-width: 1060px) {
+  .matrix { grid-template-columns: minmax(0, 520px); }
+}
+.mcard {
+  background: var(--win);
+  border-radius: 13px;
+  box-shadow: var(--shadow-win);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.mcard-hd {
+  padding: 10px 15px;
+  background: var(--win2);
+  border-bottom: .5px solid var(--sep);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.mcard-hd b { font-size: 13px; font-weight: 620; color: var(--l1); }
+.mcard-body {
+  padding: 14px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.mcard-body h4 { margin: 0; font-size: 15px; font-weight: 650; color: var(--l1); }
+
+/* ==========================================================================
+   IPHONE 17 PRO SIMULATION
+   ========================================================================== */
+.phone {
+  width: 396px;
+  height: 786px;
+  border-radius: 54px;
+  padding: 11px;
+  background: #1a1a1f;
+  box-shadow: 0 26px 70px rgba(0,0,0,.48), inset 0 0 0 1.5px #383842;
+  flex: none;
+  user-select: none;
+}
+.scr {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 44px;
+  overflow: hidden;
+  background: var(--i-bg);
+  color: var(--l1);
+  font: 15.5px/1.44 var(--font-ios);
+}
+.island {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  width: 116px; height: 32px; border-radius: 18px; background: #000; z-index: 40;
+}
+.sb {
+  position: absolute; top: 0; left: 0; right: 0; height: 48px;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 28px 0 34px; font-size: 14.5px; font-weight: 600; z-index: 39;
+  pointer-events: none;
+}
+.inav {
+  position: absolute; top: 48px; left: 0; right: 0; height: 46px;
+  display: flex; align-items: center; justify-content: center; z-index: 20;
+  background: linear-gradient(var(--i-bg) 60%, transparent);
+}
+.iglass {
+  background: var(--i-glass);
+  backdrop-filter: blur(22px) saturate(1.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  box-shadow: 0 0 0 .5px var(--i-glass-bd), 0 4px 14px rgba(0,0,0,.18);
+}
+.itcap {
+  height: 38px; max-width: 236px; border-radius: 19px; padding: 0 15px;
+  display: flex; flex-direction: column; justify-content: center; text-align: center;
+}
+.itcap b { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.itcap small { font-size: 10.5px; color: var(--l2); }
+.iscroll {
+  position: absolute; inset: 0; overflow-y: auto; scrollbar-width: none;
+  padding: 102px 16px 92px;
+  display: flex; flex-direction: column; gap: 11px;
+}
+.iscroll::-webkit-scrollbar { display: none; }
+.iscroll h3 { margin: 4px 0 2px; font-size: 16.5px; font-weight: 650; }
+.iscroll p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--l1); }
+/* iPhone Old Strip Bug: portrait 168x210 box holding landscape 16:9 image -> huge empty gray letterbox */
+.ios-old-strip {
+  display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
+}
+.ios-old-strip::-webkit-scrollbar { display: none; }
+.ios-old-card {
+  flex: 0 0 168px; height: 210px; border-radius: 14px;
+  background: var(--fill); box-shadow: inset 0 0 0 .5px var(--sep);
+  display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;
+}
+.ios-old-card svg { width: 100%; height: auto; }
+.ios-old-badge {
+  position: absolute; left: 7px; bottom: 7px; right: 7px;
+  padding: 3px 7px; border-radius: 6px; background: rgba(0,0,0,.64);
+  color: #fff; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* iPhone New Adaptive Strip */
+.ios-new-strip {
+  display: flex; gap: 9px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none;
+}
+.ios-new-strip::-webkit-scrollbar { display: none; }
+.ios-new-card {
+  flex: 0 0 258px; scroll-snap-align: start;
+  border-radius: 14px; overflow: hidden;
+  background: var(--win2); box-shadow: inset 0 0 0 .5px var(--sep);
+}
+.ios-new-card.portrait { flex: 0 0 148px; }
+.ios-new-pic { position: relative; aspect-ratio: 2544 / 1390; background: var(--code); }
+.ios-new-card.portrait .ios-new-pic { aspect-ratio: 390 / 844; max-height: 228px; }
+.ios-new-pic svg { width: 100%; height: 100%; display: block; }
+.ios-new-cap {
+  padding: 6px 9px; border-top: .5px solid var(--sep);
+  font-size: 11.5px; line-height: 1.38; color: var(--l2);
+}
+.ios-new-cap > span {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.idock { position: absolute; left: 12px; right: 12px; bottom: 20px; z-index: 20; }
+.ibox { height: 44px; border-radius: 22px; padding: 0 12px; display: flex; align-items: center; color: var(--l3); font-size: 14.5px; }
+.homebar { position: absolute; bottom: 7px; left: 50%; transform: translateX(-50%); width: 132px; height: 5px; border-radius: 3px; background: var(--l1); opacity: .75; }
+
+/* ==========================================================================
+   FULL-WINDOW BLURRED LIGHTBOX (.slb)
+   ========================================================================== */
+.slb {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 11, 16, .74);
+  backdrop-filter: blur(24px) saturate(1.28);
+  -webkit-backdrop-filter: blur(24px) saturate(1.28);
+  color: #f5f5f7;
+  user-select: none;
+  animation: fadeIn .16s ease-out;
+}
+@keyframes fadeIn { from { opacity: 0; } }
+.slb-top {
+  height: 56px;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 96px;
+  align-items: center;
+  padding: 0 18px;
+}
+.slb-center {
+  text-align: center;
+  min-width: 0;
+  max-width: 680px;
+  margin: 0 auto;
+}
+.slb-title { font-size: 13.5px; font-weight: 560; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slb-meta { font-size: 11.5px; color: rgba(255,255,255,.62); font-variant-numeric: tabular-nums; margin-top: 1px; }
+.slb-acts { display: flex; justify-content: flex-end; gap: 7px; }
+.slb-btn {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(255,255,255,.12);
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.16);
+  color: #fff; display: grid; place-items: center;
+}
+.slb-btn:hover { background: rgba(255,255,255,.22); }
+.slb-stage {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 8px 68px 26px;
+  position: relative;
+  gap: 12px;
+}
+.slb-art {
+  width: min(920px, 100%);
+  aspect-ratio: 2544 / 1390;
+  max-height: calc(100vh - 150px);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 24px 70px rgba(0,0,0,.55), 0 0 0 .5px rgba(255,255,255,.18);
+  transition: transform .18s var(--ease-out);
+  cursor: zoom-in;
+}
+.slb-art.portrait { width: auto; height: min(680px, calc(100vh - 150px)); aspect-ratio: 390 / 844; }
+.slb-art.zoomed { transform: scale(1.65); cursor: zoom-out; }
+.slb-art svg { width: 100%; height: 100%; display: block; }
+.slb-cap-bar {
+  max-width: 760px;
+  padding: 6px 14px;
+  border-radius: 99px;
+  background: rgba(22,23,30,.75);
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.14);
+  font-size: 12.5px;
+  color: rgba(255,255,255,.88);
+  text-align: center;
+}
+.slb-nav {
+  position: absolute; top: 50%; margin-top: -19px;
+  width: 38px; height: 38px; border-radius: 50%;
+  background: rgba(255,255,255,.12);
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.16);
+  color: #fff; display: grid; place-items: center;
+}
+.slb-nav:hover { background: rgba(255,255,255,.22); }
+.slb-nav.prev { left: 18px; }
+.slb-nav.next { right: 18px; }
+
+/* ---------- Bottom Control Bar ---------- */
+.ctl {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 200;
+  background: var(--page-bar);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-top: 1px solid var(--page-bd);
+  padding: 9px 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 18px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+.ctl .g { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.ctl .g b { color: var(--page-fg2); font-weight: 550; margin-right: 3px; }
+.ctl button {
+  padding: 4px 10px;
+  border-radius: 7px;
+  background: var(--fill2);
+  color: var(--page-fg);
+  transition: background .12s, color .12s;
+}
+.ctl button:hover { background: var(--fill3); }
+.ctl button.on { background: var(--accent); color: #fff; font-weight: 560; }
+.ctl button.danger-on { background: var(--danger); color: #fff; font-weight: 560; }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="top-l">
+    <h1>会话内容区连续多图渲染 · 识别机制与布局优化原型</h1>
+    <span class="sub">1:1 复现「优化任务提示视觉风格」会话分栏窄列下 9 张对比图的拥挤痛点，对比三套优化方案（点击任意图片可呼出毛玻璃灯箱）</span>
+  </div>
+  <div class="top-badges">
+    <span class="pbadge ok">✓ 连续多图 100% 可识别</span>
+    <span class="pbadge">支持分栏窄列 / 全宽 / iPhone 对照</span>
+  </div>
+</div>
+
+<div class="wrap">
+  <div id="stage"></div>
+  <aside class="notes" id="notes"></aside>
+</div>
+
+<div class="ctl" id="ctl"></div>
+<div id="lightboxRoot"></div>
+
+<script>
+const IC = {
+  laptop: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="3" width="11" height="7.5" rx="1.2"/><path d="M1 12.5h14"/></svg>',
+  globe: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35"><circle cx="8" cy="8" r="5.8"/><path d="M2.4 8h11.2M8 2.2c1.7 1.6 2.6 3.6 2.6 5.8S9.7 12.2 8 13.8C6.3 12.2 5.4 10.2 5.4 8S6.3 3.8 8 2.2z"/></svg>',
+  sidebar: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M10 2.5v11"/></svg>',
+  info: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35"><circle cx="8" cy="8" r="6"/><path d="M8 7.2v3.6M8 5.1h.01" stroke-linecap="round"/></svg>',
+  doc: '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 2h5.5L13 5.5V13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M9.5 2v3.5H13"/></svg>',
+  chevL: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg>',
+  chevR: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg>',
+  x: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+  up: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5v-9M4.2 7.2 8 3.5l3.8 3.7"/></svg>',
+  spark: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 2v12M3.2 4.8l9.6 6.4M12.8 4.8l-9.6 6.4"/></svg>',
+  imgs: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="2"/><circle cx="5.5" cy="6.3" r="1"/><path d="m3 11.5 3.2-3 2.3 2 2.2-2.2L13 10.8"/></svg>'
+};
+
+/* Faithfully recreates the 9 dual-end screenshots (2544x1390) from session "优化任务提示视觉风格"
+   Note #4 (demo-a-light.png) has a crisp white background, matching the 4th white pill in user's screenshot! */
+const NINE_SLIDES = [
+  {
+    name: "demo-now-collapsed.png",
+    short: "0 · 现状对照",
+    caption: "0 · 现状对照：桌面端双黑砖碰撞，手机端双层宽窄不一的液态玻璃堆叠",
+    dim: "2544 × 1392", size: "318 KB", bg: "#090a0f", card: "#141620", light: false, accent: "#ff6670", mode: "now"
+  },
+  {
+    name: "demo-a-collapsed.png",
+    short: "方案 A · 默认收起（推荐 1）",
+    caption: "方案 A（默认收起 · 推荐 1）：连体抽屉托盘——消灭第二个框，合并入输入框同一外轮廓，仅占单行 34px",
+    dim: "2544 × 1390", size: "294 KB", bg: "#090a0f", card: "#13151e", light: false, accent: "#4a66ff", mode: "tray-shut"
+  },
+  {
+    name: "demo-a-expanded.png",
+    short: "方案 A · 点击展开",
+    caption: "方案 A（点击展开）：在同一容器内向上平滑展开，顶栏自动切换为「步骤进展 · 已完成 4/6」避免文字重复",
+    dim: "2544 × 1390", size: "342 KB", bg: "#090a0f", card: "#13151e", light: false, accent: "#4a66ff", mode: "tray-open"
+  },
+  {
+    name: "demo-a-light.png",
+    short: "方案 A · 浅色外观校验",
+    caption: "方案 A（浅色外观校验）：浅色下托盘呈微沉降灰底，输入框保持洁白浮起，层次自然",
+    dim: "2544 × 1390", size: "286 KB", bg: "#eaecf2", card: "#ffffff", light: true, accent: "#3d5bff", mode: "tray-light"
+  },
+  {
+    name: "demo-b-collapsed.png",
+    short: "方案 B · 随流文末（推荐 2）",
+    caption: "方案 B（默认文末 · 推荐 2）：随流文末内嵌——输入区零悬浮块、零液态玻璃，与正文末尾实时状态合二为一",
+    dim: "2544 × 1390", size: "279 KB", bg: "#090a0f", card: "#13151e", light: false, accent: "#22d3ee", mode: "inline"
+  },
+  {
+    name: "demo-b-scrolled.png",
+    short: "方案 B · 手机上滑胶囊",
+    caption: "方案 B（手机端上滑看历史）：借鉴提问框随流设计，离开底部时「回到底部」圆钮轻巧变形为单行进度胶囊",
+    dim: "2544 × 1390", size: "291 KB", bg: "#090a0f", card: "#13151e", light: false, accent: "#22d3ee", mode: "scroll-pill"
+  },
+  {
+    name: "demo-c-collapsed.png",
+    short: "方案 C · 灵动微胶囊",
+    caption: "方案 C（默认收起）：灵动微胶囊——把液态玻璃缩回最擅长的 32px 自适应单行小胶囊（环形进度 + 当前步）",
+    dim: "2544 × 1390", size: "276 KB", bg: "#090a0f", card: "#13151e", light: false, accent: "#a78bfa", mode: "chip-shut"
+  },
+  {
+    name: "demo-c-expanded.png",
+    short: "方案 C · 弹出清单浮层",
+    caption: "方案 C（点击弹出浮层）：点按微胶囊才弹出菜单气泡查看完整清单，点外部自动收起",
+    dim: "2544 × 1390", size: "331 KB", bg: "#090a0f", card: "#13151e", light: false, accent: "#a78bfa", mode: "chip-open"
+  },
+  {
+    name: "demo-d-collapsed.png",
+    short: "方案 D · 无框步进刻度条",
+    caption: "方案 D（无框步进刻度条）：零背景、零边框、零玻璃，直接用 2.5px 分段光条 + 单行排版文字融于底部渐变遮罩",
+    dim: "2544 × 1390", size: "268 KB", bg: "#090a0f", card: "#13151e", light: false, accent: "#38ce86", mode: "ticks"
+  }
+];
+
+const PAIR_SLIDES = [
+  {
+    name: "simulator_before_tofu.png",
+    short: "修复前 · CJK 方块字",
+    caption: "修复前：模拟器缺少 PingFang 回退链，会话标题渲染为 □□",
+    dim: "1206 × 2622", size: "238 KB", portrait: true, variant: "before"
+  },
+  {
+    name: "simulator_after_fixed.png",
+    short: "修复后 · 苹方正常显示",
+    caption: "修复后：补齐 CoreText 级联回退，中文标题与状态徽章正常显示",
+    dim: "1206 × 2622", size: "244 KB", portrait: true, variant: "after"
+  }
+];
+
+function landscapeShotSVG(s, idx) {
+  const fg = s.light ? "#161822" : "#eceef5";
+  const fg2 = s.light ? "#686d7e" : "#868b9c";
+  const winBg = s.light ? "#ffffff" : "#050608";
+  const trayBg = s.light ? "#eff1f6" : "#12141c";
+  const bd = s.light ? "#d8dce6" : "#242736";
+  const pillBg = s.light ? "#ffffff" : "#181a24";
+
+  let dockMarkup = "";
+  if (s.mode === "now") {
+    dockMarkup = `
+      <rect x="44" y="216" width="320" height="58" rx="9" fill="#181922" stroke="#ff6670" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text x="58" y="238" font-family="sans-serif" font-size="11" fill="#ff8a92" font-weight="600">旧任务块 (.knote 12px 圆角 · 双黑砖堆叠)</text>
+      <text x="58" y="258" font-family="sans-serif" font-size="10.5" fill="${fg2}">✓ 拉取最新分支   ✦ 编写端到端测试用例 (4/6)</text>
+      <rect x="52" y="282" width="312" height="38" rx="15" fill="${pillBg}" stroke="${bd}"/>
+      <rect x="446" y="198" width="154" height="68" rx="16" fill="rgba(90,94,110,.34)" stroke="#ff6670" stroke-width="1.4"/>
+      <rect x="438" y="274" width="170" height="42" rx="21" fill="rgba(75,78,94,.42)" stroke="${bd}"/>
+    `;
+  } else if (s.mode === "tray-open" || s.mode === "chip-open") {
+    dockMarkup = `
+      <rect x="48" y="182" width="316" height="138" rx="16" fill="${trayBg}" stroke="${s.accent}" stroke-width="1.4"/>
+      <text x="64" y="204" font-family="sans-serif" font-size="11" fill="${s.accent}" font-weight="700">步骤进展 · 已完成 4 / 6</text>
+      <text x="64" y="226" font-family="sans-serif" font-size="10.5" fill="${fg2}">✓ 校验工作树与基础分支</text>
+      <text x="64" y="245" font-family="sans-serif" font-size="10.5" fill="${fg2}">✓ 定义桌面与手机端统一结构</text>
+      <text x="64" y="265" font-family="sans-serif" font-size="11" fill="${fg}" font-weight="600">✦ 编写 SessionDetailUITests 回归用例</text>
+      <rect x="50" y="282" width="312" height="36" rx="14" fill="${pillBg}" stroke="${bd}"/>
+      <rect x="440" y="188" width="166" height="128" rx="22" fill="${trayBg}" stroke="${s.accent}" stroke-width="1.3"/>
+      <rect x="442" y="276" width="162" height="38" rx="19" fill="${pillBg}" stroke="${bd}"/>
+    `;
+  } else if (s.mode === "ticks") {
+    dockMarkup = `
+      <rect x="56" y="262" width="48" height="3" rx="1.5" fill="${s.accent}"/>
+      <rect x="108" y="262" width="48" height="3" rx="1.5" fill="${s.accent}"/>
+      <rect x="160" y="262" width="48" height="3" rx="1.5" fill="${s.accent}"/>
+      <rect x="212" y="262" width="48" height="3" rx="1.5" fill="rgba(128,134,155,.35)"/>
+      <text x="56" y="253" font-family="sans-serif" font-size="11" fill="${fg}" font-weight="600">✦ 4/6 正在编写端到端测试…</text>
+      <rect x="48" y="276" width="316" height="40" rx="16" fill="${pillBg}" stroke="${bd}"/>
+      <rect x="446" y="264" width="154" height="3" rx="1.5" fill="${s.accent}"/>
+      <rect x="440" y="276" width="166" height="40" rx="20" fill="${pillBg}" stroke="${bd}"/>
+    `;
+  } else {
+    dockMarkup = `
+      <rect x="48" y="246" width="316" height="74" rx="16" fill="${trayBg}" stroke="${bd}"/>
+      <circle cx="65" cy="263" r="4.5" fill="${s.accent}"/>
+      <text x="77" y="267" font-family="sans-serif" font-size="11" fill="${fg}" font-weight="600">${s.short}</text>
+      <text x="328" y="267" font-family="monospace" font-size="10.5" fill="${fg2}">4/6</text>
+      <rect x="50" y="280" width="312" height="38" rx="14" fill="${pillBg}" stroke="${bd}"/>
+      <rect x="440" y="246" width="166" height="70" rx="21" fill="${trayBg}" stroke="${bd}"/>
+      <rect x="442" y="276" width="162" height="38" rx="19" fill="${pillBg}" stroke="${bd}"/>
+    `;
+  }
+
+  return `<svg viewBox="0 0 640 350" xmlns="http://www.w3.org/2000/svg">
+    <rect width="640" height="350" fill="${s.bg}"/>
+    <!-- Mac Slice -->
+    <rect x="24" y="22" width="364" height="306" rx="12" fill="${winBg}" stroke="${bd}"/>
+    <circle cx="42" cy="39" r="4" fill="#ff5f57"/><circle cx="55" cy="39" r="4" fill="#febc2e"/><circle cx="68" cy="39" r="4" fill="#28c840"/>
+    <text x="90" y="43" font-family="-apple-system,sans-serif" font-size="11" font-weight="600" fill="${fg}">实现 iPhone 端交互与桌面端对齐</text>
+    <line x1="24" y1="54" x2="388" y2="54" stroke="${bd}"/>
+    <rect x="176" y="68" width="192" height="34" rx="11" fill="${s.accent}"/>
+    <text x="190" y="89" font-family="-apple-system,sans-serif" font-size="11" fill="#fff">把桌面端和 iPhone 端测试补齐</text>
+    <text x="46" y="126" font-family="-apple-system,sans-serif" font-size="11" fill="${fg2}">✓ 已完成前端构建与快照校验</text>
+    <text x="46" y="150" font-family="-apple-system,sans-serif" font-size="11.5" fill="${fg}">交互原型已确认，正在更新 SessionPage 组件…</text>
+    <!-- iPhone Slice -->
+    <rect x="422" y="22" width="202" height="306" rx="28" fill="${winBg}" stroke="${bd}" stroke-width="1.5"/>
+    <rect x="492" y="31" width="62" height="14" rx="7" fill="#000"/>
+    <rect x="478" y="68" width="128" height="30" rx="12" fill="${s.accent}"/>
+    <text x="490" y="87" font-family="-apple-system,sans-serif" font-size="10.5" fill="#fff">对齐双端任务条样式</text>
+    <text x="442" y="126" font-family="-apple-system,sans-serif" font-size="10.5" fill="${fg2}">✓ 已检查 Palette 令牌</text>
+    <text x="442" y="148" font-family="-apple-system,sans-serif" font-size="10.5" fill="${fg}">正在运行 UI 自动化用例…</text>
+    ${dockMarkup}
+    <!-- Top-left index tag inside artwork -->
+    <rect x="34" y="298" width="24" height="16" rx="5" fill="${s.accent}" fill-opacity=".22"/>
+  </svg>`;
+}
+
+function portraitShotSVG(s) {
+  const bad = s.variant === "before";
+  const badgeCol = bad ? "#f59e0b" : "#16a34a";
+  return `<svg viewBox="0 0 390 844" xmlns="http://www.w3.org/2000/svg">
+    <rect width="390" height="844" fill="#0c0d12"/>
+    <rect x="134" y="14" width="122" height="34" rx="17" fill="#000"/>
+    <rect x="108" y="60" width="174" height="38" rx="19" fill="#1b1d26" stroke="#2d3040"/>
+    <circle cx="128" cy="79" r="5" fill="${badgeCol}"/>
+    <text x="142" y="84" font-family="-apple-system,sans-serif" font-size="14" font-weight="600" fill="#f3f4f8">${bad ? "Hermesh · □□" : "Hermesh · 总览"}</text>
+    <rect x="20" y="120" width="350" height="106" rx="18" fill="#151720" stroke="#262938"/>
+    <circle cx="54" cy="172" r="20" fill="#4a66ff" fill-opacity=".2"/>
+    <circle cx="54" cy="172" r="10" fill="#4a66ff"/>
+    <text x="86" y="162" font-family="-apple-system,sans-serif" font-size="16" font-weight="700" fill="#fff">${bad ? "3 □□□□ · □□□□" : "3 台机器在线 · 正常"}</text>
+    <rect x="86" y="178" width="158" height="22" rx="11" fill="${badgeCol}" fill-opacity=".18"/>
+    <text x="98" y="193" font-family="monospace" font-size="11" font-weight="600" fill="${badgeCol}">${bad ? "Fallback Missing □□" : "PingFang SC · Ready"}</text>
+    <rect x="20" y="248" width="350" height="240" rx="18" fill="#151720" stroke="#262938"/>
+    <text x="40" y="286" font-family="-apple-system,sans-serif" font-size="14" font-weight="600" fill="#e5e7f0">${bad ? "□□□□ iPhone □□□□" : "优化任务提示视觉风格"}</text>
+    <text x="40" y="312" font-family="monospace" font-size="12" fill="#7d8296">yee-homebook · gemini-4-carbon</text>
+    <line x1="40" y1="334" x2="350" y2="334" stroke="#252836"/>
+    <text x="40" y="368" font-family="-apple-system,sans-serif" font-size="14" font-weight="600" fill="#e5e7f0">${bad ? "□□□□□□□□□□" : "会话内容区多图排版优化"}</text>
+    <text x="40" y="394" font-family="monospace" font-size="12" fill="#7d8296">hermesh · 9 张截图对比</text>
+    <rect x="24" y="764" width="342" height="46" rx="23" fill="#191b24" stroke="#2b2e3d"/>
+    <rect x="128" y="828" width="134" height="5" rx="2.5" fill="#ebedf5" opacity=".75"/>
+  </svg>`;
+}
+
+function renderArt(slide, idx) {
+  return slide.portrait ? portraitShotSVG(slide) : landscapeShotSVG(slide, idx);
+}
+
+/* State */
+const S = {
+  scheme: "a",        // 'old' | 'a' | 'b' | 'c' | 'matrix'
+  scene: "nine",      // 'nine' (carousel 9) | 'paragraphs' (4 \n\n paragraphs) | 'pair' (2 portrait) | 'links' (5 linked)
+  layout: "split",    // 'split' (476px + SidePanel like screenshot) | 'full' (full width Mac) | 'both' (Mac + iPhone)
+  theme: "black",     // 'black' | 'dark' | 'light'
+  stageIdx: 0,        // active index for Option B
+  gridExpanded: false,// expanded toggle for Option C
+  lb: null            // { idx: number, zoomed: boolean }
+};
+
+function currentSlides() {
+  if (S.scene === "pair") return PAIR_SLIDES;
+  if (S.scene === "paragraphs") return NINE_SLIDES.slice(0, 4);
+  if (S.scene === "links") return NINE_SLIDES.slice(0, 5);
+  return NINE_SLIDES;
+}
+
+function setOpt(k, v) {
+  S[k] = v;
+  if (k === "theme") document.documentElement.dataset.theme = v;
+  if (k === "scene") {
+    S.stageIdx = 0;
+    S.gridExpanded = false;
+    S.lb = null;
+  }
+  render();
+}
+
+function setStageIdx(i, e) {
+  if (e) e.stopPropagation();
+  const list = currentSlides();
+  S.stageIdx = (i + list.length) % list.length;
+  render();
+}
+
+function toggleGridExpand(e) {
+  if (e) e.stopPropagation();
+  S.gridExpanded = !S.gridExpanded;
+  render();
+}
+
+function scrollStrip(btn, dir, e) {
+  e.stopPropagation();
+  const wrap = btn.closest(".sga-wrap");
+  const track = wrap && wrap.querySelector(".sga-track");
+  if (track) track.scrollBy({ left: dir * 296, behavior: "smooth" });
+}
+
+function openLB(idx, e) {
+  if (e) e.stopPropagation();
+  S.lb = { idx, zoomed: false };
+  renderLB();
+}
+
+function closeLB() {
+  S.lb = null;
+  renderLB();
+}
+
+function stepLB(delta, e) {
+  if (e) e.stopPropagation();
+  if (!S.lb) return;
+  const list = currentSlides();
+  S.lb.idx = (S.lb.idx + delta + list.length) % list.length;
+  S.lb.zoomed = false;
+  renderLB();
+}
+
+function toggleZoomLB(e) {
+  if (e) e.stopPropagation();
+  if (!S.lb) return;
+  S.lb.zoomed = !S.lb.zoomed;
+  renderLB();
+}
+
+window.addEventListener("keydown", (e) => {
+  if (S.lb) {
+    if (e.key === "Escape") closeLB();
+    else if (e.key === "ArrowLeft") stepLB(-1);
+    else if (e.key === "ArrowRight") stepLB(1);
+    return;
+  }
+  if (S.scheme === "b") {
+    if (e.key === "ArrowLeft") setStageIdx(S.stageIdx - 1);
+    else if (e.key === "ArrowRight") setStageIdx(S.stageIdx + 1);
+  }
+});
+
+/* Render specific gallery component for a given scheme */
+function renderGalleryBlock(schemeKey, slides, isNarrow) {
+  const n = slides.length;
+  const portrait = Boolean(slides[0] && slides[0].portrait);
+
+  /* 0. CURRENT BEHAVIOR */
+  if (schemeKey === "old") {
+    if (S.scene === "paragraphs") {
+      return `
+        <div class="simg-stack-old">
+          ${slides.map((s, i) => `
+            <div class="single-big" onclick="openLB(${i}, event)" title="现状：空行分隔的连续单图未合并，4 张大图纵向刷屏超过 960px">
+              ${renderArt(s, i)}
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+    return `
+      <div class="simg-row-old ${n >= 4 ? "pain-ring" : ""}">
+        ${slides.map((s, i) => `
+          <div class="simg-card-old ${portrait ? "portrait" : ""}" onclick="openLB(${i}, event)" title="${s.caption}">
+            ${renderArt(s, i)}
+            <span class="simg-cap-old">${s.caption}</span>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  /* OPTION A: 2-up Pair / 3+ Horizontal Snap Gallery */
+  if (schemeKey === "a") {
+    if (n <= 2) {
+      return `
+        <div class="sga-pair">
+          ${slides.map((s, i) => `
+            <div class="sga-card ${portrait ? "portrait" : ""}" onclick="openLB(${i}, event)">
+              <div class="sga-pic">
+                ${renderArt(s, i)}
+                <span class="sga-idx">${i + 1} / ${n}</span>
+              </div>
+              <div class="sga-cap"><span><b>${s.short}</b> · ${s.caption.replace(/^[^：]+：/, "")}</span></div>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+    return `
+      <div class="sga-wrap">
+        <div class="sga-head">
+          <span class="sga-head-l">${IC.imgs} <span>共 ${n} 张方案截图 · 横向滑动对比，点击放大</span></span>
+          <span class="sga-head-r">1 – ${n}</span>
+        </div>
+        <button class="sga-arrow prev" onclick="scrollStrip(this, -1, event)" aria-label="上一组">${IC.chevL}</button>
+        <div class="sga-track">
+          ${slides.map((s, i) => `
+            <div class="sga-card ${portrait ? "portrait" : ""}" onclick="openLB(${i}, event)">
+              <div class="sga-pic">
+                ${renderArt(s, i)}
+                <span class="sga-idx">${i + 1} / ${n}</span>
+              </div>
+              <div class="sga-cap"><span>${s.caption}</span></div>
+            </div>
+          `).join("")}
+        </div>
+        <button class="sga-arrow next" onclick="scrollStrip(this, 1, event)" aria-label="下一组">${IC.chevR}</button>
+      </div>
+    `;
+  }
+
+  /* OPTION B: Focus Stage + Filmstrip */
+  if (schemeKey === "b") {
+    if (n <= 2) return renderGalleryBlock("a", slides, isNarrow);
+    const idx = Math.min(S.stageIdx, n - 1);
+    const cur = slides[idx];
+    return `
+      <div class="sgb">
+        <div class="sgb-stage ${portrait ? "portrait" : ""}" onclick="openLB(${idx}, event)">
+          ${renderArt(cur, idx)}
+          <span class="sgb-pill">${idx + 1} / ${n} · ${cur.dim}</span>
+          <button class="sgb-nav prev" onclick="setStageIdx(${idx - 1}, event)" aria-label="上一张">${IC.chevL}</button>
+          <button class="sgb-nav next" onclick="setStageIdx(${idx + 1}, event)" aria-label="下一张">${IC.chevR}</button>
+        </div>
+        <div class="sgb-cap">
+          <div class="sgb-cap-txt">${cur.caption}</div>
+          <button class="sgb-open-hint" onclick="openLB(${idx}, event)">灯箱原图 ↗</button>
+        </div>
+        <div class="sgb-strip">
+          ${slides.map((s, i) => `
+            <button class="sgb-thumb ${portrait ? "portrait" : ""} ${i === idx ? "on" : ""}" onclick="setStageIdx(${i}, event)" title="${s.short}">
+              ${renderArt(s, i)}
+            </button>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  /* OPTION C: Responsive 2x2 Bento Grid + "+N" Overflow Fold */
+  const maxCollapsed = (!isNarrow && n >= 6) ? 6 : 4;
+  const cols3 = !isNarrow && n !== 2 && n !== 4;
+  const folded = n > maxCollapsed && !S.gridExpanded;
+  const visible = folded ? slides.slice(0, maxCollapsed) : slides;
+  const rest = n - maxCollapsed;
+
+  return `
+    <div class="sgc-wrap">
+      <div class="sgc-grid ${cols3 ? "cols-3" : ""}">
+        ${visible.map((s, i) => {
+          const isLastFolded = folded && i === visible.length - 1;
+          return `
+            <div class="sgc-card ${portrait ? "portrait" : ""}" onclick="${isLastFolded ? "toggleGridExpand(event)" : `openLB(${i}, event)`}">
+              <div class="sgc-pic">
+                ${renderArt(s, i)}
+                ${isLastFolded ? `
+                  <div class="sgc-more-veil">
+                    <b>+${rest} 张</b>
+                    <span>点击展开全部 ${n} 张</span>
+                  </div>
+                ` : ""}
+              </div>
+              <div class="sgc-cap">${i + 1}. ${s.short}</div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+      ${n > maxCollapsed ? `
+        <div class="sgc-foot">
+          <span>共识别连续图片 ${n} 张</span>
+          <button class="sgc-toggle" onclick="toggleGridExpand(event)">
+            ${S.gridExpanded ? "收起为 2×2 预览 ▴" : `原地展开全部 ${n} 张 ▾`}
+          </button>
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+function renderConversationProse(schemeKey, isNarrow) {
+  const slides = currentSlides();
+
+  if (S.scene === "links") {
+    return `
+      <div class="md">
+        <p>已完成全部 5 个状态的视觉快照验证，截图文件如下：
+          ${slides.map((s, i) => `<span class="fref" onclick="openLB(${i}, event)">${IC.doc}<span>${s.short}</span></span>`).join("、")}。
+        </p>
+        ${renderGalleryBlock(schemeKey, slides, isNarrow)}
+        <p>以上链接在正文中保持紧凑可点的 <code class="inl">FileTag</code>，下方附图条自动去重并应用统一的多图布局规则。</p>
+      </div>
+    `;
+  }
+
+  if (S.scene === "pair") {
+    return `
+      <div class="md">
+        <p>已在 iOS 26 模拟器完成字体回退链修复前后的截图对比：</p>
+        ${renderGalleryBlock(schemeKey, slides, isNarrow)}
+        <p>双图场景（<code class="inl">N = 2</code>）在所有优化方案下均保持最直觉的 <b>50% : 50% 并排对比</b>，不会退化为单图轮播。</p>
+      </div>
+    `;
+  }
+
+  const sceneIntro = S.scene === "paragraphs"
+    ? `<p>很多编码 Agent（Claude Code / Codex）输出多张截图时习惯用<b>空行（<code class="inl">\\n\\n</code>）</b>分隔多个独立图片段落。相邻纯图片段落被识别合并前 vs 合并后的效果对比：</p>`
+    : `<p>在 <span class="fref">${IC.doc}<span>SessionPage.swift</span><small>:684-685</small></span> vs <span class="fref">${IC.doc}<span>L848-L851</span><small>:848-851</small></span> 中，任务板左右缩进 <code class="inl">20pt</code>、圆角 <code class="inl">20pt</code>，下方输入框左右缩进 <code class="inl">12pt</code>、圆角 <code class="inl">24pt</code>——两块宽窄不一、圆角不一的玻璃上下硬叠，加上正文中本就有一行实时工作状态，吃掉了近 <b>40%</b> 的屏幕高度。</p><hr>`;
+
+  return `
+    <div class="md">
+      ${sceneIntro}
+      <h2>${S.scene === "paragraphs" ? "二、四张空行分隔连续图片段落渲染" : "二、四套优化方案双端视觉对比"}</h2>
+      ${renderGalleryBlock(schemeKey, slides, isNarrow)}
+      <hr>
+      <h2>三、方案横向权衡与推荐</h2>
+      <div class="md-tbl">
+        <table>
+          <thead>
+            <tr><th>维度</th><th>方案 A · 连体抽屉托盘（推荐 1）</th><th>方案 B · 随流文末内嵌（推荐 2）</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>核心形态</td><td>输入框向上延伸的一体式内凹帽檐</td><td>移出输入区，融入对话末尾实时状态行</td></tr>
+            <tr><td>桌面端融合度</td><td>★★★★★（严守单一表面与 17px 轴线）</td><td>★★★★★（与现有 .th-work 语言完全一致）</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderMacWindow(schemeKey) {
+  const split = S.layout === "split";
+  const compact = S.layout === "both";
+  return `
+    <div class="mac ${compact ? "compact-win" : ""}">
+      <div class="scol ${split ? "split-narrow" : ""}">
+        <div class="ctool">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="ctitle">
+            <h2>优化任务提示视觉风格</h2>
+            <span class="th-where">${IC.laptop} yee-homebook · hermes</span>
+          </div>
+          <button class="tb-ic" title="会话信息">${IC.info}</button>
+          <button class="tb-ic ${split ? "on" : ""}" onclick="setOpt('layout', '${split ? "full" : "split"}')" title="切换右侧分栏（复现截图窄列宽度）">${IC.sidebar}</button>
+        </div>
+        <div class="cscroll">
+          <div class="mcol">
+            ${renderConversationProse(schemeKey, split)}
+          </div>
+        </div>
+        <div class="mcmp-zone">
+          <div class="mcmp">
+            <span>继续向 Antigravity 提问，或点选上方截图查看原图…</span>
+            <span class="send">${IC.up}</span>
+          </div>
+        </div>
+      </div>
+
+      ${split ? `
+        <aside class="sfp">
+          <div class="sfp-strip">
+            <div class="sfp-tab">${IC.globe} <span>task-checklist-demo.html</span></div>
+          </div>
+          <div class="sfp-bar">
+            <div class="sfp-addr">docs/task-checklist-demo.html</div>
+          </div>
+          <div class="sfp-preview">
+            <div class="sfp-mock-title">macOS 桌面端会话底部（右侧分栏打开时，左侧对话区仅宽 476px）</div>
+            <div class="sfp-mock-win">
+              <div style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--l2)">
+                <i style="width:9px;height:9px;border-radius:50%;background:var(--l4)"></i>
+                <i style="width:9px;height:9px;border-radius:50%;background:var(--l4)"></i>
+                <i style="width:9px;height:9px;border-radius:50%;background:var(--l4)"></i>
+                <b style="color:var(--l1);margin-left:4px">实现 iPhone 端交互与桌面端对齐</b>
+              </div>
+              <div class="sfp-bub">把桌面端和 iPhone 端同步改好并补齐端到端测试</div>
+              <div class="sfp-step">✓ 已使用 pnpm --filter @hermesh/desktop typecheck 校验</div>
+              <div class="sfp-prose">桌面端与后端回归测试已全部通过，交互原型已确认，正在编写 <code>SessionPage</code> 与 <code>SessionDetailUITests</code> 用例。</div>
+              <div style="margin-top:auto;padding-top:10px;border-top:.5px solid var(--sep);display:flex;flex-direction:column;gap:5px;font-size:12.5px">
+                <div style="color:var(--accent-t);display:flex;align-items:center;gap:6px">${IC.spark} <b>拉取最新 main 分支并校验工作树</b></div>
+                <div style="color:var(--l3)">○ 下一步：定义 Session V2 数据与组件</div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      ` : ""}
+    </div>
+  `;
+}
+
+function renderIPhone(schemeKey) {
+  const slides = currentSlides();
+  const portrait = Boolean(slides[0] && slides[0].portrait);
+  let iosGallery = "";
+
+  if (schemeKey === "old" && !portrait) {
+    iosGallery = `
+      <div class="ios-old-strip">
+        ${slides.map((s, i) => `
+          <div class="ios-old-card" onclick="openLB(${i}, event)">
+            ${renderArt(s, i)}
+            <span class="ios-old-badge">${s.caption}</span>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  } else if (schemeKey === "b" && slides.length > 2) {
+    iosGallery = renderGalleryBlock("b", slides, true);
+  } else if (schemeKey === "c") {
+    iosGallery = renderGalleryBlock("c", slides, true);
+  } else {
+    iosGallery = `
+      <div class="ios-new-strip">
+        ${slides.map((s, i) => `
+          <div class="ios-new-card ${portrait ? "portrait" : ""}" onclick="openLB(${i}, event)">
+            <div class="ios-new-pic">
+              ${renderArt(s, i)}
+              <span class="sga-idx">${i + 1}/${slides.length}</span>
+            </div>
+            <div class="ios-new-cap"><span>${s.caption}</span></div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="phone">
+      <div class="scr">
+        <div class="island"></div>
+        <div class="sb"><span>11:28</span><span>5G · 98%</span></div>
+        <div class="inav">
+          <div class="itcap iglass">
+            <b>优化任务提示视觉风格</b>
+            <small>yee-homebook · Antigravity</small>
+          </div>
+        </div>
+        <div class="iscroll">
+          <p>两块宽窄不一、圆角不一的玻璃上下硬叠，吃掉了近 40% 的屏幕高度。</p>
+          <h3>二、四套优化方案双端视觉对比</h3>
+          ${iosGallery}
+          <h3>三、方案横向权衡与推荐</h3>
+          <p style="color:var(--l2);font-size:14px">横屏截图在手机端自适应 16:9 画幅，消除旧版固定 168×210 竖框的上下大片灰底。</p>
+        </div>
+        <div class="idock">
+          <div class="ibox iglass">继续输入指令…</div>
+        </div>
+        <div class="homebar"></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderMatrix() {
+  const slides = currentSlides();
+  const cards = [
+    { key: "old", title: "现状复现 · 单行不换行硬挤 (.simg-row)", badge: "约 42×23px · 严重拥挤", cls: "warn" },
+    { key: "a", title: "方案 A · 横向吸附画廊 + 底栏图注（推荐 1）", badge: "286×156px · 高度恒定 ~205px", cls: "ok" },
+    { key: "b", title: "方案 B · 焦点舞台轮播 + 胶片导览条（推荐 2）", badge: "主图最大 + 2 行完整长图注", cls: "ok" },
+    { key: "c", title: "方案 C · 2×2 响应式宫格 + +N 折叠", badge: "零横滑 · 首屏直看前 4 张", cls: "" }
+  ];
+  return `
+    <div class="matrix">
+      ${cards.map((c) => `
+        <div class="mcard">
+          <div class="mcard-hd">
+            <b>${c.title}</b>
+            <span class="pbadge ${c.cls}">${c.badge}</span>
+          </div>
+          <div class="mcard-body">
+            <h4>二、四套优化方案双端视觉对比</h4>
+            ${renderGalleryBlock(c.key, slides, true)}
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderNotes() {
+  const metaByScheme = {
+    old: {
+      title: "现状根因诊断（为什么挤成一排小豆子）",
+      desc: "定位自本地会话 s_kouddhys_01m8denterdp2fryjp617p0bge：",
+      m1: ["~42 × 23 px", "分栏下9张单图宽"],
+      m2: ["85% 被遮挡", "左下角图注盖住画面"],
+      m3: ["不换行无下限", ".simg-row flex:1 1 0"],
+      bullets: [
+        "<b>数据层其实已识别为连续多图</b>：<code>unwrapCarousels()</code> 将 9 张幻灯片合并进同一段落，<code>rehypeSessionImages</code> 生成单个 <code>items.length = 9</code> 的图片组。",
+        "<b>桌面端 CSS 无列数上限</b>：<code>.md .simg-row</code> 使用单行不换行 Flex 且 <code>min-width: 0</code>，右侧打开分栏后 ~430px 宽度被 9 等分，每张横屏图仅剩 23px 高。",
+        "<b>空行段落未合并</b>：若 Agent 用空行 <code>\\n\\n</code> 分隔连续单图（切到「4张空行段落」可看），又会变成 4 张巨图纵向刷屏 1000px+。"
+      ]
+    },
+    a: {
+      title: "方案 A · 自适应横向吸附画廊（推荐 1）",
+      desc: "按张数与列宽自适应，兼顾不刷屏与单图清晰度：",
+      m1: ["286 × 156 px", "单卡画面放大 45 倍"],
+      m2: ["~208 px", "无论几张纵向恒定"],
+      m3: ["图注独立下置", "0 像素遮挡截图内容"],
+      bullets: [
+        "<b>1 张</b>：保持现有自适应单图尺寸；<b>2 张</b>：50% : 50% 双栏并排对比（切到「2张竖屏对比」可验证）。",
+        "<b>3 张及以上 / carousel</b>：转为 <code>scroll-snap-type: x mandatory</code> 横向画廊，右侧自然露半张提示可滑，支持触控板横滑与悬停 <code>‹ ›</code> 翻页钮。",
+        "<b>图注与序号分离</b>：右上角轻巧显示 <code>1 / 9</code>，长图注移入卡片下方 2 行柔和底栏，彻底告别小缩略图上糊一团黑底字。",
+        "<b>iPhone 同步受益</b>：按真实宽高比渲染横屏卡片（消除现版 168×210 竖框的上下大片空白灰底）。"
+      ]
+    },
+    b: {
+      title: "方案 B · 焦点舞台轮播 + 胶片条（推荐 2）",
+      desc: "最契合多方案视觉评审（尤其是长文案 carousel）：",
+      m1: ["440–580 px", "主舞台高清直看细节"],
+      m2: ["完整 2 行", "长方案说明无需截断"],
+      m3: ["58 × 33 px", "底部胶片条秒切任意帧"],
+      bullets: [
+        "<b>把你截图里那排小图变成「导览条」</b>：上方给足单张大图舞台，底部保留一排紧凑缩略帧，点哪张切哪张，支持键盘 <code>← →</code> 键连看。",
+        "<b>不进灯箱也能读完全部方案文案</b>：主舞台下方留出完整双行图注区，9 套方案的设计要点可直接在正文中逐页审阅。",
+        "<b>权衡</b>：单张细节和长文案体验最佳；若想一眼同时扫视 2~4 张的差异，不如方案 A 或方案 C 直接。"
+      ]
+    },
+    c: {
+      title: "方案 C · 响应式宫格 + +N 折叠",
+      desc: "借鉴应用内 Her 消息的 imageRows 宫格，零横向滚动：",
+      m1: ["2 × 2 田字格", "分栏下每张 ~210px 宽"],
+      m2: ["+5 毛玻璃层", "超 4 张默认折叠防刷屏"],
+      m3: ["零横滑手势", "纯纵向阅读流最简单"],
+      bullets: [
+        "<b>2 张双列、4 张田字格</b>：前 4 张同屏尽收眼底，适合快速横向扫视多套配色或布局。",
+        "<b>超过 4/6 张自动收拢</b>：第 4 格覆盖毛玻璃 <code>+5 张</code>，支持一键原地展开全部 9 张（或点单张直接进灯箱连看）。",
+        "<b>权衡</b>：CSS 最简单、无横滑；但 9 张全部展开时纵向高度约 540px，且长图注只能单行截断。"
+      ]
+    },
+    matrix: {
+      title: "2×2 全景同屏对照（分栏窄列宽度）",
+      desc: "同一组数据在 440px 分栏窄列下的真实尺寸与密度对比：",
+      m1: ["4 类写法", "连续多图统一识别"],
+      m2: ["A / B / C", "三种优化方向同屏比"],
+      m3: ["灯箱互通", "点任意图看 2544px 原图"],
+      bullets: [
+        "<b>识别范围建议统一覆盖 4 种连续多图</b>：① <code>````carousel</code> 块；② 同段落多张 <code>![]()</code>；③ <b>空行分隔的连续纯图片段落</b> <code>![]()\\n\\n![]()</code>；④ 段落/列表附图条 <code>[label](x.png)</code>。",
+        "<b>混合方案也可组合</b>：例如显式 <code>carousel</code> 用<b>方案 B（舞台轮播）</b>，普通连续多图用<b>方案 A（横滑画廊）</b>或<b>方案 C（宫格）</b>。"
+      ]
+    }
+  };
+
+  const m = metaByScheme[S.scheme];
+  return `
+    <h3>${m.title}</h3>
+    <p>${m.desc}</p>
+    <div class="metric-row">
+      <div class="metric"><small>${m.m1[1]}</small><b>${m.m1[0]}</b></div>
+      <div class="metric"><small>${m.m2[1]}</small><b>${m.m2[0]}</b></div>
+      <div class="metric"><small>${m.m3[1]}</small><b>${m.m3[0]}</b></div>
+    </div>
+    <div class="blk">
+      <ul>${m.bullets.map((b) => `<li>${b}</li>`).join("")}</ul>
+    </div>
+    <div class="blk">
+      <h3>连续多图可识别性结论</h3>
+      <ul>
+        <li><b>同段多图 / Carousel / 链接组</b>：现有 AST（<code>rehypeSessionImages</code> / <code>Markdown.swift</code>）<b>已识别</b>在同一个 <code>items[]</code> 数组内，只需改渲染组件与 CSS。</li>
+        <li><b>空行分隔连续单图段（<code>![]()\\n\\n![]()</code>）</b>：在切片层检测相邻纯本地图片段落即可零歧义合并（流式未闭合块自动等待）。</li>
+      </ul>
+    </div>
+  `;
+}
+
+function renderControls() {
+  const btn = (k, v, label, danger = false) =>
+    `<button class="${S[k] === v ? (danger ? "danger-on" : "on") : ""}" onclick="setOpt('${k}','${v}')">${label}</button>`;
+
+  return `
+    <div class="g">
+      <b>排版方案</b>
+      ${btn("scheme", "old", "现状复现（拥挤）", true)}
+      ${btn("scheme", "a", "方案 A · 横滑画廊（推荐 1）")}
+      ${btn("scheme", "b", "方案 B · 焦点舞台轮播（推荐 2）")}
+      ${btn("scheme", "c", "方案 C · 2×2 宫格折叠")}
+      ${btn("scheme", "matrix", "2×2 全景同屏对比")}
+    </div>
+    <div class="g">
+      <b>连续多图场景</b>
+      ${btn("scene", "nine", "9 张横屏（复现会话 carousel）")}
+      ${btn("scene", "paragraphs", "4 张空行段落（\\n\\n 合并识别）")}
+      ${btn("scene", "pair", "2 张竖屏（Before / After）")}
+      ${btn("scene", "links", "5 张正文文件链接")}
+    </div>
+    <div class="g">
+      <b>窗口与跨端</b>
+      ${btn("layout", "split", "分栏窄列（同你截图）")}
+      ${btn("layout", "full", "全宽会话列")}
+      ${btn("layout", "both", "Mac + iPhone 同屏")}
+    </div>
+    <div class="g">
+      <b>外观</b>
+      ${btn("theme", "black", "纯黑 OLED")}
+      ${btn("theme", "dark", "深色灰")}
+      ${btn("theme", "light", "浅色")}
+    </div>
+  `;
+}
+
+function renderLB() {
+  const root = document.getElementById("lightboxRoot");
+  if (!S.lb) {
+    root.innerHTML = "";
+    return;
+  }
+  const slides = currentSlides();
+  const idx = S.lb.idx;
+  const cur = slides[idx];
+  const portrait = Boolean(cur.portrait);
+
+  root.innerHTML = `
+    <div class="slb" onclick="closeLB()">
+      <div class="slb-top" onclick="event.stopPropagation()">
+        <div></div>
+        <div class="slb-center">
+          <div class="slb-title">${cur.name}</div>
+          <div class="slb-meta">${idx + 1} / ${slides.length} · ${cur.dim} · ${cur.size}</div>
+        </div>
+        <div class="slb-acts">
+          <button class="slb-btn" onclick="closeLB()" title="关闭 (Esc)">${IC.x}</button>
+        </div>
+      </div>
+      <div class="slb-stage">
+        <button class="slb-nav prev" onclick="stepLB(-1, event)" aria-label="上一张">${IC.chevL}</button>
+        <div class="slb-art ${portrait ? "portrait" : ""} ${S.lb.zoomed ? "zoomed" : ""}" onclick="toggleZoomLB(event)" title="点击切换缩放">
+          ${renderArt(cur, idx)}
+        </div>
+        <div class="slb-cap-bar" onclick="event.stopPropagation()">${cur.caption}</div>
+        <button class="slb-nav next" onclick="stepLB(1, event)" aria-label="下一张">${IC.chevR}</button>
+      </div>
+    </div>
+  `;
+}
+
+function render() {
+  const stage = document.getElementById("stage");
+  if (S.scheme === "matrix") {
+    stage.innerHTML = renderMatrix();
+  } else if (S.layout === "both") {
+    stage.innerHTML = renderMacWindow(S.scheme) + renderIPhone(S.scheme);
+  } else {
+    stage.innerHTML = renderMacWindow(S.scheme);
+  }
+  document.getElementById("notes").innerHTML = renderNotes();
+  document.getElementById("ctl").innerHTML = renderControls();
+  renderLB();
+}
+
+render();
+</script>
+</body>
+</html>

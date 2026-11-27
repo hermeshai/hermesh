@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
@@ -33,6 +34,12 @@ import (
 	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/internal/peer"
 	"github.com/hermeshai/hermesh/pkg/identity"
+	"github.com/hermeshai/hermesh/pkg/metrics"
+)
+
+var (
+	mHerWaitingPolls = metrics.Default.Counter("hermesh_owner_her_waiting_polls_total")
+	mHerWaitingBots  = metrics.Default.Counter("hermesh_owner_her_waiting_bots_total")
 )
 
 // Her (docs/her-server.md): the owner's side of Her on its machines. Every
@@ -732,6 +739,7 @@ func (o *Owner) HerSend(ctx context.Context, req *localv1.HerSendRequest) (*loca
 	if w, err = o.herKeptOne(req.MachineId, req.BotId, id); err != nil || w == nil {
 		return &localv1.HerSendResponse{Delivered: err == nil}, err
 	}
+	o.wakeHer()
 	return &localv1.HerSendResponse{Waiting: w}, nil
 }
 
@@ -993,29 +1001,47 @@ func (o *Owner) wakeHer() {
 }
 
 // deliverWaiting delivers the messages waiting here once their machines
-// answer: when woken (wakeHer), and every herRetry.
+// answer: when woken (wakeHer), and every herRetry while any message waits.
 func (o *Owner) deliverWaiting(ctx context.Context) {
-	tick := time.NewTicker(herRetry)
-	defer tick.Stop()
+	pending := o.flushWaiting(ctx)
+	var tick *time.Ticker
+	var tickC <-chan time.Time
+	defer func() {
+		if tick != nil {
+			tick.Stop()
+		}
+	}()
 	for {
-		o.flushWaiting(ctx)
+		if pending && tick == nil {
+			tick = time.NewTicker(herRetry)
+			tickC = tick.C
+		} else if !pending && tick != nil {
+			tick.Stop()
+			tick, tickC = nil, nil
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-o.herWake:
-		case <-tick.C:
+		case <-tickC:
 		}
+		pending = o.flushWaiting(ctx)
 	}
 }
 
 // flushWaiting delivers the messages waiting here to the machines that
 // answer, side by side, so that one that doesn't holds no other back; on
-// each, an assistant at a time (flushBot).
-func (o *Owner) flushWaiting(ctx context.Context) {
+// each, an assistant at a time (flushBot). Returns whether any message
+// still waits in her_waiting.
+func (o *Owner) flushWaiting(ctx context.Context) bool {
+	mHerWaitingPolls.Inc()
 	all, err := o.st.herWaiting("", "")
 	if err != nil {
 		o.log.Warn("Her's waiting messages not read", "err", err)
-		return
+		return true
+	}
+	if len(all) == 0 {
+		return false
 	}
 	bots := map[string][]string{} // a machine's assistants, in the order their first waits
 	for _, w := range all {
@@ -1023,7 +1049,11 @@ func (o *Owner) flushWaiting(ctx context.Context) {
 			bots[w.MachineId] = append(bots[w.MachineId], w.BotId)
 		}
 	}
+	for _, ids := range bots {
+		mHerWaitingBots.Add(int64(len(ids)))
+	}
 	var wg sync.WaitGroup
+	var stoppedEarly atomic.Bool
 	for machineID, ids := range bots {
 		wg.Add(1)
 		go func() {
@@ -1034,12 +1064,18 @@ func (o *Owner) flushWaiting(ctx context.Context) {
 				_, down := o.flushBot(ctx, machineID, botID, "", false, herConv{})
 				bot.Unlock()
 				if down || ctx.Err() != nil {
+					stoppedEarly.Store(true)
 					return
 				}
 			}
 		}()
 	}
 	wg.Wait()
+	if stoppedEarly.Load() {
+		return true
+	}
+	left, err := o.st.herWaiting("", "")
+	return err != nil || len(left) > 0
 }
 
 // DeleteHerWaiting drops a message kept here, undelivered; the assistant's

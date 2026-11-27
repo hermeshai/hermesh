@@ -317,7 +317,7 @@ export function install() {
 // restart would end it (the sessions themselves survive), so it waits for
 // them to finish. It looks again 30 s after first seeing the old version,
 // once the app has heard about the sessions too.
-let daemonRestart: "no" | "soon" | "done" = "no";
+let daemonRestart: "no" | "soon" | "cooldown" = "no";
 
 function staleDaemon(): string | undefined {
   if (signerBusy() || world.pairings.length > 0) return undefined;
@@ -336,7 +336,15 @@ function restartStaleDaemon() {
   daemonRestart = "soon";
   setTimeout(() => {
     const v = staleDaemon();
-    if (v) platform.restartDaemon(`hermeshd ${v} with Hermesh ${app.getVersion()}`);
-    daemonRestart = v ? "done" : "no";
+    if (!v) {
+      daemonRestart = "no";
+      return;
+    }
+    platform.restartDaemon(`hermeshd ${v} with Hermesh ${app.getVersion()}`);
+    daemonRestart = "cooldown";
+    setTimeout(() => {
+      daemonRestart = "no";
+      restartStaleDaemon();
+    }, 120_000).unref();
   }, 30_000);
 }

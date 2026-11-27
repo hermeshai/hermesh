@@ -2,6 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { Workspace } from "@hermesh/proto/identity";
 import {
   ActorKind,
+  ApprovalDecision,
   AnswerSchema,
   ErrorEventSchema,
   FailureKind,
@@ -25,6 +26,7 @@ import {
   type ErrorEvent,
   type Failure,
   type Question,
+  type QuestionItem,
   type QuestionResolved,
   type Run,
   type RuntimeRequest,
@@ -208,6 +210,46 @@ function actorIdString(run: Run | undefined): string {
   return run.author.kind === ActorKind.OWNER ? "owner" : run.author.id;
 }
 
+function isRedundantQuestionToolCall(it: TurnItem): boolean {
+  if (it.kind !== TurnItemKind.TOOL_CALL || it.status === "failed" || it.exitCode !== 0) return false;
+  let norm = it.toolName.trim().toLowerCase();
+  if (norm.startsWith("run ")) norm = norm.slice(4).trim();
+  return norm === "ask_question" || norm === "askuserquestion" || norm === "request_user_input";
+}
+
+function settledResolutionOf(req: RuntimeRequest): QuestionResolved {
+  const by = req.resolvedBy && req.resolvedBy.kind !== ActorKind.UNSPECIFIED ? actorClientId(req.resolvedBy) : "";
+  let resolution = req.questionResolution;
+  if (resolution === QuestionResolution.UNSPECIFIED) {
+    if (req.status === RuntimeRequestStatus.EXPIRED) resolution = QuestionResolution.TIMED_OUT;
+    else if (req.status === RuntimeRequestStatus.DISMISSED) resolution = QuestionResolution.CANCELLED;
+    else resolution = req.resolvedDecision === ApprovalDecision.DECLINE ? QuestionResolution.DECLINED : QuestionResolution.ANSWERED;
+  }
+  const orderedIds = (req.userInput?.questions ?? []).map((q) => q.id);
+  const seen = new Set<string>();
+  const answers = [];
+  if (resolution === QuestionResolution.ANSWERED) {
+    for (const qid of orderedIds) {
+      const a = req.resolvedAnswers[qid];
+      if (a) {
+        seen.add(qid);
+        answers.push(create(AnswerSchema, { itemId: qid, selected: a.selectedOptions, text: a.customText }));
+      }
+    }
+    for (const [itemId, a] of Object.entries(req.resolvedAnswers)) {
+      if (!seen.has(itemId)) {
+        answers.push(create(AnswerSchema, { itemId, selected: a.selectedOptions, text: a.customText }));
+      }
+    }
+  }
+  return create(QuestionResolvedSchema, {
+    questionId: req.requestId,
+    resolution,
+    by,
+    answers,
+  });
+}
+
 /**
  * sessionTranscript converts a unified SessionProjection into conversation rows.
  */
@@ -215,6 +257,15 @@ export function sessionTranscript(proj: SessionProjection | null | undefined): T
   if (!proj) return [];
   const runs = new Map(proj.runs.map((r) => [r.runId, r]));
   const reqs = new Map(proj.requests.map((r) => [r.requestId, r]));
+  const questionRuns = new Set<string>();
+  for (const r of proj.requests) {
+    if (r.kind === RuntimeRequestKind.USER_INPUT && r.runId) questionRuns.add(r.runId);
+  }
+  for (const it of proj.items) {
+    if (it.kind === TurnItemKind.RUNTIME_REQUEST && reqs.get(it.requestId)?.kind === RuntimeRequestKind.USER_INPUT && it.runId) {
+      questionRuns.add(it.runId);
+    }
+  }
   const activeBgItems = activeBackgroundItemIdsOf(proj);
   const setupFailed = workspaceFailedRun(proj);
   const out: TranscriptItem[] = [];
@@ -252,6 +303,9 @@ export function sessionTranscript(proj: SessionProjection | null | undefined): T
         out.push({ kind: "agent", seq, text: formatProposedPlan(it.planTitle, it.text), at, runId: it.runId });
         break;
       case TurnItemKind.TOOL_CALL:
+        if (isMetaProgressToolItem(it) || (questionRuns.has(it.runId) && isRedundantQuestionToolCall(it))) break;
+        out.push(toolItem(it, run, activeBgItems));
+        break;
       case TurnItemKind.COMMAND_EXECUTION:
       case TurnItemKind.FILE_CHANGE:
         out.push(toolItem(it, run, activeBgItems));
@@ -259,20 +313,11 @@ export function sessionTranscript(proj: SessionProjection | null | undefined): T
       case TurnItemKind.RUNTIME_REQUEST: {
         const req = reqs.get(it.requestId);
         if (req && req.kind === RuntimeRequestKind.USER_INPUT && req.status !== RuntimeRequestStatus.PENDING) {
-          const by = req.resolvedBy?.kind === ActorKind.OWNER ? "owner" : (req.resolvedBy?.id ?? "");
-          const answers = Object.entries(req.resolvedAnswers).map(([itemId, a]) =>
-            create(AnswerSchema, { itemId, selected: a.selectedOptions, text: a.customText }),
-          );
           out.push({
             kind: "question",
             seq,
             question: sessionQuestion(req),
-            resolution: create(QuestionResolvedSchema, {
-              questionId: req.requestId,
-              resolution: req.questionResolution,
-              by,
-              answers,
-            }),
+            resolution: settledResolutionOf(req),
           });
         }
         break;
@@ -353,7 +398,7 @@ export function sessionWork(proj: SessionProjection | null | undefined): Session
   if (!proj || !run) return "working";
   const now = proj.items.filter((it) => it.runId === run);
   const tools = [TurnItemKind.TOOL_CALL, TurnItemKind.COMMAND_EXECUTION, TurnItemKind.FILE_CHANGE];
-  if (now.some((it) => it.status === "running" && tools.includes(it.kind))) return "tool";
+  if (now.some((it) => it.status === "running" && tools.includes(it.kind) && !isMetaProgressToolItem(it))) return "tool";
   if (now.some((it) => it.kind === TurnItemKind.REASONING && it.streaming)) return "thinking";
   if (now.some((it) => it.kind === TurnItemKind.ASSISTANT_MESSAGE && it.streaming)) return "replying";
   return "working";
@@ -432,6 +477,90 @@ function isSessionChecklistLive(proj: SessionProjection): boolean {
   return false;
 }
 
+function normalizeMetaProgressToolName(rawName: string): string {
+  let norm = rawName.trim().toLowerCase();
+  for (const pfx of ["run ", "call ", "tool: ", "tool "]) {
+    if (norm.startsWith(pfx)) {
+      norm = norm.slice(pfx.length).trim();
+      break;
+    }
+  }
+  const dbl = norm.lastIndexOf("__");
+  const slash = norm.lastIndexOf("/");
+  const dot = norm.lastIndexOf(".");
+  if (dbl >= 0) norm = norm.slice(dbl + 2);
+  else if (slash >= 0) norm = norm.slice(slash + 1);
+  else if (dot >= 0) norm = norm.slice(dot + 1);
+
+  for (const sfx of ["update_focus", "update_steps", "todowrite", "todo_write", "update_plan"]) {
+    if (norm === sfx || (norm.startsWith("mcp_") && norm.endsWith(`_${sfx}`))) return sfx;
+  }
+  if (["todoread", "taskcreate", "taskupdate", "tasklist", "taskget"].includes(norm)) return norm;
+  return "";
+}
+
+function isMetaProgressToolItem(it: TurnItem): boolean {
+  return it.kind === TurnItemKind.TOOL_CALL && it.command === "" && normalizeMetaProgressToolName(it.toolName) !== "";
+}
+
+function reduceChainProgress(proj: SessionProjection, chain: Set<string>): { steps: TodoStepView[]; focus: string } {
+  let steps: TodoStepView[] = [];
+  let focus = "";
+  for (const it of proj.items) {
+    if (!chain.has(it.runId)) continue;
+    if (it.kind === TurnItemKind.TODO_LIST) {
+      if (it.todoSteps.length > 0) {
+        const parsed: TodoStepView[] = [];
+        for (const s of it.todoSteps) {
+          const text = s.text.trim();
+          if (text) parsed.push({ text, status: normalizeTodoStepStatus(s.status) });
+        }
+        steps = parsed;
+      }
+      focus = it.text.trim();
+      continue;
+    }
+    if (it.kind !== TurnItemKind.TOOL_CALL || it.command !== "") continue;
+    const meta = normalizeMetaProgressToolName(it.toolName);
+    if (!meta || !it.input) continue;
+    try {
+      const obj = JSON.parse(it.input) as Record<string, unknown>;
+      if (meta === "update_focus") {
+        if (typeof obj.focus === "string" && obj.focus.trim()) focus = obj.focus.trim();
+        continue;
+      }
+      const rawList = Array.isArray(obj.steps)
+        ? obj.steps
+        : Array.isArray(obj.todos)
+          ? obj.todos
+          : Array.isArray(obj.plan)
+            ? obj.plan
+            : Array.isArray(obj.items)
+              ? obj.items
+              : null;
+      if (!rawList) continue;
+      let nextFocus = typeof obj.focus === "string" ? obj.focus.trim() : typeof obj.explanation === "string" ? obj.explanation.trim() : "";
+      const parsed: TodoStepView[] = [];
+      for (const entry of rawList) {
+        if (!entry || typeof entry !== "object") continue;
+        const rec = entry as Record<string, unknown>;
+        const rawText = [rec.title, rec.content, rec.step, rec.text].find((v) => typeof v === "string" && v.trim() !== "") as string | undefined;
+        if (!rawText) continue;
+        const status = normalizeTodoStepStatus(typeof rec.status === "string" ? rec.status : "");
+        parsed.push({ text: rawText.trim(), status });
+        if (!nextFocus && status === "in_progress" && typeof rec.activeForm === "string" && rec.activeForm.trim()) {
+          nextFocus = rec.activeForm.trim();
+        }
+      }
+      steps = parsed;
+      focus = nextFocus;
+    } catch {
+      // Ignore malformed legacy tool input.
+    }
+  }
+  return { steps, focus };
+}
+
 /**
  * Steps for the floating live checklist above the composer while the session is working.
  * Automatically returns [] once the turn settles or all steps are completed/skipped.
@@ -440,14 +569,7 @@ export function activeTodoSteps(proj: SessionProjection | null | undefined): Tod
   if (!proj || !isSessionChecklistLive(proj)) return [];
   const chain = currentTurnChainRunIds(proj);
   if (chain.size === 0) return [];
-  const latest = proj.items.findLast((it) => it.kind === TurnItemKind.TODO_LIST && chain.has(it.runId));
-  if (!latest || latest.todoSteps.length === 0) return [];
-  const steps: TodoStepView[] = [];
-  for (const s of latest.todoSteps) {
-    const text = s.text.trim();
-    if (!text) continue;
-    steps.push({ text, status: normalizeTodoStepStatus(s.status) });
-  }
+  const { steps } = reduceChainProgress(proj, chain);
   if (steps.length === 0 || steps.every((s) => s.status === "completed" || s.status === "skipped")) {
     return [];
   }
@@ -465,15 +587,14 @@ export function sessionFocusText(proj: SessionProjection | null | undefined): st
   if (work === "thinking" || work === "replying") return undefined;
 
   const chain = currentTurnChainRunIds(proj);
-  const latestTodo = proj.items.findLast((it) => it.kind === TurnItemKind.TODO_LIST && chain.has(it.runId));
-  const explicitFocus = latestTodo?.text.trim();
+  const { focus: explicitFocus } = reduceChainProgress(proj, chain);
   if (explicitFocus) return explicitFocus;
 
   const runningTool = proj.items.findLast(
     (it) =>
       it.runId === s.activeRunId &&
       it.status === "running" &&
-      (it.kind === TurnItemKind.COMMAND_EXECUTION || it.kind === TurnItemKind.TOOL_CALL) &&
+      (it.kind === TurnItemKind.COMMAND_EXECUTION || (it.kind === TurnItemKind.TOOL_CALL && !isMetaProgressToolItem(it))) &&
       it.text.trim() !== "",
   );
   if (runningTool) return runningTool.text.trim();
@@ -517,6 +638,81 @@ export function interrupter(f: Failure | undefined): string | undefined {
   return isInterruption(f) && f!.message.startsWith(prefix) ? f!.message.slice(prefix.length) : undefined;
 }
 
+const recPrefixRe = /^\s*(?:\(Recommended\)|（推荐）)\s*/i;
+const genericQuestionTextRe = /^the agent has (?:a|\d+) questions?\.?$/i;
+
+export type ParsedOptionLabel = { recommended: boolean; text: string };
+
+export function parseOptionLabel(label: string): ParsedOptionLabel {
+  const m = recPrefixRe.exec(label);
+  return m ? { recommended: true, text: label.slice(m[0].length) } : { recommended: false, text: label };
+}
+
+export type SettledQuestionStatus = "answered" | "skipped" | "declined" | "timedOut" | "withdrawn";
+
+export type SettledQuestionRow = {
+  prompt: string;
+  choices: ParsedOptionLabel[];
+  status: SettledQuestionStatus;
+  statusText: string;
+};
+
+function settledItemPrompt(it: Pick<QuestionItem, "header" | "text">): string {
+  const header = it.header.trim();
+  const text = it.text.trim();
+  if (header && (!text || genericQuestionTextRe.test(text))) return header;
+  if (header && header !== text) return `${header} · ${text}`;
+  return text || header;
+}
+
+export function settledQuestionRows(
+  question: Question,
+  r: QuestionResolved,
+  name: (by: string) => string = (by) => by,
+): SettledQuestionRow[] {
+  const you = r.by === "" || r.by === "owner";
+  const items = question.items;
+  if (r.resolution !== QuestionResolution.ANSWERED) {
+    let status: SettledQuestionStatus = "withdrawn";
+    let note = t("resolution.withdrawn");
+    if (r.resolution === QuestionResolution.DECLINED) {
+      status = "declined";
+      note = you ? t("resolution.declinedByYou") : t("resolution.declinedBy", { name: name(r.by) });
+    } else if (r.resolution === QuestionResolution.TIMED_OUT) {
+      status = "timedOut";
+      note = t("resolution.timedOut");
+    }
+    const prompts = items.map(settledItemPrompt).filter(Boolean);
+    if (prompts.length === 0) return [{ prompt: "", choices: [], status, statusText: note }];
+    return prompts.map((prompt, idx) => ({
+      prompt,
+      choices: [],
+      status,
+      statusText: idx === prompts.length - 1 ? note : "",
+    }));
+  }
+
+  if (items.length === 0) {
+    const choices = r.answers.flatMap((a) => [
+      ...a.selected.map(parseOptionLabel),
+      ...(a.text.trim() === "" ? [] : [{ recommended: false, text: a.text.trim() }]),
+    ]);
+    return [{ prompt: "", choices, status: choices.length === 0 ? "skipped" : "answered", statusText: choices.length === 0 ? t("resolution.skipped") : "" }];
+  }
+
+  return items.map((it) => {
+    const prompt = settledItemPrompt(it);
+    const matched = r.answers.find((a) => a.itemId === it.id) ?? (items.length === 1 && r.answers.length === 1 && r.answers[0]!.itemId === "" ? r.answers[0] : undefined);
+    const choices: ParsedOptionLabel[] = (matched?.selected ?? []).map(parseOptionLabel);
+    const custom = (matched?.text ?? "").trim();
+    if (custom !== "") choices.push({ recommended: false, text: custom });
+    if (choices.length === 0) {
+      return { prompt, choices: [], status: "skipped", statusText: t("resolution.skipped") };
+    }
+    return { prompt, choices, status: "answered", statusText: "" };
+  });
+}
+
 /**
  * How a question was settled. name: who answered, by the id the machine
  * recorded (the owner is "You").
@@ -525,7 +721,10 @@ export function resolutionTitle(r: QuestionResolved, name: (by: string) => strin
   const you = r.by === "owner";
   switch (r.resolution) {
     case QuestionResolution.ANSWERED: {
-      const answers = r.answers.map((x) => [...x.selected, ...(x.text === "" ? [] : [x.text])].join(", ")).join(t("resolution.separator"));
+      const answers = r.answers
+        .map((x) => [...x.selected.map((s) => parseOptionLabel(s).text), ...(x.text.trim() === "" ? [] : [x.text.trim()])].join(", "))
+        .filter(Boolean)
+        .join(t("resolution.separator"));
       return you ? t("resolution.answeredByYou", { answers }) : t("resolution.answeredBy", { name: name(r.by), answers });
     }
     case QuestionResolution.DECLINED:

@@ -287,6 +287,71 @@ func runMockClaude() {
 					"type":  "result",
 					"usage": map[string]any{"input_tokens": 30, "output_tokens": 10},
 				})
+			} else if strings.Contains(prompt, "claude_tasks_v2") {
+				write(map[string]any{
+					"type": "assistant",
+					"message": map[string]any{"content": []any{
+						map[string]any{
+							"type":  "tool_use",
+							"id":    "tu_tc_1",
+							"name":  "TaskCreate",
+							"input": map[string]any{"subject": "Audit ACP progress tools", "description": "Inspect acp.go", "activeForm": "Auditing ACP progress tools"},
+						},
+						map[string]any{
+							"type":  "tool_use",
+							"id":    "tu_tc_2",
+							"name":  "TaskCreate",
+							"input": map[string]any{"subject": "Run simulator UI tests", "description": "Verify on iPhone", "activeForm": "Running simulator UI tests"},
+						},
+					}},
+				})
+				write(map[string]any{
+					"type": "user",
+					"message": map[string]any{"content": []any{
+						map[string]any{"type": "tool_result", "tool_use_id": "tu_tc_1", "content": "Task #1 created successfully: Audit ACP progress tools"},
+						map[string]any{"type": "tool_result", "tool_use_id": "tu_tc_2", "content": "Task #2 created successfully: Run simulator UI tests"},
+					}},
+				})
+				write(map[string]any{
+					"type": "assistant",
+					"message": map[string]any{"content": []any{
+						map[string]any{
+							"type":  "tool_use",
+							"id":    "tu_tu_1",
+							"name":  "TaskUpdate",
+							"input": map[string]any{"taskId": "1", "status": "in_progress"},
+						},
+						map[string]any{
+							"type":  "tool_use",
+							"id":    "tu_tl_1",
+							"name":  "TaskList",
+							"input": map[string]any{},
+						},
+					}},
+				})
+				write(map[string]any{
+					"type": "user",
+					"message": map[string]any{"content": []any{
+						map[string]any{"type": "tool_result", "tool_use_id": "tu_tu_1", "content": "Updated task #1"},
+						map[string]any{"type": "tool_result", "tool_use_id": "tu_tl_1", "content": "1. [in_progress] Audit ACP progress tools"},
+					}},
+				})
+				write(map[string]any{
+					"type":    "system",
+					"subtype": "task_list_statuses",
+					"statuses": []any{
+						map[string]any{"id": "1", "status": "completed"},
+						map[string]any{"id": "2", "status": "completed"},
+					},
+				})
+				write(map[string]any{
+					"type":    "assistant",
+					"message": map[string]any{"content": []any{map[string]any{"type": "text", "text": "Tasks finished."}}},
+				})
+				write(map[string]any{
+					"type":  "result",
+					"usage": map[string]any{"input_tokens": 40, "output_tokens": 12},
+				})
 			} else if strings.Contains(prompt, "run_bash") {
 				pendingCtrl["perm_1"] = func(res map[string]any) {
 					beh, _ := res["behavior"].(string)
@@ -2799,6 +2864,60 @@ func TestClaudeTodoWriteAndCodexTurnPlanUpdated(t *testing.T) {
 		}
 		if len(toolStarts) != 1 || toolStarts[0].Text != "Execute unit tests" || toolStarts[0].Command != "pytest -q" {
 			t.Fatalf("unexpected claude ToolStarted events: %+v", toolStarts)
+		}
+	})
+
+	t.Run("claude_task_create_update_and_statuses", func(t *testing.T) {
+		drv := claude.NewDriver("")
+		sess, err := drv.StartSession(ctx, runtime.StartSpec{
+			SessionID: "s_cl_tasks_v2",
+			Workdir:   t.TempDir(),
+			Instance: &sessionv1.ProviderInstanceConfig{
+				InstanceId: "claude",
+				Driver:     "claude",
+				BinaryPath: exe,
+				LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--"},
+				Env:        map[string]string{"HERMESH_MOCK_DRIVER": "claude"},
+			},
+			Selection: &sessionv1.ModelSelection{InstanceId: "claude", Model: "claude-sonnet-4-6"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sess.Close()
+		if err := sess.StartTurn(ctx, runtime.TurnInput{RunID: "r_tasks_v2", Prompt: "claude_tasks_v2"}); err != nil {
+			t.Fatal(err)
+		}
+		var todos []runtime.Event
+		timeout := time.After(8 * time.Second)
+		for done := false; !done; {
+			select {
+			case <-timeout:
+				t.Fatal("timed out waiting for claude turn")
+			case ev := <-sess.Events():
+				switch ev.Kind {
+				case runtime.EventTodoUpdated:
+					todos = append(todos, ev)
+				case runtime.EventToolStarted, runtime.EventToolCompleted:
+					t.Fatalf("Claude TaskCreate/TaskUpdate/TaskList leaked as tool event: %+v", ev)
+				case runtime.EventTurnCompleted:
+					done = true
+				case runtime.EventTurnFailed:
+					t.Fatalf("turn failed: %s", ev.ErrorMessage)
+				}
+			}
+		}
+		// Expect: (1) first TaskCreate, (2) second TaskCreate, (3) TaskUpdate -> #1 in_progress with activeForm focus, (4) system task_list_statuses -> both completed
+		if len(todos) != 4 {
+			t.Fatalf("expected 4 deduplicated TodoUpdated events, got %d: %+v", len(todos), todos)
+		}
+		inProg := todos[2]
+		if inProg.Text != "Auditing ACP progress tools" || len(inProg.TodoSteps) != 2 || inProg.TodoSteps[0].Status != "in_progress" || inProg.TodoSteps[1].Status != "pending" {
+			t.Fatalf("unexpected in_progress TodoUpdated event: %+v", inProg)
+		}
+		finalTodo := todos[3]
+		if finalTodo.Text != "" || finalTodo.TodoSteps[0].Status != "completed" || finalTodo.TodoSteps[1].Status != "completed" {
+			t.Fatalf("unexpected completed TodoUpdated event: %+v", finalTodo)
 		}
 	})
 

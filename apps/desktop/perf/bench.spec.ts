@@ -29,9 +29,12 @@ const record = (k: string, v: number) => {
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function launch(main: string, socket: string, profile: string): Promise<Ctx & { launched: number }> {
+async function launch(main: string, socket: string, profile: string, withOcclusionFlags = true): Promise<Ctx & { launched: number }> {
   const launched = Date.now();
-  const app = await electron.launch({ args: [...flags, main], env: { ...process.env, HERMESH_SOCKET: socket, HERMESH_USER_DATA: profile } });
+  const app = await electron.launch({
+    args: [...(withOcclusionFlags ? flags : []), main],
+    env: { ...process.env, HERMESH_SOCKET: socket, HERMESH_USER_DATA: profile },
+  });
   const page = await app.firstWindow();
   const cdp = await page.context().newCDPSession(page);
   return { app, page, cdp, launched };
@@ -106,6 +109,14 @@ async function steady(c: Ctx, name: string, ms = window) {
     c.cdp.on("Tracing.dataCollected", (e) => events.push(...(e.value as unknown as typeof events)));
     await c.cdp.send("Tracing.start", { categories: "devtools.timeline,disabled-by-default-devtools.timeline,blink,cc,viz", transferMode: "ReportEvents" });
   }
+  const mainProfile = (process.env.PERF_MAIN_PROFILE ?? "").split(",").includes(name);
+  const mainSnapPromise = c.app.evaluate(
+    async (_electron, { sec, prof }) => {
+      const fn = (globalThis as { hermeshTest?: { perfSnapshot?: (o: { seconds: number; mainProfile: boolean }) => Promise<unknown> } }).hermeshTest?.perfSnapshot;
+      return fn ? fn({ seconds: sec, mainProfile: prof }) : null;
+    },
+    { sec: ms / 1000, prof: mainProfile },
+  );
   await cpu(c); // resets the wakeup counters
   const m0 = await metrics(c);
   const p0 = await cpu(c);
@@ -114,6 +125,15 @@ async function steady(c: Ctx, name: string, ms = window) {
   const m1 = await metrics(c);
   const p1 = await cpu(c);
   const dt = (Date.now() - t0) / 1000;
+  const mainSnap = (await mainSnapPromise) as {
+    countersDelta?: Record<string, number>;
+    renderers?: { animations?: { running: number; mainThreadCount: number } | null }[];
+    mainCpuProfile?: unknown;
+  } | null;
+  if (mainProfile && mainSnap?.mainCpuProfile) {
+    fs.mkdirSync(path.join(import.meta.dirname, "results"), { recursive: true });
+    fs.writeFileSync(path.join(import.meta.dirname, "results", `${label}-${name}.main.cpuprofile`), JSON.stringify(mainSnap.mainCpuProfile));
+  }
   if (trace) {
     const done = new Promise<void>((r) => c.cdp.once("Tracing.tracingComplete", () => r()));
     await c.cdp.send("Tracing.end");
@@ -157,6 +177,17 @@ async function steady(c: Ctx, name: string, ms = window) {
   record(`${name}.cpu.main%`, by("Browser", "cpu") * 100);
   record(`${name}.cpu.total%`, total * 100);
   record(`${name}.wakeups.renderer/s`, by("Tab", "wake"));
+  record(`${name}.wakeups.main/s`, by("Browser", "wake"));
+  record(`${name}.wakeups.gpu/s`, by("GPU", "wake"));
+  record(`${name}.wakeups.total/s`, p1.reduce((n, p) => n + p.wake, 0));
+  if (mainSnap?.countersDelta) {
+    record(`${name}.main.menuBuilds/s`, ((mainSnap.countersDelta.appMenuBuilds ?? 0) + (mainSnap.countersDelta.dockMenuBuilds ?? 0)) / dt);
+  }
+  const anim = mainSnap?.renderers?.[0]?.animations;
+  if (anim) {
+    record(`${name}.animations.running`, anim.running);
+    record(`${name}.animations.mainThread`, anim.mainThreadCount);
+  }
   record(`${name}.mutations/s`, mut.reduce((n, [, v]) => n + v, 0) / dt);
   record(`${name}.loaf>50ms`, loaf.length);
   record(`${name}.loaf.max`, Math.max(0, ...loaf));
@@ -330,12 +361,66 @@ async function toolsBench(c: Ctx) {
   await sleep(1000);
 }
 
+/**
+ * Background / occluded / menu-bar-only idle baselines (launched WITHOUT
+ * --disable-backgrounding-occluded-windows so Chromium throttles hidden pages
+ * as in real daily use).
+ */
+async function idleBackgroundBench(main: string, socket: string, profile: string, ms = Math.min(window, 6_000)) {
+  const c = await launch(main, socket, profile, false);
+  await ready(c, overviewReady);
+  await sleep(1500);
+
+  // Her page while idle (if reachable in sidebar).
+  const herNav = c.page.locator(".nav-i", { hasText: "Her" }).first();
+  if (await herNav.count()) {
+    await herNav.click();
+    await sleep(1000);
+    await steady(c, "her.quiet", ms);
+  }
+
+  // Main window hidden (user pressed Cmd+H or minimized to background).
+  await c.app.evaluate(() => {
+    const win = (globalThis as { hermeshTest?: { mainWindow?: () => Electron.BrowserWindow | undefined } }).hermeshTest?.mainWindow?.();
+    win?.hide();
+  });
+  await sleep(1500);
+  await steady(c, "idle.hidden", ms);
+  await footprint(c.app, "idle.hidden");
+
+  // Main window closed (menu-bar-only resident mode: renderer destroyed).
+  await c.app.evaluate(() => {
+    const win = (globalThis as { hermeshTest?: { mainWindow?: () => Electron.BrowserWindow | undefined } }).hermeshTest?.mainWindow?.();
+    win?.close();
+  });
+  await sleep(1500);
+  await cpu(c);
+  const p0 = await cpu(c);
+  const t0 = Date.now();
+  await sleep(ms);
+  const p1 = await cpu(c);
+  const dt = (Date.now() - t0) / 1000;
+  const totalCPU = p1.reduce((n, p) => n + p.cpu - (p0.find((q) => q.pid === p.pid)?.cpu ?? p.cpu), 0) / dt;
+  const mainCPU = p1.filter((p) => p.type === "Browser").reduce((n, p) => n + p.cpu - (p0.find((q) => q.pid === p.pid)?.cpu ?? p.cpu), 0) / dt;
+  record("idle.tray_only.cpu.main%", mainCPU * 100);
+  record("idle.tray_only.cpu.total%", totalCPU * 100);
+  record("idle.tray_only.wakeups.main/s", p1.filter((p) => p.type === "Browser").reduce((n, p) => n + p.wake, 0));
+  record("idle.tray_only.wakeups.total/s", p1.reduce((n, p) => n + p.wake, 0));
+  await footprint(c.app, "idle.tray_only");
+
+  await c.app.close();
+}
+
 test("benchmark", async () => {
   const socket = path.join("/tmp", `hmperf-${process.pid}.sock`);
   const daemon: Daemon = await startDaemon(socket);
   const main = path.join(out, "main", "index.js");
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hmperf-"));
   try {
+    if (process.env.PERF_ONLY === "idle") {
+      await idleBackgroundBench(main, socket, path.join(tmp, "idle"));
+      return;
+    }
     // PERF_ONLY=tools: the tool steps alone, in a window opened on its own profile.
     if (process.env.PERF_ONLY === "tools") {
       const c = await launch(main, socket, path.join(tmp, "tools"));
@@ -529,6 +614,7 @@ test("benchmark", async () => {
     await toolsBench(c);
 
     await c.app.close();
+    await idleBackgroundBench(main, socket, path.join(tmp, "idle"));
   } finally {
     await daemon.close();
     fs.rmSync(tmp, { recursive: true, force: true });

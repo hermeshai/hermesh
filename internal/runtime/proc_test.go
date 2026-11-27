@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -251,5 +252,36 @@ func TestKeepOutput(t *testing.T) {
 	s, cut := KeepOutput(big)
 	if !cut || !strings.HasSuffix(s, "ERROR at the end\n") || !strings.HasPrefix(s, "aaa") || !strings.Contains(s, "bytes left out") || len(s) > KeptOutput+64 {
 		t.Errorf("long: %d bytes, cut=%v, ends %q", len(s), cut, s[len(s)-20:])
+	}
+}
+
+func TestLazySpawnHelperPool(t *testing.T) {
+	if !spawn.Supported {
+		t.Skip("spawn helpers unsupported")
+	}
+	exe, _ := os.Executable()
+	var started atomic.Int64
+	closePool := ConfigureSpawnHelperPool(4, func() (*spawn.Helper, error) {
+		started.Add(1)
+		os.Setenv("HERMESH_TEST_SPAWN_HELPER", "1")
+		h, err := spawn.StartHelper(exe)
+		os.Unsetenv("HERMESH_TEST_SPAWN_HELPER")
+		return h, err
+	})
+	defer closePool()
+
+	// Zero helpers started before any process is spawned.
+	if got := started.Load(); got != 0 {
+		t.Fatalf("started %d helpers at idle; want 0", got)
+	}
+	// Sequential spawns reuse the single warm helper instead of starting 4.
+	for i := 0; i < 3; i++ {
+		out, _, err := RunCommand(context.Background(), "sh", []string{"-c", "echo ok"}, "", []string{"PATH=/usr/bin:/bin"})
+		if err != nil || strings.TrimSpace(string(out)) != "ok" {
+			t.Fatalf("run %d: out=%q err=%v", i, out, err)
+		}
+	}
+	if got := started.Load(); got != 1 {
+		t.Fatalf("sequential spawns started %d helpers; want 1", got)
 	}
 }
