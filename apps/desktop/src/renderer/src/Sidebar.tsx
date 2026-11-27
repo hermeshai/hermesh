@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { GitState, SessionStatus, type Session } from "@hermesh/proto/session";
 import {
-  bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, diffBarBlocks, displayTitle, isActive, isArchivable, isFailed, listTime, needsAttention, reorderIds,
+  bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, diffBarBlocks, displayTitle, isActive, isArchivable, isFailed, listTime, naturalSectionKey, needsAttention,
   SECTION_EXPAND_STEP, SECTION_INITIAL_LIMIT, sessionGitMark, sessionSections, sessionsNeedingGitRefresh, sliceSectionSessions, statusTitle, teamState, updatedDate, type SessionBucket, type SessionSection, type SessionView,
   SCRATCH_PROJECT,
 } from "@hermesh/core";
@@ -50,12 +50,16 @@ export function machineName(st: Store, id: string): string {
 const setSessionArchived = (id: string, archived: boolean) => sessionApi.updateSession({ sessionId: id, hasArchived: true, archived });
 const setSessionPinned = (id: string, pinned: boolean) => sessionApi.updateSession({ sessionId: id, hasPinned: true, pinned });
 
+function insertAt(otherIds: readonly string[], movedId: string, slot: number): string[] {
+  const next = otherIds.filter((x) => x !== movedId);
+  next.splice(Math.max(0, Math.min(next.length, slot)), 0, movedId);
+  return next;
+}
+
 export function togglePin(st: Store, s: Session, slot?: number) {
   const next = !s.pinned;
-  const curPinned = st.sessions.filter((x) => x.pinned && x.status !== SessionStatus.ARCHIVED).map((x) => x.sessionId);
-  const base = st.pinnedOrder.filter((id) => curPinned.includes(id));
-  for (const id of curPinned) if (!base.includes(id)) base.push(id);
-  const pinnedOrder = next ? reorderIds(base, s.sessionId, slot ?? 0) : st.pinnedOrder.filter((id) => id !== s.sessionId);
+  const curPinned = listSections(st, new Date()).find((x) => x.grouping === "pinned")?.sessions.map((x) => x.sessionId) ?? [];
+  const pinnedOrder = next ? insertAt(curPinned, s.sessionId, slot ?? 0) : st.pinnedOrder.filter((id) => id !== s.sessionId);
   st.set({ pinnedOrder });
   void st.run(() => setSessionPinned(s.sessionId, next));
 }
@@ -102,7 +106,7 @@ export function confirmDelete(st: Store, s: Session) {
  * running group stays while nothing runs, empty, so it is always there to look at (docs/her-team.md §16).
  */
 export function listSections(
-  st: Pick<Store, "sessions" | "view" | "archived" | "machines" | "clients"> & Partial<Pick<Store, "pinnedOrder" | "activeOrder">>,
+  st: Pick<Store, "sessions" | "view" | "archived" | "machines" | "clients"> & Partial<Pick<Store, "pinnedOrder" | "activeOrder" | "sectionOrder">>,
   now: Date,
 ): SessionSection[] {
   const machines = [...st.machines].sort((a, b) => Number(b.local) - Number(a.local) || a.machineName.localeCompare(b.machineName)).map((m) => m.machineId);
@@ -114,6 +118,7 @@ export function listSections(
     alwaysActive: true,
     pinnedOrder: st.pinnedOrder,
     activeOrder: st.activeOrder,
+    sectionOrder: st.sectionOrder,
   });
 }
 
@@ -241,10 +246,10 @@ function NewInProject({ sec }: { sec: SessionSection }) {
 function Sessions({ now }: { now: Date }) {
   const st = useStore();
   const { t } = useTranslation("common");
-  const { sessions, view, archived, machines, clients, pinnedOrder, activeOrder } = st;
+  const { sessions, view, archived, machines, clients, pinnedOrder, activeOrder, sectionOrder } = st;
   const sections = useMemo(
-    () => listSections({ sessions, view, archived, machines, clients, pinnedOrder, activeOrder }, now),
-    [sessions, view, archived, machines, clients, pinnedOrder, activeOrder, now],
+    () => listSections({ sessions, view, archived, machines, clients, pinnedOrder, activeOrder, sectionOrder }, now),
+    [sessions, view, archived, machines, clients, pinnedOrder, activeOrder, sectionOrder, now],
   );
   const total = sections.reduce((n, x) => n + x.sessions.length, 0);
   const [expanded, setExpanded] = useState<{ group: SessionView["group"]; limits: Record<string, number> }>({ group: view.group, limits: {} });
@@ -279,7 +284,7 @@ function Sessions({ now }: { now: Date }) {
       const delay = hoveredRef.current ? 30 : 180;
       hoverTimer.current = setTimeout(() => {
         const cur = latest.current;
-        if (cur.renaming || cur.searching || cur.sheet) return;
+        if (cur.renaming || cur.searching || cur.sheet || document.body.classList.contains("is-dragging")) return;
         const sideRect = rowEl.closest(".side")?.getBoundingClientRect();
         const rowRect = rowEl.getBoundingClientRect();
         if (rowRect.width === 0 && rowRect.height === 0) return;
@@ -381,35 +386,152 @@ function Sessions({ now }: { now: Date }) {
     const container = rowEl?.closest<HTMLElement>(".side-sessions");
     if (!rowEl || !listEl || !container || rowEl.classList.contains("arch") || rowEl.classList.contains("renaming")) return;
     const id = rowEl.dataset.sessionId!;
-    const origZone = rowEl.dataset.zone ?? "";
     const sObj = latest.current.sessions.find((x) => x.sessionId === id);
     if (!sObj) return;
 
     const startX = e.clientX;
     const startY = e.clientY;
     const rect = rowEl.getBoundingClientRect();
+    let lastClientY = startY;
     let started = false;
+    let scrollRaf = 0;
     let ghost: HTMLElement | null = null;
     let dropLine: HTMLElement | null = null;
     let pinDropEl: HTMLElement | null = null;
-    let targetZone: "pin-dropzone" | "pinned" | "active" | "unpin" | "none" = "none";
-    let targetSlot = 0;
+    type DropTarget =
+      | { kind: "pin-dropzone" }
+      | { kind: "unpin" }
+      | { kind: "section"; secId: string; slot: number }
+      | null;
+    let target: DropTarget = null;
+
+    const hideIndicators = () => {
+      if (dropLine) dropLine.style.display = "none";
+      pinDropEl?.classList.remove("over");
+      target = null;
+    };
+
+    const showLineAt = (viewportY: number, listRect: DOMRect) => {
+      if (!dropLine) return;
+      dropLine.style.top = `${viewportY - listRect.top + listEl.scrollTop}px`;
+      dropLine.style.display = "block";
+    };
+
+    const updateTarget = (clientY: number) => {
+      if (!started || !ghost || !dropLine) return;
+      ghost.style.top = `${rect.top + (clientY - startY)}px`;
+
+      const listRect = listEl.getBoundingClientRect();
+      if (pinDropEl) {
+        const pr = pinDropEl.getBoundingClientRect();
+        if (clientY >= listRect.top - 12 && clientY <= pr.bottom) {
+          pinDropEl.classList.add("over");
+          dropLine.style.display = "none";
+          target = { kind: "pin-dropzone" };
+          return;
+        }
+        pinDropEl.classList.remove("over");
+      }
+
+      const placeInSection = (groupEl: HTMLElement, secId: string) => {
+        const rows = [...groupEl.querySelectorAll<HTMLElement>(".srow[data-session-id]")];
+        const origIdx = rows.findIndex((r) => r.dataset.sessionId === id);
+        if (rows.length === 0) {
+          if (origIdx !== -1) return hideIndicators();
+          const hRect = (groupEl.querySelector(".grp-hrow") ?? groupEl).getBoundingClientRect();
+          showLineAt(hRect.bottom + 2, listRect);
+          target = { kind: "section", secId, slot: 0 };
+          return;
+        }
+        if (origIdx !== -1 && rows.length <= 1) return hideIndicators();
+
+        const otherRows = origIdx === -1 ? rows : rows.filter((_, i) => i !== origIdx);
+        let slot = otherRows.length;
+        for (let i = 0; i < otherRows.length; i++) {
+          const cr = otherRows[i].getBoundingClientRect();
+          // Require crossing 35% into an adjacent row when reordering within the same section; use 50% when entering from another section.
+          const ratio = origIdx === -1 ? 0.5 : i < origIdx ? 0.65 : 0.35;
+          if (clientY < cr.top + cr.height * ratio) {
+            slot = i;
+            break;
+          }
+        }
+        if (origIdx !== -1 && slot === origIdx) return hideIndicators();
+
+        const lineViewportY =
+          slot === 0
+            ? otherRows[0].getBoundingClientRect().top - 1
+            : slot === otherRows.length
+              ? otherRows[otherRows.length - 1].getBoundingClientRect().bottom + 1
+              : (otherRows[slot - 1].getBoundingClientRect().bottom + otherRows[slot].getBoundingClientRect().top) / 2;
+        showLineAt(lineViewportY, listRect);
+        target = { kind: "section", secId, slot };
+      };
+
+      const pinnedGroup = container.querySelector<HTMLElement>('[data-sec-id="pinned:pinned"]');
+      if (pinnedGroup) {
+        const pRect = pinnedGroup.getBoundingClientRect();
+        if (clientY <= pRect.bottom + 8) {
+          placeInSection(pinnedGroup, "pinned:pinned");
+          return;
+        }
+      }
+
+      const natSecId = naturalSectionKey(latest.current.view, sObj, new Date());
+      const natGroup = container.querySelector<HTMLElement>(`[data-sec-id="${CSS.escape(natSecId)}"]`);
+      if (natGroup && !natGroup.querySelector(".grp-h.shut")) {
+        const gRect = natGroup.getBoundingClientRect();
+        if (clientY >= gRect.top - 6 && clientY <= gRect.bottom + 32) {
+          placeInSection(natGroup, natSecId);
+          return;
+        }
+      }
+
+      if (sObj.pinned && pinnedGroup) {
+        showLineAt(pinnedGroup.getBoundingClientRect().bottom + 6, listRect);
+        target = { kind: "unpin" };
+        return;
+      }
+
+      hideIndicators();
+    };
+
+    const tickAutoScroll = () => {
+      scrollRaf = 0;
+      if (!started) return;
+      const lr = listEl.getBoundingClientRect();
+      const edge = 34;
+      let delta = 0;
+      if (lastClientY < lr.top + edge && listEl.scrollTop > 0) {
+        delta = -Math.ceil(((lr.top + edge - lastClientY) / edge) * 9);
+      } else if (lastClientY > lr.bottom - edge && listEl.scrollTop < listEl.scrollHeight - listEl.clientHeight) {
+        delta = Math.ceil(((lastClientY - (lr.bottom - edge)) / edge) * 9);
+      }
+      if (delta !== 0) {
+        const prev = listEl.scrollTop;
+        listEl.scrollTop += delta;
+        if (listEl.scrollTop !== prev) updateTarget(lastClientY);
+        scrollRaf = requestAnimationFrame(tickAutoScroll);
+      }
+    };
 
     const onMove = (ev: PointerEvent) => {
+      lastClientY = ev.clientY;
       if (!started) {
         if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 5) return;
         started = true;
         hoverCtrl.current.dismiss();
         document.body.classList.add("is-dragging");
         rowEl.classList.add("dragging-src");
-        if (!sObj.pinned && !container.querySelector('[data-sec-key="pinned"]')) {
+        if (!sObj.pinned && !container.querySelector('[data-sec-id="pinned:pinned"]')) {
           pinDropEl = document.createElement("div");
           pinDropEl.className = "pin-dropzone";
           pinDropEl.textContent = i18n.t("common:sidebar.pinDrop");
-          container.prepend(pinDropEl);
+          listEl.appendChild(pinDropEl);
         }
         ghost = rowEl.cloneNode(true) as HTMLElement;
-        ghost.classList.remove("dragging-src");
+        ghost.classList.remove("dragging-src", "menu-open", "sel");
+        ghost.querySelector(".rowacts")?.remove();
         ghost.classList.add("drag-ghost");
         ghost.style.width = `${rect.width}px`;
         ghost.style.left = `${rect.left}px`;
@@ -422,73 +544,43 @@ function Sessions({ now }: { now: Date }) {
         listEl.appendChild(dropLine);
       }
 
-      ghost!.style.top = `${rect.top + (ev.clientY - startY)}px`;
+      updateTarget(ev.clientY);
+      if (!scrollRaf) scrollRaf = requestAnimationFrame(tickAutoScroll);
+    };
 
-      if (pinDropEl) {
-        const pr = pinDropEl.getBoundingClientRect();
-        if (ev.clientY <= pr.bottom + 8) {
-          pinDropEl.classList.add("over");
-          dropLine!.style.display = "none";
-          targetZone = "pin-dropzone";
-          targetSlot = 0;
-          return;
-        }
-        pinDropEl.classList.remove("over");
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("keydown", onKeyDown, true);
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+      if (!started) return;
+      document.body.classList.remove("is-dragging");
+      rowEl.classList.remove("dragging-src");
+      ghost?.remove();
+      dropLine?.remove();
+      pinDropEl?.remove();
+    };
+
+    const cancel = () => {
+      target = null;
+      cleanup();
+    };
+
+    const onKeyDown = (ke: KeyboardEvent) => {
+      if (ke.key === "Escape" && started) {
+        ke.preventDefault();
+        ke.stopPropagation();
+        cancel();
       }
-
-      const listRect = listEl.getBoundingClientRect();
-      const pinnedGroup = container.querySelector<HTMLElement>('[data-sec-key="pinned"]');
-      const pinnedRows = pinnedGroup ? [...pinnedGroup.querySelectorAll<HTMLElement>(".srow[data-session-id]")] : [];
-      const activeGroup = container.querySelector<HTMLElement>('[data-sec-key="active"]');
-      const activeRows = activeGroup ? [...activeGroup.querySelectorAll<HTMLElement>(".srow[data-session-id]")] : [];
-      const canReorderActive = isActive(sObj) && !needsAttention(sObj) && activeRows.length > 0;
-
-      const placeInRows = (rows: HTMLElement[], zone: "pinned" | "active") => {
-        let slot = rows.length;
-        let lineY = rows[rows.length - 1].getBoundingClientRect().bottom - listRect.top + listEl.scrollTop + 1;
-        for (let i = 0; i < rows.length; i++) {
-          const cr = rows[i].getBoundingClientRect();
-          if (ev.clientY < cr.top + cr.height / 2) {
-            slot = i;
-            lineY = cr.top - listRect.top + listEl.scrollTop - 1;
-            break;
-          }
-        }
-        dropLine!.style.top = `${lineY}px`;
-        dropLine!.style.display = "block";
-        targetZone = zone;
-        targetSlot = slot;
-      };
-
-      if (pinnedRows.length > 0) {
-        const pinBottom = pinnedRows[pinnedRows.length - 1].getBoundingClientRect().bottom;
-        if (ev.clientY <= pinBottom + 12) {
-          placeInRows(pinnedRows, "pinned");
-          return;
-        }
-        if (origZone === "pinned" && !canReorderActive) {
-          dropLine!.style.top = `${pinBottom - listRect.top + listEl.scrollTop + 6}px`;
-          dropLine!.style.display = "block";
-          targetZone = "unpin";
-          targetSlot = 0;
-          return;
-        }
-      }
-
-      if (canReorderActive) {
-        placeInRows(activeRows, "active");
-        return;
-      }
-
-      dropLine!.style.display = "none";
-      targetZone = "none";
     };
 
     const finish = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", finish);
-      window.removeEventListener("pointercancel", finish);
-      if (!started) return;
+      const wasStarted = started;
+      const chosen = target;
+      cleanup();
+      if (!wasStarted) return;
       const swallowClick = (ce: MouseEvent) => {
         ce.stopPropagation();
         ce.preventDefault();
@@ -496,47 +588,54 @@ function Sessions({ now }: { now: Date }) {
       window.addEventListener("click", swallowClick, true);
       setTimeout(() => window.removeEventListener("click", swallowClick, true), 0);
 
-      document.body.classList.remove("is-dragging");
-      rowEl.classList.remove("dragging-src");
-      ghost?.remove();
-      dropLine?.remove();
-      pinDropEl?.remove();
-
       const curSt = latest.current;
       const curSess = curSt.sessions.find((x) => x.sessionId === id);
-      if (!curSess || targetZone === "none") return;
+      if (!curSess || !chosen) return;
 
       const curSections = listSections(curSt, new Date());
-      if (targetZone === "pin-dropzone") {
+      if (chosen.kind === "pin-dropzone") {
         if (!curSess.pinned) togglePin(curSt, curSess, 0);
-      } else if (targetZone === "pinned") {
-        const curPinnedIds = curSections.find((x) => x.grouping === "pinned")?.sessions.map((x) => x.sessionId) ?? [];
-        const nextPinnedOrder = reorderIds(curPinnedIds, id, targetSlot);
-        curSt.set({ pinnedOrder: nextPinnedOrder });
-        if (!curSess.pinned) void curSt.run(() => setSessionPinned(id, true));
-      } else if (targetZone === "unpin") {
+      } else if (chosen.kind === "unpin") {
         if (curSess.pinned) togglePin(curSt, curSess);
-      } else if (targetZone === "active") {
-        const curActiveIds = curSections.find((x) => x.grouping === "status" && x.key === "active")?.sessions.map((x) => x.sessionId) ?? [];
-        const nextActiveOrder = reorderIds(curActiveIds, id, targetSlot);
+      } else if (chosen.kind === "section" && chosen.secId === "pinned:pinned") {
+        const curPinnedIds = curSections.find((x) => x.grouping === "pinned")?.sessions.map((x) => x.sessionId) ?? [];
+        const nextPinnedOrder = insertAt(curPinnedIds, id, chosen.slot);
+        const collapsed = curSt.collapsed.filter((c) => c !== "pinned:pinned");
+        curSt.set({ pinnedOrder: nextPinnedOrder, collapsed });
+        if (!curSess.pinned) void curSt.run(() => setSessionPinned(id, true));
+      } else if (chosen.kind === "section") {
+        const domGroup = container.querySelector<HTMLElement>(`[data-sec-id="${CSS.escape(chosen.secId)}"]`);
+        const visibleIds = domGroup
+          ? [...domGroup.querySelectorAll<HTMLElement>(".srow[data-session-id]")].map((r) => r.dataset.sessionId!)
+          : [];
+        const sec = curSections.find((x) => `${x.grouping}:${x.key}` === chosen.secId);
+        const allSecIds = sec?.sessions.map((x) => x.sessionId) ?? [];
+        const reorderedVisible = insertAt(visibleIds, id, chosen.slot);
+        const hiddenIds = allSecIds.filter((x) => x !== id && !reorderedVisible.includes(x));
+        const nextOrder = [...reorderedVisible, ...hiddenIds];
+        const nextSectionOrder = { ...curSt.sectionOrder, [chosen.secId]: nextOrder };
+        const patch: Partial<Store> = { sectionOrder: nextSectionOrder };
+        if (chosen.secId === "status:active") patch.activeOrder = nextOrder;
         if (curSess.pinned) {
-          curSt.set({ activeOrder: nextActiveOrder, pinnedOrder: curSt.pinnedOrder.filter((x) => x !== id) });
+          patch.pinnedOrder = curSt.pinnedOrder.filter((x) => x !== id);
+          curSt.set(patch);
           void curSt.run(() => setSessionPinned(id, false));
         } else {
-          curSt.set({ activeOrder: nextActiveOrder });
+          curSt.set(patch);
         }
       }
     };
 
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", finish);
-    window.addEventListener("pointercancel", finish);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("keydown", onKeyDown, true);
   };
   return (
     <div className="side-list" ref={list} onScroll={() => hoverCtrl.current.dismiss()}>
       <div className="side-sessions" role="list" aria-label={t("sidebar.sessions")} onPointerDown={onRowPointerDown}>
         {rendered.map(({ sec, id, open, limit, slice }) => (
-          <div key={id} role="group" aria-label={sectionTitle(st, sec)} data-sec-key={sec.grouping === "pinned" ? "pinned" : sec.key}>
+          <div key={id} role="group" aria-label={sectionTitle(st, sec)} data-sec-id={id}>
             <div className="grp-hrow">
               <button
                 className={`grp-h ${open ? "" : "shut"}`}
@@ -553,7 +652,6 @@ function Sessions({ now }: { now: Date }) {
               <SessionRow
                 key={s.sessionId}
                 s={s}
-                zone={sec.grouping === "pinned" ? "pinned" : sec.key}
                 sel={sel.kind === "session" && sel.id === s.sessionId}
                 sender={senderName(st, s.createdBy)}
                 meta={view.metadata}
@@ -705,10 +803,10 @@ type RowHoverController = {
  * A session in the sidebar (docs/her-team.md §16): the coding agent's logo (with a brand-blue orbit while it runs),
  * the title (shimmering while it runs), and one mark (an orange dot while it waits for the owner, a red one when it
  * failed, or a delivered Git icon when pushed/merged); with metadata, who sent the work
- * to which agent, the project and the time. ⋯ in the mark's place on hover; right-click for the native menu.
+ * to which agent, the project and the time. Quick archive/unarchive (when applicable) and ⋯ in the mark's place on hover; right-click for the native menu.
  */
-export const SessionRow = memo(function SessionRow({ s, zone, sel, sender, meta, renaming, store, hover }: {
-  s: Session; zone: string; sel: boolean; sender: string; meta: boolean; renaming: boolean; store: RefObject<Store>; hover?: RefObject<RowHoverController>;
+export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renaming, store, hover }: {
+  s: Session; sel: boolean; sender: string; meta: boolean; renaming: boolean; store: RefObject<Store>; hover?: RefObject<RowHoverController>;
 }) {
   const { t } = useTranslation("common");
   const archived = s.status === SessionStatus.ARCHIVED;
@@ -723,7 +821,6 @@ export const SessionRow = memo(function SessionRow({ s, zone, sel, sender, meta,
       className={`srow ${renaming ? "renaming" : "has-act"} ${sel ? "sel" : ""} ${menu ? "menu-open" : ""} ${archived ? "arch" : ""}`}
       role="listitem"
       data-session-id={s.sessionId}
-      data-zone={zone}
       aria-current={sel || undefined}
       tabIndex={0}
       onMouseEnter={(e) => !renaming && !menu && hover?.current.enter(s.sessionId, e.currentTarget)}
@@ -768,20 +865,20 @@ export const SessionRow = memo(function SessionRow({ s, zone, sel, sender, meta,
           {!renaming && <span className="smeta"><RowMark s={s} /></span>}
           {!renaming && (
             <span className="rowacts">
-              {!archived && (
+              {(archived || isArchivable(s)) && (
                 <button
-                  className={`rowact ${s.pinned ? "pinned" : ""}`}
-                  title={t(s.pinned ? "sessionMenu.unpin" : "sessionMenu.pin")}
-                  aria-label={t(s.pinned ? "sessionMenu.unpin" : "sessionMenu.pin")}
-                  aria-pressed={s.pinned}
+                  className="rowact"
+                  title={t(archived ? "sessionMenu.unarchive" : "sessionMenu.archive")}
+                  aria-label={t(archived ? "sessionMenu.unarchive" : "sessionMenu.archive")}
                   onDoubleClick={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
                     hover?.current.dismiss();
-                    togglePin(store.current, s);
+                    if (archived) void unarchive(store.current, s);
+                    else archive(store.current, s);
                   }}
                 >
-                  <Icon name={s.pinned ? "pinFill" : "pin"} className="sm" />
+                  <Icon name={archived ? "unarchive" : "archive"} />
                 </button>
               )}
               <button
@@ -798,7 +895,7 @@ export const SessionRow = memo(function SessionRow({ s, zone, sel, sender, meta,
                   setMenu(menu ? null : { x: r.right, y: r.bottom + 4, key: e.detail === 0 });
                 }}
               >
-                <Icon name="more" className="sm" />
+                <Icon name="more" />
               </button>
             </span>
           )}
@@ -869,7 +966,7 @@ function RowMenu({ s, at, store, onClose }: { s: Session; at: { x: number; y: nu
   ];
   useLayoutEffect(() => {
     const el = ref.current!;
-    const top = at.y + el.offsetHeight > innerHeight - 8 ? at.y - el.offsetHeight - 30 : at.y;
+    const top = at.y + el.offsetHeight > innerHeight - 8 ? at.y - el.offsetHeight - 32 : at.y;
     setPos({ left: Math.max(8, at.x - el.offsetWidth), top });
     (at.key ? el.querySelector<HTMLElement>("[role=menuitem]:not(:disabled)") : el)?.focus();
   }, [at]);
@@ -1189,7 +1286,7 @@ export function ListViewMenu() {
     { id: "sort", label: t("listView.sort"), value: t(v.newestFirst ? "listView.newestFirst" : "listView.oldestFirst") },
     { id: "show", label: t("listView.show"), value: t(v.metadata ? "listView.metadata" : "listView.titleOnly") },
   ];
-  const hasCustomOrder = st.activeOrder.length > 0 || st.pinnedOrder.length > 0;
+  const hasCustomOrder = st.activeOrder.length > 0 || st.pinnedOrder.length > 0 || Object.keys(st.sectionOrder).length > 0;
   const choices: Record<ViewPane, ViewChoice[]> = {
     group: (Object.keys(groups) as SessionView["group"][]).map((g) => ({ label: groups[g], on: v.group === g, role: "menuitemradio", patch: { group: g } })),
     sort: [
@@ -1207,7 +1304,7 @@ export function ListViewMenu() {
               on: false,
               role: "menuitem" as const,
               run: () => {
-                st.set({ activeOrder: [], pinnedOrder: [] });
+                st.set({ activeOrder: [], pinnedOrder: [], sectionOrder: {} });
                 close(true);
               },
             },
