@@ -1,7 +1,10 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { expect, test } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import type { TrayView } from "../src/shared/bridge";
-import { cli, launch, onWindows, pickFrom, snap } from "./app";
+import { cli, fixture, launch, onWindows, pickFrom, snap } from "./app";
 
 // The composer's line (docs/thread-composer.md): the project and model menus, and the permission mode menu.
 async function pickDemoAndScripted(page: Page) {
@@ -446,6 +449,114 @@ test("sniffs shell blocks, masks secrets, runs multiline scripts in an inline te
     await expect(page.getByTestId("composer-shell-badge")).toBeVisible();
     await input.press("Enter");
     await expect(replies(page).last()).toContainText("Exit code: 0", { timeout: 15_000 });
+  } finally {
+    await app.close();
+  }
+});
+
+test("remembers unsent composer text and attachments independently across new session, existing sessions, overview, and app restarts", async () => {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-drafts-"));
+  let { app, page } = await launch(fixture.socket, { profile });
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    // Create two distinct sessions: alpha and beta.
+    await page.getByTestId("nav-new-thread").click();
+    await pickDemoAndScripted(page);
+    const input = () => page.getByTestId("thread-composer-input");
+    const tiles = () => page.getByTestId("thread-composer").locator(".cmp-att .tile");
+
+    await input().fill("say session_alpha_ready");
+    await input().press("Enter");
+    await expect(replies(page).first()).toContainText("session_alpha_ready", { timeout: 20_000 });
+
+    await page.getByTestId("nav-new-thread").click();
+    await expect(input()).toHaveValue("");
+    await input().fill("say session_beta_ready");
+    await input().press("Enter");
+    await expect(replies(page).first()).toContainText("session_beta_ready", { timeout: 20_000 });
+
+    const alphaRow = () => page.locator(".side-sessions [role=listitem]").filter({ hasText: "session_alpha_ready" });
+    const betaRow = () => page.locator(".side-sessions [role=listitem]").filter({ hasText: "session_beta_ready" });
+    await expect(alphaRow()).toBeVisible();
+    await expect(betaRow()).toBeVisible();
+
+    // Write a draft in Session Beta.
+    await input().fill("say beta_unsent_followup");
+
+    // Switch to Session Alpha: its composer is clean, and gets its own multi-line draft + image attachment.
+    await alphaRow().click();
+    await expect(input()).toHaveValue("");
+    await expect(tiles()).toHaveCount(0);
+
+    const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+    const uploaded = page.waitForResponse((r) => r.url().endsWith("/UploadBlob"));
+    await page.locator('.cmp input[type="file"]').setInputFiles({
+      name: "alpha-draft.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(pngBase64, "base64"),
+    });
+    await (await uploaded).finished();
+    await input().fill("alpha draft line 1\nalpha draft line 2");
+    await expect(tiles()).toHaveCount(1);
+    await expect
+      .poll(() => tiles().first().locator("img").evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0))
+      .toBe(true);
+
+    // Switch to New Session: starts empty, and keeps its own draft across project switches and project-group +.
+    await page.getByTestId("nav-new-thread").click();
+    await expect(input()).toHaveValue("");
+    await expect(tiles()).toHaveCount(0);
+    await input().fill("new session staging idea");
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-item-scratch"));
+    await expect(input()).toHaveValue("new session staging idea");
+
+    await page.getByRole("button", { name: "视图选项" }).click();
+    await page.getByRole("menu", { name: "视图选项" }).getByRole("menuitem", { name: /分组/ }).hover();
+    await page.getByRole("menu", { name: "分组" }).getByRole("menuitemradio", { name: "按项目" }).click();
+    await page.keyboard.press("Escape");
+    const demoGroup = page.locator(".side-sessions").getByRole("group", { name: "demo" });
+    await demoGroup.hover();
+    await demoGroup.getByRole("button", { name: "在 demo 里新建会话" }).click();
+    await expect(input()).toHaveValue("new session staging idea");
+
+    // Leave SessionPage completely (Overview) and verify all three drafts survive unmounting.
+    await page.locator(".side-nav").getByRole("button", { name: /^概览/ }).click();
+    await alphaRow().click();
+    await expect(input()).toHaveValue("alpha draft line 1\nalpha draft line 2");
+    await expect(tiles()).toHaveCount(1);
+    await betaRow().click();
+    await expect(input()).toHaveValue("say beta_unsent_followup");
+    await expect(tiles()).toHaveCount(0);
+
+    // Restart the app with the same profile: all three drafts and Alpha's image preview restore from storage.
+    await app.close();
+    ({ app, page } = await launch(fixture.socket, { profile }));
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    await alphaRow().click();
+    await expect(input()).toHaveValue("alpha draft line 1\nalpha draft line 2");
+    await expect(tiles()).toHaveCount(1);
+    await expect
+      .poll(() => tiles().first().locator("img").evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0))
+      .toBe(true);
+
+    await page.getByTestId("nav-new-thread").click();
+    await expect(input()).toHaveValue("new session staging idea");
+
+    // Sending in Beta clears only Beta's draft; Alpha and New Session keep theirs.
+    await betaRow().click();
+    await expect(input()).toHaveValue("say beta_unsent_followup");
+    await input().press("Enter");
+    await expect(input()).toHaveValue("");
+    await expect(replies(page).last()).toContainText("beta_unsent_followup", { timeout: 20_000 });
+
+    await alphaRow().click();
+    await expect(input()).toHaveValue("alpha draft line 1\nalpha draft line 2");
+    await expect(tiles()).toHaveCount(1);
+
+    await page.getByTestId("nav-new-thread").click();
+    await expect(input()).toHaveValue("new session staging idea");
   } finally {
     await app.close();
   }

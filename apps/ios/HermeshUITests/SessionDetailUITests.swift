@@ -43,6 +43,62 @@ final class SessionDetailUITests: XCTestCase {
         tap("close")
     }
 
+    /// Unsent composer drafts stay isolated across New Session and each existing session, survive leaving for Overview,
+    /// and clear only on the session that sends.
+    func testComposerDraftMemoryAcrossNewSessionExistingSessionsAndOverview() {
+        let composer = app.descendants(matching: .any)["thread-composer"].firstMatch
+        let composerText = { (composer.value as? String) ?? "" }
+
+        openSessionFromDrawer("Long history session")
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        composer.tap()
+        composer.typeText("long session draft")
+        XCTAssertEqual(composerText(), "long session draft")
+
+        openSessionFromDrawer("Delayed history session")
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertNotEqual(composerText(), "long session draft", "Delayed session must not inherit Long session draft")
+        composer.tap()
+        composer.typeText("delayed session draft")
+        XCTAssertEqual(composerText(), "delayed session draft")
+
+        // New Session has its own draft, isolated from both existing sessions.
+        tap("menu")
+        tap("new-session-place")
+        XCTAssertTrue(app.descendants(matching: .any)["new-session-title"].waitForExistence(timeout: 10))
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertFalse(["long session draft", "delayed session draft"].contains(composerText()))
+        composer.tap()
+        composer.typeText("new session draft")
+        XCTAssertEqual(composerText(), "new session draft")
+
+        // Leave SessionPage completely for Overview, then come back to each target.
+        openOverview()
+
+        openSessionFromDrawer("Long history session")
+        XCTAssertTrue(waitUntil(timeout: 5) { composerText() == "long session draft" }, "Long session draft kept: \(composerText())")
+
+        tap("menu")
+        tap("new-session-place")
+        XCTAssertTrue(waitUntil(timeout: 5) { composerText() == "new session draft" }, "New session draft kept: \(composerText())")
+
+        openSessionFromDrawer("Delayed history session")
+        XCTAssertTrue(waitUntil(timeout: 5) { composerText() == "delayed session draft" }, "Delayed session draft kept: \(composerText())")
+
+        // Sending in Delayed clears only Delayed's draft; Long and New Session keep theirs.
+        let sendBtn = app.buttons["thread-send"]
+        XCTAssertTrue(waitUntil(timeout: 5) { sendBtn.isEnabled })
+        sendBtn.tap()
+        XCTAssertTrue(waitUntil(timeout: 5) { composerText() != "delayed session draft" })
+
+        openSessionFromDrawer("Long history session")
+        XCTAssertTrue(waitUntil(timeout: 5) { composerText() == "long session draft" }, "Long session draft untouched after Delayed sent")
+
+        tap("menu")
+        tap("new-session-place")
+        XCTAssertTrue(waitUntil(timeout: 5) { composerText() == "new session draft" }, "New session draft untouched after Delayed sent")
+    }
+
     /// Long history, delayed multi-batch loading, re-entry, and switching all land at the latest bottom content.
     func testLongDelayedReenterAndSwitchPositionAtBottom() {
         // 1. Delayed history opened cold from Overview ("查看进展 -> 会话详情").

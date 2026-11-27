@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { applyWatch, emptyWorld, mergeSessions, type World } from "@hermesh/core";
 import { SessionView } from "@hermesh/proto/session";
 import { local } from "./api";
+import { forgetSessionDraft } from "./session/draftMemory";
 
 // What the window knows of the owner's world, as hermeshd pushes it
 // (LocalService.Watch, docs/state-sync.md): everything at once, then each
@@ -30,6 +31,7 @@ export function useWorld(): WorldState & { loadOlder: () => void; refreshStatus:
       while (!signal.aborted) {
         try {
           for await (const m of local.watch({}, { signal })) {
+            for (const id of m.deletedSessionIds) forgetSessionDraft(id);
             setState((s) => {
               const w = applyWatch(s, m);
               return w === s && !s.down ? s : { ...s, ...w, down: false };
