@@ -66,7 +66,9 @@ func TestHerConversationReal(t *testing.T) {
 		t.Fatalf("StartSession with Her: %v", err)
 	}
 	conv := started.GetSession().GetSessionId()
-	t.Cleanup(func() { sc.DeleteSession(context.Background(), &sessionv1.DeleteSessionRequest{MachineId: env.machine, SessionId: conv}) })
+	t.Cleanup(func() {
+		sc.DeleteSession(context.Background(), &sessionv1.DeleteSessionRequest{MachineId: env.machine, SessionId: conv})
+	})
 	s := idle("Her's answer", conv, 1)
 	t.Logf("Her answered: %q (title %q)", s.Result, s.Title)
 	if !strings.Contains(s.Result, "5") {
@@ -115,7 +117,9 @@ func TestHerConversationReal(t *testing.T) {
 	if child == nil {
 		t.Fatalf("Her started nothing: %v %q", s.GetStatus(), s.GetResult())
 	}
-	t.Cleanup(func() { sc.DeleteSession(context.Background(), &sessionv1.DeleteSessionRequest{MachineId: child.MachineId, SessionId: child.SessionId}) })
+	t.Cleanup(func() {
+		sc.DeleteSession(context.Background(), &sessionv1.DeleteSessionRequest{MachineId: child.MachineId, SessionId: child.SessionId})
+	})
 	if approved == 0 {
 		t.Fatal("Her started a coding agent without asking the owner")
 	}

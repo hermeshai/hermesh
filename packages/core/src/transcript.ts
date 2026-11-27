@@ -391,8 +391,8 @@ export function sessionFailure(s: Session | undefined): Failure | undefined {
   return undefined;
 }
 
-/** What the session's active run does now: runs a tool, thinks, writes its reply, or anything else (working). */
-export type SessionWork = "tool" | "thinking" | "replying" | "working";
+/** What the session's active run does now: runs a tool, thinks, writes its reply, waits quietly on the model, or works. */
+export type SessionWork = "tool" | "thinking" | "replying" | "waiting" | "working";
 
 export function sessionWork(proj: SessionProjection | null | undefined): SessionWork {
   const run = proj?.session?.activeRunId;
@@ -406,6 +406,7 @@ export function sessionWork(proj: SessionProjection | null | undefined): Session
   if (now.some((it) => it.kind === TurnItemKind.REASONING && it.streaming)) return "thinking";
   if (now.some((it) => it.kind === TurnItemKind.ASSISTANT_MESSAGE && it.streaming)) return "replying";
   if (now.some((it) => it.status === "running" && bgItemIds.has(it.itemId) && tools.includes(it.kind))) return "tool";
+  if (proj.session?.status === SessionStatus.RUNNING && proj.session.progress?.quietSince) return "waiting";
   return "working";
 }
 
@@ -634,8 +635,15 @@ export function sessionFocusText(proj: SessionProjection | null | undefined): st
   const work = sessionWork(proj);
   if (work === "thinking" || work === "replying") return undefined;
 
+  const chain = currentTurnChainRunIds(proj);
+  const { focus: explicitFocus } = reduceChainProgress(proj, chain);
+  const curTool = s.progress?.currentTool?.trim() ?? "";
+
+  if (work === "waiting") {
+    return curTool && curTool !== explicitFocus ? curTool : undefined;
+  }
+
   const bgItemIds = activeBackgroundItemIdsOf(proj);
-  const toolLabel = (it: TurnItem): string => it.text.trim() || it.toolName.trim() || it.command.trim();
 
   const fgRunningTool = proj.items.findLast(
     (it) =>
@@ -643,9 +651,9 @@ export function sessionFocusText(proj: SessionProjection | null | undefined): st
       it.status === "running" &&
       !bgItemIds.has(it.itemId) &&
       (it.kind === TurnItemKind.COMMAND_EXECUTION || (it.kind === TurnItemKind.TOOL_CALL && !isMetaProgressToolItem(it))) &&
-      toolLabel(it) !== "",
+      it.text.trim() !== "",
   );
-  if (fgRunningTool) return toolLabel(fgRunningTool);
+  if (fgRunningTool) return fgRunningTool.text.trim();
 
   const awaitedBgs = activeBackgroundTasksOf(proj).filter((bt) => bt.awaited && bt.kind !== BackgroundTaskKind.DAEMON);
   if (awaitedBgs.length > 0) {
@@ -654,9 +662,9 @@ export function sessionFocusText(proj: SessionProjection | null | undefined): st
     if (lbl) return awaitedBgs.length > 1 ? `${lbl} (+${awaitedBgs.length - 1})` : lbl;
   }
 
-  const chain = currentTurnChainRunIds(proj);
-  const { focus: explicitFocus } = reduceChainProgress(proj, chain);
+  if (work === "working" && curTool && curTool !== explicitFocus) return curTool;
   if (explicitFocus) return explicitFocus;
+  if (work === "working" && curTool) return curTool;
 
   const inProgressStep = activeTodoSteps(proj).find((st) => st.status === "in_progress");
   return inProgressStep?.text;

@@ -116,8 +116,8 @@ func (t *tracked) update(procs []procInfo) {
 	}
 }
 
-// running returns the arguments of the descendants alive now, the newest
-// first.
+// running returns the arguments of the non-baseline descendants alive now,
+// the newest first.
 func (t *tracked) running() [][]string {
 	procs := listProcs()
 	t.update(procs)
@@ -128,7 +128,7 @@ func (t *tracked) running() [][]string {
 	var live []procInfo
 	tracker.mu.Lock()
 	for pid, st := range t.known {
-		if alive[pid] == st {
+		if alive[pid] == st && t.baseline[pid] != st {
 			live = append(live, procInfo{pid: pid, start: st})
 		}
 	}
@@ -187,6 +187,37 @@ func (t *tracked) hasActiveDescendants() bool {
 		}
 	}
 	return false
+}
+
+// cpuTicks sums cumulative CPU counters across the root process and any
+// currently alive non-baseline tracked descendants.
+func (t *tracked) cpuTicks(rootPid int) (uint64, bool) {
+	var total uint64
+	var anyOK bool
+	if rootPid > 0 {
+		if v, ok := procCPU(rootPid); ok {
+			total += v
+			anyOK = true
+		}
+	}
+	if t == nil {
+		return total, anyOK
+	}
+	var pids []int
+	tracker.mu.Lock()
+	for pid, st := range t.known {
+		if pid != rootPid && t.baseline[pid] != st {
+			pids = append(pids, pid)
+		}
+	}
+	tracker.mu.Unlock()
+	for _, pid := range pids {
+		if v, ok := procCPU(pid); ok {
+			total += v
+			anyOK = true
+		}
+	}
+	return total, anyOK
 }
 
 // stop kills every remembered descendant still alive and stops tracking.

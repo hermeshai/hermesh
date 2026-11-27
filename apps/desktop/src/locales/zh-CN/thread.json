@@ -49,6 +49,7 @@
     "thinking": "思考中",
     "replying": "回复中",
     "tool": "处理中",
+    "waiting": "等待模型响应",
     "working": "工作中"
   },
   "todo": {
@@ -107,7 +108,10 @@
     "start": "开始会话",
     "send": "发送",
     "steer": "中途引导",
+    "steerNow": "打断并发送",
+    "steerHint": "立即打断并发送（{{keys}}）",
     "queue": "加入队列",
+    "queueHint": "排入下一轮（{{keys}}）",
     "queueOffline": "离线入队",
     "stop": "停止",
     "forceStop": "强制终止",

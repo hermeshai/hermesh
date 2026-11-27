@@ -85,7 +85,7 @@ test("launches a supervised v2 thread, handles live tool approval, and shows it 
     // The conversation as a session's: the message on the right, the reply across, the steps as one folded line.
     await expect(conversation(page).locator(".um .bub")).toContainText("write ui_v2.txt");
     await expect(replies(page)).toContainText("ui_turn_complete");
-    const steps = conversation(page).locator(".tgroup, .tool").first();
+    const steps = conversation(page).locator(".tgroup, :not([data-testid=thread-workspace]) > .tool").first();
     await steps.locator("button").first().click();
     await expect(conversation(page)).toContainText("ui_v2.txt");
     await expect(conversation(page)).toContainText("+hello_from_v2_ui");
@@ -155,18 +155,18 @@ test("while a turn runs, messages queue; one can steer the turn now, be edited o
     await expect(page.getByTestId("composer-stop-btn")).toBeVisible({ timeout: 10_000 });
     await expect.poll(async () => (await trayView(app)).running).toBe(runningBefore + 1);
 
-    // A message sent while running waits for the next turn; the queue's "steer now" puts it into this one.
+    // On a live-steer provider (MidTurnSteer = true), Enter / primary submit steers directly into the live timeline;
+    // the explicit Queue button enqueues follow-ups for the next turn.
     await page.getByTestId("thread-composer-input").fill("Focus on test coverage");
     await page.getByTestId("composer-submit-btn").click();
-    await expect(page.getByTestId("queued-run-0")).toContainText("Focus on test coverage");
-    await page.getByTestId("queue-promote-0").click();
 
-    // Steered message appears immediately in the live timeline.
+    // Steered message appears immediately in the live timeline without sitting in the queue.
     await expect(conversation(page)).toContainText("Focus on test coverage");
+    await expect(page.getByTestId("queued-runs-strip")).toHaveCount(0);
 
-    // Enqueue a follow-up turn while the active turn is still running, edit it, and cancel it!
+    // Enqueue a follow-up turn via the explicit Queue button while the active turn is still running, edit it, and cancel it!
     await page.getByTestId("thread-composer-input").fill("Draft follow-up 1");
-    await page.getByTestId("composer-submit-btn").click();
+    await page.getByTestId("composer-queue-btn").click();
 
     const strip = page.getByTestId("queued-runs-strip");
     await expect(strip).toBeVisible();
@@ -225,6 +225,17 @@ test("on an ACP provider without native mid-turn steer, Steer Now promotes the c
     await expect(replies(page).first()).toContainText("acp_steered_first", { timeout: 15_000 });
     await expect(replies(page).nth(1)).toContainText("acp_queued_second", { timeout: 15_000 });
     await expect(page.getByTestId("queued-runs-strip")).toHaveCount(0);
+    await expect(page.getByTestId("composer-stop-btn")).toHaveCount(0, { timeout: 10_000 });
+
+    // Also verify the direct composer Steer button (1-click interrupt & send on ACP without queueing first):
+    await page.getByTestId("thread-composer-input").fill("sleep 20s");
+    await page.getByTestId("composer-submit-btn").click();
+    await expect(page.getByTestId("composer-stop-btn")).toBeVisible({ timeout: 10_000 });
+
+    await page.getByTestId("thread-composer-input").fill("say acp_direct_steered");
+    await expect(page.getByTestId("composer-steer-btn")).toBeVisible();
+    await page.getByTestId("composer-steer-btn").click();
+    await expect(replies(page).nth(2)).toContainText("acp_direct_steered", { timeout: 15_000 });
     await expect(page.getByTestId("composer-stop-btn")).toHaveCount(0, { timeout: 10_000 });
   } finally {
     await app.close();

@@ -851,6 +851,7 @@ struct SessionPage: View {
             case .tool: String(localized: "Running tools…")
             case .thinking: String(localized: "Thinking…")
             case .replying: String(localized: "Replying…")
+            case .waiting: String(localized: "Waiting for model response…")
             case .working: String(localized: "Working…")
             }
             return SessionWorkStatus(text: sessionFocusText(activeProj) ?? defaultText, since: run.flatMap { dateOf($0.startedAt, set: $0.hasStartedAt) })
@@ -881,12 +882,45 @@ struct SessionPage: View {
         return trimmed.first == "!"
     }
 
+    private var canLiveSteer: Bool {
+        guard let cur = currentSession, cur.status == .running, cur.pendingRequestID.isEmpty else { return false }
+        let targetID = selection.instanceID.isEmpty ? cur.modelSelection.instanceID : selection.instanceID
+        let inst = providers.first { $0.instanceID == targetID }
+        guard inst?.capabilities.midTurnSteer == true else { return false }
+        return selection.instanceID.isEmpty || cur.modelSelection.instanceID.isEmpty || selection.instanceID == cur.modelSelection.instanceID
+    }
+
     private var box: some View {
         let ready = !sending && starting == nil && uploading == 0 && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attached.isEmpty)
         let open = boxOpen
         let shellDraft = isShellDraft
         let store = SessionAttachmentStore.shared
+        let waitingInput = currentSession?.status == .waitingInput
+        let liveSteer = canLiveSteer
         let ends = HStack(spacing: 8) {
+            if ready && online && !shellDraft && running && !waitingInput {
+                if liveSteer {
+                    Button { send(explicitIntent: .queue) } label: {
+                        Text("Queue")
+                            .font(.footnote.weight(.medium))
+                            .padding(.horizontal, 11).frame(height: 36)
+                            .background(Palette.fill2, in: Capsule())
+                    }
+                    .tint(.primary)
+                    .accessibilityIdentifier("thread-queue")
+                } else {
+                    Button { send(explicitIntent: .steer) } label: {
+                        Label("Steer", systemImage: "bolt.fill")
+                            .labelStyle(.iconOnly)
+                            .font(.footnote.weight(.semibold))
+                            .frame(width: 36, height: 36)
+                            .foregroundStyle(Color("AccentColor"))
+                            .background(Color("AccentColor").opacity(0.15), in: .circle)
+                    }
+                    .accessibilityLabel(Text("Steer Now"))
+                    .accessibilityIdentifier("thread-steer")
+                }
+            }
             if running {
                 Button { stop() } label: {
                     Image(systemName: "stop.fill").font(.footnote).frame(width: 36, height: 36).background(Palette.fill2, in: .circle)
@@ -901,7 +935,7 @@ struct SessionPage: View {
                     .background(Color("AccentColor").opacity(ready ? 1 : 0.4), in: .circle)
             }
             .disabled(!ready)
-            .accessibilityLabel(Text(online ? "Send" : "Queue Until It’s Online"))
+            .accessibilityLabel(Text(online ? (running && !waitingInput ? (liveSteer && !shellDraft ? "Steer" : "Queue") : "Send") : "Queue Until It’s Online"))
             .accessibilityIdentifier("thread-send")
         }
         return VStack(alignment: .leading, spacing: 6) {
@@ -1415,19 +1449,19 @@ struct SessionPage: View {
         }
     }
 
-    private func send() {
+    private func send(explicitIntent: Hermesh_Session_V1_DispatchIntent? = nil) {
         if focused, let field = UIResponder.herFirst, (field as? UITextInput)?.markedTextRange != nil {
             focused = false
             _ = field.resignFirstResponder()
-            Task { @MainActor in sendCommitted() }
+            Task { @MainActor in sendCommitted(explicitIntent: explicitIntent) }
             return
         }
         focused = false
         hideKeyboard()
-        sendCommitted()
+        sendCommitted(explicitIntent: explicitIntent)
     }
 
-    private func sendCommitted() {
+    private func sendCommitted(explicitIntent: Hermesh_Session_V1_DispatchIntent? = nil) {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty || !attached.isEmpty, let api = model.api else { return }
         if isNew && who == .her && !model.isDemo && !model.her.aiConsentAccepted {
@@ -1438,7 +1472,7 @@ struct SessionPage: View {
             let modelLabel = entry?.name ?? (slug.isEmpty ? nil : slug)
             aiConsentPrompt = HerAIConsentPrompt(provider: providerLabel, model: modelLabel, allow: {
                 model.her.aiConsentAccepted = true
-                send()
+                send(explicitIntent: explicitIntent)
             })
             return
         }
@@ -1472,13 +1506,22 @@ struct SessionPage: View {
         draft = ""
         attached = []
         spoken += 1
+        let defaultIntent: Hermesh_Session_V1_DispatchIntent = if !online {
+            .queue
+        } else if currentSession?.status == .waitingInput {
+            .auto
+        } else if running {
+            canLiveSteer ? .steer : .queue
+        } else {
+            .auto
+        }
         var r = Hermesh_Session_V1_DispatchMessageRequest()
         r.commandID = UUID().uuidString
         r.sessionID = sessionID
         r.text = text
         r.locale = AppLocale.current
         r.attachments = files.map(\.ref)
-        r.intent = .queue
+        r.intent = explicitIntent ?? defaultIntent
         if !selection.instanceID.isEmpty { r.modelSelection = selection }
         r.runtimeMode = clamped
         r.interactionMode = plan ? .plan : .code

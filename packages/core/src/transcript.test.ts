@@ -18,6 +18,7 @@ import {
   RuntimeRequestKind,
   RuntimeRequestSchema,
   RuntimeRequestStatus,
+  SessionProgressSchema,
   SessionProjectionSchema,
   SessionSchema,
   SessionStatus,
@@ -493,4 +494,61 @@ test("windowTodoSteps exposes all steps in order, handles parallel active steps,
   expect(long.stepNumber).toBe(4);
   expect(long.active.map((a) => a.index)).toEqual([3, 4]);
   expect(long.subFocus).toBe("Running Playwright and Simulator suites");
+});
+
+test("sessionWork and sessionFocusText distinguish quiet model waits, retry hints, and live OS child commands", () => {
+  const quietNoHint = create(SessionProjectionSchema, {
+    session: create(SessionSchema, {
+      sessionId: "s_quiet",
+      status: SessionStatus.RUNNING,
+      activeRunId: "r1",
+      progress: create(SessionProgressSchema, {
+        currentTool: "Old focus phrase",
+        quietSince: timestampFromDate(new Date("2026-11-27T09:20:38Z")),
+      }),
+    }),
+    runs: [create(RunSchema, { runId: "r1", status: RunStatus.RUNNING })],
+    items: [
+      create(TurnItemSchema, {
+        itemId: "todo",
+        runId: "r1",
+        kind: TurnItemKind.TODO_LIST,
+        status: "completed",
+        text: "Old focus phrase",
+      }),
+    ],
+  });
+  expect(sessionWork(quietNoHint)).toBe("waiting");
+  expect(sessionFocusText(quietNoHint)).toBeUndefined();
+
+  const quietWithRetry = create(SessionProjectionSchema, {
+    session: create(SessionSchema, {
+      sessionId: "s_retry",
+      status: SessionStatus.RUNNING,
+      activeRunId: "r1",
+      progress: create(SessionProgressSchema, {
+        currentTool: "HTTP 503 Unavailable, retrying in 4s",
+        quietSince: timestampFromDate(new Date("2026-11-27T09:20:38Z")),
+      }),
+    }),
+    runs: [create(RunSchema, { runId: "r1", status: RunStatus.RUNNING })],
+    items: [],
+  });
+  expect(sessionWork(quietWithRetry)).toBe("waiting");
+  expect(sessionFocusText(quietWithRetry)).toBe("HTTP 503 Unavailable, retrying in 4s");
+
+  const childCmd = create(SessionProjectionSchema, {
+    session: create(SessionSchema, {
+      sessionId: "s_child",
+      status: SessionStatus.RUNNING,
+      activeRunId: "r1",
+      progress: create(SessionProgressSchema, {
+        currentTool: "cargo build --workspace",
+      }),
+    }),
+    runs: [create(RunSchema, { runId: "r1", status: RunStatus.RUNNING })],
+    items: [],
+  });
+  expect(sessionWork(childCmd)).toBe("working");
+  expect(sessionFocusText(childCmd)).toBe("cargo build --workspace");
 });

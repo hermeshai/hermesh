@@ -31,6 +31,7 @@ export function session(
     agent?: string;
     machine?: string;
     title?: string;
+    turns?: number;
   } = {},
 ): Session {
   const updated = o.updated ?? -60;
@@ -44,6 +45,7 @@ export function session(
     agent: o.agent ?? "claude",
     machineId: o.machine ?? "m1",
     title: o.title ?? id,
+    progress: o.turns !== undefined ? create(SessionProgressSchema, { turnCount: o.turns }) : undefined,
   });
 }
 

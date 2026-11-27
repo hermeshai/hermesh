@@ -312,15 +312,18 @@ public func sessionTranscript(_ proj: Hermesh_Session_V1_SessionProjection?) -> 
     return out
 }
 
-/// What the session's active run does now: runs a tool, thinks, writes its reply, or anything else (working).
-public enum SessionWork: Equatable, Sendable { case tool, thinking, replying, working }
+/// What the session's active run does now: runs a tool, thinks, writes its reply, waits quietly on the model, or works.
+public enum SessionWork: Equatable, Sendable { case tool, thinking, replying, waiting, working }
 
 public func sessionWork(_ proj: Hermesh_Session_V1_SessionProjection?) -> SessionWork {
     guard let proj, !proj.session.activeRunID.isEmpty else { return .working }
     let now = proj.items.filter { $0.runID == proj.session.activeRunID }
-    if now.contains(where: { $0.status == "running" && [.toolCall, .commandExecution, .fileChange].contains($0.kind) && !isMetaProgressToolItem($0) }) { return .tool }
+    let bgItemIDs = activeBackgroundItemIDs(of: proj)
+    if now.contains(where: { $0.status == "running" && !bgItemIDs.contains($0.itemID) && [.toolCall, .commandExecution, .fileChange].contains($0.kind) && !isMetaProgressToolItem($0) }) { return .tool }
     if now.contains(where: { $0.kind == .reasoning && $0.streaming }) { return .thinking }
     if now.contains(where: { $0.kind == .assistantMessage && $0.streaming }) { return .replying }
+    if now.contains(where: { $0.status == "running" && bgItemIDs.contains($0.itemID) && [.toolCall, .commandExecution, .fileChange].contains($0.kind) }) { return .tool }
+    if proj.session.status == .running && proj.session.progress.hasQuietSince { return .waiting }
     return .working
 }
 
@@ -420,13 +423,17 @@ private func reduceChainProgress(_ proj: Hermesh_Session_V1_SessionProjection, c
     for it in proj.items where chain.contains(it.runID) {
         if it.kind == .todoList {
             if !it.todoSteps.isEmpty {
-                steps = it.todoSteps.compactMap { step in
+                let parsed: [TodoStepView] = it.todoSteps.compactMap { step in
                     let text = step.text.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !text.isEmpty else { return nil }
                     return TodoStepView(text: text, status: normalizeTodoStepStatus(step.status))
                 }
+                steps = parsed
+                let allSettled = !parsed.isEmpty && parsed.allSatisfy { $0.status == .completed || $0.status == .skipped }
+                focus = allSettled ? "" : it.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                focus = it.text.trimmingCharacters(in: .whitespacesAndNewlines)
             }
-            focus = it.text.trimmingCharacters(in: .whitespacesAndNewlines)
             continue
         }
         guard it.kind == .toolCall, it.command.isEmpty else { continue }
@@ -462,7 +469,8 @@ private func reduceChainProgress(_ proj: Hermesh_Session_V1_SessionProjection, c
             }
         }
         steps = parsed
-        focus = nextFocus
+        let allSettled = !parsed.isEmpty && parsed.allSatisfy { $0.status == .completed || $0.status == .skipped }
+        focus = allSettled ? "" : nextFocus
     }
     return (steps, focus)
 }
@@ -538,17 +546,37 @@ public func sessionFocusText(_ proj: Hermesh_Session_V1_SessionProjection?) -> S
 
     let chain = currentTurnChainRunIDs(proj)
     let (_, focus) = reduceChainProgress(proj, chain: chain)
-    if !focus.isEmpty { return focus }
+    let curTool = proj.session.progress.currentTool.trimmingCharacters(in: .whitespacesAndNewlines)
 
+    if work == .waiting {
+        return !curTool.isEmpty && curTool != focus ? curTool : nil
+    }
+
+    let bgItemIDs = activeBackgroundItemIDs(of: proj)
     let activeRunID = proj.session.activeRunID
-    if let runningTool = proj.items.last(where: {
+    if let fgTool = proj.items.last(where: {
         $0.runID == activeRunID &&
         $0.status == "running" &&
+        !bgItemIDs.contains($0.itemID) &&
         ($0.kind == .commandExecution || ($0.kind == .toolCall && !isMetaProgressToolItem($0))) &&
         !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }) {
-        return runningTool.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return fgTool.text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    let awaitedBgs = activeBackgroundTasks(of: proj).filter { $0.awaited && $0.kind != .daemon }
+    if let latest = awaitedBgs.last {
+        let lbl = [latest.title, latest.command]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? ""
+        if !lbl.isEmpty {
+            return awaitedBgs.count > 1 ? "\(lbl) (+\(awaitedBgs.count - 1))" : lbl
+        }
+    }
+
+    if work == .working && !curTool.isEmpty && curTool != focus { return curTool }
+    if !focus.isEmpty { return focus }
+    if work == .working && !curTool.isEmpty { return curTool }
 
     return activeTodoSteps(proj).first(where: { $0.status == .inProgress })?.text
 }

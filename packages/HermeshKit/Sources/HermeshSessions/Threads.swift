@@ -107,7 +107,7 @@ public func composerPrimaryAction(
         return supportsLiveSteer && status == .running ? .steer : .queue
     }
     if status == .waitingInput {
-        return draftNotEmpty ? .queue : .stop
+        return draftNotEmpty ? .send : .stop
     }
     if status == .queued {
         return .queue

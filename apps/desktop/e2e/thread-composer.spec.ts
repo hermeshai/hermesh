@@ -196,7 +196,7 @@ test("a session on another machine: its folder added as a project, the model pic
     expect(line.y + line.height).toBeLessThan((await input.boundingBox())!.y);
     await snap(page, "composer-working");
     await input.fill("say after_the_stop");
-    await input.press("Enter");
+    await page.getByTestId("composer-queue-btn").click();
     await expect(page.getByTestId("queued-run-0")).toContainText("say after_the_stop");
     await page.getByTestId("composer-stop-btn").click();
     await expect(page.getByRole("log").locator(".am").last()).toContainText("after_the_stop", { timeout: 30_000 });

@@ -213,10 +213,19 @@ echo "waiting for the keychain, api_key=abcd1234efgh5678" >&2; echo ready; wait`
 		if s := d.String(); s != "running: sleep 62, sh -c /bin/sleep 62; :, sleep 61; stderr: "+d.Stderr {
 			t.Fatalf("summary %q", s)
 		}
+		if !d.HasCPU || d.CPUTicks == 0 {
+			t.Fatalf("expected positive CPU ticks, got HasCPU=%v CPUTicks=%d", d.HasCPU, d.CPUTicks)
+		}
 	})
 	many := Diagnosis{Running: []string{"a", "b", "c", "d", "e", "f", "g"}, Stderr: strings.Repeat("x", 1000)}
 	if s := many.String(); !strings.HasPrefix(s, "running: a, b, c, d, e and 2 more; stderr: …x") || len(s) > 400 {
 		t.Fatalf("long summary %q", s)
+	}
+	if got := TransientNoticeFromStderr("normal log | HTTP 503: The service is currently unavailable, retrying in 4s"); !strings.Contains(got, "503") {
+		t.Fatalf("expected transient retry notice, got %q", got)
+	}
+	if got := TransientNoticeFromStderr("all good | completed step"); got != "" {
+		t.Fatalf("expected empty notice for benign stderr, got %q", got)
 	}
 }
 

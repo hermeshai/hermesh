@@ -420,6 +420,7 @@ message SessionProgress {
   Failure last_failure = 8;
   Question pending_question = 9;
   google.protobuf.Timestamp turn_started_at = 10;
+  google.protobuf.Timestamp quiet_since = 11;
 }
 
 enum TitleState {

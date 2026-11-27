@@ -342,27 +342,42 @@ func (p *Proc) LastOutput() time.Time {
 	return time.Time{}
 }
 
-func (p *Proc) Done() <-chan struct{} { return p.done }
-func (p *Proc) Err() error            { return p.err }
-func (p *Proc) StderrTail() string    { return p.stderr.String() }
+func (p *Proc) Done() <-chan struct{} {
+	if p == nil {
+		return nil
+	}
+	return p.done
+}
+func (p *Proc) Err() error         { return p.err }
+func (p *Proc) StderrTail() string { return p.stderr.String() }
 
 // Diagnosis is what an agent's process is doing, for the report of a
 // stall: the programs still running under it, newest first (what it may
 // be waiting for: an MCP server starting, a credential prompt, a
 // download), and the last lines of its stderr. Windows lists no programs.
 type Diagnosis struct {
-	Running []string
-	Stderr  string
+	Running    []string
+	Stderr     string
+	LastOutput time.Time
+	CPUTicks   uint64
+	HasCPU     bool
 }
 
 // Diagnose looks at the process now.
 func (p *Proc) Diagnose() Diagnosis {
+	if p == nil {
+		return Diagnosis{}
+	}
 	var d Diagnosis
-	for _, args := range p.tree.running() {
-		cmd := strings.Join(append([]string{filepath.Base(args[0])}, args[1:]...), " ")
-		d.Running = append(d.Running, clip(Redact(cmd), 200))
+	if p.tree != nil {
+		for _, args := range p.tree.running() {
+			cmd := strings.Join(append([]string{filepath.Base(args[0])}, args[1:]...), " ")
+			d.Running = append(d.Running, clip(Redact(cmd), 200))
+		}
 	}
 	d.Stderr = Redact(lastLines(strings.TrimSpace(p.stderr.String()), 10))
+	d.LastOutput = p.LastOutput()
+	d.CPUTicks, d.HasCPU = p.tree.cpuTicks(p.pid)
 	return d
 }
 
@@ -393,6 +408,36 @@ func (p *Proc) HasActiveDescendants() bool {
 	default:
 	}
 	return p.tree.hasActiveDescendants()
+}
+
+// TransientNoticeFromStderr extracts a concise single-line retry or rate-limit
+// status hint from a provider's recent stderr lines when present.
+func TransientNoticeFromStderr(stderr string) string {
+	stderr = strings.TrimSpace(stderr)
+	if stderr == "" {
+		return ""
+	}
+	parts := strings.Split(stderr, "|")
+	for i := len(parts) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(parts[i])
+		if line == "" {
+			continue
+		}
+		lower := strings.ToLower(line)
+		isRetry := strings.Contains(lower, "retrying") ||
+			strings.Contains(lower, "retry in") ||
+			strings.Contains(lower, "overloaded") ||
+			strings.Contains(lower, "rate limit") ||
+			strings.Contains(lower, "rate_limit") ||
+			strings.Contains(lower, "503") ||
+			strings.Contains(lower, "529") ||
+			strings.Contains(lower, "temporarily unavailable") ||
+			strings.Contains(lower, "service is currently unavailable")
+		if isRetry {
+			return clip(Redact(line), 160)
+		}
+	}
+	return ""
 }
 
 // String is d on one line for a failure message: the newest programs and

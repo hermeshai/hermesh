@@ -38,6 +38,7 @@ type Driver struct {
 	DisableResume    bool
 	EnableTitleGen   bool
 	TitleFunc        func(ctx context.Context, req runtime.TitleGenRequest) (runtime.TitleGenResult, error)
+	DiagnoseFunc     func(sessionID string) runtime.Diagnosis
 
 	mu         sync.Mutex
 	startSpecs []runtime.StartSpec
@@ -172,6 +173,13 @@ type session struct {
 
 func (s *session) Events() <-chan runtime.Event { return s.events }
 func (s *session) Alive() bool                  { return s.alive.Load() }
+
+func (s *session) Diagnose() runtime.Diagnosis {
+	if s.drv != nil && s.drv.DiagnoseFunc != nil {
+		return s.drv.DiagnoseFunc(s.spec.SessionID)
+	}
+	return runtime.Diagnosis{}
+}
 
 func (s *session) SetTitle(_ context.Context, title string) error {
 	s.drv.mu.Lock()

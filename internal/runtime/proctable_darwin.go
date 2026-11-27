@@ -4,9 +4,40 @@ import (
 	"bytes"
 	"encoding/binary"
 	"os"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
+
+const (
+	procInfoCallPidInfo = 2
+	procPidTaskInfo     = 4
+	procTaskInfoSize    = 96
+)
+
+// procCPU returns pid's cumulative user + system CPU time in nanoseconds via
+// Darwin's proc_pidinfo(PROC_PIDTASKINFO).
+func procCPU(pid int) (uint64, bool) {
+	if pid <= 0 {
+		return 0, false
+	}
+	var buf [procTaskInfoSize]byte
+	n, _, errno := unix.Syscall6(
+		unix.SYS_PROC_INFO,
+		procInfoCallPidInfo,
+		uintptr(pid),
+		procPidTaskInfo,
+		0,
+		uintptr(unsafe.Pointer(&buf[0])),
+		procTaskInfoSize,
+	)
+	if errno != 0 || int(n) < 32 {
+		return 0, false
+	}
+	userNS := binary.NativeEndian.Uint64(buf[16:24])
+	sysNS := binary.NativeEndian.Uint64(buf[24:32])
+	return userNS + sysNS, true
+}
 
 // procArgs returns pid's arguments (nil when they cannot be read). The
 // kernel gives argc, the executable's path, padding, then the arguments.

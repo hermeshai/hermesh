@@ -131,6 +131,7 @@ import Testing
     #expect(composerPrimaryAction(hasSession: true, status: .running, draftNotEmpty: true, machineOnline: true, supportsLiveSteer: false) == .queue)
     #expect(composerPrimaryAction(hasSession: true, status: .idle, draftNotEmpty: true, machineOnline: false, supportsLiveSteer: true) == .queueOffline)
     #expect(composerPrimaryAction(hasSession: true, status: .idle, draftNotEmpty: true, machineOnline: true, supportsLiveSteer: true) == .send)
+    #expect(composerPrimaryAction(hasSession: true, status: .waitingInput, draftNotEmpty: true, machineOnline: true, supportsLiveSteer: false) == .send)
 }
 
 @Suite struct SessionComposerTests {

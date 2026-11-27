@@ -202,6 +202,54 @@ type Config struct {
 	// out-of-turn wakeup after its last awaited background task settles; zero uses
 	// the production default (3s).
 	WakeupHandoffGrace time.Duration
+	// StreamIdleSettle bounds how long a streaming AssistantMessage or Reasoning
+	// item keeps Streaming=true without a new delta; zero uses 8s.
+	StreamIdleSettle time.Duration
+	// QuietThreshold is how long an active RUNNING turn may emit zero events
+	// before liveness introspection updates SessionProgress.QuietSince; zero uses 15s.
+	QuietThreshold time.Duration
+	// StallTimeout is how long an active RUNNING turn with zero events, zero
+	// awaited background tasks, zero child processes, and zero CPU progress may
+	// sit before failing with FAILURE_KIND_STALLED; zero uses 5m (<0 disables).
+	StallTimeout time.Duration
+	// WatchdogInterval sets the active-turn liveness check cadence; zero uses
+	// min(StreamIdleSettle/2, 2s).
+	WatchdogInterval time.Duration
+}
+
+func (e *Engine) streamIdleSettle() time.Duration {
+	if e.cfg.StreamIdleSettle > 0 {
+		return e.cfg.StreamIdleSettle
+	}
+	return 8 * time.Second
+}
+
+func (e *Engine) quietThreshold() time.Duration {
+	if e.cfg.QuietThreshold > 0 {
+		return e.cfg.QuietThreshold
+	}
+	return 15 * time.Second
+}
+
+func (e *Engine) stallTimeout() time.Duration {
+	if e.cfg.StallTimeout < 0 {
+		return 0
+	}
+	if e.cfg.StallTimeout > 0 {
+		return e.cfg.StallTimeout
+	}
+	return 5 * time.Minute
+}
+
+func (e *Engine) watchdogInterval() time.Duration {
+	if e.cfg.WatchdogInterval > 0 {
+		return e.cfg.WatchdogInterval
+	}
+	d := min(e.streamIdleSettle()/2, 2*time.Second)
+	if d < 10*time.Millisecond {
+		d = 10 * time.Millisecond
+	}
+	return d
 }
 
 type shellSub struct {
@@ -556,14 +604,18 @@ func syncSessionSummary(s *sessionv1.Session) {
 		s.Progress.Phase = "running"
 	case sessionv1.SessionStatus_SESSION_STATUS_PREPARING:
 		s.Progress.Phase = "preparing"
+		s.Progress.QuietSince = nil
 	case sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
 		s.Progress.Phase = "waiting_input"
+		s.Progress.QuietSince = nil
 	case sessionv1.SessionStatus_SESSION_STATUS_QUEUED:
 		s.Progress.Phase = "queued"
+		s.Progress.QuietSince = nil
 	default:
 		s.Progress.Phase = ""
 		s.Progress.CurrentTool = ""
 		s.Progress.TurnStartedAt = nil
+		s.Progress.QuietSince = nil
 	}
 }
 
@@ -687,9 +739,11 @@ func deriveSessionActivityTx(tx *store.Tx, s *sessionv1.Session) {
 	case fgToolLabel != "":
 		s.Progress.Phase = "running"
 		s.Progress.CurrentTool = fgToolLabel
+		s.Progress.QuietSince = nil
 	case hasStreamingReply:
 		s.Progress.Phase = "responding"
 		s.Progress.CurrentTool = ""
+		s.Progress.QuietSince = nil
 	case len(awaitedBgs) > 0:
 		latest := awaitedBgs[len(awaitedBgs)-1]
 		lbl := firstNonEmptyTrimmed(latest.Title, latest.Command)
@@ -698,6 +752,9 @@ func deriveSessionActivityTx(tx *store.Tx, s *sessionv1.Session) {
 		}
 		s.Progress.Phase = "awaiting_background"
 		s.Progress.CurrentTool = lbl
+		s.Progress.QuietSince = nil
+	case s.Progress.QuietSince != nil && !hasStreamingReasoning:
+		s.Progress.Phase = "waiting"
 	case lastReplySeq > lastWorkSeq && !hasStreamingReasoning:
 		s.Progress.Phase = "responding"
 		s.Progress.CurrentTool = ""
@@ -707,6 +764,7 @@ func deriveSessionActivityTx(tx *store.Tx, s *sessionv1.Session) {
 	case hasStreamingReasoning:
 		s.Progress.Phase = "thinking"
 		s.Progress.CurrentTool = ""
+		s.Progress.QuietSince = nil
 	default:
 		if s.Progress.Phase != "awaiting_background" {
 			s.Progress.Phase = "running"
@@ -2006,13 +2064,16 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *session
 		imode = req.InteractionMode
 	}
 
-	isActive := sess.ActiveRunId != "" && (sess.Status == sessionv1.SessionStatus_SESSION_STATUS_RUNNING || sess.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT)
+	isActive := sess.ActiveRunId != "" && (sess.Status == sessionv1.SessionStatus_SESSION_STATUS_RUNNING ||
+		sess.Status == sessionv1.SessionStatus_SESSION_STATUS_PREPARING ||
+		sess.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT)
 	_, isShellShortcut := ParseShellShortcut(p.Actor, req.Text)
 
 	// Mid-turn STEER path when an active run is running! (Shell shortcuts run in their own turn.)
 	if isActive && !isShellShortcut && intent != sessionv1.DispatchIntent_DISPATCH_INTENT_QUEUE && intent != sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT {
 		lease := e.sup.Get(sess.ActiveProviderSessionId)
 		canLiveSteer := sess.Status == sessionv1.SessionStatus_SESSION_STATUS_RUNNING &&
+			sess.PendingRequestId == "" &&
 			lease != nil && SelectionsEqual(lease.Selection, sel)
 		if canLiveSteer {
 			atts := e.loadTurnAttachments(req.Attachments)
@@ -2067,13 +2128,12 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *session
 				return res, nil
 			}
 		}
-		if intent == sessionv1.DispatchIntent_DISPATCH_INTENT_STEER && lease != nil {
-			_ = lease.Session.Interrupt(ctx)
-		}
 	}
 
-	// Otherwise, either start immediately (if idle and queue not held) or enqueue!
+	// Otherwise, either start immediately (if idle and queue not held) or enqueue
+	// (interrupting after commit when steering an active or suspended-on-input turn)!
 	var startedRun *sessionv1.Run
+	var interruptRunID, interruptPSID, interruptPendingReqID string
 	var res *sessionv1.DispatchMessageResponse
 	var dispatchTitleSeq uint64
 	freshCtx := intent == sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT
@@ -2117,6 +2177,19 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *session
 			return err
 		}
 		queueIntent := intent == sessionv1.DispatchIntent_DISPATCH_INTENT_QUEUE
+		waitingGateSteer := sNow.ActiveRunId != "" &&
+			sNow.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT &&
+			sNow.PendingRequestId != "" &&
+			!queueIntent &&
+			!freshCtx &&
+			!isShellShortcut
+		steerInterrupt := sNow.ActiveRunId != "" && !isShellShortcut && (intent == sessionv1.DispatchIntent_DISPATCH_INTENT_STEER || waitingGateSteer)
+		if steerInterrupt {
+			sNow.QueueHeld = false
+			interruptRunID = sNow.ActiveRunId
+			interruptPSID = sNow.ActiveProviderSessionId
+			interruptPendingReqID = sNow.PendingRequestId
+		}
 		shouldQueue := sNow.ActiveRunId != "" ||
 			(sNow.QueueHeld && (len(queued) > 0 || queueIntent)) ||
 			(queueIntent && len(queued) > 0)
@@ -2124,7 +2197,7 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *session
 		if shouldQueue {
 			qOrder := 1000.0
 			if len(queued) > 0 {
-				if intent == sessionv1.DispatchIntent_DISPATCH_INTENT_STEER {
+				if steerInterrupt || intent == sessionv1.DispatchIntent_DISPATCH_INTENT_STEER {
 					qOrder = queued[0].QueueOrder - 1000.0
 				} else {
 					qOrder = queued[len(queued)-1].QueueOrder + 1000.0
@@ -2259,6 +2332,13 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *session
 	e.publish(events, nil)
 	if dispatchTitleSeq > 0 {
 		e.spawnTitleGen(sess.SessionId, dispatchTitleSeq, titleGenModeInitial, nil)
+	}
+	if interruptRunID != "" {
+		who := "owner"
+		if p.Actor != nil && p.Actor.Kind != sessionv1.ActorKind_ACTOR_KIND_OWNER && p.Actor.Id != "" {
+			who = p.Actor.Id
+		}
+		e.interruptActiveRunForSteer(ctx, sess.SessionId, interruptRunID, interruptPSID, interruptPendingReqID, "steered by "+who)
 	}
 	if startedRun != nil {
 		e.spawnRun(sess.SessionId, startedRun.RunId, freshCtx)
@@ -3445,6 +3525,11 @@ func (p *leasePump) takeActive() *activeTurnHandle {
 	defer p.mu.Unlock()
 	cur := p.active
 	p.active = nil
+	if p.handoffTimer != nil {
+		p.handoffTimer.Stop()
+		p.handoffTimer = nil
+	}
+	p.handoffStartedAt = time.Time{}
 	return cur
 }
 
@@ -3686,8 +3771,15 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 	sessionID := pump.lease.SessionID
 	psID := pump.lease.ProviderSessionID
 
+	type liveStreamState struct {
+		runID  string
+		lastAt time.Time
+	}
+
 	msgBufs := map[string]*strings.Builder{}
 	rsnBufs := map[string]*strings.Builder{}
+	liveMsg := map[string]liveStreamState{}
+	liveRsn := map[string]liveStreamState{}
 	var lastAssistantText string
 	var pendingPlan *sessionv1.PlanReviewPayload
 	var pendingQuestion *sessionv1.UserInputPayload
@@ -3695,15 +3787,16 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 	resetTurnBuffers := func() {
 		clear(msgBufs)
 		clear(rsnBufs)
+		clear(liveMsg)
+		clear(liveRsn)
 		lastAssistantText = ""
 		pendingPlan = nil
 		pendingQuestion = nil
 	}
 
-	// Reasoning still streaming (item -> run): shown as thinking until it ends, except for the one item given.
-	liveRsn := map[string]string{}
+	// Reasoning still streaming (item -> run): shown as thinking until it ends or goes idle.
 	settleReasoning := func(keep string) {
-		for itemID, runID := range liveRsn {
+		for itemID, st := range liveRsn {
 			if itemID == keep {
 				continue
 			}
@@ -3716,10 +3809,11 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				it := &sessionv1.TurnItem{
 					ItemId:    itemID,
 					SessionId: sessionID,
-					RunId:     runID,
+					RunId:     st.runID,
 					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_REASONING,
 					Status:    "completed",
 					Text:      text,
+					Streaming: false,
 				}
 				if err := tx.PutTurnItem(it); err != nil {
 					return err
@@ -3734,9 +3828,153 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 		}
 	}
 
+	// Assistant prose still streaming: settled when its completion arrives, a tool starts, or deltas pause.
+	settleAssistant := func(keep string) {
+		for itemID, st := range liveMsg {
+			if itemID == keep {
+				continue
+			}
+			delete(liveMsg, itemID)
+			var text string
+			if buf := msgBufs[itemID]; buf != nil {
+				text = buf.String()
+			}
+			if text != "" {
+				lastAssistantText = text
+			}
+			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				it := &sessionv1.TurnItem{
+					ItemId:    itemID,
+					SessionId: sessionID,
+					RunId:     st.runID,
+					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
+					Status:    "completed",
+					Text:      text,
+					Streaming: false,
+				}
+				if err := tx.PutTurnItem(it); err != nil {
+					return err
+				}
+				if sNow, sErr := tx.GetSession(sessionID); sErr == nil && text != "" {
+					if sNow.Progress == nil {
+						sNow.Progress = &sessionv1.SessionProgress{}
+					}
+					sNow.Progress.LastMessageExcerpt = excerptText(text, 240)
+					_ = putSessionSynced(tx, sNow)
+				}
+				return tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: sessionID,
+					Type:      "item.updated",
+					Item:      it,
+				})
+			})
+			e.publish(evs, nil)
+		}
+	}
+
 	pumpSess := pump.lease.Session
 	eventsCh := pumpSess.Events()
+
+	idleSettle := e.streamIdleSettle()
+	quietThresh := e.quietThreshold()
+	stallLimit := e.stallTimeout()
+	wdInterval := e.watchdogInterval()
+
+	var (
+		wdTicker     *time.Ticker
+		wdCh         <-chan time.Time
+		watchedRunID string
+		lastEventAt  time.Time
+		lastAliveAt  time.Time
+		prevLastOut  time.Time
+		prevCPUTicks uint64
+		prevHasCPU   bool
+		quietMarked  bool
+		diagTool     string
+	)
+	stopWatchdog := func() {
+		if wdTicker != nil {
+			wdTicker.Stop()
+			wdTicker = nil
+			wdCh = nil
+		}
+		watchedRunID = ""
+		quietMarked = false
+		diagTool = ""
+	}
+	defer stopWatchdog()
+
+	ensureWatchdog := func(runID string, now time.Time) {
+		if runID == "" {
+			stopWatchdog()
+			return
+		}
+		if wdTicker == nil {
+			wdTicker = time.NewTicker(wdInterval)
+			wdCh = wdTicker.C
+		}
+		if watchedRunID != runID {
+			watchedRunID = runID
+			lastEventAt = now
+			lastAliveAt = now
+			quietMarked = false
+			diagTool = ""
+			if dg, ok := pumpSess.(runtime.Diagnoser); ok {
+				d := dg.Diagnose()
+				prevLastOut = d.LastOutput
+				prevCPUTicks = d.CPUTicks
+				prevHasCPU = d.HasCPU
+			} else {
+				prevLastOut = time.Time{}
+				prevCPUTicks = 0
+				prevHasCPU = false
+			}
+		}
+	}
+
+	clearQuietProgress := func() {
+		if !quietMarked && diagTool == "" {
+			return
+		}
+		clearedTool := diagTool
+		quietMarked = false
+		diagTool = ""
+		evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+			sNow, err := tx.GetSession(sessionID)
+			if err != nil || sNow.Progress == nil {
+				return nil
+			}
+			changed := false
+			if sNow.Progress.QuietSince != nil {
+				sNow.Progress.QuietSince = nil
+				changed = true
+			}
+			if clearedTool != "" && sNow.Progress.CurrentTool == clearedTool {
+				sNow.Progress.CurrentTool = ""
+				changed = true
+			}
+			if !changed {
+				return nil
+			}
+			if err := putSessionSynced(tx, sNow); err != nil {
+				return err
+			}
+			return tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sessionID,
+				Type:      "session.updated",
+				Session:   sNow,
+			})
+		})
+		e.publish(evs, nil)
+	}
+
 	for {
+		if cur := pump.getActive(); cur != nil {
+			ensureWatchdog(cur.runID, time.Now())
+		} else if len(liveMsg) == 0 && len(liveRsn) == 0 {
+			stopWatchdog()
+		}
+
 		var ev runtime.Event
 		var ok bool
 		select {
@@ -3745,10 +3983,216 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			return
 		case <-pump.stopCh:
 			return
+		case now := <-wdCh:
+			for itemID, st := range liveRsn {
+				if now.Sub(st.lastAt) >= idleSettle {
+					delete(liveRsn, itemID)
+					var text string
+					if buf := rsnBufs[itemID]; buf != nil {
+						text = buf.String()
+					}
+					evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+						it := &sessionv1.TurnItem{
+							ItemId:    itemID,
+							SessionId: sessionID,
+							RunId:     st.runID,
+							Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_REASONING,
+							Status:    "completed",
+							Text:      text,
+							Streaming: false,
+						}
+						if err := tx.PutTurnItem(it); err != nil {
+							return err
+						}
+						return tx.AppendEvent(&sessionv1.SessionEvent{
+							SessionId: sessionID,
+							Type:      "item.updated",
+							Item:      it,
+						})
+					})
+					e.publish(evs, nil)
+				}
+			}
+			for itemID, st := range liveMsg {
+				if now.Sub(st.lastAt) >= idleSettle {
+					delete(liveMsg, itemID)
+					var text string
+					if buf := msgBufs[itemID]; buf != nil {
+						text = buf.String()
+					}
+					if text != "" {
+						lastAssistantText = text
+					}
+					evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+						it := &sessionv1.TurnItem{
+							ItemId:    itemID,
+							SessionId: sessionID,
+							RunId:     st.runID,
+							Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
+							Status:    "completed",
+							Text:      text,
+							Streaming: false,
+						}
+						if err := tx.PutTurnItem(it); err != nil {
+							return err
+						}
+						if sNow, sErr := tx.GetSession(sessionID); sErr == nil && text != "" {
+							if sNow.Progress == nil {
+								sNow.Progress = &sessionv1.SessionProgress{}
+							}
+							sNow.Progress.LastMessageExcerpt = excerptText(text, 240)
+							_ = putSessionSynced(tx, sNow)
+						}
+						return tx.AppendEvent(&sessionv1.SessionEvent{
+							SessionId: sessionID,
+							Type:      "item.updated",
+							Item:      it,
+						})
+					})
+					e.publish(evs, nil)
+				}
+			}
+
+			cur := pump.getActive()
+			if cur == nil {
+				continue
+			}
+			ensureWatchdog(cur.runID, now)
+			sess, sErr := e.st.Session(sessionID)
+			if sErr != nil || sess.ActiveRunId != cur.runID {
+				continue
+			}
+			if sess.Status != sessionv1.SessionStatus_SESSION_STATUS_RUNNING || sess.PendingRequestId != "" {
+				lastEventAt = now
+				lastAliveAt = now
+				clearQuietProgress()
+				continue
+			}
+
+			var diag runtime.Diagnosis
+			if dg, hasDiag := pumpSess.(runtime.Diagnoser); hasDiag {
+				diag = dg.Diagnose()
+			}
+			childActive := len(diag.Running) > 0
+			bgActive := sess.ActiveBackgroundCount > 0
+			outAdvanced := !diag.LastOutput.IsZero() && diag.LastOutput.After(prevLastOut)
+			cpuAdvanced := diag.HasCPU && prevHasCPU && diag.CPUTicks > prevCPUTicks
+			if !diag.LastOutput.IsZero() {
+				prevLastOut = diag.LastOutput
+			}
+			if diag.HasCPU {
+				prevCPUTicks = diag.CPUTicks
+				prevHasCPU = true
+			}
+			if childActive || bgActive || outAdvanced || cpuAdvanced {
+				lastAliveAt = now
+			}
+
+			if stallLimit > 0 && now.Sub(lastAliveAt) >= stallLimit {
+				stalledTurn := pump.takeActive()
+				if stalledTurn == nil {
+					continue
+				}
+				settleReasoning("")
+				settleAssistant("")
+				resetTurnBuffers()
+				pump.lease.SetInTurn(false)
+				stopWatchdog()
+
+				e.mu.Lock()
+				if e.pumps[psID] == pump {
+					delete(e.pumps, psID)
+				}
+				e.mu.Unlock()
+				e.sup.DetachSession(psID, pumpSess, true)
+				e.settleSessionBackgroundTasks(sessionID, psID, "provider session stalled")
+
+				stallMsg := fmt.Sprintf("agent made no progress for %s and was stopped", stallLimit.Round(time.Millisecond))
+				if detail := diag.String(); detail != "" {
+					stallMsg += " (" + detail + ")"
+				}
+				cp, cumStat := e.captureTurnCheckpoint(sessionID, stalledTurn.runID, stalledTurn.ordinal, stalledTurn.workdir, stalledTurn.prevTreeOID)
+				e.finishRunFailedWithCheckpoint(sessionID, stalledTurn.runID, "turn_stalled", stallMsg, &runtime.Failure{
+					Kind:    sessionv1.FailureKind_FAILURE_KIND_STALLED,
+					Message: stallMsg,
+				}, cp, cumStat)
+				stalledTurn.closeDone()
+				return
+			}
+
+			if now.Sub(lastEventAt) >= quietThresh {
+				if childActive {
+					childCmd := diag.Running[0]
+					curTool := sess.GetProgress().GetCurrentTool()
+					if quietMarked || curTool != childCmd {
+						evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+							sNow, err := tx.GetSession(sessionID)
+							if err != nil || sNow.ActiveRunId != cur.runID || sNow.Status != sessionv1.SessionStatus_SESSION_STATUS_RUNNING {
+								return nil
+							}
+							if sNow.Progress == nil {
+								sNow.Progress = &sessionv1.SessionProgress{}
+							}
+							sNow.Progress.QuietSince = nil
+							syncSessionSummary(sNow)
+							deriveSessionActivityTx(tx, sNow)
+							if sNow.Progress.Phase == "running" || sNow.Progress.Phase == "responding" {
+								sNow.Progress.Phase = "running"
+								sNow.Progress.CurrentTool = childCmd
+								diagTool = childCmd
+							}
+							quietMarked = false
+							if err := tx.PutSession(sNow); err != nil {
+								return err
+							}
+							return tx.AppendEvent(&sessionv1.SessionEvent{
+								SessionId: sessionID,
+								Type:      "session.updated",
+								Session:   sNow,
+							})
+						})
+						e.publish(evs, nil)
+					}
+				} else if !bgActive {
+					retryHint := runtime.TransientNoticeFromStderr(diag.Stderr)
+					curTool := sess.GetProgress().GetCurrentTool()
+					needQuiet := sess.GetProgress().GetQuietSince() == nil
+					needHint := curTool != retryHint
+					if needQuiet || needHint {
+						qAt := lastEventAt
+						evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+							sNow, err := tx.GetSession(sessionID)
+							if err != nil || sNow.ActiveRunId != cur.runID || sNow.Status != sessionv1.SessionStatus_SESSION_STATUS_RUNNING {
+								return nil
+							}
+							if sNow.Progress == nil {
+								sNow.Progress = &sessionv1.SessionProgress{}
+							}
+							if sNow.Progress.QuietSince == nil {
+								sNow.Progress.QuietSince = timestamppb.New(qAt)
+							}
+							sNow.Progress.CurrentTool = retryHint
+							diagTool = retryHint
+							quietMarked = true
+							if err := putSessionSynced(tx, sNow); err != nil {
+								return err
+							}
+							return tx.AppendEvent(&sessionv1.SessionEvent{
+								SessionId: sessionID,
+								Type:      "session.updated",
+								Session:   sNow,
+							})
+						})
+						e.publish(evs, nil)
+					}
+				}
+			}
+			continue
 		case ev, ok = <-eventsCh:
 		}
 		if !ok {
 			settleReasoning("")
+			settleAssistant("")
 			e.mu.Lock()
 			if e.pumps[psID] == pump {
 				delete(e.pumps, psID)
@@ -3790,6 +4234,10 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			return
 		}
 
+		evNow := time.Now()
+		lastEventAt = evNow
+		lastAliveAt = evNow
+		clearQuietProgress()
 		pump.lease.Touch()
 
 		// Any next step of the model ends its thinking; reasoning ends its own other reasoning.
@@ -3797,6 +4245,11 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 		case runtime.EventReasoningDelta, runtime.EventNativeSession, runtime.EventUsage, runtime.EventNotice, runtime.EventBackgroundTask:
 		default:
 			settleReasoning("")
+		}
+		switch ev.Kind {
+		case runtime.EventAssistantDelta, runtime.EventAssistantMessage, runtime.EventNativeSession, runtime.EventUsage, runtime.EventNotice, runtime.EventBackgroundTask:
+		default:
+			settleAssistant("")
 		}
 
 		switch ev.Kind {
@@ -4111,6 +4564,8 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			buf.WriteString(ev.Text)
 			fullText := buf.String()
 			lastAssistantText = fullText
+			settleAssistant(itemID)
+			liveMsg[itemID] = liveStreamState{runID: cur.runID, lastAt: evNow}
 			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
 				it := &sessionv1.TurnItem{
 					ItemId:    itemID,
@@ -4150,6 +4605,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			if text == "" && msgBufs[itemID] != nil {
 				text = msgBufs[itemID].String()
 			}
+			delete(liveMsg, itemID)
 			delete(msgBufs, itemID)
 			if text != "" {
 				lastAssistantText = text
@@ -4194,7 +4650,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			}
 			itemID := scopeSegmentItemID(cur.runID, cur.segmentSeq, ev.ItemID, "rsn")
 			settleReasoning(itemID)
-			liveRsn[itemID] = cur.runID
+			liveRsn[itemID] = liveStreamState{runID: cur.runID, lastAt: evNow}
 			buf := rsnBufs[itemID]
 			if buf == nil {
 				buf = &strings.Builder{}
@@ -4207,7 +4663,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					SessionId: sessionID,
 					RunId:     cur.runID,
 					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_REASONING,
-					Status:    "completed",
+					Status:    "running",
 					Text:      buf.String(),
 					Streaming: true,
 				}
@@ -4534,7 +4990,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				continue
 			}
 			for itemID, buf := range msgBufs {
-				if buf.Len() > 0 {
+				if _, stillLive := liveMsg[itemID]; stillLive && buf.Len() > 0 {
 					evs, _ := e.st.Mutate(func(tx *store.Tx) error {
 						it := &sessionv1.TurnItem{
 							ItemId:    itemID,
@@ -5149,6 +5605,8 @@ func (e *Engine) finishRunFailedWithCheckpoint(sessionID, runID, code, msg strin
 			Message: msg,
 		}
 	}
+	var nextQueued *sessionv1.Run
+	var nextItem *sessionv1.TurnItem
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
 		sess, err := tx.GetSession(sessionID)
 		if err != nil {
@@ -5202,40 +5660,77 @@ func (e *Engine) finishRunFailedWithCheckpoint(sessionID, runID, code, msg strin
 		_ = tx.PutTurnItem(errItem)
 		queued, _ := tx.QueuedRuns(sessionID)
 		if sess.ActiveRunId == runID {
-			sess.ActiveRunId = ""
 			sess.PendingRequestId = ""
 			sess.Progress.PendingQuestion = nil
-			sess.Progress.LastFailure = protoFail
-			sess.Error = msg
-			sess.QueuedRunCount = uint32(len(queued))
-			if len(queued) > 0 {
-				sess.QueueHeld = true
-			}
-			isCrash := code == workspaceErrorCode ||
-				code == "provider_unavailable" ||
-				code == "session_closed" ||
-				protoFail.GetKind() == sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED ||
-				protoFail.GetKind() == sessionv1.FailureKind_FAILURE_KIND_START_FAILED
-			if isCrash {
-				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_CRASHED
+			isStall := protoFail.GetKind() == sessionv1.FailureKind_FAILURE_KIND_STALLED
+			if isStall && len(queued) > 0 && !sess.QueueHeld {
+				now := timestamppb.Now()
+				nextQueued = queued[0]
+				sess.Error = ""
+				sess.Progress.LastFailure = nil
+				sess.Progress.TurnCount++
+				sess.Progress.TurnStartedAt = now
+				nextQueued.Ordinal = sess.Progress.TurnCount
+				nextQueued.Status = sessionv1.RunStatus_RUN_STATUS_RUNNING
+				nextQueued.StartedAt = now
+				_ = tx.PutRun(nextQueued)
+				nextItem = &sessionv1.TurnItem{
+					ItemId:      newID("itm"),
+					SessionId:   sessionID,
+					RunId:       nextQueued.RunId,
+					Kind:        sessionv1.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
+					Status:      "completed",
+					Actor:       nextQueued.Author,
+					Text:        nextQueued.Prompt,
+					Attachments: nextQueued.Attachments,
+				}
+				_ = tx.PutTurnItem(nextItem)
+				sess.ActiveRunId = nextQueued.RunId
+				sess.QueuedRunCount = uint32(len(queued) - 1)
+				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+				sess.ModelSelection = nextQueued.ModelSelection
+				sess.EffectiveRuntimeMode = nextQueued.RuntimeMode
+				sess.InteractionMode = nextQueued.InteractionMode
 			} else {
-				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+				sess.ActiveRunId = ""
+				sess.Progress.LastFailure = protoFail
+				sess.Error = msg
+				sess.QueuedRunCount = uint32(len(queued))
+				if len(queued) > 0 {
+					sess.QueueHeld = true
+				}
+				isCrash := code == workspaceErrorCode ||
+					code == "provider_unavailable" ||
+					code == "session_closed" ||
+					protoFail.GetKind() == sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED ||
+					protoFail.GetKind() == sessionv1.FailureKind_FAILURE_KIND_START_FAILED
+				if isCrash {
+					sess.Status = sessionv1.SessionStatus_SESSION_STATUS_CRASHED
+				} else {
+					sess.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+				}
 			}
 		}
 		if err := putSessionSynced(tx, sess); err != nil {
 			return err
 		}
-		return tx.AppendEvent(&sessionv1.SessionEvent{
+		if err := tx.AppendEvent(&sessionv1.SessionEvent{
 			SessionId: sessionID,
 			Type:      "run.failed",
 			Session:   sess,
 			Run:       r,
 			Item:      errItem,
-		})
+		}); err != nil {
+			return err
+		}
+		return appendRunStarted(tx, sess, nextQueued, nextItem)
 	})
 	unlock()
 	if err == nil {
 		e.publish(events, nil)
+		if nextQueued != nil {
+			e.spawnRun(sessionID, nextQueued.RunId, nextQueued.Intent == sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT)
+		}
 	}
 }
 
