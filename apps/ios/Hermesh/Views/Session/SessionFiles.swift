@@ -758,6 +758,301 @@ struct CodePage: View {
     }
 }
 
+// MARK: File icons, name hierarchy, and compact byte formatting (Scheme A)
+
+/// Semantic OKLCH-balanced icon palette shared across `SessionFolderPage`, `SessionTree`, and `SessionSidePanel` tabs.
+func sessionFileToneColor(_ tone: FileTone) -> Color {
+    Color(UIColor { traits in
+        let dark = traits.userInterfaceStyle == .dark
+        let hex: UInt32 = switch tone {
+        case .folder: dark ? 0x6EA8FE : 0x356EE0
+        case .folderTest: dark ? 0x56C8D8 : 0x0F8A9E
+        case .cyan: dark ? 0x2BC0E4 : 0x0084A8
+        case .blue: dark ? 0x5C9DFF : 0x2563EB
+        case .orange: dark ? 0xF78C45 : 0xD4580F
+        case .green: dark ? 0x45CF8E : 0x168350
+        case .amber: dark ? 0xE8C14A : 0xB37D05
+        case .purple: dark ? 0xB589F2 : 0x7C45C4
+        case .doc: dark ? 0x79B8FF : 0x2D68C4
+        case .red: dark ? 0xF06B72 : 0xCF343D
+        case .slate: dark ? 0x8A93A6 : 0x646D80
+        }
+        return UIColor(
+            red: CGFloat((hex >> 16) & 0xFF) / 255,
+            green: CGFloat((hex >> 8) & 0xFF) / 255,
+            blue: CGFloat(hex & 0xFF) / 255,
+            alpha: 1
+        )
+    })
+}
+
+/// Filename with primary stem, softened test/role suffix, and muted extension (`stem + sub + ext == name`).
+func sessionFileNameText(_ name: String, dir: Bool, active: Bool = false) -> Text {
+    if active {
+        return Text(verbatim: name).fontWeight(.medium).foregroundStyle(Color.accentColor)
+    }
+    if dir {
+        return Text(verbatim: name).fontWeight(.medium).foregroundStyle(.primary)
+    }
+    let parts = splitFileName(name, dir: false)
+    var out = AttributedString(parts.stem)
+    out.foregroundColor = Color(UIColor.label)
+    if !parts.sub.isEmpty {
+        var sub = AttributedString(parts.sub)
+        sub.foregroundColor = Color(UIColor.secondaryLabel)
+        out += sub
+    }
+    if !parts.ext.isEmpty {
+        var ext = AttributedString(parts.ext)
+        ext.foregroundColor = Color(UIColor.tertiaryLabel)
+        out += ext
+    }
+    return Text(out)
+}
+
+/// Compact tabular byte units matching the Mac tree (`459 B`, `2 KB`, `9.4 KB`).
+func sessionFileSizeText(_ bytes: UInt64) -> String {
+    if bytes < 1024 { return "\(bytes) B" }
+    let units = ["KB", "MB", "GB"]
+    var v = Double(bytes) / 1024
+    var u = 0
+    while v >= 1024, u < units.count - 1 {
+        v /= 1024
+        u += 1
+    }
+    if v < 10, abs(v - v.rounded()) >= 0.05 {
+        return String(format: "%.1f %@", v, units[u])
+    }
+    return "\(Int(v.rounded())) \(units[u])"
+}
+
+/// Scheme A crisp 20×20 vector file/folder icon.
+struct SessionFileIcon: View {
+    let name: String
+    var isDir = false
+    var isOpen = false
+    var size: CGFloat = 18
+
+    var body: some View {
+        let appearance = fileAppearance(name, dir: isDir)
+        let color = sessionFileToneColor(appearance.tone)
+        Group {
+            if appearance.glyph == .swift {
+                Image(systemName: "swift")
+                    .resizable()
+                    .scaledToFit()
+                    .padding(size * 0.08)
+                    .foregroundStyle(color)
+            } else {
+                Canvas(rendersAsynchronously: false) { ctx, canvasSize in
+                    let k = min(canvasSize.width, canvasSize.height) / 20
+                    func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * k, y: y * k) }
+                    func rect(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
+                        CGRect(x: x * k, y: y * k, width: w * k, height: h * k)
+                    }
+                    let stroke = StrokeStyle(lineWidth: 1.65 * k, lineCap: .round, lineJoin: .round)
+                    let shading = GraphicsContext.Shading.color(color)
+
+                    func closedFolderPath() -> Path {
+                        var p = Path()
+                        p.move(to: pt(2.2, 8.0))
+                        p.addArc(tangent1End: pt(2.2, 3.3), tangent2End: pt(5.0, 3.3), radius: 2.1 * k)
+                        p.addArc(tangent1End: pt(8.1, 3.3), tangent2End: pt(9.5, 4.9), radius: 1.2 * k)
+                        p.addArc(tangent1End: pt(9.9, 5.2), tangent2End: pt(12.2, 5.2), radius: 1.0 * k)
+                        p.addArc(tangent1End: pt(17.8, 5.2), tangent2End: pt(17.8, 8.0), radius: 2.1 * k)
+                        p.addArc(tangent1End: pt(17.8, 16.6), tangent2End: pt(15.0, 16.6), radius: 2.1 * k)
+                        p.addArc(tangent1End: pt(2.2, 16.6), tangent2End: pt(2.2, 13.8), radius: 2.1 * k)
+                        p.closeSubpath()
+                        return p
+                    }
+
+                    func drawOpenFolder() {
+                        var back = Path()
+                        back.move(to: pt(2.2, 7.6))
+                        back.addArc(tangent1End: pt(2.2, 3.3), tangent2End: pt(5.0, 3.3), radius: 2.0 * k)
+                        back.addArc(tangent1End: pt(8.1, 3.3), tangent2End: pt(9.5, 4.9), radius: 1.2 * k)
+                        back.addArc(tangent1End: pt(9.9, 5.2), tangent2End: pt(12.2, 5.2), radius: 1.0 * k)
+                        back.addArc(tangent1End: pt(17.4, 5.2), tangent2End: pt(17.4, 7.6), radius: 2.0 * k)
+                        back.addLine(to: pt(17.4, 8.2))
+                        back.addLine(to: pt(2.2, 8.2))
+                        back.closeSubpath()
+                        ctx.fill(back, with: .color(color.opacity(0.42)))
+
+                        var front = Path()
+                        front.move(to: pt(2.4, 11.0))
+                        front.addArc(tangent1End: pt(1.7, 7.6), tangent2End: pt(5.0, 7.6), radius: 1.5 * k)
+                        front.addArc(tangent1End: pt(18.3, 7.6), tangent2End: pt(17.5, 11.2), radius: 1.5 * k)
+                        front.addArc(tangent1End: pt(16.9, 16.6), tangent2End: pt(14.0, 16.6), radius: 1.9 * k)
+                        front.addArc(tangent1End: pt(3.1, 16.6), tangent2End: pt(2.4, 13.5), radius: 1.9 * k)
+                        front.closeSubpath()
+                        ctx.fill(front, with: shading)
+                    }
+
+                    func foldedSheetPath() -> (Path, Path) {
+                        var sheet = Path()
+                        sheet.move(to: pt(4.0, 8.0))
+                        sheet.addArc(tangent1End: pt(4.0, 2.8), tangent2End: pt(8.0, 2.8), radius: 1.6 * k)
+                        sheet.addLine(to: pt(11.4, 2.8))
+                        sheet.addLine(to: pt(15.6, 7.0))
+                        sheet.addArc(tangent1End: pt(15.6, 17.2), tangent2End: pt(12.0, 17.2), radius: 1.6 * k)
+                        sheet.addArc(tangent1End: pt(4.0, 17.2), tangent2End: pt(4.0, 14.0), radius: 1.6 * k)
+                        sheet.closeSubpath()
+                        var fold = Path()
+                        fold.move(to: pt(11.2, 3.0))
+                        fold.addLine(to: pt(11.2, 7.1))
+                        fold.addLine(to: pt(15.3, 7.1))
+                        return (sheet, fold)
+                    }
+
+                    switch appearance.glyph {
+                    case .folder:
+                        if isOpen { drawOpenFolder() } else { ctx.fill(closedFolderPath(), with: shading) }
+                    case .folderTest:
+                        if isOpen {
+                            drawOpenFolder()
+                        } else {
+                            ctx.drawLayer { layer in
+                                layer.fill(closedFolderPath(), with: shading)
+                                layer.blendMode = .destinationOut
+                                var check = Path()
+                                check.move(to: pt(7.4, 11.3))
+                                check.addLine(to: pt(9.2, 13.1))
+                                check.addLine(to: pt(12.8, 9.4))
+                                layer.stroke(check, with: .color(.black), style: stroke)
+                            }
+                        }
+                    case .go:
+                        var p = Path()
+                        p.move(to: pt(6.8, 6.5)); p.addLine(to: pt(3.2, 10)); p.addLine(to: pt(6.8, 13.5))
+                        p.move(to: pt(13.2, 6.5)); p.addLine(to: pt(16.8, 10)); p.addLine(to: pt(13.2, 13.5))
+                        ctx.stroke(p, with: shading, style: stroke)
+                        ctx.fill(Path(ellipseIn: rect(8.6, 8.6, 2.8, 2.8)), with: shading)
+                    case .test:
+                        var p = Path()
+                        p.move(to: pt(8.0, 3.2)); p.addLine(to: pt(12.0, 3.2))
+                        p.move(to: pt(8.8, 3.2))
+                        p.addLine(to: pt(8.8, 7.3))
+                        p.addArc(tangent1End: pt(4.5, 16.6), tangent2End: pt(10.0, 16.6), radius: 1.7 * k)
+                        p.addArc(tangent1End: pt(15.5, 16.6), tangent2End: pt(11.2, 7.3), radius: 1.7 * k)
+                        p.addLine(to: pt(11.2, 7.3))
+                        p.addLine(to: pt(11.2, 3.2))
+                        p.move(to: pt(6.7, 12.3)); p.addLine(to: pt(13.3, 12.3))
+                        ctx.stroke(p, with: shading, style: stroke)
+                    case .code:
+                        var p = Path()
+                        p.move(to: pt(6.8, 6.2)); p.addLine(to: pt(3.0, 10)); p.addLine(to: pt(6.8, 13.8))
+                        p.move(to: pt(13.2, 6.2)); p.addLine(to: pt(17.0, 10)); p.addLine(to: pt(13.2, 13.8))
+                        p.move(to: pt(11.2, 4.5)); p.addLine(to: pt(8.8, 15.5))
+                        ctx.stroke(p, with: shading, style: stroke)
+                    case .braces:
+                        var p = Path()
+                        p.move(to: pt(7.4, 4.0))
+                        p.addQuadCurve(to: pt(5.3, 6.1), control: pt(5.3, 4.0))
+                        p.addLine(to: pt(5.3, 8.3))
+                        p.addQuadCurve(to: pt(3.5, 10.0), control: pt(5.3, 9.7))
+                        p.addQuadCurve(to: pt(5.3, 11.7), control: pt(5.3, 10.3))
+                        p.addLine(to: pt(5.3, 13.9))
+                        p.addQuadCurve(to: pt(7.4, 16.0), control: pt(5.3, 16.0))
+                        p.move(to: pt(12.6, 4.0))
+                        p.addQuadCurve(to: pt(14.7, 6.1), control: pt(14.7, 4.0))
+                        p.addLine(to: pt(14.7, 8.3))
+                        p.addQuadCurve(to: pt(16.5, 10.0), control: pt(14.7, 9.7))
+                        p.addQuadCurve(to: pt(14.7, 11.7), control: pt(14.7, 10.3))
+                        p.addLine(to: pt(14.7, 13.9))
+                        p.addQuadCurve(to: pt(12.6, 16.0), control: pt(14.7, 16.0))
+                        ctx.stroke(p, with: shading, style: stroke)
+                    case .sliders:
+                        ctx.drawLayer { layer in
+                            var lines = Path()
+                            for y: CGFloat in [6, 10, 14] {
+                                lines.move(to: pt(4, y)); lines.addLine(to: pt(16, y))
+                            }
+                            layer.stroke(lines, with: shading, style: stroke)
+                            let knobs: [(CGFloat, CGFloat)] = [(7.5, 6), (13, 10), (8.5, 14)]
+                            layer.blendMode = .destinationOut
+                            for (kx, ky) in knobs {
+                                layer.fill(Path(ellipseIn: rect(kx - 1.8, ky - 1.8, 3.6, 3.6)), with: .color(.black))
+                            }
+                            layer.blendMode = .normal
+                            for (kx, ky) in knobs {
+                                layer.stroke(Path(ellipseIn: rect(kx - 1.7, ky - 1.7, 3.4, 3.4)), with: shading, style: stroke)
+                            }
+                        }
+                    case .markdown:
+                        let box = Path(roundedRect: rect(2.6, 4.5, 14.8, 11.0), cornerRadius: 2.2 * k)
+                        var m = Path()
+                        m.move(to: pt(5.6, 12.6)); m.addLine(to: pt(5.6, 7.4)); m.addLine(to: pt(7.8, 10.1)); m.addLine(to: pt(10.0, 7.4)); m.addLine(to: pt(10.0, 12.6))
+                        m.move(to: pt(13.8, 7.5)); m.addLine(to: pt(13.8, 12.5))
+                        m.move(to: pt(12.1, 10.7)); m.addLine(to: pt(13.8, 12.5)); m.addLine(to: pt(15.5, 10.7))
+                        ctx.stroke(box, with: shading, style: stroke)
+                        ctx.stroke(m, with: shading, style: StrokeStyle(lineWidth: 1.5 * k, lineCap: .round, lineJoin: .round))
+                    case .page:
+                        ctx.stroke(Path(ellipseIn: rect(3.2, 3.2, 13.6, 13.6)), with: shading, style: stroke)
+                        ctx.stroke(Path(ellipseIn: rect(7.1, 3.2, 5.8, 13.6)), with: shading, style: stroke)
+                        var eq = Path()
+                        eq.move(to: pt(3.4, 10)); eq.addLine(to: pt(16.6, 10))
+                        ctx.stroke(eq, with: shading, style: stroke)
+                    case .terminal:
+                        ctx.stroke(Path(roundedRect: rect(2.8, 4.0, 14.4, 12.0), cornerRadius: 2.4 * k), with: shading, style: stroke)
+                        var p = Path()
+                        p.move(to: pt(6.2, 8.0)); p.addLine(to: pt(8.6, 10.1)); p.addLine(to: pt(6.2, 12.2))
+                        p.move(to: pt(10.4, 12.2)); p.addLine(to: pt(13.6, 12.2))
+                        ctx.stroke(p, with: shading, style: stroke)
+                    case .cube:
+                        var hex = Path()
+                        hex.move(to: pt(10.0, 2.8))
+                        hex.addLine(to: pt(16.4, 6.4)); hex.addLine(to: pt(16.4, 13.6))
+                        hex.addLine(to: pt(10.0, 17.2)); hex.addLine(to: pt(3.6, 13.6))
+                        hex.addLine(to: pt(3.6, 6.4)); hex.closeSubpath()
+                        var yLine = Path()
+                        yLine.move(to: pt(3.6, 6.4)); yLine.addLine(to: pt(10.0, 10.0)); yLine.addLine(to: pt(16.4, 6.4))
+                        yLine.move(to: pt(10.0, 10.0)); yLine.addLine(to: pt(10.0, 17.2))
+                        ctx.stroke(hex, with: shading, style: stroke)
+                        ctx.stroke(yLine, with: shading, style: stroke)
+                    case .lock:
+                        ctx.stroke(Path(roundedRect: rect(4.5, 9.0, 11.0, 7.5), cornerRadius: 2.0 * k), with: shading, style: stroke)
+                        var shackle = Path()
+                        shackle.move(to: pt(7.0, 9.0))
+                        shackle.addLine(to: pt(7.0, 6.6))
+                        shackle.addArc(center: pt(10.0, 6.6), radius: 3.0 * k, startAngle: .degrees(180), endAngle: .degrees(0), clockwise: false)
+                        shackle.addLine(to: pt(13.0, 9.0))
+                        ctx.stroke(shackle, with: shading, style: stroke)
+                    case .git:
+                        ctx.stroke(Path(ellipseIn: rect(4.4, 3.7, 3.6, 3.6)), with: shading, style: stroke)
+                        ctx.stroke(Path(ellipseIn: rect(4.4, 12.7, 3.6, 3.6)), with: shading, style: stroke)
+                        ctx.stroke(Path(ellipseIn: rect(12.0, 6.7, 3.6, 3.6)), with: shading, style: stroke)
+                        var branch = Path()
+                        branch.move(to: pt(6.2, 7.3)); branch.addLine(to: pt(6.2, 12.7))
+                        branch.move(to: pt(13.8, 10.3))
+                        branch.addQuadCurve(to: pt(6.2, 13.1), control: pt(13.6, 13.1))
+                        ctx.stroke(branch, with: shading, style: stroke)
+                    case .image:
+                        ctx.stroke(Path(roundedRect: rect(3.0, 3.8, 14.0, 12.4), cornerRadius: 2.3 * k), with: shading, style: stroke)
+                        ctx.fill(Path(ellipseIn: rect(6.1, 6.5, 2.6, 2.6)), with: shading)
+                        var mtn = Path()
+                        mtn.move(to: pt(4.2, 14.5)); mtn.addLine(to: pt(8.4, 10.4)); mtn.addLine(to: pt(11.4, 13.3))
+                        mtn.addLine(to: pt(13.6, 11.3)); mtn.addLine(to: pt(16.0, 14.5))
+                        ctx.stroke(mtn, with: shading, style: stroke)
+                    case .pdf:
+                        let (sheet, fold) = foldedSheetPath()
+                        var lines = fold
+                        lines.move(to: pt(6.8, 10.2)); lines.addLine(to: pt(9.8, 10.2))
+                        lines.move(to: pt(6.8, 12.8)); lines.addLine(to: pt(13.0, 12.8))
+                        ctx.stroke(sheet, with: shading, style: stroke)
+                        ctx.stroke(lines, with: shading, style: stroke)
+                    case .doc, .swift:
+                        let (sheet, fold) = foldedSheetPath()
+                        ctx.stroke(sheet, with: shading, style: stroke)
+                        ctx.stroke(fold, with: shading, style: stroke)
+                    }
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
 // MARK: The session's folder
 
 /// A folder of the session's, as it is now (the Mac's file panel's tree, a level at a time): folders first, then
@@ -769,6 +1064,7 @@ struct SessionFolderPage: View {
     let dir: String
     @State private var list: Result<Hermesh_Session_V1_ListFilesResponse, Error>?
     @State private var lightbox: SessionLightboxPresentation?
+    @State private var query = ""
 
     var body: some View {
         Group {
@@ -776,35 +1072,7 @@ struct SessionFolderPage: View {
             case nil: ProgressView()
             case .failure(let e)?: FileCard(name: dir.isEmpty ? String(localized: "Project Files") : fileBaseName(dir), text: e.localizedDescription)
             case .success(let res)?:
-                List {
-                    if res.folderGone {
-                        Text("The workspace was released; these are the files as turn \(res.turn) left them").font(.footnote).foregroundStyle(.secondary)
-                    }
-                    ForEach(res.entries, id: \.name) { e in
-                        let path = res.dir.isEmpty ? e.name : "\(res.dir)/\(e.name)"
-                        Button {
-                            if !e.dir, isSessionImage(path) {
-                                let mid = model.session(sessionID)?.machineID ?? ""
-                                lightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: mid, run: "", items: [.file(ReplyImageItem(path: path, caption: ""))], initialIndex: 0)
-                            } else {
-                                model.path.append(e.dir ? .sessionFolder(sessionID, path) : .sessionFile(sessionID, "", path, 0, 0))
-                            }
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: e.dir ? "folder" : "doc").foregroundStyle(.secondary).frame(width: 22)
-                                Text(verbatim: e.name).foregroundStyle(.primary).lineLimit(1).truncationMode(.middle)
-                                Spacer(minLength: 8)
-                                if e.dir {
-                                    Image(systemName: "chevron.forward").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
-                                } else {
-                                    Text(ByteCountFormatter.string(fromByteCount: Int64(e.size), countStyle: .file)).font(.footnote).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        .accessibilityIdentifier("folder-entry-\(e.name)")
-                    }
-                }
-                .refreshable { await load() }
+                folderList(res)
             }
         }
         .navigationTitle(dir.isEmpty ? String(localized: "Project Files") : fileBaseName(dir))
@@ -814,6 +1082,191 @@ struct SessionFolderPage: View {
         .task { await load() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("session-folder-page")
+    }
+
+    private func folderList(_ res: Hermesh_Session_V1_ListFilesResponse) -> some View {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let filtered = res.entries.filter { q.isEmpty || $0.name.lowercased().contains(q) }
+        let dirs = filtered.filter(\.dir)
+        let files = filtered.filter { !$0.dir }
+        let showFilter = res.entries.count >= 5 || !q.isEmpty
+        let hasTopCard = showFilter || res.folderGone
+        let trail = headerTrail(res: res, dirCount: dirs.count, fileCount: files.count)
+
+        return List {
+            if hasTopCard {
+                Section {
+                    if showFilter {
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass").font(.footnote).foregroundStyle(.tertiary)
+                            TextField("Filter files", text: $query)
+                                .font(.subheadline)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                            if !query.isEmpty {
+                                Button { query = "" } label: {
+                                    Image(systemName: "xmark.circle.fill").font(.subheadline).foregroundStyle(.tertiary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    if res.folderGone {
+                        Text("The workspace was released; these are the files as turn \(res.turn) left them")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                } header: {
+                    trail
+                }
+            }
+
+            if filtered.isEmpty, !q.isEmpty {
+                Section {
+                    Text("Nothing Found").font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+
+            if !dirs.isEmpty {
+                Section {
+                    ForEach(dirs, id: \.name) { e in entryRow(e, baseDir: res.dir) }
+                } header: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if !hasTopCard { trail }
+                        if !files.isEmpty {
+                            HStack {
+                                Text("Folders")
+                                Spacer()
+                                Text(verbatim: "\(dirs.count)").monospacedDigit().foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !files.isEmpty {
+                Section {
+                    ForEach(files, id: \.name) { e in entryRow(e, baseDir: res.dir) }
+                } header: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if !hasTopCard, dirs.isEmpty { trail }
+                        if !dirs.isEmpty {
+                            HStack {
+                                Text("Files")
+                                Spacer()
+                                Text(verbatim: "\(files.count)").monospacedDigit().foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .listSectionSpacing(12)
+        .refreshable { await load() }
+    }
+
+    private func headerTrail(res: Hermesh_Session_V1_ListFilesResponse, dirCount: Int, fileCount: Int) -> some View {
+        let rootLabel: String = {
+            if let pid = model.session(sessionID)?.projectID, !pid.isEmpty { return folderName(pid) }
+            if !res.folder.isEmpty { return folderName(res.folder) }
+            return String(localized: "Project Files")
+        }()
+        let parts = dir.isEmpty ? [] : dir.split(separator: "/").map(String.init)
+        let summary: String = if dirCount > 0, fileCount > 0 {
+            String(localized: "\(dirCount) folders · \(fileCount) files")
+        } else if dirCount > 0 {
+            String(localized: "\(dirCount) folders")
+        } else {
+            String(localized: "\(fileCount) files")
+        }
+
+        return HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    if parts.isEmpty {
+                        Text(verbatim: rootLabel).fontWeight(.semibold).foregroundStyle(.primary)
+                    } else {
+                        Button { jump(to: "") } label: {
+                            Text(verbatim: rootLabel).foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    ForEach(Array(parts.enumerated()), id: \.offset) { idx, seg in
+                        let sub = parts[...idx].joined(separator: "/")
+                        Text(verbatim: "/").foregroundStyle(.quaternary)
+                        if idx == parts.count - 1 {
+                            Text(verbatim: seg).fontWeight(.semibold).foregroundStyle(.primary)
+                        } else {
+                            Button { jump(to: sub) } label: {
+                                Text(verbatim: seg).foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .font(.caption.monospaced())
+            }
+            .defaultScrollAnchor(.trailing)
+            Spacer(minLength: 4)
+            Text(verbatim: summary)
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+        }
+        .textCase(nil)
+    }
+
+    private func entryRow(_ e: Hermesh_Session_V1_FileEntry, baseDir: String) -> some View {
+        let path = baseDir.isEmpty ? e.name : "\(baseDir)/\(e.name)"
+        let appearance = fileAppearance(e.name, dir: e.dir)
+        return Button {
+            if !e.dir, isSessionImage(path) {
+                let mid = model.session(sessionID)?.machineID ?? ""
+                lightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: mid, run: "", items: [.file(ReplyImageItem(path: path, caption: ""))], initialIndex: 0)
+            } else {
+                model.path.append(e.dir ? .sessionFolder(sessionID, path) : .sessionFile(sessionID, "", path, 0, 0))
+            }
+        } label: {
+            HStack(spacing: 11) {
+                SessionFileIcon(name: e.name, isDir: e.dir, size: 19)
+                    .frame(width: 22)
+                sessionFileNameText(e.name, dir: e.dir)
+                    .font(.system(size: 15.5))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 8)
+                if e.dir {
+                    Image(systemName: "chevron.forward")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                } else {
+                    Text(verbatim: sessionFileSizeText(e.size))
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.vertical, 1)
+            .contentShape(.rect)
+            .opacity(appearance.dimmed ? 0.68 : 1)
+        }
+        .buttonStyle(.plain)
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 33 }
+        .accessibilityIdentifier("folder-entry-\(e.name)")
+    }
+
+    private func jump(to target: String) {
+        let route = Route.sessionFolder(sessionID, target)
+        if let i = model.path.firstIndex(of: route) {
+            model.path = Array(model.path[...i])
+        } else if let last = model.path.lastIndex(where: {
+            if case .sessionFolder(let sid, _) = $0 { return sid == sessionID }
+            return false
+        }) {
+            model.path[last] = route
+        } else {
+            model.path.append(route)
+        }
     }
 
     private func load() async {

@@ -2,7 +2,7 @@ import { useContext, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { FileRef } from "@hermesh/her-client";
 import { FileRefKind } from "@hermesh/proto/session";
-import { Icon } from "../../icons";
+import { FileIcon } from "../../icons";
 import { useStore } from "../../store";
 import { FilesHomeContext, FilesRunContext, useFileInfo } from "./files";
 import { ReplyImagesContext } from "./images";
@@ -59,7 +59,7 @@ export function FileTag({ target, code, children }: { target: FileRef; code?: st
         void fileMenu(st, home, file, info?.folder ?? "", { open, line: target.line });
       }}
     >
-      <Icon name={folder ? "folder" : "doc"} />
+      <FileIcon name={path} dir={folder} />
       <span className="fref-n">{code !== undefined ? target.path : children}</span>
       {target.line !== undefined && <span className="fref-l">{`:${target.line}${target.endLine ? `-${target.endLine}` : ""}`}</span>}
     </span>

@@ -74,23 +74,44 @@ struct SessionTree: View {
     private func row(_ r: Row) -> some View {
         let on = r.path == activePath
         let open = files.expanded.contains(r.path)
+        let appearance = fileAppearance(r.name, dir: r.dir)
         return Button {
             if r.dir { files.toggleDir(r.path) } else { pick(r.path) }
         } label: {
             HStack(spacing: 7) {
                 Image(systemName: "chevron.forward").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(open ? 90 : 0)).opacity(r.dir ? 1 : 0).frame(width: 13)
-                Image(systemName: r.dir ? "folder" : "doc").foregroundStyle(r.dir ? Color.accentColor : on ? Color.accentColor : .secondary).frame(width: 20)
-                Text(verbatim: r.name).foregroundStyle(on ? Color.accentColor : .primary).lineLimit(1).truncationMode(.middle)
+                SessionFileIcon(name: r.name, isDir: r.dir, isOpen: open, size: 17)
+                    .frame(width: 20)
+                sessionFileNameText(r.name, dir: r.dir, active: on)
+                    .font(.subheadline)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 Spacer(minLength: 6)
                 if sizes, !r.dir {
-                    Text(ByteCountFormatter.string(fromByteCount: Int64(r.size), countStyle: .file)).font(.footnote).foregroundStyle(.secondary)
+                    Text(verbatim: sessionFileSizeText(r.size))
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.tertiary)
                 }
             }
-            .padding(.leading, 8 + CGFloat(r.depth) * 13).padding(.trailing, 10)
-            .frame(minHeight: 40)
-            .background(on ? Color.accentColor.opacity(0.13) : .clear, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .padding(.leading, 8 + CGFloat(r.depth) * 14).padding(.trailing, 10)
+            .frame(minHeight: 38)
+            .overlay(alignment: .leading) {
+                if r.depth > 0 {
+                    ZStack(alignment: .leading) {
+                        ForEach(1...r.depth, id: \.self) { d in
+                            Rectangle()
+                                .fill(Palette.separator)
+                                .frame(width: 1)
+                                .padding(.leading, 14 + CGFloat(d - 1) * 14)
+                        }
+                    }
+                    .allowsHitTesting(false)
+                }
+            }
+            .background(on ? Color.accentColor.opacity(0.13) : .clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .contentShape(.rect)
+            .opacity(appearance.dimmed && !on ? 0.68 : 1)
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(on ? .isSelected : [])
@@ -390,9 +411,14 @@ struct SessionSidePanel: View {
 
     private func chip(_ t: PanelTab) -> some View {
         let on = t.id == files.activeTab
-        let glyph = t.kind == .page || t.attachment.map({ fileView($0.name) == .page }) == true ? "globe" : t.path.isEmpty && t.attachment == nil ? "list.bullet.indent" : "doc"
+        let isTree = t.path.isEmpty && t.attachment == nil
+        let isPage = t.kind == .page || t.attachment.map({ fileView($0.name) == .page }) == true
         return HStack(spacing: 6) {
-            Image(systemName: glyph).font(.footnote)
+            if isTree {
+                Image(systemName: "list.bullet.indent").font(.footnote)
+            } else {
+                SessionFileIcon(name: isPage ? "page.html" : (t.attachment?.name ?? t.path), isDir: false, size: 15)
+            }
             Text(verbatim: title(t)).font(.subheadline).lineLimit(1).truncationMode(.middle)
             if on {
                 Button { withAnimation(.snappy) { files.closeTab(t.id) } } label: {

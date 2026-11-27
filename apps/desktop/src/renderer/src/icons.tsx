@@ -1,3 +1,5 @@
+import { fileAppearance, type FileGlyph } from "@hermesh/her-client";
+
 // Line icons drawn on a 16×16 grid (from the design prototype).
 
 const paths: Record<string, string> = {
@@ -119,4 +121,40 @@ export type IconName = keyof typeof paths;
 
 export function Icon({ name, className = "" }: { name: string; className?: string }) {
   return <svg className={`ic ${className}`} viewBox="0 0 16 16" aria-hidden="true" dangerouslySetInnerHTML={{ __html: paths[name] ?? "" }} />;
+}
+
+// Scheme A semantic file & directory icons drawn on a 20×20 grid.
+const fileGlyphs: Record<FileGlyph | "folderOpen", string> = {
+  folder: `<path fill="currentColor" stroke="none" d="M2.2 5.4A2.2 2.2 0 0 1 4.4 3.2h3.35c.58 0 1.14.23 1.55.64l1.02 1.02c.2.2.47.31.75.31h4.53a2.2 2.2 0 0 1 2.2 2.2v7.23a2.2 2.2 0 0 1-2.2 2.2H4.4a2.2 2.2 0 0 1-2.2-2.2V5.4Z"/>`,
+  folderOpen: `<path fill="currentColor" stroke="none" opacity=".42" d="M2.2 5.4A2.2 2.2 0 0 1 4.4 3.2h3.35c.58 0 1.14.23 1.55.64l1.02 1.02c.2.2.47.31.75.31h4.53a2.2 2.2 0 0 1 2.2 2.2v1.6H2.2V5.4Z"/><path fill="currentColor" stroke="none" d="M2.1 8.8A1.6 1.6 0 0 1 3.68 7.5h12.64a1.6 1.6 0 0 1 1.56 1.96l-1.15 5.6a2 2 0 0 1-1.96 1.6H4.23a2 2 0 0 1-1.96-1.6L1.7 9.46a1.6 1.6 0 0 1 .4-.66Z"/>`,
+  folderTest: `<path fill="currentColor" fill-rule="evenodd" stroke="none" d="M2.2 5.4A2.2 2.2 0 0 1 4.4 3.2h3.35c.58 0 1.14.23 1.55.64l1.02 1.02c.2.2.47.31.75.31h4.53a2.2 2.2 0 0 1 2.2 2.2v7.23a2.2 2.2 0 0 1-2.2 2.2H4.4a2.2 2.2 0 0 1-2.2-2.2V5.4Zm11.17 4.58a.8.8 0 0 0-1.14-1.12L9.2 11.98l-1.23-1.24a.8.8 0 0 0-1.14 1.12l1.8 1.8a.8.8 0 0 0 1.14 0l3.6-3.68Z"/>`,
+  go: `<path d="M6.8 6.5 3.2 10l3.6 3.5M13.2 6.5 16.8 10l-3.6 3.5"/><circle cx="10" cy="10" r="1.35" fill="currentColor" stroke="none"/>`,
+  test: `<path d="M8 3.2h4M8.8 3.2v4.1L5.1 14a1.8 1.8 0 0 0 1.57 2.68h6.66A1.8 1.8 0 0 0 14.9 14l-3.7-6.7V3.2"/><path d="M6.7 12.2h6.6"/>`,
+  swift: `<path fill="currentColor" stroke="none" d="M15.4 12.8c.2-.9.1-2-.4-3.1-.8-1.8-2.3-3.5-4.3-4.6 1 1.6 1.5 3.2 1.4 4.5-1.4-1-3.2-2.4-4.7-4-.5.9-.5 2.1.1 3.3-1.2-.6-2.3-1.5-3.2-2.5-.2 1.7.7 3.6 2.5 4.8.9.6 1.9 1 2.9 1.1-1.2.7-2.8.8-4.5.2 1.5 1.8 3.9 2.7 6.3 2.5 1.5-.1 2.9-.7 3.9-1.7.8.2 1.6.5 2.1 1-.1-.9-.5-1.6-1.1-2.1-.3.2-.6.4-1 .6Z"/>`,
+  code: `<path d="M6.8 6.2 3 10l3.8 3.8M13.2 6.2 17 10l-3.8 3.8M11.2 4.5 8.8 15.5"/>`,
+  braces: `<path d="M7.2 4C5.6 4 5 4.8 5 6.2v2c0 .9-.6 1.5-1.5 1.8.9.3 1.5.9 1.5 1.8v2C5 15.2 5.6 16 7.2 16M12.8 4c1.6 0 2.2.8 2.2 2.2v2c0 .9.6 1.5 1.5 1.8-.9.3-1.5.9-1.5 1.8v2c0 1.4-.6 2.2-2.2 2.2"/>`,
+  sliders: `<path d="M4 6h1.8M9.2 6H16M4 10h7.3M14.7 10H16M4 14h2.8M10.2 14H16"/><circle cx="7.5" cy="6" r="1.7"/><circle cx="13" cy="10" r="1.7"/><circle cx="8.5" cy="14" r="1.7"/>`,
+  markdown: `<rect x="2.6" y="4.5" width="14.8" height="11" rx="2.2"/><path d="M5.6 12.6V7.4l2.2 2.7L10 7.4v5.2M13.8 7.5v5m0 0-1.8-1.9m1.8 1.9 1.8-1.9"/>`,
+  page: `<circle cx="10" cy="10" r="6.8"/><path d="M3.4 10h13.2M10 3.2c1.9 1.9 2.9 4.3 2.9 6.8S11.9 14.9 10 16.8C8.1 14.9 7.1 12.5 7.1 10S8.1 5.1 10 3.2Z"/>`,
+  terminal: `<rect x="2.8" y="4" width="14.4" height="12" rx="2.4"/><path d="m6.2 8 2.4 2.1-2.4 2.1M10.4 12.2h3.2"/>`,
+  cube: `<path d="M10 2.8 16.4 6.4v7.2L10 17.2 3.6 13.6V6.4L10 2.8Z"/><path d="M3.6 6.4 10 10l6.4-3.6M10 10v7.2"/>`,
+  lock: `<rect x="4.5" y="9" width="11" height="7.5" rx="2"/><path d="M7 9V6.6a3 3 0 0 1 6 0V9"/>`,
+  git: `<circle cx="6.2" cy="5.5" r="1.8"/><circle cx="6.2" cy="14.5" r="1.8"/><circle cx="13.8" cy="8.5" r="1.8"/><path d="M6.2 7.3v5.4M13.8 10.3c0 2.2-1.8 2.8-7.6 2.8"/>`,
+  image: `<rect x="3" y="3.8" width="14" height="12.4" rx="2.3"/><circle cx="7.4" cy="7.8" r="1.3" fill="currentColor" stroke="none"/><path d="m4.2 14.5 4.2-4.1 3 2.9 2.2-2 2.4 3.2"/>`,
+  pdf: `<path d="M5.2 2.8h6.3l3.9 3.9v10.5H5.2a1.6 1.6 0 0 1-1.6-1.6V4.4c0-.9.7-1.6 1.6-1.6Z"/><path d="M11.3 2.9V7h4"/><path d="M6.8 12.6h6.4M6.8 10h3"/>`,
+  doc: `<path d="M5.4 2.8h6l4 4v10.4H5.4a1.6 1.6 0 0 1-1.6-1.6V4.4c0-.9.7-1.6 1.6-1.6Z"/><path d="M11.2 2.9V7h4.1"/>`,
+};
+
+export function FileIcon({ name, dir = false, open = false, className = "" }: { name: string; dir?: boolean; open?: boolean; className?: string }) {
+  const v = fileAppearance(name, dir);
+  const key = dir && open ? "folderOpen" : v.glyph;
+  return (
+    <svg
+      className={`ic fic ${className}`}
+      data-tone={v.tone}
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: fileGlyphs[key] }}
+    />
+  );
 }

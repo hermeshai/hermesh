@@ -1,0 +1,2004 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="black">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>会话项目文件 · 配色规范与移动端展开页美化 Demo</title>
+<style>
+@font-face {
+  font-family: "Google Sans Flex";
+  src: url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-flex.ttf") format("truetype");
+  font-weight: 100 900;
+}
+@font-face {
+  font-family: "Google Sans Code";
+  src: url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-code.ttf") format("truetype");
+  font-weight: 300 800;
+}
+
+:root {
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Google Sans Flex", "PingFang SC", "Helvetica Neue", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Google Sans Code", ui-monospace, Menlo, Monaco, Consolas, monospace;
+}
+
+/* ==================== Page & Device Surface Tokens ==================== */
+[data-theme="black"] {
+  --page: #08090d;
+  --page-fg: #ededf3;
+  --page-fg2: #9498a8;
+  --page-fg3: #606474;
+  --panel: #11131a;
+  --panel-2: #171922;
+  --panel-bd: rgba(255,255,255,.085);
+  --chip-bg: rgba(255,255,255,.065);
+  --chip-on: #4a66ff;
+
+  /* iOS OLED Pure Black (Matches uploaded screenshot) */
+  --i-bg: #000000;
+  --i-card: #131418;
+  --i-card-legacy: #161618;
+  --i-card-hi: rgba(255,255,255,.075);
+  --i-card-hover: rgba(255,255,255,.05);
+  --i-vbar: #030305;
+  --i-sheet: rgba(22,23,29,.93);
+  --i-glass: rgba(36,37,44,.78);
+  --i-glass-bd: rgba(255,255,255,.13);
+  --i-glass-hi: rgba(255,255,255,.12);
+
+  --l1: rgba(255,255,255,.93);
+  --l2: rgba(235,235,245,.58);
+  --l3: rgba(235,235,245,.35);
+  --l4: rgba(235,235,245,.18);
+  --sep: rgba(255,255,255,.075);
+  --sep-strong: rgba(255,255,255,.12);
+  --fill: rgba(255,255,255,.055);
+  --fill2: rgba(255,255,255,.10);
+  --accent: #4a66ff;
+  --accent-fg: #8ba2ff;
+  --accent-bg: rgba(74,102,255,.18);
+  --ios-bug-blue: #3f6bff;
+  --ios-bug-blue-2: rgba(72,116,255,.68);
+  --ios-bug-blue-3: rgba(72,116,255,.42);
+
+  /* 8-Slot OKLCH Harmonized File Icon Palette (Dark: L≈0.75, C≈0.12) */
+  --ic-folder: #6ea8fe;      /* Directory Steel Blue */
+  --ic-folder-test: #56c8d8; /* Testdata / E2E Folder */
+  --ic-folder-dim: #7d8597;  /* Dot-folder (.github) */
+  --ic-cyan: #2bc0e4;        /* Go, Proto, Docker, SQL */
+  --ic-blue: #5c9dff;        /* TypeScript, TSX, Python, CSS */
+  --ic-orange: #f78c45;      /* Swift, Rust, HTML */
+  --ic-green: #45cf8e;       /* *_test.*, *.spec.*, Shell, Makefile */
+  --ic-amber: #e8c14a;       /* JSON, JS, Configs */
+  --ic-purple: #b589f2;      /* YAML, TOML, SVG, Images */
+  --ic-doc: #79b8ff;         /* Markdown, Docs */
+  --ic-red: #f06b72;         /* PDF, Git, Security */
+  --ic-slate: #8a93a6;       /* Lockfiles, LICENSE, Text */
+}
+
+[data-theme="dark"] {
+  --page: #0e1016;
+  --page-fg: #ececf2;
+  --page-fg2: #989caa;
+  --page-fg3: #666a78;
+  --panel: #171922;
+  --panel-2: #1e202b;
+  --panel-bd: rgba(255,255,255,.09);
+  --chip-bg: rgba(255,255,255,.07);
+  --chip-on: #4a66ff;
+
+  --i-bg: #0f1014;
+  --i-card: #1b1c22;
+  --i-card-legacy: #1c1c1e;
+  --i-card-hi: rgba(255,255,255,.085);
+  --i-card-hover: rgba(255,255,255,.055);
+  --i-vbar: #0b0c10;
+  --i-sheet: rgba(28,29,36,.94);
+  --i-glass: rgba(44,45,54,.78);
+  --i-glass-bd: rgba(255,255,255,.14);
+  --i-glass-hi: rgba(255,255,255,.13);
+
+  --l1: rgba(255,255,255,.92);
+  --l2: rgba(235,235,245,.60);
+  --l3: rgba(235,235,245,.36);
+  --l4: rgba(235,235,245,.18);
+  --sep: rgba(255,255,255,.085);
+  --sep-strong: rgba(255,255,255,.14);
+  --fill: rgba(255,255,255,.06);
+  --fill2: rgba(255,255,255,.11);
+  --accent: #4a66ff;
+  --accent-fg: #91a6ff;
+  --accent-bg: rgba(74,102,255,.19);
+  --ios-bug-blue: #4d78ff;
+  --ios-bug-blue-2: rgba(82,126,255,.68);
+  --ios-bug-blue-3: rgba(82,126,255,.42);
+
+  --ic-folder: #72abff;
+  --ic-folder-test: #59cbd9;
+  --ic-folder-dim: #858ea1;
+  --ic-cyan: #31c3e7;
+  --ic-blue: #63a1ff;
+  --ic-orange: #f8904b;
+  --ic-green: #4ad293;
+  --ic-amber: #ebd254;
+  --ic-purple: #ba90f5;
+  --ic-doc: #80bcff;
+  --ic-red: #f27279;
+  --ic-slate: #9199ac;
+}
+
+[data-theme="light"] {
+  --page: #e7e9f0;
+  --page-fg: #191b22;
+  --page-fg2: #5c606e;
+  --page-fg3: #868a98;
+  --panel: #ffffff;
+  --panel-2: #f4f5f9;
+  --panel-bd: rgba(15,20,35,.085);
+  --chip-bg: rgba(15,20,35,.055);
+  --chip-on: #3b59ff;
+
+  --i-bg: #f2f3f7;
+  --i-card: #ffffff;
+  --i-card-legacy: #ffffff;
+  --i-card-hi: rgba(15,20,35,.075);
+  --i-card-hover: rgba(15,20,35,.038);
+  --i-vbar: #e9ebf1;
+  --i-sheet: rgba(250,251,254,.95);
+  --i-glass: rgba(255,255,255,.82);
+  --i-glass-bd: rgba(0,0,0,.09);
+  --i-glass-hi: rgba(255,255,255,.88);
+
+  --l1: #181a20;
+  --l2: rgba(45,48,60,.62);
+  --l3: rgba(45,48,60,.38);
+  --l4: rgba(45,48,60,.18);
+  --sep: rgba(15,20,35,.075);
+  --sep-strong: rgba(15,20,35,.13);
+  --fill: rgba(15,20,35,.045);
+  --fill2: rgba(15,20,35,.085);
+  --accent: #3b59ff;
+  --accent-fg: #2f4be0;
+  --accent-bg: rgba(59,89,255,.11);
+  --ios-bug-blue: #007aff;
+  --ios-bug-blue-2: rgba(0,122,255,.65);
+  --ios-bug-blue-3: rgba(0,122,255,.38);
+
+  /* Light Mode Adjusted (OKLCH L≈0.50, C≈0.13 for crisp contrast on white) */
+  --ic-folder: #356ee0;
+  --ic-folder-test: #0f8a9e;
+  --ic-folder-dim: #687285;
+  --ic-cyan: #0084a8;
+  --ic-blue: #2563eb;
+  --ic-orange: #d4580f;
+  --ic-green: #168350;
+  --ic-amber: #b37d05;
+  --ic-purple: #7c45c4;
+  --ic-doc: #2d68c4;
+  --ic-red: #cf343d;
+  --ic-slate: #646d80;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; overflow-x: hidden; }
+body {
+  background: var(--page);
+  color: var(--page-fg);
+  font: 14px/1.5 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  padding-bottom: 56px;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+svg { display: block; flex: none; }
+code { font: 12px var(--font-mono); background: var(--chip-bg); padding: 1px 5px; border-radius: 5px; }
+
+/* ==================== Top Control Workbench ==================== */
+.top-wrap {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 16px 20px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hdr-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.hdr-title h1 {
+  margin: 0;
+  font-size: 18.5px;
+  font-weight: 650;
+  letter-spacing: -.2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pill-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(69,207,142,.14);
+  color: var(--ic-green);
+}
+.hdr-title p {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--page-fg2);
+}
+
+/* Control Bar */
+.ctrl-card {
+  background: var(--panel);
+  border: 1px solid var(--panel-bd);
+  border-radius: 15px;
+  padding: 10px 13px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.ctrl-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ctrl-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--page-fg3);
+}
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2.5px;
+  background: var(--chip-bg);
+  border-radius: 10px;
+}
+.seg button {
+  padding: 4px 9.5px;
+  border-radius: 7.5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--page-fg2);
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+}
+.seg button:hover { color: var(--page-fg); }
+.seg button.on {
+  background: var(--chip-on);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(59,89,255,.28);
+}
+
+/* ==================== Stage & Responsive Scaler ==================== */
+.stage {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 8px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.compare-grid {
+  display: flex;
+  gap: 26px;
+  justify-content: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.device-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  max-width: 100%;
+}
+.fit-box {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+}
+.fit-inner {
+  transform-origin: top center;
+  display: flex;
+  justify-content: center;
+}
+.col-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.tag-bad {
+  font-size: 11px;
+  padding: 1.5px 7px;
+  border-radius: 99px;
+  background: rgba(240,107,114,.15);
+  color: var(--ic-red);
+}
+.tag-good {
+  font-size: 11px;
+  padding: 1.5px 7px;
+  border-radius: 99px;
+  background: rgba(69,207,142,.15);
+  color: var(--ic-green);
+}
+.col-sub {
+  font-size: 12px;
+  color: var(--page-fg2);
+  text-align: center;
+  max-width: 440px;
+}
+
+/* ==================== 1:1 Native Fullscreen Stage (Great on Real Phone!) ==================== */
+.native-stage {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 620px;
+  border-radius: 26px;
+  background: var(--i-bg);
+  color: var(--l1);
+  box-shadow: 0 18px 50px rgba(0,0,0,.38), inset 0 0 0 1px var(--panel-bd);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+.native-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 4px;
+  gap: 8px;
+}
+
+/* ==================== Device Shells ==================== */
+/* 1. iPhone Duo Outer Display (446 x 682 - exact proportions & right vertical bar from screenshot!) */
+.duo-outer {
+  width: 446px;
+  height: 682px;
+  border-radius: 44px;
+  padding: 11px;
+  background: #1a1b20;
+  box-shadow: 0 26px 70px rgba(0,0,0,.48), inset 0 0 0 1.5px #353741;
+  position: relative;
+  user-select: none;
+  flex: none;
+}
+.scr {
+  width: 100%;
+  height: 100%;
+  border-radius: 34px;
+  overflow: hidden;
+  background: var(--i-bg);
+  color: var(--l1);
+  display: flex;
+  position: relative;
+}
+
+/* Right System Vertical Bar on iPhone Duo (02:31 + Status Ring + Back Circle) */
+.vbar {
+  width: 66px;
+  flex: none;
+  background: var(--i-vbar);
+  padding: 36px 0 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  z-index: 30;
+}
+.vclock {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -.3px;
+  color: var(--l1);
+  font-variant-numeric: tabular-nums;
+}
+.vring {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2.3px solid var(--l1);
+  position: relative;
+  display: grid;
+  place-items: center;
+  opacity: .94;
+}
+.vring .dots {
+  position: absolute;
+  bottom: -5px;
+  background: var(--i-vbar);
+  padding: 0 3px;
+  font-size: 7px;
+  letter-spacing: 1.5px;
+  color: var(--l1);
+}
+.vback {
+  margin-top: 10px;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--i-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: inset 0 .5px 0 var(--i-glass-hi), 0 0 0 .5px var(--i-glass-bd);
+  display: grid;
+  place-items: center;
+  color: var(--l1);
+  transition: transform .12s, background .15s;
+}
+.vback:hover { background: var(--fill2); }
+.vback:active { transform: scale(.92); }
+
+/* 2. iPhone Duo Open Landscape (880 x 620) for Side Panel + Tree Drawer */
+.duo-wide {
+  width: 880px;
+  height: 620px;
+  border-radius: 38px;
+  padding: 11px;
+  background: #1a1b20;
+  box-shadow: 0 26px 70px rgba(0,0,0,.48), inset 0 0 0 1.5px #353741;
+  position: relative;
+  user-select: none;
+  flex: none;
+}
+.duo-wide::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  margin-left: -1px;
+  background: linear-gradient(to bottom, rgba(255,255,255,.16), rgba(255,255,255,.03) 18%, rgba(255,255,255,.03) 82%, rgba(255,255,255,.16));
+  z-index: 50;
+  pointer-events: none;
+}
+.duo-wide .scr { border-radius: 28px; }
+
+/* 3. Candybar iPhone (392 x 740) */
+.phone-std {
+  width: 392px;
+  height: 740px;
+  border-radius: 52px;
+  padding: 11px;
+  background: #1a1b20;
+  box-shadow: 0 26px 70px rgba(0,0,0,.48), inset 0 0 0 1.5px #353741;
+  position: relative;
+  user-select: none;
+  flex: none;
+}
+.phone-std .scr {
+  border-radius: 42px;
+  flex-direction: column;
+}
+.status-top {
+  height: 46px;
+  padding: 8px 26px 0 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 600;
+  position: relative;
+  flex: none;
+}
+.island {
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  width: 108px;
+  height: 30px;
+  border-radius: 18px;
+  background: #000;
+}
+
+/* ==================== Folder Page Content Area ==================== */
+.fpage {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 6px 0 18px;
+  overflow: hidden;
+  position: relative;
+}
+.phone-std .fpage, .native-stage .fpage {
+  padding: 6px 16px 0 16px;
+}
+
+/* Legacy (Before) Header & Card */
+.legacy-title {
+  font-size: 18px;
+  font-weight: 650;
+  color: var(--l1);
+  padding: 2px 4px 16px;
+  letter-spacing: -.2px;
+}
+.legacy-card {
+  background: var(--i-card-legacy);
+  border-radius: 24px;
+  overflow-y: auto;
+  flex: 1;
+  margin-bottom: 14px;
+  scrollbar-width: none;
+}
+.legacy-card::-webkit-scrollbar { display: none; }
+.legacy-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  height: 51px;
+  padding: 0 16px;
+  position: relative;
+  color: var(--ios-bug-blue);
+  font-size: 16.5px;
+  letter-spacing: -.15px;
+  width: 100%;
+  text-align: left;
+}
+/* Notice in screenshot: separator starts at ~16px right under the icon! */
+.legacy-row:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 0;
+  height: .5px;
+  background: var(--sep);
+}
+.legacy-row .l-ic {
+  width: 22px;
+  display: grid;
+  place-items: center;
+  color: var(--ios-bug-blue-2);
+}
+.legacy-row .l-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.legacy-row .l-meta {
+  font-size: 13.5px;
+  color: var(--ios-bug-blue-2);
+  flex: none;
+}
+.legacy-row .l-chev {
+  color: var(--ios-bug-blue-3);
+  flex: none;
+}
+
+/* ==================== Redesigned Folder Page (After) ==================== */
+.modern-head {
+  padding: 0 4px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+}
+.title-bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.modern-title {
+  font-size: 20px;
+  font-weight: 680;
+  letter-spacing: -.35px;
+  color: var(--l1);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.pkg-pill {
+  font: 500 10.5px/1 var(--font-mono);
+  padding: 3px 6.5px;
+  border-radius: 6px;
+  background: rgba(43,192,228,.13);
+  color: var(--ic-cyan);
+  letter-spacing: 0;
+}
+.summary-meta {
+  font-size: 11.5px;
+  color: var(--l3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Interactive Breadcrumb Trail */
+.crumb-bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  font: 12px/1.3 var(--font-mono);
+  color: var(--l2);
+  padding-bottom: 1px;
+}
+.crumb-bar::-webkit-scrollbar { display: none; }
+.crumb-btn {
+  padding: 2px 5px;
+  margin: 0 -3px;
+  border-radius: 5px;
+  color: var(--l2);
+  transition: background .14s, color .14s;
+  white-space: nowrap;
+}
+.crumb-btn:hover { background: var(--fill2); color: var(--l1); }
+.crumb-cur {
+  color: var(--l1);
+  font-weight: 600;
+  padding: 2px 4px;
+  white-space: nowrap;
+}
+.crumb-sep {
+  color: var(--l4);
+  font-size: 11px;
+  padding: 0 1px;
+}
+
+/* Search / Filter Capsule inside Folder Page */
+.filter-box {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 33px;
+  padding: 0 11px;
+  border-radius: 10px;
+  background: var(--fill);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  margin-top: 2px;
+}
+.filter-box input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--l1);
+  font: 13px var(--font-ui);
+}
+.filter-box input::placeholder { color: var(--l3); }
+.filter-clear {
+  font-size: 11px;
+  color: var(--l3);
+  padding: 2px 6px;
+  border-radius: 99px;
+  background: var(--fill);
+}
+
+/* Scrollable List Area */
+.fscroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 2px 18px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scrollbar-width: none;
+}
+.fscroll::-webkit-scrollbar { display: none; }
+
+.sec-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--l3);
+  padding: 2px 12px 4px;
+  letter-spacing: .3px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fcard {
+  background: var(--i-card);
+  border-radius: 20px;
+  box-shadow: inset 0 0 0 .5px var(--i-card-hi);
+  overflow: hidden;
+}
+
+.frow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 46px;
+  padding: 0 14px;
+  position: relative;
+  text-align: left;
+  transition: background .12s;
+}
+.frow:hover { background: var(--i-card-hover); }
+.frow:active { background: var(--fill2); }
+.frow.dim { opacity: .66; }
+
+/* Apple HIG Aligned Separator: starts cleanly at text leading edge (47px), NOT cutting under icon! */
+.frow:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 47px;
+  right: 0;
+  bottom: 0;
+  height: .5px;
+  background: var(--sep);
+}
+.frow.dir-end:not(:last-child)::after {
+  left: 14px;
+  height: 1px;
+  background: var(--sep-strong);
+}
+
+/* Icon Slot */
+.fic-slot {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+.fic-badge {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  font: 700 9px/1 var(--font-mono);
+  letter-spacing: -.3px;
+  position: relative;
+  flex: none;
+}
+.fic-badge .sub-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ic-green);
+  box-shadow: 0 0 0 1.5px var(--i-card);
+}
+.primer-dot {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--i-card);
+}
+
+/* Filename Typography */
+.fname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  letter-spacing: -.15px;
+  color: var(--l1);
+}
+.fname.dir-name { font-weight: 520; }
+.font-mono-mode .fname {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  letter-spacing: -.2px;
+}
+.fname .f-sub { color: var(--l2); }
+.fname .f-ext { color: var(--l3); }
+
+/* Trailing Metadata */
+.fmeta {
+  flex: none;
+  font: 11.5px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--l3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dir-count {
+  font: 500 11px/1 var(--font-mono);
+  color: var(--l3);
+  padding: 2.5px 6px;
+  border-radius: 99px;
+  background: var(--fill);
+}
+.fchev {
+  color: var(--l3);
+  width: 13px;
+  height: 13px;
+}
+
+/* ==================== Pushed File Code View + Bottom Glass Drawer ==================== */
+.pfile-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 10px;
+  border-bottom: .5px solid var(--sep);
+}
+.pfile-code {
+  flex: 1;
+  padding: 12px 4px;
+  font: 12px/1.7 var(--font-mono);
+  color: var(--l2);
+  overflow-y: auto;
+}
+.drawer-pill {
+  margin: 6px 4px 12px 0;
+  height: 50px;
+  padding: 0 15px;
+  border-radius: 99px;
+  background: var(--i-glass);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: inset 0 .5px 0 var(--i-glass-hi), 0 0 0 .5px var(--i-glass-bd), 0 8px 22px rgba(0,0,0,.32);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 4px);
+  text-align: left;
+}
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.38);
+  z-index: 25;
+}
+
+/* ==================== Wide Side Panel & Tree Sheet Preview ==================== */
+.wide-chat {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-right: .5px solid var(--sep);
+}
+.chat-bub-me {
+  align-self: flex-end;
+  max-width: 82%;
+  background: var(--accent);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 18px 18px 5px 18px;
+  font-size: 14px;
+}
+.chat-reply {
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--l1);
+}
+.fref-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--fill2);
+  color: var(--accent-fg);
+  font: 12.5px var(--font-mono);
+  cursor: pointer;
+}
+.fref-chip:hover { background: var(--accent-bg); }
+
+.wide-panel {
+  width: 50%;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: var(--i-bg);
+}
+.tab-strip {
+  height: 46px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: .5px solid var(--sep);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tab-pill {
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 99px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--l2);
+  background: var(--fill);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tab-pill.on {
+  background: var(--i-glass);
+  color: var(--l1);
+  font-weight: 550;
+  box-shadow: inset 0 .5px 0 var(--i-glass-hi), 0 0 0 .5px var(--i-glass-bd);
+}
+.code-mock {
+  flex: 1;
+  padding: 12px 14px;
+  font: 12px/1.65 var(--font-mono);
+  color: var(--l2);
+  overflow: hidden;
+}
+.code-ln { display: flex; gap: 12px; }
+.code-ln.hi { background: rgba(232,193,74,.14); margin: 0 -14px; padding: 0 14px; border-left: 2px solid var(--ic-amber); }
+.code-ln i { font-style: normal; color: var(--l4); width: 22px; text-align: right; user-select: none; }
+
+/* Bottom Tree Drawer */
+.tree-drawer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 75%;
+  background: var(--i-sheet);
+  backdrop-filter: blur(28px) saturate(1.5);
+  -webkit-backdrop-filter: blur(28px) saturate(1.5);
+  border-radius: 24px 24px 0 0;
+  box-shadow: 0 -10px 34px rgba(0,0,0,.42), inset 0 .5px 0 var(--i-glass-hi);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 28;
+}
+.drawer-grab {
+  width: 36px;
+  height: 4.5px;
+  border-radius: 99px;
+  background: var(--l3);
+  margin: 8px auto 6px;
+  flex: none;
+}
+.drawer-hdr {
+  padding: 2px 14px 9px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: .5px solid var(--sep);
+}
+.tree-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 8px 14px;
+}
+.trow {
+  width: 100%;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-right: 10px;
+  text-align: left;
+  position: relative;
+}
+.trow:hover { background: var(--fill); }
+.trow.on { background: var(--accent-bg); }
+.trow.on .fname { color: var(--accent-fg); font-weight: 560; }
+.indent-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--sep);
+  pointer-events: none;
+}
+
+/* ==================== Specification Reference Section ==================== */
+.spec-wrap {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+.spec-card {
+  background: var(--panel);
+  border: 1px solid var(--panel-bd);
+  border-radius: 16px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.spec-card h3 {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 650;
+}
+.spec-card p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--page-fg2);
+  line-height: 1.55;
+}
+.swatch-list, .rule-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.swatch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  font-size: 12.5px;
+}
+.sw-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex: none;
+}
+.sw-hex {
+  margin-left: auto;
+  font: 11px var(--font-mono);
+  color: var(--page-fg2);
+  white-space: nowrap;
+}
+.rule-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  font-size: 12.5px;
+}
+.rule-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--accent-bg);
+  color: var(--accent-fg);
+  font: 700 11px var(--font-mono);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(16px);
+  background: rgba(24,26,34,.94);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 99px;
+  font-size: 12.5px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.45), 0 0 0 .5px rgba(255,255,255,.16);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s, transform .18s;
+  z-index: 200;
+  max-width: 92vw;
+  text-align: center;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+@media (max-width: 620px) {
+  .top-wrap { padding: 12px 12px 6px; }
+  .stage { padding: 6px 12px 24px; }
+  .hdr-title h1 { font-size: 16.5px; }
+}
+</style>
+</head>
+<body>
+
+<div class="top-wrap">
+  <div class="hdr-row">
+    <div class="hdr-title">
+      <h1>
+        会话项目文件 · 配色规范与展开页美化原型
+        <span class="pill-tag">Interactive Demo</span>
+      </h1>
+      <p>点击目录（如 <code>testdata</code>）、面包屑或任意代码文件（可推入代码页并拉起底部目录树抽屉），实时体验整套规范。</p>
+    </div>
+    <div class="seg" id="stageTabs">
+      <button data-stage="compare">前后并排对比</button>
+      <button data-stage="native">真机 1:1 沉浸</button>
+      <button data-stage="forms">多形态联动（侧面板/抽屉）</button>
+      <button data-stage="spec">规范色板表</button>
+    </div>
+  </div>
+
+  <div class="ctrl-card">
+    <div class="ctrl-group">
+      <span class="ctrl-label">目录</span>
+      <div class="seg" id="dirTabs">
+        <button data-dir="internal/owner">internal/owner（截图场景）</button>
+        <button data-dir="">hermesh/（多语言根目录）</button>
+        <button data-dir="apps/session">apps/session（跨端全类型）</button>
+      </div>
+    </div>
+
+    <div class="ctrl-group">
+      <span class="ctrl-label">图标主题</span>
+      <div class="seg" id="schemeTabs">
+        <button data-scheme="harmonized">方案 A · Seti 均衡语义色（推荐）</button>
+        <button data-scheme="badge">方案 B · Material 微徽章</button>
+        <button data-scheme="primer">方案 C · Primer 极简</button>
+      </div>
+    </div>
+
+    <div class="ctrl-group">
+      <span class="ctrl-label">字体</span>
+      <div class="seg" id="fontTabs">
+        <button data-font="ui">SF Pro 比例字</button>
+        <button data-font="mono">SF Mono 等宽字</button>
+      </div>
+    </div>
+
+    <div class="ctrl-group">
+      <span class="ctrl-label">字色分层</span>
+      <div class="seg" id="stemTabs">
+        <button data-stem="split">主干高亮 + 后缀降噪</button>
+        <button data-stem="flat">整行纯色</button>
+      </div>
+    </div>
+
+    <div class="ctrl-group">
+      <span class="ctrl-label">分组</span>
+      <div class="seg" id="groupTabs">
+        <button data-group="split">目录 / 文件分栏</button>
+        <button data-group="single">单卡片紧凑</button>
+      </div>
+    </div>
+
+    <div class="ctrl-group">
+      <span class="ctrl-label">底色</span>
+      <div class="seg" id="themeTabs">
+        <button data-theme-pick="black">纯黑 OLED</button>
+        <button data-theme-pick="dark">深灰 Dark</button>
+        <button data-theme-pick="light">浅色 Light</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="stage" id="appStage"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ==================== Mock Project File System (Real Repo Structure) ==================== */
+const FS = {
+  "": {
+    badge: "Repo Root",
+    entries: [
+      { name: ".github", dir: true, count: 3 },
+      { name: "apps", dir: true, count: 4 },
+      { name: "cmd", dir: true, count: 5 },
+      { name: "docs", dir: true, count: 108 },
+      { name: "internal", dir: true, count: 25 },
+      { name: "packages", dir: true, count: 6 },
+      { name: "proto", dir: true, count: 9 },
+      { name: "scripts", dir: true, count: 8 },
+      { name: ".gitignore", dir: false, bytes: 507 },
+      { name: "AGENTS.md", dir: false, bytes: 2415 },
+      { name: "Dockerfile", dir: false, bytes: 1280 },
+      { name: "LICENSE", dir: false, bytes: 11358 },
+      { name: "Makefile", dir: false, bytes: 2051 },
+      { name: "README.md", dir: false, bytes: 36360 },
+      { name: "buf.gen.ts.yaml", dir: false, bytes: 374 },
+      { name: "go.mod", dir: false, bytes: 6372 },
+      { name: "go.sum", dir: false, bytes: 29324 },
+      { name: "package.json", dir: false, bytes: 174 },
+      { name: "pnpm-lock.yaml", dir: false, bytes: 258369 },
+      { name: "tsconfig.base.json", dir: false, bytes: 378 }
+    ]
+  },
+  "internal": {
+    badge: "Go Internal",
+    entries: [
+      { name: "kernel", dir: true, count: 18 },
+      { name: "machine", dir: true, count: 14 },
+      { name: "mobile", dir: true, count: 9 },
+      { name: "owner", dir: true, count: 11 },
+      { name: "vcs", dir: true, count: 7 },
+      { name: "auth.go", dir: false, bytes: 6420 },
+      { name: "auth_test.go", dir: false, bytes: 9120 },
+      { name: "version.go", dir: false, bytes: 890 }
+    ]
+  },
+  "internal/owner": {
+    badge: "Go Package",
+    entries: [
+      { name: "testdata", dir: true, count: 4 },
+      { name: "cards.go", dir: false, bytes: 2048 },
+      { name: "connectivity_test.go", dir: false, bytes: 19456 },
+      { name: "credentials_test.go", dir: false, bytes: 459 },
+      { name: "deltas.go", dir: false, bytes: 8192 },
+      { name: "deltas_e2e_test.go", dir: false, bytes: 8192 },
+      { name: "devices.go", dir: false, bytes: 31744 },
+      { name: "direct_test.go", dir: false, bytes: 10240 },
+      { name: "erase.go", dir: false, bytes: 11264 },
+      { name: "files.go", dir: false, bytes: 10240 },
+      { name: "files_test.go", dir: false, bytes: 10240 }
+    ]
+  },
+  "internal/owner/testdata": {
+    badge: "Fixtures",
+    entries: [
+      { name: "snapshots", dir: true, count: 2 },
+      { name: "checkpoint_turn16.json", dir: false, bytes: 4210 },
+      { name: "delta_stream.golden", dir: false, bytes: 1890 },
+      { name: "owner_keys.pem", dir: false, bytes: 612 },
+      { name: "README.md", dir: false, bytes: 940 }
+    ]
+  },
+  "apps": {
+    badge: "Workspaces",
+    entries: [
+      { name: "desktop", dir: true, count: 12 },
+      { name: "ios", dir: true, count: 8 },
+      { name: "session", dir: true, count: 12 },
+      { name: "screen", dir: true, count: 4 }
+    ]
+  },
+  "apps/session": {
+    badge: "Cross-Platform",
+    entries: [
+      { name: "Assets.xcassets", dir: true, count: 26 },
+      { name: "testdata", dir: true, count: 5 },
+      { name: "SessionFiles.swift", dir: false, bytes: 38912 },
+      { name: "SessionFilesUITests.swift", dir: false, bytes: 14620 },
+      { name: "SessionSidePanel.swift", dir: false, bytes: 26410 },
+      { name: "Tree.tsx", dir: false, bytes: 4280 },
+      { name: "Tree.test.tsx", dir: false, bytes: 6190 },
+      { name: "files.css", dir: false, bytes: 7820 },
+      { name: "session_files.proto", dir: false, bytes: 5120 },
+      { name: "side-panel-demo.html", dir: false, bytes: 75622 },
+      { name: "architecture.svg", dir: false, bytes: 9410 },
+      { name: "spec-v2.pdf", dir: false, bytes: 186400 },
+      { name: "build-core.sh", dir: false, bytes: 1940 }
+    ]
+  }
+};
+
+function getDirData(path) {
+  if (FS[path]) return FS[path];
+  return {
+    badge: "Folder",
+    entries: [
+      { name: "README.md", dir: false, bytes: 2048 },
+      { name: "index.ts", dir: false, bytes: 4620 },
+      { name: "index.test.ts", dir: false, bytes: 3180 }
+    ]
+  };
+}
+
+/* ==================== Priority File Icon & Color Resolver ==================== */
+const ICONS = {
+  folder: `<svg width="19" height="19" viewBox="0 0 20 20" fill="currentColor"><path d="M2.2 5.4A2.2 2.2 0 0 1 4.4 3.2h3.35c.58 0 1.14.23 1.55.64l1.02 1.02c.2.2.47.31.75.31h4.53a2.2 2.2 0 0 1 2.2 2.2v7.23a2.2 2.2 0 0 1-2.2 2.2H4.4a2.2 2.2 0 0 1-2.2-2.2V5.4Z"/></svg>`,
+  folderOpen: `<svg width="19" height="19" viewBox="0 0 20 20" fill="currentColor"><path opacity=".42" d="M2.2 5.4A2.2 2.2 0 0 1 4.4 3.2h3.35c.58 0 1.14.23 1.55.64l1.02 1.02c.2.2.47.31.75.31h4.53a2.2 2.2 0 0 1 2.2 2.2v1.6H2.2V5.4Z"/><path d="M2.1 8.8A1.6 1.6 0 0 1 3.68 7.5h12.64a1.6 1.6 0 0 1 1.56 1.96l-1.15 5.6a2 2 0 0 1-1.96 1.6H4.23a2 2 0 0 1-1.96-1.6L1.7 9.46a1.6 1.6 0 0 1 .4-.66Z"/></svg>`,
+  folderTest: `<svg width="19" height="19" viewBox="0 0 20 20" fill="none"><path fill="currentColor" d="M2.2 5.4A2.2 2.2 0 0 1 4.4 3.2h3.35c.58 0 1.14.23 1.55.64l1.02 1.02c.2.2.47.31.75.31h4.53a2.2 2.2 0 0 1 2.2 2.2v7.23a2.2 2.2 0 0 1-2.2 2.2H4.4a2.2 2.2 0 0 1-2.2-2.2V5.4Z"/><path stroke="var(--i-card)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="m7.4 11.3 1.8 1.8 3.6-3.7"/></svg>`,
+  go: `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6.8 6.5 3.2 10l3.6 3.5M13.2 6.5 16.8 10l-3.6 3.5"/><circle cx="10" cy="10" r="1.35" fill="currentColor" stroke="none"/></svg>`,
+  test: `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.2h4M8.8 3.2v4.1L5.1 14a1.8 1.8 0 0 0 1.57 2.68h6.66A1.8 1.8 0 0 0 14.9 14l-3.7-6.7V3.2"/><path d="M6.7 12.2h6.6"/></svg>`,
+  swift: `<svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path d="M15.4 12.8c.2-.9.1-2-.4-3.1-.8-1.8-2.3-3.5-4.3-4.6 1 1.6 1.5 3.2 1.4 4.5-1.4-1-3.2-2.4-4.7-4-.5.9-.5 2.1.1 3.3-1.2-.6-2.3-1.5-3.2-2.5-.2 1.7.7 3.6 2.5 4.8.9.6 1.9 1 2.9 1.1-1.2.7-2.8.8-4.5.2 1.5 1.8 3.9 2.7 6.3 2.5 1.5-.1 2.9-.7 3.9-1.7.8.2 1.6.5 2.1 1-.1-.9-.5-1.6-1.1-2.1-.3.2-.6.4-1 .6Z"/></svg>`,
+  code: `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.8 6.2 3 10l3.8 3.8M13.2 6.2 17 10l-3.8 3.8M11.2 4.5 8.8 15.5"/></svg>`,
+  braces: `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M7.2 4C5.6 4 5 4.8 5 6.2v2c0 .9-.6 1.5-1.5 1.8.9.3 1.5.9 1.5 1.8v2C5 15.2 5.6 16 7.2 16M12.8 4c1.6 0 2.2.8 2.2 2.2v2c0 .9.6 1.5 1.5 1.8-.9.3-1.5.9-1.5 1.8v2c0 1.4-.6 2.2-2.2 2.2"/></svg>`,
+  sliders: `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"><path d="M4 6h12M4 10h12M4 14h12"/><circle cx="7.5" cy="6" r="1.7" fill="var(--i-card)"/><circle cx="13" cy="10" r="1.7" fill="var(--i-card)"/><circle cx="8.5" cy="14" r="1.7" fill="var(--i-card)"/></svg>`,
+  md: `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.6" y="4.5" width="14.8" height="11" rx="2.2"/><path d="M5.6 12.6V7.4l2.2 2.7L10 7.4v5.2M13.8 7.5v5m0 0-1.8-1.9m1.8 1.9 1.8-1.9"/></svg>`,
+  globe: `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="6.8"/><path d="M3.4 10h13.2M10 3.2c1.9 1.9 2.9 4.3 2.9 6.8S11.9 14.9 10 16.8C8.1 14.9 7.1 12.5 7.1 10S8.1 5.1 10 3.2Z"/></svg>`,
+  term: `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.8" y="4" width="14.4" height="12" rx="2.4"/><path d="m6.2 8 2.4 2.1-2.4 2.1M10.4 12.2h3.2"/></svg>`,
+  cube: `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M10 2.8 16.4 6.4v7.2L10 17.2 3.6 13.6V6.4L10 2.8Z"/><path d="M3.6 6.4 10 10l6.4-3.6M10 10v7.2"/></svg>`,
+  lock: `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="9" width="11" height="7.5" rx="2"/><path d="M7 9V6.6a3 3 0 0 1 6 0V9"/></svg>`,
+  image: `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3.8" width="14" height="12.4" rx="2.3"/><circle cx="7.4" cy="7.8" r="1.3" fill="currentColor" stroke="none"/><path d="m4.2 14.5 4.2-4.1 3 2.9 2.2-2 2.4 3.2"/></svg>`,
+  pdf: `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5.2 2.8h6.3l3.9 3.9v10.5H5.2a1.6 1.6 0 0 1-1.6-1.6V4.4c0-.9.7-1.6 1.6-1.6Z"/><path d="M11.3 2.9V7h4"/><path d="M6.8 12.6h6.4M6.8 10h3"/></svg>`,
+  git: `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"><circle cx="6.2" cy="5.5" r="1.8"/><circle cx="6.2" cy="14.5" r="1.8"/><circle cx="13.8" cy="8.5" r="1.8"/><path d="M6.2 7.3v5.4M13.8 10.3c0 2.2-1.8 2.8-7.6 2.8"/></svg>`,
+  docOutline: `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M5.4 2.8h6l4 4v10.4H5.4a1.6 1.6 0 0 1-1.6-1.6V4.4c0-.9.7-1.6 1.6-1.6Z"/><path d="M11.2 2.9V7h4.1"/></svg>`,
+  folderOutline: `<svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linejoin="round"><path d="M2.5 5.5A2 2 0 0 1 4.5 3.5h3.3l1.6 1.7h6.1a2 2 0 0 1 2 2v7.3a2 2 0 0 1-2 2H4.5a2 2 0 0 1-2-2V5.5Z"/></svg>`,
+  treeGlyph: `<svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 5h13M7.5 10h9M7.5 15h9M3.5 10h1M3.5 15h1"/></svg>`,
+  chevR: `<svg class="fchev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg>`,
+  chevUp: `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 10 4.5-4.5L12.5 10"/></svg>`,
+  chevDown: `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 6 4.5 4.5L12.5 6"/></svg>`,
+  chevBack: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4.2 6.7 10l5.8 5.8"/></svg>`,
+  wifi: `<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3.5 8.2a9.5 9.5 0 0 1 13 0M6.2 11a5.8 5.8 0 0 1 7.6 0"/><circle cx="10" cy="13.9" r="1.2" fill="currentColor" stroke="none"/></svg>`,
+  search: `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"/><path d="m10.5 10.5 3 3"/></svg>`
+};
+
+function resolveFileVisual(name, isDir, isOpen = false) {
+  const lower = name.toLowerCase();
+  if (isDir) {
+    if (lower.startsWith(".")) {
+      return { color: "var(--ic-folder-dim)", svg: isOpen ? ICONS.folderOpen : ICONS.folder, badge: "DIR", role: "hidden-dir" };
+    }
+    if (lower === "testdata" || lower === "tests" || lower === "e2e" || lower.endsWith("tests")) {
+      return { color: "var(--ic-folder-test)", svg: isOpen ? ICONS.folderOpen : ICONS.folderTest, badge: "TST", role: "test-dir" };
+    }
+    return { color: "var(--ic-folder)", svg: isOpen ? ICONS.folderOpen : ICONS.folder, badge: "DIR", role: "dir" };
+  }
+  if (lower === "go.sum" || lower === "pnpm-lock.yaml" || lower === "package-lock.json" || lower === "cargo.lock") {
+    return { color: "var(--ic-slate)", svg: ICONS.lock, badge: "LCK", dim: true, role: "lock" };
+  }
+  if (lower === "go.mod") return { color: "var(--ic-cyan)", svg: ICONS.cube, badge: "MOD", role: "mod" };
+  if (lower === "dockerfile" || lower === "containerfile") return { color: "var(--ic-cyan)", svg: ICONS.cube, badge: "DKR", role: "docker" };
+  if (lower === "makefile" || lower === "justfile") return { color: "var(--ic-green)", svg: ICONS.term, badge: "MK", role: "make" };
+  if (lower.startsWith(".git") || lower === ".dockerignore") return { color: "var(--ic-red)", svg: ICONS.git, badge: "GIT", dim: true, role: "git" };
+  if (lower === "license") return { color: "var(--ic-slate)", svg: ICONS.docOutline, badge: "LIC", dim: true, role: "license" };
+
+  const isTest = /(?:_test\.go|\.(?:test|spec)\.[a-z0-9]+|tests?\.swift)$/i.test(lower);
+  if (isTest) {
+    const extBadge = lower.endsWith(".go") ? "GO" : lower.endsWith(".swift") ? "SW" : "TS";
+    return { color: "var(--ic-green)", svg: ICONS.test, badge: extBadge, isTest: true, role: "test" };
+  }
+
+  const ext = lower.includes(".") ? lower.split(".").pop() : "";
+  switch (ext) {
+    case "go": return { color: "var(--ic-cyan)", svg: ICONS.go, badge: "GO", role: "code" };
+    case "proto": return { color: "var(--ic-cyan)", svg: ICONS.cube, badge: "PB", role: "code" };
+    case "swift": return { color: "var(--ic-orange)", svg: ICONS.swift, badge: "SW", role: "code" };
+    case "rs": return { color: "var(--ic-orange)", svg: ICONS.code, badge: "RS", role: "code" };
+    case "ts":
+    case "tsx": return { color: "var(--ic-blue)", svg: ICONS.code, badge: ext.toUpperCase(), role: "code" };
+    case "css": return { color: "var(--ic-blue)", svg: ICONS.braces, badge: "CSS", role: "style" };
+    case "js":
+    case "mjs":
+    case "json": return { color: "var(--ic-amber)", svg: ICONS.braces, badge: ext === "json" ? "{ }" : "JS", role: "data" };
+    case "yaml":
+    case "yml":
+    case "toml": return { color: "var(--ic-purple)", svg: ICONS.sliders, badge: "YML", role: "config" };
+    case "md": return { color: "var(--ic-doc)", svg: ICONS.md, badge: "MD", role: "doc" };
+    case "html":
+    case "htm": return { color: "var(--ic-orange)", svg: ICONS.globe, badge: "HTM", role: "page" };
+    case "sh": return { color: "var(--ic-green)", svg: ICONS.term, badge: "SH", role: "shell" };
+    case "svg":
+    case "png":
+    case "jpg":
+    case "webp": return { color: "var(--ic-purple)", svg: ICONS.image, badge: ext.toUpperCase(), role: "media" };
+    case "pdf": return { color: "var(--ic-red)", svg: ICONS.pdf, badge: "PDF", role: "pdf" };
+    default: return { color: "var(--ic-slate)", svg: ICONS.docOutline, badge: "TXT", role: "text" };
+  }
+}
+
+function fmtBytesLegacy(b) {
+  return b < 1000 ? `${b} 字节` : `${Math.round(b / 1024)} KB`;
+}
+function fmtBytesClean(b) {
+  if (b < 1000) return `${b} B`;
+  const kb = b / 1024;
+  return kb < 10 && Math.abs(kb - Math.round(kb)) >= 0.1 ? `${kb.toFixed(1)} KB` : `${Math.round(kb)} KB`;
+}
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function renderFilenameHTML(name, isDir, splitMode) {
+  if (isDir || !splitMode) return esc(name);
+  const testMatch = name.match(/^(.+?)(_(?:e2e_)?test|\.(?:test|spec)|UITests|Tests)(\.[a-z0-9]+)$/i);
+  if (testMatch) {
+    return `${esc(testMatch[1])}<span class="f-sub">${esc(testMatch[2])}</span><span class="f-ext">${esc(testMatch[3])}</span>`;
+  }
+  const idx = name.lastIndexOf(".");
+  if (idx > 0) return `${esc(name.slice(0, idx))}<span class="f-ext">${esc(name.slice(idx))}</span>`;
+  return esc(name);
+}
+
+function renderIconSlot(name, isDir, scheme, isOpen = false) {
+  const v = resolveFileVisual(name, isDir, isOpen);
+  if (scheme === "badge") {
+    if (isDir) return `<span class="fic-slot" style="color:${v.color}">${v.svg}</span>`;
+    return `<span class="fic-badge" style="color:${v.color};background:color-mix(in srgb, ${v.color} 15%, transparent)">
+      ${esc(v.badge)}${v.isTest ? `<span class="sub-dot"></span>` : ""}
+    </span>`;
+  }
+  if (scheme === "primer") {
+    if (isDir) return `<span class="fic-slot" style="color:var(--ic-folder)">${isOpen ? ICONS.folderOpen : ICONS.folder}</span>`;
+    const showDot = v.isTest || v.role === "code" || v.role === "page";
+    return `<span class="fic-slot" style="color:var(--l2)">
+      ${ICONS.docOutline}${showDot ? `<span class="primer-dot" style="background:${v.color}"></span>` : ""}
+    </span>`;
+  }
+  return `<span class="fic-slot" style="color:${v.color}">${v.svg}</span>`;
+}
+
+/* ==================== Interactive State ==================== */
+const S = {
+  stage: window.innerWidth < 620 ? "native" : "compare", // compare | native | forms | spec
+  dir: "internal/owner",
+  pushedFile: null,      // when set, shows pushed SessionFilePage + bottom drawer pill!
+  drawerSheet: false,    // bottom SessionTreeSheet inside pushed file page
+  nativeBefore: false,   // quick toggle in 1:1 native stage
+  filter: "",
+  scheme: "harmonized",
+  font: "ui",
+  stem: "split",
+  group: "split",
+  theme: "black",
+  activeFile: "internal/owner/files.go",
+  treeOpen: new Set(["internal", "internal/owner"])
+};
+
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(showToast.t);
+  showToast.t = setTimeout(() => el.classList.remove("show"), 1900);
+}
+
+/* ==================== Tree Rows Builder ==================== */
+function buildTreeRows() {
+  const rows = [];
+  const walk = (dir, depth) => {
+    const entries = getDirData(dir).entries;
+    for (const e of entries) {
+      const path = dir ? `${dir}/${e.name}` : e.name;
+      const open = e.dir && S.treeOpen.has(path);
+      rows.push({ ...e, path, depth, open });
+      if (open) walk(path, depth + 1);
+    }
+  };
+  walk("", 0);
+  return rows;
+}
+
+function renderTreeRowsHTML(activePath, closeOnPickAttr) {
+  return buildTreeRows().map((r) => {
+    const on = r.path === activePath;
+    let guides = "";
+    for (let d = 1; d <= r.depth; d++) {
+      guides += `<span class="indent-guide" style="left:${15 + (d - 1) * 15}px"></span>`;
+    }
+    return `
+      <button class="trow ${on ? "on" : ""}" style="padding-left:${8 + r.depth * 15}px"
+              data-tree-dir="${r.dir ? esc(r.path) : ""}"
+              ${closeOnPickAttr}="${!r.dir ? esc(r.path) : ""}">
+        ${guides}
+        <span style="width:12px;display:grid;place-items:center;color:var(--l3);transform:rotate(${r.open ? 90 : 0}deg);opacity:${r.dir ? 1 : 0}">
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m4 2.2 4 3.8-4 3.8"/></svg>
+        </span>
+        ${renderIconSlot(r.name, r.dir, S.scheme, r.open)}
+        <span class="fname ${r.dir ? "dir-name" : ""}" style="font-size:13.5px">
+          ${renderFilenameHTML(r.name, r.dir, S.stem === "split")}
+        </span>
+        ${!r.dir ? `<span class="fmeta">${fmtBytesClean(r.bytes)}</span>` : ""}
+      </button>
+    `;
+  }).join("");
+}
+
+/* ==================== Renderers ==================== */
+function renderRightVBar(canBack) {
+  return `
+    <div class="vbar">
+      <div class="vclock">02:31</div>
+      <div class="vring">
+        ${ICONS.wifi}
+        <span class="dots">••••</span>
+      </div>
+      <button class="vback" data-act="up" title="${canBack ? "返回上一级" : "已在顶层"}">
+        ${ICONS.chevBack}
+      </button>
+    </div>
+  `;
+}
+
+function renderLegacyBody() {
+  const data = getDirData(S.dir);
+  const title = S.dir ? S.dir.split("/").pop() : "Project Files";
+  return `
+    <div class="fpage">
+      <div class="legacy-title">${esc(title)}</div>
+      <div class="legacy-card">
+        ${data.entries.map((e) => `
+          <button class="legacy-row" data-nav="${esc(e.dir ? (S.dir ? S.dir + "/" + e.name : e.name) : "")}" data-file="${esc(!e.dir ? (S.dir ? S.dir + "/" + e.name : e.name) : "")}">
+            <span class="l-ic">${e.dir ? ICONS.folderOutline : ICONS.docOutline}</span>
+            <span class="l-name">${esc(e.name)}</span>
+            ${e.dir
+              ? `<span class="l-chev">${ICONS.chevR}</span>`
+              : `<span class="l-meta">${fmtBytesLegacy(e.bytes)}</span>`}
+          </button>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderPushedFileBody(filePath) {
+  const baseName = filePath.split("/").pop();
+  const dirPart = filePath.includes("/") ? filePath.slice(0, filePath.lastIndexOf("/")) : "";
+  const place = dirPart ? `hermesh/${dirPart}` : "hermesh";
+  return `
+    <div class="fpage ${S.font === "mono" ? "font-mono-mode" : ""}">
+      <div class="pfile-head">
+        ${renderIconSlot(baseName, false, S.scheme)}
+        <span style="font-size:15.5px;font-weight:650;color:var(--l1);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(baseName)}</span>
+        <button class="crumb-btn" data-close-file="1" style="font-size:12px;background:var(--fill);padding:4px 9px;border-radius:99px">返回列表</button>
+      </div>
+      <div class="pfile-code">
+        <div class="code-ln"><i> 1</i><span>package owner</span></div>
+        <div class="code-ln"><i> 2</i><span></span></div>
+        <div class="code-ln"><i> 3</i><span>// Opened from redesigned SessionFolderPage:</span></div>
+        <div class="code-ln hi"><i> 4</i><span>// Path: ${esc(filePath)}</span></div>
+        <div class="code-ln"><i> 5</i><span>func ResolveSessionEntry(path string) (*Entry, error) {</span></div>
+        <div class="code-ln"><i> 6</i><span>  return cache.LookupOrFetch(path)</span></div>
+        <div class="code-ln"><i> 7</i><span>}</span></div>
+      </div>
+      <button class="drawer-pill" data-toggle-sheet="1">
+        <span style="color:var(--accent-fg)">${ICONS.treeGlyph}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13.5px;font-weight:620;color:var(--l1)">项目文件</div>
+          <div style="font:11px var(--font-mono);color:var(--l2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(place)}</div>
+        </div>
+        <span style="color:var(--l3)">${ICONS.chevUp}</span>
+      </button>
+
+      ${S.drawerSheet ? `
+        <div class="sheet-scrim" data-toggle-sheet="0"></div>
+        <div class="tree-drawer">
+          <div class="drawer-grab"></div>
+          <div class="drawer-hdr">
+            <div>
+              <div style="font-size:14.5px;font-weight:650">项目文件</div>
+              <div style="font:11px var(--font-mono);color:var(--l2)">${esc(place)}</div>
+            </div>
+            <button class="vback" style="margin:0;width:30px;height:30px" data-toggle-sheet="0">${ICONS.chevDown}</button>
+          </div>
+          <div class="tree-list">
+            ${renderTreeRowsHTML(filePath, "data-pick-pushed")}
+          </div>
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+function renderModernFolderBody(inputId) {
+  if (S.pushedFile) return renderPushedFileBody(S.pushedFile);
+
+  const data = getDirData(S.dir);
+  const q = S.filter.trim().toLowerCase();
+  const filtered = data.entries.filter((e) => !q || e.name.toLowerCase().includes(q));
+  const dirs = filtered.filter((e) => e.dir);
+  const files = filtered.filter((e) => !e.dir);
+  const title = S.dir ? S.dir.split("/").pop() : "hermesh";
+
+  const segments = S.dir ? S.dir.split("/") : [];
+  const crumbs = [
+    segments.length === 0
+      ? `<span class="crumb-cur">hermesh</span>`
+      : `<button class="crumb-btn" data-nav="">hermesh</button>`
+  ];
+  segments.forEach((seg, idx) => {
+    const subPath = segments.slice(0, idx + 1).join("/");
+    crumbs.push(`<span class="crumb-sep">/</span>`);
+    if (idx === segments.length - 1) {
+      crumbs.push(`<span class="crumb-cur">${esc(seg)}</span>`);
+    } else {
+      crumbs.push(`<button class="crumb-btn" data-nav="${esc(subPath)}">${esc(seg)}</button>`);
+    }
+  });
+
+  const renderRow = (e, extraCls = "") => {
+    const v = resolveFileVisual(e.name, e.dir);
+    const fullPath = S.dir ? `${S.dir}/${e.name}` : e.name;
+    return `
+      <button class="frow ${v.dim ? "dim" : ""} ${extraCls}"
+              data-nav="${e.dir ? esc(fullPath) : ""}"
+              data-file="${!e.dir ? esc(fullPath) : ""}">
+        ${renderIconSlot(e.name, e.dir, S.scheme)}
+        <span class="fname ${e.dir ? "dir-name" : ""}">
+          ${renderFilenameHTML(e.name, e.dir, S.stem === "split")}
+        </span>
+        <span class="fmeta">
+          ${e.dir
+            ? `<span class="dir-count">${e.count}</span>${ICONS.chevR}`
+            : `<span>${fmtBytesClean(e.bytes)}</span>`}
+        </span>
+      </button>
+    `;
+  };
+
+  let listHTML = "";
+  if (!filtered.length) {
+    listHTML = `<div style="padding:36px 16px;text-align:center;color:var(--l3);font-size:13px">没有匹配 “${esc(S.filter)}” 的文件</div>`;
+  } else if (S.group === "split" && dirs.length && files.length) {
+    listHTML = `
+      <div>
+        <div class="sec-label"><span>文件夹</span><span>${dirs.length}</span></div>
+        <div class="fcard">${dirs.map((d) => renderRow(d)).join("")}</div>
+      </div>
+      <div>
+        <div class="sec-label"><span>文件</span><span>${files.length}</span></div>
+        <div class="fcard">${files.map((f) => renderRow(f)).join("")}</div>
+      </div>
+    `;
+  } else {
+    listHTML = `
+      <div class="fcard">
+        ${dirs.map((d, i) => renderRow(d, i === dirs.length - 1 && files.length ? "dir-end" : "")).join("")}
+        ${files.map((f) => renderRow(f)).join("")}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="fpage ${S.font === "mono" ? "font-mono-mode" : ""}">
+      <div class="modern-head">
+        <div class="crumb-bar">${crumbs.join("")}</div>
+        <div class="title-bar">
+          <div class="modern-title">
+            <span>${esc(title)}</span>
+            <span class="pkg-pill">${esc(data.badge)}</span>
+          </div>
+          <span class="summary-meta">${dirs.length} 目录 · ${files.length} 文件</span>
+        </div>
+        <div class="filter-box">
+          <span style="color:var(--l3)">${ICONS.search}</span>
+          <input id="${inputId}" type="text" value="${esc(S.filter)}" placeholder="筛选当前目录文件名…" autocomplete="off" />
+          ${S.filter ? `<button class="filter-clear" data-clear-filter="1">清除</button>` : ""}
+        </div>
+      </div>
+      <div class="fscroll">
+        ${listHTML}
+      </div>
+    </div>
+  `;
+}
+
+function renderCompareStage() {
+  const schemeNames = {
+    harmonized: "Seti 均衡语义色 + 主干分层",
+    badge: "Material 微徽章 + 语言缩略",
+    primer: "GitHub Primer 极简双色调"
+  };
+  return `
+    <div class="compare-grid">
+      <div class="device-col">
+        <div class="col-head">
+          <span>现状（Before）</span>
+          <span class="tag-bad">SwiftUI Button 染色 + 单一空心图标</span>
+        </div>
+        <div class="fit-box" data-base-w="446" data-base-h="682">
+          <div class="fit-inner">
+            <div class="duo-outer">
+              <div class="scr">
+                ${renderLegacyBody()}
+                ${renderRightVBar(Boolean(S.dir))}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-sub">
+          未加 <code>.buttonStyle(.plain)</code> 导致全行染成链接蓝；分割线切穿图标；实现文件与 <code>_test.go</code> 完全混同。
+        </div>
+      </div>
+
+      <div class="device-col">
+        <div class="col-head">
+          <span>优化方案（After）</span>
+          <span class="tag-good">${schemeNames[S.scheme]}</span>
+        </div>
+        <div class="fit-box" data-base-w="446" data-base-h="682">
+          <div class="fit-inner">
+            <div class="duo-outer">
+              <div class="scr">
+                ${renderModernFolderBody("filterMain")}
+                ${renderRightVBar(Boolean(S.dir || S.pushedFile))}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-sub">
+          中性墨色 + OKLCH 等明度图标锚点；<code>*_test.go</code> 独立识别为薄荷绿测试角色；点击任意文件可推入代码页并拉起目录树抽屉。
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderNativeStage() {
+  return `
+    <div class="native-stage">
+      <div class="native-topbar">
+        <div class="seg">
+          <button data-native-before="0" class="${!S.nativeBefore ? "on" : ""}">优化后（1:1 真机字号）</button>
+          <button data-native-before="1" class="${S.nativeBefore ? "on" : ""}">对比现状</button>
+        </div>
+        <button class="crumb-btn" data-act="up" style="background:var(--fill);padding:5px 10px;border-radius:99px;font-size:12px">
+          ‹ 返回上级
+        </button>
+      </div>
+      ${S.nativeBefore ? renderLegacyBody() : renderModernFolderBody("filterNative")}
+    </div>
+  `;
+}
+
+function renderFormsStage() {
+  const activeName = S.activeFile.split("/").pop();
+  return `
+    <div class="compare-grid">
+      <div class="device-col">
+        <div class="col-head">
+          <span>iPhone Duo 展开态 · 侧面板标签 + 底部目录树抽屉（SessionTree）</span>
+          <span class="tag-good">同一套语义图标全端贯通</span>
+        </div>
+        <div class="fit-box" data-base-w="880" data-base-h="620">
+          <div class="fit-inner">
+            <div class="duo-wide ${S.font === "mono" ? "font-mono-mode" : ""}">
+              <div class="scr">
+                <div class="wide-chat">
+                  <div class="chat-bub-me">帮我看下 owner 目录里的文件缓存同步是怎么测的</div>
+                  <div class="chat-reply">
+                    文件请求路由与 LRU 缓存实现在
+                    <span class="fref-chip" data-pick-tree="internal/owner/files.go">files.go:42</span>，对应的离线回放与跨机器用例在
+                    <span class="fref-chip" data-pick-tree="internal/owner/files_test.go">files_test.go:18</span> 与
+                    <span class="fref-chip" data-pick-tree="internal/owner/deltas_e2e_test.go">deltas_e2e_test.go</span>。
+                  </div>
+                </div>
+
+                <div class="wide-panel">
+                  <div class="tab-strip">
+                    <span class="tab-pill on">
+                      ${renderIconSlot(activeName, false, S.scheme)}
+                      <span>${esc(activeName)}</span>
+                    </span>
+                    <span class="tab-pill" data-pick-tree="internal/owner/files_test.go">
+                      ${renderIconSlot("files_test.go", false, S.scheme)}
+                      <span>files_test.go</span>
+                    </span>
+                    <span class="tab-pill" data-pick-tree="README.md">
+                      ${renderIconSlot("README.md", false, S.scheme)}
+                      <span>README.md</span>
+                    </span>
+                  </div>
+
+                  <div class="code-mock">
+                    <div class="code-ln"><i>40</i><span>// SessionFiles routing & 200 MB kept cache</span></div>
+                    <div class="code-ln"><i>41</i><span>func (s *OwnerService) ListFiles(ctx context.Context) {</span></div>
+                    <div class="code-ln hi"><i>42</i><span>  return s.routeOrReadKept(ctx, req.SessionId, req.Dir)</span></div>
+                    <div class="code-ln"><i>43</i><span>}</span></div>
+                  </div>
+
+                  <div class="tree-drawer">
+                    <div class="drawer-grab"></div>
+                    <div class="drawer-hdr">
+                      <div>
+                        <div style="font-size:14px;font-weight:650">项目文件</div>
+                        <div style="font:11.5px var(--font-mono);color:var(--l2)">hermesh/${esc(S.activeFile.split("/").slice(0, -1).join("/"))}</div>
+                      </div>
+                      <span class="summary-meta">点击目录展开/收起</span>
+                    </div>
+                    <div class="tree-list">
+                      ${renderTreeRowsHTML(S.activeFile, "data-pick-tree")}
+                    </div>
+                  </div>
+                </div>
+                ${renderRightVBar(true)}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="device-col">
+        <div class="col-head">
+          <span>标准直板 iPhone · 推入式项目文件页</span>
+          <span class="tag-good">窄屏单手浏览</span>
+        </div>
+        <div class="fit-box" data-base-w="392" data-base-h="740">
+          <div class="fit-inner">
+            <div class="phone-std">
+              <div class="scr">
+                <div class="status-top">
+                  <span>02:31</span>
+                  <div class="island"></div>
+                  <span style="display:flex;align-items:center;gap:5px">${ICONS.wifi}</span>
+                </div>
+                ${renderModernFolderBody("filterStd")}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSpecStage() {
+  const swatches = [
+    { name: "1. Directory（目录）", desc: "标准目录实心蓝；testdata 青蓝；.github 暗灰蓝", color: "var(--ic-folder)", dark: "#6EA8FE", light: "#356EE0" },
+    { name: "2. Cyan（系统 / Go / 容器）", desc: ".go · .proto · go.mod · Dockerfile · .sql", color: "var(--ic-cyan)", dark: "#2BC0E4", light: "#0084A8" },
+    { name: "3. Cobalt（类型前端 / Python）", desc: ".ts · .tsx · .py · .css", color: "var(--ic-blue)", dark: "#5C9DFF", light: "#2563EB" },
+    { name: "4. Orange（原生 / 页面）", desc: ".swift · .rs · .html · .c / .cpp", color: "var(--ic-orange)", dark: "#F78C45", light: "#D4580F" },
+    { name: "5. Mint（测试 / 脚本）", desc: "*_test.go · *.test.ts · *Tests.swift · .sh · Makefile", color: "var(--ic-green)", dark: "#45CF8E", light: "#168350" },
+    { name: "6. Amber（数据 / JS 配置）", desc: ".json · .js · .mjs · package.json · tsconfig", color: "var(--ic-amber)", dark: "#E8C14A", light: "#B37D05" },
+    { name: "7. Mauve（声明配置 / 媒体）", desc: ".yaml · .yml · .toml · .svg · .png / .webp", color: "var(--ic-purple)", dark: "#B589F2", light: "#7C45C4" },
+    { name: "8. Doc & Coral & Slate", desc: ".md 文档蓝 · .pdf/.gitignore 珊瑚红 · 锁文件石板灰", color: "var(--ic-slate)", dark: "#8A93A6", light: "#646D80" }
+  ];
+
+  return `
+    <div class="spec-wrap">
+      <div class="spec-card">
+        <h3>核心法则：80/20 中性文字 + 等明度语义锚点</h3>
+        <p>为什么 VS Code 与 GitHub 即使混合几十种语言也不会显得杂乱？核心在于严格的<strong>色彩职责分离</strong>：</p>
+        <div class="rule-steps">
+          <div class="rule-item">
+            <span class="rule-num">1</span>
+            <div><strong>文字永远保持中性墨色（--l1）</strong>：文件名绝不跟随机语言变红变绿（仅在选中态或 Git 状态时变色），彻底消除目前截图里的“整屏链接蓝”视觉疲劳。</div>
+          </div>
+          <div class="rule-item">
+            <span class="rule-num">2</span>
+            <div><strong>实心面 vs 线框剪影区分层级</strong>：参考 GitHub Primer，文件夹使用实心面（Filled），文件使用精炼线条语义符号，余光 0.1 秒即可切分目录与文件。</div>
+          </div>
+          <div class="rule-item">
+            <span class="rule-num">3</span>
+            <div><strong>OKLCH 等感知明度归一</strong>：参考 VS Code 内置 <code>vs-seti</code>，深色下统一控制在 <code>L≈0.75</code>，浅色自动下压至 <code>L≈0.50</code>（解决亮黄在白底发虚的问题）。</div>
+          </div>
+          <div class="rule-item">
+            <span class="rule-num">4</span>
+            <div><strong>角色优先级高于后缀（Role &gt; Ext）</strong>：参考 Material Icon Theme，精确文件名（<code>Makefile</code>/<code>go.mod</code>）与复合测试后缀（<code>*_test.go</code>）优先匹配，让 Go 包里的实现与测试一目了然。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="spec-card">
+        <h3>Hermesh 8 槽标准语义色板（Dark / Light 双模）</h3>
+        <div class="swatch-list">
+          ${swatches.map((s) => `
+            <div class="swatch-row">
+              <span class="sw-dot" style="background:${s.color}"></span>
+              <div style="min-width:0">
+                <div style="font-weight:600">${esc(s.name)}</div>
+                <div style="font-size:11.5px;color:var(--page-fg2)">${esc(s.desc)}</div>
+              </div>
+              <span class="sw-hex">${s.dark} / ${s.light}</span>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function fitDevices() {
+  document.querySelectorAll(".fit-box").forEach((box) => {
+    const inner = box.querySelector(".fit-inner");
+    const bw = +box.dataset.baseW || 446;
+    const bh = +box.dataset.baseH || 682;
+    const avail = Math.min(window.innerWidth - 28, box.parentElement.clientWidth || bw);
+    const scale = Math.min(1, avail / bw);
+    inner.style.transform = `scale(${scale})`;
+    box.style.height = `${Math.round(bh * scale)}px`;
+  });
+}
+
+function render() {
+  document.documentElement.setAttribute("data-theme", S.theme);
+
+  document.querySelectorAll("[data-stage]").forEach((b) => b.classList.toggle("on", b.dataset.stage === S.stage));
+  document.querySelectorAll("[data-dir]").forEach((b) => b.classList.toggle("on", b.dataset.dir === S.dir));
+  document.querySelectorAll("[data-scheme]").forEach((b) => b.classList.toggle("on", b.dataset.scheme === S.scheme));
+  document.querySelectorAll("[data-font]").forEach((b) => b.classList.toggle("on", b.dataset.font === S.font));
+  document.querySelectorAll("[data-stem]").forEach((b) => b.classList.toggle("on", b.dataset.stem === S.stem));
+  document.querySelectorAll("[data-group]").forEach((b) => b.classList.toggle("on", b.dataset.group === S.group));
+  document.querySelectorAll("[data-theme-pick]").forEach((b) => b.classList.toggle("on", b.dataset.themePick === S.theme));
+
+  const stage = document.getElementById("appStage");
+  if (S.stage === "compare") stage.innerHTML = renderCompareStage();
+  else if (S.stage === "native") stage.innerHTML = renderNativeStage();
+  else if (S.stage === "forms") stage.innerHTML = renderFormsStage();
+  else stage.innerHTML = renderSpecStage();
+
+  fitDevices();
+
+  ["filterMain", "filterStd", "filterNative"].forEach((id) => {
+    const inp = document.getElementById(id);
+    if (!inp) return;
+    inp.oninput = (ev) => {
+      const pos = ev.target.selectionStart;
+      S.filter = ev.target.value;
+      render();
+      const next = document.getElementById(id);
+      if (next) { next.focus(); next.setSelectionRange(pos, pos); }
+    };
+  });
+}
+
+window.addEventListener("resize", fitDevices);
+
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("button,[data-pick-tree],[data-toggle-sheet]");
+  if (!el) return;
+  const d = el.dataset;
+
+  if (d.stage) { S.stage = d.stage; render(); }
+  else if (d.dir !== undefined) { S.dir = d.dir; S.pushedFile = null; S.drawerSheet = false; S.filter = ""; render(); }
+  else if (d.scheme) { S.scheme = d.scheme; render(); }
+  else if (d.font) { S.font = d.font; render(); }
+  else if (d.stem) { S.stem = d.stem; render(); }
+  else if (d.group) { S.group = d.group; render(); }
+  else if (d.themePick) { S.theme = d.themePick; render(); }
+  else if (d.nativeBefore !== undefined) { S.nativeBefore = d.nativeBefore === "1"; S.pushedFile = null; render(); }
+  else if (d.clearFilter) { S.filter = ""; render(); }
+  else if (d.closeFile) { S.pushedFile = null; S.drawerSheet = false; render(); }
+  else if (d.toggleSheet !== undefined) {
+    S.drawerSheet = d.toggleSheet === "1";
+    if (S.drawerSheet && S.pushedFile) {
+      const parts = S.pushedFile.split("/").slice(0, -1);
+      parts.forEach((_, idx) => S.treeOpen.add(parts.slice(0, idx + 1).join("/")));
+    }
+    render();
+  }
+  else if (d.act === "up") {
+    if (S.drawerSheet) { S.drawerSheet = false; render(); return; }
+    if (S.pushedFile) { S.pushedFile = null; render(); return; }
+    if (!S.dir) { showToast("已在仓库根目录 hermesh/"); return; }
+    const parts = S.dir.split("/");
+    parts.pop();
+    S.dir = parts.join("/");
+    S.filter = "";
+    render();
+  }
+  else if ((d.nav !== undefined && d.nav !== "") || (el.classList.contains("crumb-btn") && d.nav === "")) {
+    S.dir = d.nav;
+    S.pushedFile = null;
+    S.drawerSheet = false;
+    S.filter = "";
+    render();
+  }
+  else if (d.file) {
+    S.pushedFile = d.file;
+    S.activeFile = d.file;
+    S.drawerSheet = false;
+    render();
+  }
+  else if (d.pickPushed) {
+    S.pushedFile = d.pickPushed;
+    S.activeFile = d.pickPushed;
+    S.drawerSheet = false;
+    render();
+  }
+  else if (d.treeDir) {
+    if (S.treeOpen.has(d.treeDir)) S.treeOpen.delete(d.treeDir);
+    else S.treeOpen.add(d.treeDir);
+    render();
+  }
+  else if (d.pickTree) {
+    S.activeFile = d.pickTree;
+    const parts = d.pickTree.split("/").slice(0, -1);
+    parts.forEach((_, idx) => S.treeOpen.add(parts.slice(0, idx + 1).join("/")));
+    render();
+    showToast(`已切换侧面板文件：${d.pickTree}`);
+  }
+});
+
+render();
+</script>
+</body>
+</html>

@@ -93,7 +93,7 @@ test("shell languages and hidden characters", () => {
 // The cases HermeshSessions runs too (testdata/file-refs.json): the Mac and the iPhone read replies alike.
 test("the cases both apps share", async () => {
   const { readFileSync } = await import("node:fs");
-  const { fileOpens, fileView, pageTabTitle, sameImagePath, sessionImageRef } = await import("./fileView.ts");
+  const { fileAppearance, fileOpens, fileView, pageTabTitle, sameImagePath, sessionImageRef, splitFileName } = await import("./fileView.ts");
   const shared = JSON.parse(readFileSync(new URL("../testdata/file-refs.json", import.meta.url), "utf8"));
   for (const c of shared.links) assert.deepEqual(fileOfLink(c.href, c.windows ?? false), c.ref, c.href);
   for (const c of shared.code) assert.deepEqual(fileOfCode(c.text), c.ref, c.text);
@@ -102,6 +102,12 @@ test("the cases both apps share", async () => {
   for (const c of shared.images) assert.equal(sessionImageRef(c.href), c.path, c.href);
   for (const c of shared.sameImage) assert.equal(sameImagePath(c.a, c.b), c.same, `${c.a} vs ${c.b}`);
   for (const c of shared.pageTitle) assert.equal(pageTabTitle(c.path, c.title), c.label, `${c.path} (${c.title})`);
+  for (const c of shared.appearances) assert.deepEqual(fileAppearance(c.name, c.dir), { glyph: c.glyph, tone: c.tone, dimmed: c.dimmed }, c.name);
+  for (const c of shared.nameParts) {
+    const got = splitFileName(c.name, c.dir);
+    assert.deepEqual(got, { stem: c.stem, sub: c.sub, ext: c.ext }, c.name);
+    assert.equal(got.stem + got.sub + got.ext, c.name, c.name);
+  }
 });
 
 test("resolveDocPath resolves relative paths inside Markdown documents", async () => {

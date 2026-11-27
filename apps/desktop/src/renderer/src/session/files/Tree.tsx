@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Icon } from "../../icons";
+import { fileAppearance, splitFileName } from "@hermesh/her-client";
+import { FileIcon, Icon } from "../../icons";
 import { sizeText } from "./files";
 import { listDir, openFromTree, toggleDir, type Panel } from "./panel";
 
@@ -77,6 +78,8 @@ export function Tree({ p, activePath, wide = false }: { p: Panel; activePath: st
           const r = rows[item.index];
           if (!r) return null;
           const expanded = r.dir && p.expanded.has(r.path);
+          const appearance = fileAppearance(r.name, r.dir);
+          const parts = splitFileName(r.name, r.dir);
           return (
             <div
               key={item.key}
@@ -86,16 +89,22 @@ export function Tree({ p, activePath, wide = false }: { p: Panel; activePath: st
               aria-selected={r.path === activePath}
               title={r.path}
               data-path={r.path}
-              className={`sft-row ${r.path === activePath ? "on" : ""} ${item.index === focus ? "focus" : ""}`}
+              className={`sft-row ${r.dir ? "dir" : ""} ${appearance.dimmed ? "dim" : ""} ${r.path === activePath ? "on" : ""} ${item.index === focus ? "focus" : ""}`}
               style={{ transform: `translateY(${item.start}px)`, paddingLeft: 8 + r.depth * 14 }}
               onClick={() => {
                 setFocus(item.index);
                 open(r);
               }}
             >
+              {r.depth > 0 &&
+                Array.from({ length: r.depth }, (_, d) => <span key={d} className="sft-guide" style={{ left: 13 + d * 14 }} />)}
               {r.dir ? <Icon name="chevD" className={`chev ${expanded ? "open" : ""}`} /> : <span className="sft-sp" />}
-              <Icon name={r.dir ? "folder" : "doc"} />
-              <span className="sft-name">{r.name}</span>
+              <FileIcon name={r.name} dir={r.dir} open={expanded} />
+              <span className="sft-name">
+                {parts.stem}
+                {parts.sub && <span className="sft-sub">{parts.sub}</span>}
+                {parts.ext && <span className="sft-ext">{parts.ext}</span>}
+              </span>
               {wide && !r.dir && <span className="sft-size">{sizeText(r.size)}</span>}
             </div>
           );

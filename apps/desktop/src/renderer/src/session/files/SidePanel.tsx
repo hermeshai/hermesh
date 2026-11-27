@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { fileView, pageTabTitle } from "@hermesh/her-client";
-import { Icon } from "../../icons";
+import { FileIcon, Icon } from "../../icons";
 import { machineName } from "../../Sidebar";
 import { useStore } from "../../store";
 import { FilesHomeContext, FilesRunContext, sizeText, type FilesHome } from "./files";
@@ -70,7 +70,7 @@ export function SidePanel({ home, running }: { home: FilesHome; running: boolean
                 data-kind={x.kind}
                 onClick={() => activate(p, x.key)}
               >
-                <Icon name={isPageTab(x) ? "web" : x.file.path ? "doc" : "tree"} />
+                {x.file.path ? <FileIcon name={isPageTab(x) ? "page.html" : x.name || x.file.path} /> : <Icon name="tree" />}
                 <span className="sfp-tab-t">{label}</span>
                 <button
                   className="sfp-tab-x"

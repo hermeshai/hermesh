@@ -250,3 +250,149 @@ public func resolveDocPath(_ baseDir: String, _ path: String) -> String {
     }
     return root + out.joined(separator: "/")
 }
+
+// MARK: File tree & folder browser visual semantics (Scheme A: Seti + Linguist + Material role priority)
+
+public enum FileGlyph: String, Sendable, Equatable {
+    case folder, folderTest, go, test, swift, code, braces, sliders, markdown, page, terminal, cube, lock, git, image, pdf, doc
+}
+
+public enum FileTone: String, Sendable, Equatable {
+    case folder, folderTest, cyan, blue, orange, green, amber, purple, doc, red, slate
+}
+
+public struct FileAppearance: Sendable, Equatable {
+    public let glyph: FileGlyph
+    public let tone: FileTone
+    public let dimmed: Bool
+
+    public init(glyph: FileGlyph, tone: FileTone, dimmed: Bool) {
+        self.glyph = glyph
+        self.tone = tone
+        self.dimmed = dimmed
+    }
+}
+
+public struct FileNameParts: Sendable, Equatable {
+    public let stem: String
+    public let sub: String
+    public let ext: String
+
+    public init(stem: String, sub: String, ext: String) {
+        self.stem = stem
+        self.sub = sub
+        self.ext = ext
+    }
+}
+
+private let lockFiles: Set<String> = [
+    "go.sum", "pnpm-lock.yaml", "package-lock.json", "yarn.lock", "cargo.lock", "podfile.lock",
+    "package.resolved", "gemfile.lock", "composer.lock", "poetry.lock", "uv.lock", "bun.lock", "bun.lockb",
+]
+
+private let buildShellFiles: Set<String> = [
+    "makefile", "justfile", "rakefile", "procfile", "brewfile", "gemfile", "vagrantfile", "jenkinsfile",
+]
+
+private let gitIgnoreFiles: Set<String> = [
+    ".gitignore", ".gitattributes", ".gitmodules", ".dockerignore", ".npmignore", ".prettierignore", ".eslintignore",
+]
+
+private let licenseFiles: Set<String> = ["license", "license.md", "license.txt", "copying"]
+private let testDirPattern = regex(#"(?i)^(?:testdata|tests?|e2e|__tests__|specs?)$"#)
+private let testDirSuffix = regex(#"[a-z0-9](?:UITests|Tests)$"#)
+private let testFilePattern = regex(#"(?i)(?:_(?:[a-z0-9]+_)?test\.[a-z0-9]+|\.(?:[a-z0-9]+\.)?(?:test|spec)\.[a-z0-9]+)$"#)
+private let pascalTestFilePattern = regex(#"(?:[a-z0-9](?:UITests?|Tests?)|^(?:UITests?|Tests?))\.(?:swift|kt|java)$"#)
+private let pyTestPrefixPattern = regex(#"(?i)^test_[^.]+\.py$"#)
+private let splitTestPattern = regex(#"(?i)^(.+?)((?:\.[a-z0-9]+)?\.(?:test|spec)|_(?:[a-z0-9]+_)?test)(\.[A-Za-z0-9]+)$"#)
+private let splitPascalTestPattern = regex(#"^(.+[a-z0-9])(UITests?|Tests?)(\.(?:swift|kt|java))$"#)
+
+/// Semantic icon glyph, OKLCH palette tone, and noise-dimming flag for a directory or file entry.
+/// Priority: directory role -> exact filename / lockfile -> compound test role -> extension.
+public func fileAppearance(_ pathOrName: String, dir: Bool = false) -> FileAppearance {
+    let base = fileBaseName(pathOrName)
+    let name = base.isEmpty ? pathOrName : base
+    let lower = name.lowercased()
+
+    if dir {
+        if lower.hasPrefix(".") { return FileAppearance(glyph: .folder, tone: .slate, dimmed: true) }
+        if matches(testDirPattern, lower) || matches(testDirSuffix, name) {
+            return FileAppearance(glyph: .folderTest, tone: .folderTest, dimmed: false)
+        }
+        return FileAppearance(glyph: .folder, tone: .folder, dimmed: false)
+    }
+
+    if lockFiles.contains(lower) { return FileAppearance(glyph: .lock, tone: .slate, dimmed: true) }
+    if lower == "go.mod" || lower == "go.work" { return FileAppearance(glyph: .cube, tone: .cyan, dimmed: false) }
+    if lower == "cargo.toml" { return FileAppearance(glyph: .cube, tone: .orange, dimmed: false) }
+    if lower == "dockerfile" || lower == "containerfile" || lower.hasPrefix("dockerfile.") || lower.hasSuffix(".dockerfile") {
+        return FileAppearance(glyph: .cube, tone: .cyan, dimmed: false)
+    }
+    if buildShellFiles.contains(lower) { return FileAppearance(glyph: .terminal, tone: .green, dimmed: false) }
+    if gitIgnoreFiles.contains(lower) { return FileAppearance(glyph: .git, tone: .red, dimmed: true) }
+    if licenseFiles.contains(lower) { return FileAppearance(glyph: .doc, tone: .slate, dimmed: true) }
+    if lower == ".env" || lower.hasPrefix(".env.") { return FileAppearance(glyph: .sliders, tone: .amber, dimmed: true) }
+
+    if matches(testFilePattern, name) || matches(pascalTestFilePattern, name) || matches(pyTestPrefixPattern, name) {
+        return FileAppearance(glyph: .test, tone: .green, dimmed: false)
+    }
+
+    let ext: String = if let dot = lower.lastIndex(of: "."), dot > lower.startIndex {
+        String(lower[lower.index(after: dot)...])
+    } else {
+        ""
+    }
+    let dimmed = lower.hasPrefix(".")
+
+    switch ext {
+    case "go":
+        return FileAppearance(glyph: .go, tone: .cyan, dimmed: dimmed)
+    case "proto", "sql", "graphql", "gql":
+        return FileAppearance(glyph: .cube, tone: .cyan, dimmed: dimmed)
+    case "swift":
+        return FileAppearance(glyph: .swift, tone: .orange, dimmed: dimmed)
+    case "rs", "c", "h", "cpp", "cc", "cxx", "hpp", "zig":
+        return FileAppearance(glyph: .code, tone: .orange, dimmed: dimmed)
+    case "ts", "tsx", "mts", "cts", "py", "pyi", "java", "kt", "kts", "scala", "cs", "dart", "vue", "svelte":
+        return FileAppearance(glyph: .code, tone: .blue, dimmed: dimmed)
+    case "css", "scss", "sass", "less":
+        return FileAppearance(glyph: .braces, tone: .blue, dimmed: dimmed)
+    case "js", "mjs", "cjs", "jsx", "json", "jsonc", "json5":
+        return FileAppearance(glyph: .braces, tone: .amber, dimmed: dimmed)
+    case "yaml", "yml", "toml", "ini", "conf", "cfg", "plist", "xcconfig", "entitlements", "xml":
+        return FileAppearance(glyph: .sliders, tone: .purple, dimmed: dimmed)
+    case "md", "markdown", "mdx", "rst":
+        return FileAppearance(glyph: .markdown, tone: .doc, dimmed: dimmed)
+    case "html", "htm":
+        return FileAppearance(glyph: .page, tone: .orange, dimmed: dimmed)
+    case "sh", "bash", "zsh", "fish", "ps1", "bat", "cmd":
+        return FileAppearance(glyph: .terminal, tone: .green, dimmed: dimmed)
+    case "svg", "png", "jpg", "jpeg", "gif", "webp", "ico", "heic", "bmp", "tiff", "tif", "avif":
+        return FileAppearance(glyph: .image, tone: .purple, dimmed: dimmed)
+    case "pdf":
+        return FileAppearance(glyph: .pdf, tone: .red, dimmed: dimmed)
+    case "rb", "erb":
+        return FileAppearance(glyph: .code, tone: .red, dimmed: dimmed)
+    default:
+        return FileAppearance(glyph: dimmed ? .sliders : .doc, tone: .slate, dimmed: dimmed)
+    }
+}
+
+/// Splits a filename into primary stem, secondary test/role suffix, and muted extension
+/// so `stem + sub + ext == name` always holds.
+public func splitFileName(_ name: String, dir: Bool = false) -> FileNameParts {
+    if dir { return FileNameParts(stem: name, sub: "", ext: "") }
+    let ns = name as NSString
+    let full = NSRange(location: 0, length: ns.length)
+    if let m = splitTestPattern.firstMatch(in: name, range: full) ?? splitPascalTestPattern.firstMatch(in: name, range: full), m.range(at: 1).length > 0 {
+        return FileNameParts(
+            stem: ns.substring(with: m.range(at: 1)),
+            sub: ns.substring(with: m.range(at: 2)),
+            ext: ns.substring(with: m.range(at: 3))
+        )
+    }
+    if let dot = name.lastIndex(of: "."), dot > name.startIndex, name.index(after: dot) < name.endIndex {
+        return FileNameParts(stem: String(name[..<dot]), sub: "", ext: String(name[dot...]))
+    }
+    return FileNameParts(stem: name, sub: "", ext: "")
+}

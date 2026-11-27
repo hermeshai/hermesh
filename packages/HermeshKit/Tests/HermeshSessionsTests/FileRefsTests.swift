@@ -49,6 +49,21 @@ private func ref(_ any: Any?) -> FileRef? {
         let title = c["title"] as? String
         #expect(pageTabTitle(path, pageTitle: title) == c["label"] as! String, "\(path) (\(title ?? "nil"))")
     }
+    for c in shared["appearances"] as! [[String: Any]] {
+        let name = c["name"] as! String
+        let dir = c["dir"] as! Bool
+        let got = fileAppearance(name, dir: dir)
+        #expect(got.glyph.rawValue == c["glyph"] as! String, "\(name) glyph")
+        #expect(got.tone.rawValue == c["tone"] as! String, "\(name) tone")
+        #expect(got.dimmed == c["dimmed"] as! Bool, "\(name) dimmed")
+    }
+    for c in shared["nameParts"] as! [[String: Any]] {
+        let name = c["name"] as! String
+        let dir = c["dir"] as! Bool
+        let got = splitFileName(name, dir: dir)
+        #expect(got == FileNameParts(stem: c["stem"] as! String, sub: c["sub"] as! String, ext: c["ext"] as! String), "\(name)")
+        #expect(got.stem + got.sub + got.ext == name, "\(name) roundtrip")
+    }
 }
 
 @Test func resolveDocPathResolvesRelativePathsInsideMarkdownDocuments() {
