@@ -24,6 +24,7 @@ struct AgentLogo: View {
     /// While no one sees it (the menu closed): the orbit does not draw.
     var paused = false
     @Environment(\.accessibilityReduceMotion) private var still
+    @Environment(\.colorScheme) private var colorScheme
 
     /// The logo asset for a coding agent id or a personal agent's name.
     static func asset(_ id: String) -> String? {
@@ -66,41 +67,125 @@ struct AgentLogo: View {
         .clipShape(RoundedRectangle(cornerRadius: r, style: .continuous))
 
         if running {
-            tile.scaleEffect(0.80)
-                .overlay { orbit(cornerRadius: r + 2).padding(-2) }
+            let lw: CGFloat = 1.35
+            let outset = lw - 0.1
+            tile
+                .overlay {
+                    RoundedRectangle(cornerRadius: r, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.075), lineWidth: 0.5)
+                }
+                .background {
+                    orbit(cornerRadius: r + outset, lineWidth: lw).padding(-outset)
+                }
                 .accessibilityHidden(true)
         } else {
             tile.accessibilityHidden(true)
         }
     }
 
-    @ViewBuilder private func orbit(cornerRadius: CGFloat) -> some View {
+    @ViewBuilder private func orbit(cornerRadius: CGFloat, lineWidth: CGFloat) -> some View {
         let ring = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         if still {
-            ring.strokeBorder(Color.accentColor.opacity(0.75), lineWidth: 1.7)
+            ring.strokeBorder(Color.accentColor.opacity(0.8), lineWidth: lineWidth)
         } else {
             TimelineView(.animation(paused: paused)) { timeline in
-                let deg = (timeline.date.timeIntervalSinceReferenceDate / 1.35).truncatingRemainder(dividingBy: 1) * 360
-                ring.strokeBorder(Color.primary.opacity(0.14), lineWidth: 1.7)
-                    .overlay {
-                        ring.strokeBorder(
-                            AngularGradient(
-                                stops: [
-                                    .init(color: .clear, location: 0),
-                                    .init(color: .clear, location: 0.57),
-                                    .init(color: .accentColor, location: 0.76),
-                                    .init(color: Color(red: 0.52, green: 0.61, blue: 1), location: 0.90),
-                                    .init(color: .accentColor, location: 0.985),
-                                    .init(color: .clear, location: 1),
-                                ],
-                                center: .center,
-                                angle: .degrees(deg)
-                            ),
-                            lineWidth: 1.7
+                let uHead = (timeline.date.timeIntervalSinceReferenceDate / 1.65).truncatingRemainder(dividingBy: 1)
+                Canvas { ctx, s in
+                    let span = s.width - lineWidth
+                    let rCenter = max(1, cornerRadius - lineWidth / 2)
+                    let cx = s.width / 2
+                    let cy = s.height / 2
+                    let centerRect = CGRect(x: lineWidth / 2, y: lineWidth / 2, width: span, height: span)
+                    let trackPath = RoundedRectangle(cornerRadius: rCenter, style: .continuous).path(in: centerRect)
+                    ctx.stroke(trackPath, with: .color(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05)), lineWidth: lineWidth)
+
+                    let arc = 0.36
+                    let steps = 56
+                    var comet = Path()
+                    for i in 0 ... steps {
+                        let p = Self.pointOnRoundedSquare(cx: cx, cy: cy, w: span, radius: rCenter, u: uHead - arc + Double(i) / Double(steps) * arc)
+                        if i == 0 { comet.move(to: p) } else { comet.addLine(to: p) }
+                    }
+
+                    let pT = Self.pointOnRoundedSquare(cx: cx, cy: cy, w: span, radius: rCenter, u: uHead - arc)
+                    let pH = Self.pointOnRoundedSquare(cx: cx, cy: cy, w: span, radius: rCenter, u: uHead)
+                    let aT = atan2(pT.y - cy, pT.x - cx)
+                    let aH = atan2(pH.y - cy, pH.x - cx)
+                    var turnSpan = (aH - aT) / (.pi * 2)
+                    turnSpan -= floor(turnSpan)
+                    let capPad = min(0.032, (1 - turnSpan) * 0.45)
+                    let crest = colorScheme == .dark
+                        ? Color(red: 0.72, green: 0.78, blue: 1.0)
+                        : Color(red: 0.01, green: 0.52, blue: 0.78)
+
+                    var stops: [Gradient.Stop] = [.init(color: .accentColor.opacity(0), location: 0)]
+                    let samples = 8
+                    for k in 1 ... samples {
+                        let t = Double(k) / Double(samples)
+                        let pos = turnSpan * t
+                        if pos <= 1 {
+                            let c: Color = t < 0.82 ? .accentColor : crest
+                            stops.append(.init(color: c.opacity(pow(t, 1.5)), location: pos))
+                        }
+                    }
+                    if turnSpan + capPad <= 1 {
+                        stops.append(.init(color: .accentColor, location: turnSpan + capPad))
+                    }
+                    if turnSpan + capPad + 0.015 <= 1 {
+                        stops.append(.init(color: .accentColor.opacity(0), location: turnSpan + capPad + 0.015))
+                    }
+
+                    ctx.drawLayer { layer in
+                        layer.stroke(comet, with: .color(.white), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+                        layer.blendMode = .sourceIn
+                        layer.fill(
+                            Path(CGRect(origin: .zero, size: s)),
+                            with: .conicGradient(Gradient(stops: stops), center: CGPoint(x: cx, y: cy), angle: .radians(aT))
                         )
                     }
+                }
             }
         }
+    }
+
+    private static func pointOnRoundedSquare(cx: CGFloat, cy: CGFloat, w: CGFloat, radius: CGFloat, u: Double) -> CGPoint {
+        let r = max(0, min(radius, w / 2))
+        let straight = max(0, w - 2 * r)
+        let arc = 0.5 * .pi * r
+        let perim = 4 * straight + 4 * arc
+        let norm = u - floor(u)
+        var d = CGFloat(norm) * perim
+        let half = w / 2
+
+        if d <= straight / 2 { return CGPoint(x: cx + d, y: cy - half) }
+        d -= straight / 2
+        if d <= arc {
+            let a = -CGFloat.pi / 2 + d / r
+            return CGPoint(x: cx + half - r + cos(a) * r, y: cy - half + r + sin(a) * r)
+        }
+        d -= arc
+        if d <= straight { return CGPoint(x: cx + half, y: cy - half + r + d) }
+        d -= straight
+        if d <= arc {
+            let a = d / r
+            return CGPoint(x: cx + half - r + cos(a) * r, y: cy + half - r + sin(a) * r)
+        }
+        d -= arc
+        if d <= straight { return CGPoint(x: cx + half - r - d, y: cy + half) }
+        d -= straight
+        if d <= arc {
+            let a = CGFloat.pi / 2 + d / r
+            return CGPoint(x: cx - half + r + cos(a) * r, y: cy + half - r + sin(a) * r)
+        }
+        d -= arc
+        if d <= straight { return CGPoint(x: cx - half, y: cy + half - r - d) }
+        d -= straight
+        if d <= arc {
+            let a = CGFloat.pi + d / r
+            return CGPoint(x: cx - half + r + cos(a) * r, y: cy - half + r + sin(a) * r)
+        }
+        d -= arc
+        return CGPoint(x: cx - half + r + d, y: cy - half)
     }
 
     /// A color for a name without a logo, the same every time.

@@ -301,11 +301,14 @@ html.vibrant .grp-hrow{position:static;background:transparent}
 /* A session: its agent's logo, the title, one mark; 32 high. */
 .srow{display:flex;gap:8px;padding:6px 9px;border-radius:8px;align-items:flex-start;border:0;background:none;width:100%;text-align:left;font-size:14px;color:var(--side-fg)}
 .slogo{position:relative;display:flex;align-items:center;justify-content:center;width:16px;height:16px;flex:none;margin-top:2px}
-.slogo.run>:not(.slogo-orbit){transform:scale(.78);border-radius:3.5px}
+.slogo>:not(.slogo-orbit){position:relative;z-index:1;border-radius:4.1px}
+.slogo.run>svg{transform:scale(.86)}
+.slogo.run>img{box-shadow:0 0 0 .5px rgba(0,0,0,.075)}
+@media (prefers-color-scheme:dark){.slogo.run>img{box-shadow:0 0 0 .5px rgba(255,255,255,.09)}}
 .slogo-orbit{position:absolute;inset:-2px;pointer-events:none;overflow:hidden;contain:strict}
-.slogo-orbit::before{content:"";position:absolute;top:0;left:0;width:720px;height:20px;background:var(--slogo-orbit-strip) 0 0/720px 20px no-repeat;will-change:transform;animation:slogo-orbit 1.35s steps(36,end) infinite}
-@keyframes slogo-orbit{to{transform:translate3d(-720px,0,0)}}
-@media (prefers-reduced-motion:reduce){.slogo-orbit{border-radius:6px;box-shadow:inset 0 0 0 1.5px var(--accent)}.slogo-orbit::before{display:none;animation:none}}
+.slogo-orbit::before{content:"";position:absolute;top:0;left:0;width:1200px;height:20px;background:var(--slogo-orbit-strip) 0 0/1200px 20px no-repeat;will-change:transform;animation:slogo-orbit 1.65s steps(60,end) infinite}
+@keyframes slogo-orbit{to{transform:translate3d(-1200px,0,0)}}
+@media (prefers-reduced-motion:reduce){.slogo-orbit{inset:-1.1px;border-radius:5.1px;box-shadow:inset 0 0 0 1.15px var(--accent)}.slogo-orbit::before{display:none;animation:none}}
 .srow:hover{background:var(--fill)}
 .srow.sel{background:var(--side-sel);color:var(--side-sel-fg);font-weight:500}
 .srow.arch .stitle{color:var(--l2)}
