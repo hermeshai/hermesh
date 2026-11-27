@@ -37,16 +37,16 @@
   --accent: #3d5bff;
   --accent-t: #2d4ae6;
   --accent-bg: rgba(61, 91, 255, 0.10);
-  /* GitHub Primer Light semantic tokens */
-  --gh-push: #1a7f37;
-  --gh-push-bg: rgba(26, 127, 55, 0.10);
-  --gh-merge: #8250df;
-  --gh-merge-bg: rgba(130, 80, 223, 0.10);
-  --gh-ahead: #0969da;
-  --gh-ahead-bg: rgba(9, 105, 218, 0.10);
-  --gh-dirty: #bc4c00;
-  --gh-dirty-bg: rgba(188, 76, 0, 0.10);
-  --green: #1a7f37;
+  /* Muted GitHub semantic tokens aligned with Hermesh / FinxWork palette */
+  --gh-push: #2f7d4a;
+  --gh-push-bg: rgba(47, 125, 74, 0.075);
+  --gh-merge: #6e59a5;
+  --gh-merge-bg: rgba(110, 89, 165, 0.075);
+  --gh-ahead: #3b6ea8;
+  --gh-ahead-bg: rgba(59, 110, 168, 0.075);
+  --gh-dirty: #9e6722;
+  --gh-dirty-bg: rgba(158, 103, 34, 0.075);
+  --green: #2f7d4a;
   --orange: #d0700a;
   --red: #cf222e;
   --bub: #e7ebf2;
@@ -86,16 +86,16 @@
   --accent: #4a66ff;
   --accent-t: #8fa2ff;
   --accent-bg: rgba(91, 121, 255, 0.16);
-  /* GitHub Primer Dark semantic tokens */
-  --gh-push: #3fb950;
-  --gh-push-bg: rgba(63, 185, 80, 0.14);
-  --gh-merge: #a371f7;
-  --gh-merge-bg: rgba(163, 113, 247, 0.15);
-  --gh-ahead: #58a6ff;
-  --gh-ahead-bg: rgba(88, 166, 255, 0.14);
-  --gh-dirty: #e3b341;
-  --gh-dirty-bg: rgba(227, 179, 65, 0.14);
-  --green: #3fb950;
+  /* Muted GitHub semantic tokens aligned with Hermesh / FinxWork dark palette */
+  --gh-push: #73a968;
+  --gh-push-bg: rgba(115, 169, 104, 0.095);
+  --gh-merge: #9482c4;
+  --gh-merge-bg: rgba(148, 130, 196, 0.095);
+  --gh-ahead: #779ed2;
+  --gh-ahead-bg: rgba(119, 158, 210, 0.095);
+  --gh-dirty: #c49a55;
+  --gh-dirty-bg: rgba(196, 154, 85, 0.095);
+  --green: #73a968;
   --orange: #f5b042;
   --red: #ff6670;
   --bub: #303035;
@@ -404,9 +404,9 @@ code { font-family: var(--mono); }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-/* Semantic GitHub coloring (default) vs Monochrome */
-.color-semantic .gbadge.pushed { color: var(--gh-push); }
-.color-semantic .gbadge.merged { color: var(--gh-merge); }
+/* Semantic GitHub coloring (default, muted in sidebar rows) vs Monochrome */
+.color-semantic .gbadge.pushed { color: var(--gh-push); opacity: 0.74; }
+.color-semantic .gbadge.merged { color: var(--gh-merge); opacity: 0.74; }
 .color-mono .gbadge.pushed,
 .color-mono .gbadge.merged { color: var(--l2); opacity: 0.82; }
 

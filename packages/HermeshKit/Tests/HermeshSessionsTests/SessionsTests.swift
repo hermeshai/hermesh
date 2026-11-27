@@ -449,3 +449,66 @@ func ask(_ s: inout Session) {
     #expect(picked["q1"]?.isEmpty == true)
     #expect(text["q1"] == "自定义方案")
 }
+
+@Test func gitStatusMarksDiffBarAndRefreshCandidates() {
+    func withGit(_ id: String, status: SessionStatus = .idle, state: GitState, machine: String = "m1") -> Session {
+        var s = session(id, status, machine: machine)
+        if state != .unspecified {
+            s.gitStatus.state = state
+        }
+        return s
+    }
+
+    // Only settled pushed/merged sessions show a sidebar mark; attention, active, unknown, clean, dirty and unpushed do not.
+    #expect(withGit("pushed", state: .pushed).gitMark == .pushed)
+    #expect(withGit("merged", state: .merged).gitMark == .merged)
+    #expect(withGit("archPushed", status: .archived, state: .pushed).gitMark == .pushed)
+    #expect(withGit("clean", state: .clean).gitMark == nil)
+    #expect(withGit("dirty", state: .dirty).gitMark == nil)
+    #expect(withGit("unpushed", state: .unpushed).gitMark == nil)
+    #expect(withGit("none", state: .unspecified).gitMark == nil)
+    #expect(withGit("runningPushed", status: .running, state: .pushed).gitMark == nil)
+    #expect(withGit("unknownPushed", status: .unspecified, state: .pushed).gitMark == nil)
+
+    var waitingPushed = withGit("waitingPushed", status: .waitingInput, state: .pushed)
+    ask(&waitingPushed)
+    #expect(waitingPushed.gitMark == nil)
+
+    var failedMerged = withGit("failedMerged", status: .idle, state: .merged)
+    failedMerged.progress.lastFailure.kind = .auth
+    #expect(failedMerged.gitMark == nil)
+
+    // 5-square proportional diff bar matches @hermesh/core.
+    #expect(diffBarBlocks(insertions: 0, deletions: 0) == [.empty, .empty, .empty, .empty, .empty])
+    #expect(diffBarBlocks(insertions: 2, deletions: 1) == [.add, .add, .del, .empty, .empty])
+    #expect(diffBarBlocks(insertions: 99, deletions: 1) == [.add, .add, .add, .add, .del])
+    #expect(diffBarBlocks(insertions: 1, deletions: 99) == [.add, .del, .del, .del, .del])
+    #expect(diffBarBlocks(insertions: 50, deletions: 50) == [.add, .add, .add, .del, .del])
+
+    // Refresh candidates prioritize selectedID, include unspecified/dirty/unpushed/pushed, and skip clean/merged/active/archived/unreachable.
+    let candidates = [
+        withGit("clean", state: .clean),
+        withGit("dirty", state: .dirty),
+        withGit("unpushed", state: .unpushed),
+        withGit("pushed", state: .pushed),
+        withGit("merged", state: .merged),
+        withGit("unspec", state: .unspecified),
+        withGit("running", status: .running, state: .dirty),
+        withGit("archived", status: .archived, state: .dirty),
+        withGit("offline", state: .dirty, machine: "m_off"),
+    ]
+    #expect(
+        sessionsNeedingGitRefresh(candidates, selectedID: "pushed", unreachable: ["m_off"], limit: 3)
+            == ["pushed", "dirty", "unpushed"]
+    )
+    #expect(
+        sessionsNeedingGitRefresh(candidates, unreachable: ["m_off"])
+            == ["dirty", "unpushed", "pushed", "unspec"]
+    )
+
+    // Merging a RefreshGitStatus result with identical seq and updatedAt replaces gitStatus in place.
+    let before = withGit("s1", state: .unpushed)
+    var refreshed = before
+    refreshed.gitStatus.state = .pushed
+    #expect(mergeSessions([before], [refreshed]).first?.gitMark == .pushed)
+}

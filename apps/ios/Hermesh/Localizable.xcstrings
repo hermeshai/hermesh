@@ -19545,6 +19545,146 @@
           }
         }
       }
+    },
+    "Pushed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已推送"
+          }
+        }
+      }
+    },
+    "Merged": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已合并"
+          }
+        }
+      }
+    },
+    "Committed & pushed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已提交并推送"
+          }
+        }
+      }
+    },
+    "Merged into %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已合并至 %@"
+          }
+        }
+      }
+    },
+    "1 local commit unpushed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 个本地提交待推送"
+          }
+        }
+      }
+    },
+    "%lld local commits unpushed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个本地提交待推送"
+          }
+        }
+      }
+    },
+    "1 uncommitted file": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 个文件改动未提交"
+          }
+        }
+      }
+    },
+    "%lld uncommitted files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个文件改动未提交"
+          }
+        }
+      }
+    },
+    "No code changes": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无代码改动"
+          }
+        }
+      }
+    },
+    "Synced to remote branch %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代码已同步至远端 %@"
+          }
+        }
+      }
+    },
+    "Changes are already in %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代码改动已合入 %@"
+          }
+        }
+      }
+    },
+    "Committed locally; push when ready": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已完成本地 commit，尚未推送至远端"
+          }
+        }
+      }
+    },
+    "Modified in working tree, not yet committed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作区存在未提交改动"
+          }
+        }
+      }
+    },
+    "Working tree clean, no new commits": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作区干净，本次任务未产生提交"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -165,6 +165,9 @@ final class DemoService {
         if Self.liveProgress {
             seedLiveProgress()
         }
+        if UserDefaults.standard.bool(forKey: "DemoGitStatus") || ProcessInfo.processInfo.arguments.contains("-DemoGitStatus") {
+            seedGitStatusDemo()
+        }
         #endif
         _ = pairing(.client)
     }
@@ -321,6 +324,14 @@ final class DemoService {
         world.sessions[i].progress.clearPendingQuestion()
         world.sessions[i].progress.diffStat = .with { $0.filesChanged = 1; $0.insertions = 1; $0.deletions = 1 }
         world.sessions[i].progress.lastMessageExcerpt = reply
+        let branchName = world.sessions[i].branch.isEmpty ? "hermesh/welcome" : world.sessions[i].branch
+        world.sessions[i].gitStatus = .with {
+            $0.state = .pushed
+            $0.branch = branchName
+            $0.targetRef = "origin/\(branchName)"
+            $0.headCommit = "a4c91e2"
+            $0.headSubject = "feat: add sample welcome page"
+        }
         world.sessions[i].updatedAt = .init(date: .now)
         if let rIdx = projections[id]?.runs.firstIndex(where: { $0.runID == runID }) {
             projections[id]?.runs[rIdx].status = .completed
@@ -446,6 +457,107 @@ final class DemoService {
     private var released: Set<String> = []
     private var autoRelease: [String: Bool] = [:]
 
+    #if targetEnvironment(simulator)
+    private func seedGitStatusDemo() {
+        let fixtures: [(id: String, title: String, agent: String, offset: TimeInterval, add: UInt32, del: UInt32, files: UInt32, git: GitStatus)] = [
+            (
+                "demo-git-pushed",
+                "Git Pushed Task",
+                "claude",
+                -30,
+                42,
+                8,
+                3,
+                .with {
+                    $0.state = .pushed
+                    $0.branch = "hermesh/pushed"
+                    $0.targetRef = "origin/hermesh/pushed"
+                    $0.headCommit = "7b2e91f"
+                    $0.headSubject = "feat(sidebar): sync pushed git mark"
+                }
+            ),
+            (
+                "demo-git-merged",
+                "Git Merged Task",
+                "codex",
+                -60,
+                128,
+                16,
+                5,
+                .with {
+                    $0.state = .merged
+                    $0.branch = "hermesh/merged"
+                    $0.targetRef = "main"
+                    $0.headCommit = "473868e"
+                    $0.headSubject = "feat(vcs): detect merged branch into main"
+                }
+            ),
+            (
+                "demo-git-unpushed",
+                "Git Unpushed Task",
+                "claude",
+                -90,
+                34,
+                12,
+                2,
+                .with {
+                    $0.state = .unpushed
+                    $0.branch = "hermesh/unpushed"
+                    $0.targetRef = "main"
+                    $0.commitsAhead = 2
+                    $0.headCommit = "c19d40a"
+                    $0.headSubject = "refactor: extract git status helpers"
+                }
+            ),
+            (
+                "demo-git-dirty",
+                "Git Dirty Task — Refactor sidebar delivery perception and long-press status card",
+                "codex",
+                -120,
+                19,
+                5,
+                3,
+                .with {
+                    $0.state = .dirty
+                    $0.branch = "hermesh/dirty"
+                    $0.targetRef = "main"
+                    $0.dirtyFiles = 3
+                    $0.headCommit = "8e01f5b"
+                    $0.headSubject = "wip: draft preview layout"
+                }
+            ),
+            (
+                "demo-git-clean",
+                "Git Clean Task",
+                "gemini",
+                -150,
+                0,
+                0,
+                0,
+                .with {
+                    $0.state = .clean
+                    $0.branch = "hermesh/clean"
+                    $0.targetRef = "main"
+                }
+            ),
+        ]
+        for f in fixtures {
+            var s = session(f.id, title: f.title, machine: "demo-mac", status: .idle)
+            s.agent = f.agent
+            s.branch = f.git.branch
+            s.updatedAt = .init(date: .now.addingTimeInterval(f.offset))
+            s.progress.diffStat = .with {
+                $0.filesChanged = f.files
+                $0.insertions = f.add
+                $0.deletions = f.del
+            }
+            s.gitStatus = f.git
+            world.sessions.append(s)
+            syncSession(s.sessionID)
+        }
+    }
+    #endif
+
     private func demoWorkspaces(_ machine: String) -> [Hermesh_Machine_V1_Workspace] {
         let sessions = world.sessions.filter { $0.machineID == machine && !released.contains($0.sessionID) && $0.status != .archived }
         return sessions.enumerated().map { i, s in
@@ -480,6 +592,13 @@ final class DemoService {
         })
         case "ListPairingRequests": return try encoded(Hermesh_Local_V1_ListPairingRequestsResponse.with { $0.pairings = world.pairings })
         case "ListSessions": return try encoded(Hermesh_Local_V1_ListSessionsResponse.with { $0.sessions = world.sessions })
+        case "RefreshGitStatus":
+            let req = (try? Hermesh_Session_V1_RefreshGitStatusRequest(jsonUTF8Data: data, options: dec)) ?? .init()
+            let wanted = Set(req.sessionIds)
+            let matched = world.sessions.filter {
+                (wanted.isEmpty || wanted.contains($0.sessionID)) && (req.machineID.isEmpty || $0.machineID == req.machineID)
+            }
+            return try encoded(Hermesh_Session_V1_RefreshGitStatusResponse.with { $0.sessions = matched })
         case "ListProviders":
             return try encoded(Hermesh_Session_V1_ListProvidersResponse.with {
                 $0.maxRuntimeMode = .fullAccess

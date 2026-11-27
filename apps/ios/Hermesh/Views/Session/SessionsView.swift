@@ -3,23 +3,36 @@ import HermeshSessions
 import SwiftUI
 
 /// A session in the menu (docs/her-team.md §16): the coding agent's logo (with a brand-blue orbit while it runs),
-/// the title, one mark (an orange dot while it waits for the owner, a red one when it failed); with the metadata, who
-/// sent the work to which agent, the project and the time. A tap opens it; long-press for Rename, Archive and Delete
-/// (the Mac's ⋯ menu). No swipe: in the menu a swipe left is the menu's own, to close it.
+/// the title, one mark (an orange dot while it waits for the owner, a red one when it failed, or a muted Git mark
+/// when pushed or merged); with the metadata, who sent the work to which agent, the project and the time. A tap opens
+/// it; long-press shows the read-only Git delivery preview card alongside Rename, Archive and Delete. No swipe: in the
+/// menu a swipe left is the menu's own, to close it.
 struct SessionListRow: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.colorScheme) private var colorScheme
     let session: Session
     @State private var renaming = false
     @State private var deleting = false
 
     var body: some View {
-        Button { model.open(.session(session.sessionID)) } label: { MenuSessionRow(session: session, metadata: model.listView.metadata) }
-            .buttonStyle(RowStyle(selected: model.chosenSession == session.sessionID))
-            .accessibilityAddTraits(model.chosenSession == session.sessionID ? .isSelected : [])
+        let selected = model.chosenSession == session.sessionID
+        let sender = model.senderLine(session)
+        let now = model.now
+        Button { model.open(.session(session.sessionID)) } label: {
+            MenuSessionRow(session: session, metadata: model.listView.metadata, selected: selected)
+        }
+            .buttonStyle(RowStyle(selected: selected))
+            .accessibilityAddTraits(selected ? .isSelected : [])
             .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
-            .contextMenu { SessionActions(session: session, renaming: $renaming, deleting: $deleting) }
+            .contextMenu {
+                SessionActions(session: session, renaming: $renaming, deleting: $deleting)
+            } preview: {
+                SessionGitPreviewCard(session: session, senderLine: sender, now: now)
+                    .environment(\.colorScheme, colorScheme)
+                    .preferredColorScheme(colorScheme)
+            }
             .sessionDialogs(session, renaming: $renaming, deleting: $deleting)
     }
 }
@@ -27,8 +40,10 @@ struct SessionListRow: View {
 /// What a menu row shows: the logo, the title and the mark; the metadata line when the view asks for it.
 struct MenuSessionRow: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.colorScheme) private var colorScheme
     let session: Session
     var metadata = false
+    var selected = false
 
     var body: some View {
         let running = session.isActive && !session.needsAttention
@@ -62,12 +77,25 @@ struct MenuSessionRow: View {
         .accessibilityIdentifier("session-\(session.displayTitle)")
     }
 
-    /// One mark: orange, it waits for the owner; red, it failed; nothing, it runs (its title shimmers) or is done.
+    /// One mark: orange, it waits for the owner; red, it failed; muted Git glyph when pushed or merged; nothing while running or otherwise done.
     @ViewBuilder private var mark: some View {
         if session.status == .waitingInput || session.isFailed {
             Circle().fill(session.status == .waitingInput ? .orange : .red).frame(width: 9, height: 9).accessibilityHidden(true)
         } else if session.status == .unspecified {
             Text(statusTitle(session.status)).font(.footnote).foregroundStyle(.secondary) // its machine cannot be read now
+        } else if let gitMark = session.gitMark {
+            let color = gitMark == .pushed ? GitPalette.pushed(colorScheme) : GitPalette.merged(colorScheme)
+            let opacity = session.status == .archived ? 0.52 : selected ? 0.88 : 0.74
+            Group {
+                if gitMark == .pushed {
+                    GitPushedIcon().stroke(color, style: StrokeStyle(lineWidth: 1.35, lineCap: .round, lineJoin: .round))
+                } else {
+                    GitMergedIcon().stroke(color, style: StrokeStyle(lineWidth: 1.35, lineCap: .round, lineJoin: .round))
+                }
+            }
+            .frame(width: 15, height: 15)
+            .opacity(opacity)
+            .accessibilityHidden(true)
         }
     }
 
@@ -76,7 +104,11 @@ struct MenuSessionRow: View {
         if session.isFailed && session.status != .crashed && session.status != .waitingInput { return String(localized: "Failed") }
         switch session.status {
         case .waitingInput, .crashed, .preparing, .queued, .running: return statusTitle(session.status)
-        default: return nil
+        default:
+            if let gitMark = session.gitMark {
+                return gitMark == .pushed ? String(localized: "Pushed") : String(localized: "Merged")
+            }
+            return nil
         }
     }
 
@@ -87,6 +119,400 @@ struct MenuSessionRow: View {
         } else {
             Text(listTime(session.updatedDate, now: model.now))
         }
+    }
+}
+
+/// Pure read-only long-press preview card matching the Mac sidebar's `SessionHoverCard`:
+/// full untruncated title (up to 3 lines), sender/agent/project/time metadata, and local
+/// Git delivery status (branch → target, 5-square diff bar, latest session commit, hint).
+struct SessionGitPreviewCard: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let session: Session
+    let senderLine: String
+    let now: Date
+
+    private var timeText: String {
+        if session.status == .running {
+            let start = session.turnStartedDate ?? session.createdDate
+            return clockText(max(0, now.timeIntervalSince(start)))
+        }
+        return listTime(session.updatedDate, now: now)
+    }
+
+    var body: some View {
+        let gs = session.gitStatus
+        let gitState = session.hasGitStatus ? gs.state : .unspecified
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                AgentLogo(id: session.agent, size: 20).padding(.top, 1)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(session.displayTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("session-git-preview-title")
+                    Text("\(senderLine) · \(timeText)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .monospacedDigit()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if gitState != .unspecified {
+                gitBox(gs: gs, state: gitState)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 13)
+        .frame(width: 308, alignment: .leading)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("session-git-preview")
+    }
+
+    @ViewBuilder private func gitBox(gs: GitStatus, state: GitState) -> some View {
+        let spec = gitSpec(gs: gs, state: state)
+        let diff = session.progress.diffStat
+        let ins = diff.insertions
+        let del = diff.deletions
+        let showDiff = ins > 0 || del > 0
+        let boxShape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                GitStateGlyph(state: state, color: spec.tone)
+                    .frame(width: 14, height: 14)
+                    .accessibilityHidden(true)
+                Text(spec.label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(spec.tone)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("session-git-preview-state")
+                if showDiff {
+                    HStack(spacing: 4) {
+                        Text("+\(ins)").foregroundStyle(GitPalette.pushed(colorScheme))
+                        Text("−\(del)").foregroundStyle(GitPalette.deletion(colorScheme))
+                        HStack(spacing: 1.5) {
+                            ForEach(Array(diffBarBlocks(insertions: ins, deletions: del).enumerated()), id: \.offset) { _, block in
+                                RoundedRectangle(cornerRadius: 1.3, style: .continuous)
+                                    .fill(diffBlockColor(block))
+                                    .frame(width: 6, height: 6)
+                            }
+                        }
+                        .padding(.leading, 1)
+                        .accessibilityHidden(true)
+                    }
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .monospacedDigit()
+                }
+            }
+            if !gs.branch.isEmpty {
+                HStack(spacing: 5) {
+                    GitBranchIcon()
+                        .stroke(.tertiary, style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round))
+                        .frame(width: 12.5, height: 12.5)
+                        .accessibilityHidden(true)
+                    gitRefPill(gs.branch)
+                    if !gs.targetRef.isEmpty && gs.targetRef != gs.branch {
+                        Text("→")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                        gitRefPill(gs.targetRef)
+                    }
+                }
+            }
+            if !gs.headCommit.isEmpty {
+                HStack(spacing: 5) {
+                    GitCommitIcon()
+                        .stroke(.tertiary, style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round))
+                        .frame(width: 12.5, height: 12.5)
+                        .accessibilityHidden(true)
+                    Text(gs.headCommit)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    if !gs.headSubject.isEmpty {
+                        Text(gs.headSubject)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            Text(spec.hint)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(spec.background, in: boxShape)
+        .overlay { boxShape.strokeBorder(spec.border, lineWidth: 0.5) }
+    }
+
+    private func gitRefPill(_ ref: String) -> some View {
+        Text(ref)
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1.5)
+            .background(
+                Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.055),
+                in: RoundedRectangle(cornerRadius: 4, style: .continuous)
+            )
+    }
+
+    private func diffBlockColor(_ block: DiffBlock) -> Color {
+        switch block {
+        case .add: GitPalette.pushed(colorScheme)
+        case .del: GitPalette.deletion(colorScheme)
+        case .empty: Color.primary.opacity(colorScheme == .dark ? 0.14 : 0.12)
+        }
+    }
+
+    private struct GitBoxSpec {
+        let tone: Color
+        let background: Color
+        let border: Color
+        let label: String
+        let hint: String
+    }
+
+    private func gitSpec(gs: GitStatus, state: GitState) -> GitBoxSpec {
+        let dark = colorScheme == .dark
+        func semantic(_ c: Color, label: String, hint: String) -> GitBoxSpec {
+            GitBoxSpec(
+                tone: c,
+                background: c.opacity(dark ? 0.095 : 0.07),
+                border: c.opacity(0.16),
+                label: label,
+                hint: hint
+            )
+        }
+        switch state {
+        case .pushed:
+            let target = gs.targetRef.isEmpty ? "origin" : gs.targetRef
+            return semantic(
+                GitPalette.pushed(colorScheme),
+                label: String(localized: "Committed & pushed"),
+                hint: String(localized: "Synced to remote branch \(target)")
+            )
+        case .merged:
+            let target = gs.targetRef.isEmpty ? "main" : gs.targetRef
+            return semantic(
+                GitPalette.merged(colorScheme),
+                label: String(localized: "Merged into \(target)"),
+                hint: String(localized: "Changes are already in \(target)")
+            )
+        case .unpushed:
+            let count = max(1, Int(gs.commitsAhead))
+            let label = count == 1
+                ? String(localized: "1 local commit unpushed")
+                : String(localized: "\(count) local commits unpushed")
+            return semantic(
+                GitPalette.unpushed(colorScheme),
+                label: label,
+                hint: String(localized: "Committed locally; push when ready")
+            )
+        case .dirty:
+            let rawFiles = gs.dirtyFiles > 0 ? gs.dirtyFiles : session.progress.diffStat.filesChanged
+            let count = max(1, Int(rawFiles))
+            let label = count == 1
+                ? String(localized: "1 uncommitted file")
+                : String(localized: "\(count) uncommitted files")
+            return semantic(
+                GitPalette.dirty(colorScheme),
+                label: label,
+                hint: String(localized: "Modified in working tree, not yet committed")
+            )
+        default:
+            return GitBoxSpec(
+                tone: .secondary,
+                background: Color.primary.opacity(dark ? 0.05 : 0.04),
+                border: Color.primary.opacity(0.08),
+                label: String(localized: "No code changes"),
+                hint: String(localized: "Working tree clean, no new commits")
+            )
+        }
+    }
+}
+
+/// Muted semantic Git palette harmonized with Mac's desaturated FinxWork / Onyx tokens (`app.css` `--gh-*`).
+private enum GitPalette {
+    static func pushed(_ scheme: ColorScheme) -> Color {
+        scheme == .dark
+            ? Color(red: 112 / 255, green: 163 / 255, blue: 101 / 255) // #70a365
+            : Color(red: 47 / 255, green: 125 / 255, blue: 74 / 255)   // #2f7d4a
+    }
+
+    static func merged(_ scheme: ColorScheme) -> Color {
+        scheme == .dark
+            ? Color(red: 144 / 255, green: 126 / 255, blue: 192 / 255) // #907ec0
+            : Color(red: 110 / 255, green: 89 / 255, blue: 165 / 255)  // #6e59a5
+    }
+
+    static func unpushed(_ scheme: ColorScheme) -> Color {
+        scheme == .dark
+            ? Color(red: 116 / 255, green: 154 / 255, blue: 201 / 255) // #749ac9
+            : Color(red: 59 / 255, green: 110 / 255, blue: 168 / 255)  // #3b6ea8
+    }
+
+    static func dirty(_ scheme: ColorScheme) -> Color {
+        scheme == .dark
+            ? Color(red: 192 / 255, green: 152 / 255, blue: 84 / 255)  // #c09854
+            : Color(red: 158 / 255, green: 103 / 255, blue: 34 / 255)  // #9e6722
+    }
+
+    static func deletion(_ scheme: ColorScheme) -> Color {
+        scheme == .dark
+            ? Color(red: 220 / 255, green: 132 / 255, blue: 138 / 255) // #dc848a
+            : Color(red: 159 / 255, green: 50 / 255, blue: 59 / 255)   // #9f323b
+    }
+}
+
+private struct GitStateGlyph: View {
+    let state: GitState
+    let color: Color
+
+    var body: some View {
+        let stroke = StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round)
+        switch state {
+        case .pushed:
+            GitPushedIcon().stroke(color, style: stroke)
+        case .merged:
+            GitMergedIcon().stroke(color, style: stroke)
+        case .unpushed:
+            GitUnpushedIcon().stroke(color, style: stroke)
+        case .dirty:
+            GeometryReader { geo in
+                let d = min(geo.size.width, geo.size.height) * (4.2 / 16.0)
+                ZStack {
+                    GitDirtyFrameIcon().stroke(color, style: stroke)
+                    Circle().fill(color).frame(width: d, height: d)
+                }
+            }
+        default:
+            GitCheckIcon().stroke(color, style: stroke)
+        }
+    }
+}
+
+/// Octicon-style repository glyphs drawn on the same 16×16 grid as `apps/desktop/src/renderer/src/icons.tsx`.
+private nonisolated struct GitPushedIcon: Shape {
+    func path(in rect: CGRect) -> Path {
+        let k = min(rect.width, rect.height) / 16
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * k, y: rect.minY + y * k) }
+        func circle(_ cx: CGFloat, _ cy: CGFloat, _ r: CGFloat, into path: inout Path) {
+            path.addEllipse(in: CGRect(x: rect.minX + (cx - r) * k, y: rect.minY + (cy - r) * k, width: 2 * r * k, height: 2 * r * k))
+        }
+        var path = Path()
+        circle(4.5, 3.8, 1.55, into: &path)
+        circle(4.5, 12.2, 1.55, into: &path)
+        circle(11.5, 12.2, 1.55, into: &path)
+        path.move(to: p(4.5, 5.4))
+        path.addLine(to: p(4.5, 10.6))
+        path.move(to: p(11.5, 10.6))
+        path.addLine(to: p(11.5, 5.6))
+        path.addCurve(to: p(9.5, 3.8), control1: p(11.5, 4.5), control2: p(10.6, 3.8))
+        path.addLine(to: p(8.0, 3.8))
+        path.move(to: p(9.5, 2.2))
+        path.addLine(to: p(7.8, 3.8))
+        path.addLine(to: p(9.5, 5.4))
+        return path
+    }
+}
+
+private nonisolated struct GitMergedIcon: Shape {
+    func path(in rect: CGRect) -> Path {
+        let k = min(rect.width, rect.height) / 16
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * k, y: rect.minY + y * k) }
+        func circle(_ cx: CGFloat, _ cy: CGFloat, _ r: CGFloat, into path: inout Path) {
+            path.addEllipse(in: CGRect(x: rect.minX + (cx - r) * k, y: rect.minY + (cy - r) * k, width: 2 * r * k, height: 2 * r * k))
+        }
+        var path = Path()
+        circle(4.5, 3.8, 1.55, into: &path)
+        circle(4.5, 12.2, 1.55, into: &path)
+        circle(11.8, 8.8, 1.55, into: &path)
+        path.move(to: p(4.5, 5.4))
+        path.addLine(to: p(4.5, 10.6))
+        path.move(to: p(4.5, 5.4))
+        path.addCurve(to: p(10.2, 8.8), control1: p(4.5, 7.9), control2: p(6.9, 8.8))
+        return path
+    }
+}
+
+private nonisolated struct GitUnpushedIcon: Shape {
+    func path(in rect: CGRect) -> Path {
+        let k = min(rect.width, rect.height) / 16
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * k, y: rect.minY + y * k) }
+        var path = Path()
+        path.addEllipse(in: CGRect(x: rect.minX + (8 - 1.75) * k, y: rect.minY + (11.6 - 1.75) * k, width: 3.5 * k, height: 3.5 * k))
+        path.move(to: p(3.2, 11.6)); path.addLine(to: p(6.2, 11.6))
+        path.move(to: p(9.8, 11.6)); path.addLine(to: p(12.8, 11.6))
+        path.move(to: p(8.0, 8.2)); path.addLine(to: p(8.0, 2.6))
+        path.move(to: p(5.5, 5.1)); path.addLine(to: p(8.0, 2.6)); path.addLine(to: p(10.5, 5.1))
+        return path
+    }
+}
+
+private nonisolated struct GitDirtyFrameIcon: Shape {
+    func path(in rect: CGRect) -> Path {
+        let k = min(rect.width, rect.height) / 16
+        var path = Path()
+        path.addRoundedRect(
+            in: CGRect(x: rect.minX + 2.4 * k, y: rect.minY + 2.4 * k, width: 11.2 * k, height: 11.2 * k),
+            cornerSize: CGSize(width: 2.4 * k, height: 2.4 * k)
+        )
+        return path
+    }
+}
+
+private nonisolated struct GitBranchIcon: Shape {
+    func path(in rect: CGRect) -> Path {
+        let k = min(rect.width, rect.height) / 16
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * k, y: rect.minY + y * k) }
+        func circle(_ cx: CGFloat, _ cy: CGFloat, _ r: CGFloat, into path: inout Path) {
+            path.addEllipse(in: CGRect(x: rect.minX + (cx - r) * k, y: rect.minY + (cy - r) * k, width: 2 * r * k, height: 2 * r * k))
+        }
+        var path = Path()
+        circle(4.8, 3.8, 1.5, into: &path)
+        circle(4.8, 12.2, 1.5, into: &path)
+        circle(11.2, 5.4, 1.5, into: &path)
+        path.move(to: p(4.8, 5.3))
+        path.addLine(to: p(4.8, 10.7))
+        path.move(to: p(11.2, 6.9))
+        path.addCurve(to: p(4.8, 10.6), control1: p(11.2, 9.3), control2: p(9.0, 9.9))
+        return path
+    }
+}
+
+private nonisolated struct GitCommitIcon: Shape {
+    func path(in rect: CGRect) -> Path {
+        let k = min(rect.width, rect.height) / 16
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * k, y: rect.minY + y * k) }
+        var path = Path()
+        path.addEllipse(in: CGRect(x: rect.minX + (8 - 2.3) * k, y: rect.minY + (8 - 2.3) * k, width: 4.6 * k, height: 4.6 * k))
+        path.move(to: p(1.8, 8.0)); path.addLine(to: p(5.7, 8.0))
+        path.move(to: p(10.3, 8.0)); path.addLine(to: p(14.2, 8.0))
+        return path
+    }
+}
+
+private nonisolated struct GitCheckIcon: Shape {
+    func path(in rect: CGRect) -> Path {
+        let k = min(rect.width, rect.height) / 16
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * k, y: rect.minY + y * k) }
+        var path = Path()
+        path.move(to: p(3.4, 8.4))
+        path.addLine(to: p(6.4, 11.4))
+        path.addLine(to: p(12.6, 4.6))
+        return path
     }
 }
 
