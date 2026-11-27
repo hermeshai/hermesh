@@ -173,6 +173,7 @@ struct SessionPage: View {
     @State private var renaming = false
     @State private var deleting = false
     @State private var showingBackgroundTasks = false
+    @State private var selectedBgTaskID: String?
     @State private var askHeight: CGFloat = 0
     @State private var askSpace: CGFloat = 0
     /// Messages to a session go out one after another, in the order sent.
@@ -369,8 +370,24 @@ struct SessionPage: View {
         .sheet(isPresented: $pickingBranch) {
             if let branches { BranchSheet(place: $place, branches: branches) }
         }
-        .sheet(isPresented: $showingBackgroundTasks) {
-            BackgroundTasksSheet(tasks: allBgTasks, onStop: stopBackgroundTask)
+        .sheet(isPresented: Binding(
+            get: { showingBackgroundTasks && model.wide == nil },
+            set: {
+                showingBackgroundTasks = $0
+                if !$0 { selectedBgTaskID = nil }
+            }
+        )) {
+            BackgroundTasksPanel(
+                tasks: allBgTasks,
+                selectedTaskID: $selectedBgTaskID,
+                onClose: {
+                    showingBackgroundTasks = false
+                    selectedBgTaskID = nil
+                },
+                onStop: stopBackgroundTask
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .alert("Share data with third-party AI?", isPresented: Binding(
             get: { aiConsentPrompt != nil },
@@ -719,8 +736,9 @@ struct SessionPage: View {
         let todoEndSummary: TodoEndSummary? = todoWindow.flatMap { w in
             w.active.first.map { TodoEndSummary(stepNumber: w.stepNumber, total: w.total, text: $0.text, failed: w.hasFailed) }
         }
-        // A wide screen: the side panel beside the conversation (docs/session-files.md §15), or taking the page.
+        // A wide screen: the side panel or background tasks beside the conversation (docs/session-files.md §15).
         let panel = model.wide != nil && files.panelOpen
+        let wideBg = model.wide != nil && !panel && showingBackgroundTasks && !allBgTasks.isEmpty
         // Enlarged, the panel covers the conversation, which keeps its width and place underneath. On iPhone Duo
         // (`sideBars`), the split aligns with the physical center fold (`screenWidth / 2`).
         return GeometryReader { geo in
@@ -734,7 +752,7 @@ struct SessionPage: View {
                 }
                 .environment(\.sessionFiles, files)
                 .environment(\.sessionCodeActions, codeActions)
-                .environment(\.openBackgroundTasks) { _ in showingBackgroundTasks = true }
+                .environment(\.openBackgroundTasks) { reason in presentBackgroundTasks(focus: reason) }
                 .environment(\.openURL, OpenURLAction { url in
                     guard let route = FileRefLink.route(url, session: s.sessionID) else { return .systemAction }
                     if case .sessionFile(_, let r, let p, let line, _) = route, isSessionImage(p, line: line > 0 ? line : nil) {
@@ -814,11 +832,18 @@ struct SessionPage: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .sessionBar(s, renaming: $renaming, deleting: $deleting,
-                    backgroundTasks: allBgTasks.isEmpty ? nil : .init(running: !activeBgTasks.isEmpty) { showingBackgroundTasks = true })
+                    backgroundTasks: allBgTasks.isEmpty ? nil : .init(runningCount: activeBgTasks.count, isOpen: showingBackgroundTasks) {
+                        toggleBackgroundTasks(files: files)
+                    })
         .sessionDialogs(s, renaming: $renaming, deleting: $deleting)
-        .padding(.trailing, panel ? panelWidth : 0)
+        .padding(.trailing, (panel || wideBg) ? panelWidth : 0)
+        .onChange(of: files.panelOpen) { _, on in
+            if on && showingBackgroundTasks { showingBackgroundTasks = false }
+        }
         if panel {
             sidePanelColumn(files: files, width: files.panelMax ? geo.size.width : panelWidth)
+        } else if wideBg {
+            backgroundSideColumn(width: panelWidth)
         }
         }
         }
@@ -875,6 +900,78 @@ struct SessionPage: View {
         .transition(.move(edge: .trailing))
     }
 
+    private func presentBackgroundTasks(focus reason: String = "") {
+        if !reason.isEmpty {
+            let matched = allBgTasks.first { $0.taskID == reason || $0.title == reason || $0.command == reason }
+            selectedBgTaskID = matched?.taskID
+        } else {
+            selectedBgTaskID = nil
+        }
+        if model.wide != nil {
+            let files = model.sessionFiles.model(sessionID, api: model.api)
+            files.panelOpen = false
+            files.panelMax = false
+            files.panelDrawer = false
+            model.menuRail = true
+        }
+        withAnimation(.snappy(duration: 0.26)) { showingBackgroundTasks = true }
+    }
+
+    private func toggleBackgroundTasks(files: SessionFilesModel) {
+        if showingBackgroundTasks {
+            withAnimation(.snappy(duration: 0.24)) {
+                showingBackgroundTasks = false
+                selectedBgTaskID = nil
+            }
+        } else {
+            presentBackgroundTasks()
+        }
+    }
+
+    private func backgroundSideColumn(width: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            Divider().ignoresSafeArea()
+            BackgroundTasksPanel(
+                tasks: allBgTasks,
+                selectedTaskID: $selectedBgTaskID,
+                onClose: {
+                    withAnimation(.snappy(duration: 0.24)) {
+                        showingBackgroundTasks = false
+                        selectedBgTaskID = nil
+                    }
+                },
+                onStop: stopBackgroundTask
+            )
+        }
+        .frame(width: width)
+        .background(.background)
+        .overlay(alignment: .leading) {
+            Capsule()
+                .fill(.quaternary)
+                .frame(width: 3.5, height: 36)
+                .frame(width: 18)
+                .frame(maxHeight: .infinity)
+                .contentShape(.rect)
+                .gesture(
+                    DragGesture(minimumDistance: 8, coordinateSpace: .global)
+                        .updating($panelDrag) { v, s, _ in s = max(0, v.translation.width) }
+                        .onChanged { _ in hideKeyboard() }
+                        .onEnded { v in
+                            if v.translation.width > 72 || v.predictedEndTranslation.width > 140 {
+                                withAnimation(.snappy(duration: 0.28)) {
+                                    showingBackgroundTasks = false
+                                    selectedBgTaskID = nil
+                                }
+                            }
+                        }
+                )
+                .accessibilityIdentifier("bg-panel-edge-grip")
+        }
+        .offset(x: panelDrag)
+        .opacity(panelDrag > 0 ? max(0.38, 1 - Double(panelDrag) / 340) : 1)
+        .transition(.move(edge: .trailing))
+    }
+
     @ViewBuilder private func inlineQuestionPanel(_ req: Hermesh_Session_V1_RuntimeRequest, _ s: Session) -> some View {
         QuestionPanel(session: s, question: sessionQuestion(req), isTyping: $questionTyping) { answers, decline in
             await respondNow(req) { r in
@@ -896,46 +993,68 @@ struct SessionPage: View {
         if !active.isEmpty {
             let awaited = active.filter(\.awaited)
             let primary = awaited.first ?? active[0]
-            let label = primary.title.isEmpty ? (primary.command.isEmpty ? primary.taskID : primary.command) : primary.title
-            let summary: String = if awaited.count == 1 {
-                String(localized: "Background task · \(label)")
+            let leadLabel = BackgroundTaskFormat.label(of: primary)
+            let finishedCount = allBgTasks.count - active.count
+            let headline: String = if awaited.count == 1 {
+                leadLabel
             } else if awaited.count > 1 {
                 String(localized: "\(awaited.count) background tasks running")
             } else if active.count == 1 {
-                String(localized: "Background service · \(label)")
+                leadLabel
             } else {
                 String(localized: "\(active.count) background services running")
             }
-            HStack(spacing: 8) {
+            TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                let elapsed = BackgroundTaskFormat.timing(of: primary, now: ctx.date)
+                let subline = [BackgroundTaskFormat.kindTitle(primary.kind), elapsed].filter { !$0.isEmpty }.joined(separator: " · ")
                 Button {
-                    showingBackgroundTasks = true
-                } label: {
-                    HStack(spacing: 8) {
-                        if !awaited.isEmpty {
-                            MovingMark(size: 16, motion: .seq)
-                        } else {
-                            Image(systemName: "bolt.horizontal").font(.footnote).foregroundStyle(.secondary)
-                        }
-                        Text(verbatim: summary).font(.subheadline).lineLimit(1).foregroundStyle(.primary)
-                        if let since = dateOf(primary.startedAt, set: primary.hasStartedAt) {
-                            Text(since, style: .timer).font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
-                        }
-                        Spacer(minLength: 0)
-                        Text("Details").font(.footnote).foregroundStyle(.secondary)
+                    if model.wide != nil && showingBackgroundTasks {
+                        withAnimation(.snappy(duration: 0.24)) { showingBackgroundTasks = false }
+                    } else {
+                        presentBackgroundTasks()
                     }
+                } label: {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.accentColor.opacity(0.15))
+                                .frame(width: 28, height: 28)
+                            Image(systemName: BackgroundTaskFormat.iconName(primary.kind))
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color.accentColor)
+                        }
+                        VStack(alignment: .leading, spacing: 1.5) {
+                            Text(verbatim: headline)
+                                .font(.subheadline.weight(.medium))
+                                .lineLimit(1)
+                                .foregroundStyle(.primary)
+                            if !subline.isEmpty {
+                                Text(verbatim: subline)
+                                    .font(.caption.monospacedDigit())
+                                    .lineLimit(1)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer(minLength: 4)
+                        if finishedCount > 0 {
+                            Text(String(localized: "Completed \(finishedCount)"))
+                                .font(.caption2.weight(.medium).monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 7).padding(.vertical, 3)
+                                .background(Palette.fill2, in: Capsule())
+                        }
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 9)
+                    .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                Button(active.count > 1 ? String(localized: "Stop All") : String(localized: "Stop")) {
-                    stopBackgroundTask(active.count == 1 ? active[0].taskID : "")
-                }
-                .font(.footnote.weight(.medium))
-                .tint(.red)
-                .accessibilityIdentifier("thread-background-stop")
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .padding(.horizontal, 20)
+                .accessibilityIdentifier("thread-background-bar")
             }
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .padding(.horizontal, 20)
-            .accessibilityIdentifier("thread-background-bar")
         }
     }
 
@@ -2264,10 +2383,100 @@ private struct ThinkingSlider: View {
     }
 }
 
-/// Live sheet inspecting active and recent background tasks on a session.
-private struct BackgroundTasksSheet: View {
+// MARK: Background Tasks Formatting & Views
+
+private enum BackgroundTaskFormat {
+    private static let genericSchedules: Set<String> = ["run schedule", "schedule", "schedulewakeup"]
+
+    static func label(of bt: Hermesh_Session_V1_BackgroundTask) -> String {
+        let title = bt.title.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        let cmd = bt.command.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        let sum = bt.summary.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        if genericSchedules.contains(title.lowercased()) {
+            if !sum.isEmpty && sum != "stopped by user" { return sum }
+            if !cmd.isEmpty { return "\(String(localized: "Schedule")) · \(cmd)" }
+        }
+        if !title.isEmpty { return title }
+        if !cmd.isEmpty { return cmd }
+        return bt.taskID
+    }
+
+    static func iconName(_ kind: Hermesh_Session_V1_BackgroundTaskKind) -> String {
+        switch kind {
+        case .subagent: "sparkles"
+        case .schedule: "clock"
+        case .daemon: "waveform.path.ecg"
+        default: "terminal"
+        }
+    }
+
+    static func kindTitle(_ kind: Hermesh_Session_V1_BackgroundTaskKind) -> String {
+        switch kind {
+        case .subagent: String(localized: "Sub-agent")
+        case .schedule: String(localized: "Schedule")
+        case .daemon: String(localized: "Service")
+        default: "Shell"
+        }
+    }
+
+    static func stripANSI(_ text: String) -> String {
+        text.replacingOccurrences(of: #"\u{001B}\[[0-9;]*[A-Za-z]"#, with: "", options: .regularExpression)
+    }
+
+    static func latestOutputLine(_ outputTail: String) -> String {
+        stripANSI(outputTail)
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .last { !$0.isEmpty } ?? ""
+    }
+
+    static func timing(of bt: Hermesh_Session_V1_BackgroundTask, now: Date) -> String {
+        guard let started = dateOf(bt.startedAt, set: bt.hasStartedAt) else { return "" }
+        let end: Date
+        if bt.status == .running {
+            end = now
+        } else if let done = dateOf(bt.completedAt, set: bt.hasCompletedAt) ?? dateOf(bt.updatedAt, set: bt.hasUpdatedAt) {
+            end = done
+        } else {
+            return ""
+        }
+        let sec = max(1, Int(round(end.timeIntervalSince(started))))
+        return Duration.seconds(sec).formatted(
+            .units(allowed: [.days, .hours, .minutes, .seconds], width: .abbreviated, maximumUnitCount: 2)
+        )
+    }
+
+    static func statusLine(of bt: Hermesh_Session_V1_BackgroundTask, now: Date) -> (text: String, tint: Color?) {
+        let dur = timing(of: bt, now: now)
+        switch bt.status {
+        case .running:
+            return (dur, nil)
+        case .completed:
+            let base = String(localized: "Completed")
+            return ([base, dur].filter { !$0.isEmpty }.joined(separator: " · "), nil)
+        case .failed:
+            let base = bt.hasExitCode && bt.exitCode != 0
+                ? String(localized: "Failed (exit \(bt.exitCode))")
+                : String(localized: "Failed")
+            return ([base, dur].filter { !$0.isEmpty }.joined(separator: " · "), .red)
+        default:
+            let base = String(localized: "Stopped")
+            return ([base, dur].filter { !$0.isEmpty }.joined(separator: " · "), .orange)
+        }
+    }
+}
+
+/// Interactive background tasks panel used both as a sheet on slab iPhones and as a side column on wide screens.
+private struct BackgroundTasksPanel: View {
     let tasks: [Hermesh_Session_V1_BackgroundTask]
+    @Binding var selectedTaskID: String?
+    let onClose: () -> Void
     let onStop: (String) -> Void
+
+    @State private var path: [String] = []
+    @State private var foldRunning = false
+    @State private var foldCompleted = false
+    @State private var confirmStopAll = false
 
     private var runningTasks: [Hermesh_Session_V1_BackgroundTask] {
         tasks.filter { $0.status == .running }
@@ -2277,102 +2486,523 @@ private struct BackgroundTasksSheet: View {
         tasks.filter { $0.status != .running }
     }
 
+    private static let cardFill = Color(UIColor {
+        $0.userInterfaceStyle == .dark
+            ? UIColor(red: 0x1b / 255, green: 0x1b / 255, blue: 0x20 / 255, alpha: 1)
+            : UIColor.white
+    })
+
+    private static let panelFill = Color(UIColor {
+        $0.userInterfaceStyle == .dark
+            ? UIColor(red: 0x0e / 255, green: 0x0e / 255, blue: 0x11 / 255, alpha: 1)
+            : UIColor(red: 0xf2 / 255, green: 0xf3 / 255, blue: 0xf7 / 255, alpha: 1)
+    })
+
     var body: some View {
-        NavigationStack {
-            List {
-                if !runningTasks.isEmpty {
-                    Section("Running") {
-                        ForEach(runningTasks, id: \.taskID) { bt in
-                            taskRow(bt)
+        NavigationStack(path: $path) {
+            VStack(spacing: 0) {
+                headerBar
+                TimelineView(.periodic(from: .now, by: runningTasks.isEmpty ? 30 : 1)) { ctx in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 10) {
+                            if !runningTasks.isEmpty {
+                                sectionHeader(
+                                    title: String(localized: "Running"),
+                                    count: runningTasks.count,
+                                    folded: foldRunning
+                                ) {
+                                    withAnimation(.snappy(duration: 0.22)) { foldRunning.toggle() }
+                                }
+                                if !foldRunning {
+                                    ForEach(runningTasks, id: \.taskID) { bt in
+                                        taskCard(bt, now: ctx.date)
+                                    }
+                                }
+                            }
+                            if !recentTasks.isEmpty {
+                                sectionHeader(
+                                    title: String(localized: "Completed"),
+                                    count: recentTasks.count,
+                                    folded: foldCompleted,
+                                    trailingNote: recentTasks.contains { $0.status == .failed } ? String(localized: "Failed") : nil
+                                ) {
+                                    withAnimation(.snappy(duration: 0.22)) { foldCompleted.toggle() }
+                                }
+                                .padding(.top, runningTasks.isEmpty ? 0 : 6)
+                                if !foldCompleted {
+                                    ForEach(recentTasks, id: \.taskID) { bt in
+                                        taskCard(bt, now: ctx.date)
+                                    }
+                                }
+                            }
                         }
-                    }
-                }
-                if !recentTasks.isEmpty {
-                    Section("Recent") {
-                        ForEach(recentTasks, id: \.taskID) { bt in
-                            taskRow(bt)
-                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+                        .padding(.bottom, 28)
                     }
                 }
             }
-            .navigationTitle("Background Tasks")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                CloseButton()
-                if runningTasks.count > 1 {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Stop All", role: .destructive) { onStop("") }
-                    }
-                }
+            .background(Self.panelFill.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(for: String.self) { taskID in
+                BackgroundTaskDetailView(
+                    tasks: tasks,
+                    taskID: taskID,
+                    panelFill: Self.panelFill,
+                    cardFill: Self.cardFill,
+                    onBack: { if !path.isEmpty { path.removeLast() } },
+                    onClose: onClose,
+                    onStop: onStop
+                )
+                .toolbar(.hidden, for: .navigationBar)
             }
         }
-        .presentationDetents([.medium, .large])
+        .onAppear {
+            syncSelectedTask()
+        }
+        .onChange(of: selectedTaskID) { _, _ in
+            syncSelectedTask()
+        }
+        .onChange(of: runningTasks.count) { _, cnt in
+            if cnt <= 1 { confirmStopAll = false }
+        }
+        .accessibilityIdentifier("background-tasks-panel")
     }
 
-    private func taskRow(_ bt: Hermesh_Session_V1_BackgroundTask) -> some View {
-        let title = bt.title.isEmpty ? (bt.command.isEmpty ? bt.taskID : bt.command) : bt.title
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: iconName(bt.kind))
-                    .foregroundStyle(bt.status == .running ? Color.accentColor : .secondary)
-                Text(verbatim: title).font(.subheadline.weight(.medium)).lineLimit(1)
-                Spacer()
-                if bt.status == .running, let since = dateOf(bt.startedAt, set: bt.hasStartedAt) {
-                    Text(since, style: .timer).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+    private func syncSelectedTask() {
+        guard let id = selectedTaskID, tasks.contains(where: { $0.taskID == id }) else { return }
+        if path.last != id { path = [id] }
+    }
+
+    private var headerBar: some View {
+        HStack(spacing: 10) {
+            Text("Background Tasks")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.primary)
+            Spacer(minLength: 4)
+            if runningTasks.count > 1 {
+                Button {
+                    if confirmStopAll {
+                        confirmStopAll = false
+                        onStop("")
+                    } else {
+                        withAnimation(.snappy(duration: 0.18)) { confirmStopAll = true }
+                    }
+                } label: {
+                    Text(confirmStopAll ? String(localized: "Confirm (\(runningTasks.count))") : String(localized: "Stop All"))
+                        .font(.footnote.weight(confirmStopAll ? .semibold : .medium))
+                        .foregroundStyle(confirmStopAll ? Color.red : .secondary)
+                        .padding(.horizontal, 11).padding(.vertical, 6)
+                        .background(confirmStopAll ? Color.red.opacity(0.15) : Palette.fill2, in: Capsule())
                 }
-                if bt.status == .running {
-                    Button("Stop", role: .destructive) { onStop(bt.taskID) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                } else {
-                    Text(statusText(bt)).font(.caption).foregroundStyle(bt.status == .failed ? .red : .secondary)
-                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("thread-background-stop")
             }
-            if !bt.command.isEmpty && bt.command != title {
-                Text(verbatim: bt.command)
-                    .font(.caption.monospaced())
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+                    .frame(width: 32, height: 32)
+                    .background(Palette.fill2, in: Circle())
             }
-            if !bt.outputTail.isEmpty {
-                let cleanOutput = Self.stripANSI(bt.outputTail)
-                ScrollView(.vertical) {
-                    Text(verbatim: cleanOutput)
-                        .font(.system(size: 11.5, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "Close"))
+            .accessibilityIdentifier("background-tasks-close")
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 14)
+        .padding(.bottom, 8)
+    }
+
+    private func sectionHeader(title: String, count: Int, folded: Bool, trailingNote: String? = nil, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Text(verbatim: title)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Text(verbatim: "\(count)")
+                    .font(.footnote.weight(.medium).monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(folded ? -90 : 0))
+                Spacer(minLength: 0)
+                if let trailingNote {
+                    Text(verbatim: trailingNote)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.red)
                 }
-                .frame(maxHeight: 150)
-                .padding(8)
-                .background(Palette.fill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            } else if !bt.summary.isEmpty {
-                Text(verbatim: bt.summary).font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 4)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func taskCard(_ bt: Hermesh_Session_V1_BackgroundTask, now: Date) -> some View {
+        let isRunning = bt.status == .running
+        let title = BackgroundTaskFormat.label(of: bt)
+        let peek = isRunning ? BackgroundTaskFormat.latestOutputLine(bt.outputTail) : ""
+        let status = BackgroundTaskFormat.statusLine(of: bt, now: now)
+
+        return HStack(alignment: .top, spacing: 11) {
+            Image(systemName: BackgroundTaskFormat.iconName(bt.kind))
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(isRunning ? .primary : .secondary)
+                .frame(width: 20, height: 20)
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(verbatim: title)
+                    .font(.subheadline)
+                    .foregroundStyle(isRunning ? Color.primary.opacity(0.76) : Color.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+
+                if !peek.isEmpty {
+                    Text(verbatim: peek)
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+
+                HStack(spacing: 8) {
+                    Text(verbatim: BackgroundTaskFormat.kindTitle(bt.kind))
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.primary)
+                    if !status.text.isEmpty {
+                        Text(verbatim: status.text)
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(status.tint ?? .secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.top, 1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if isRunning {
+                BackgroundStopRingButton {
+                    confirmStopAll = false
+                    onStop(bt.taskID)
+                }
+                .accessibilityLabel(String(localized: "Stop"))
+                .accessibilityIdentifier("bg-task-stop-\(bt.taskID)")
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 20, height: 22)
+                    .padding(.top, 1)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 15)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Self.cardFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Palette.settledAnswerBorder, lineWidth: 0.5)
+                )
+        )
+        .contentShape(.rect)
+        .onTapGesture {
+            confirmStopAll = false
+            selectedTaskID = bt.taskID
+            path.append(bt.taskID)
+        }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("bg-task-\(bt.taskID)")
     }
+}
 
-    private func iconName(_ kind: Hermesh_Session_V1_BackgroundTaskKind) -> String {
-        switch kind {
-        case .subagent: "person.2"
-        case .schedule: "clock"
-        case .daemon: "bolt.horizontal"
-        default: "terminal"
+/// Circular subtle stop ring (`◎`) with rotating active progress arc and inner rounded square.
+private struct BackgroundStopRingButton: View {
+    let action: () -> Void
+    @State private var spinning = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .stroke(Color.primary.opacity(0.24), lineWidth: 1.6)
+                    .frame(width: 26, height: 26)
+                Circle()
+                    .trim(from: 0, to: 0.28)
+                    .stroke(Color.primary.opacity(0.86), style: StrokeStyle(lineWidth: 1.7, lineCap: .round))
+                    .frame(width: 26, height: 26)
+                    .rotationEffect(.degrees(spinning ? 360 : 0))
+                    .animation(.linear(duration: 2.4).repeatForever(autoreverses: false), value: spinning)
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(Color.primary)
+                    .frame(width: 7.5, height: 7.5)
+            }
+            .frame(width: 30, height: 30)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onAppear { spinning = true }
+    }
+}
+
+/// Pushed execution detail view for any running or finished background task.
+private struct BackgroundTaskDetailView: View {
+    let tasks: [Hermesh_Session_V1_BackgroundTask]
+    let taskID: String
+    let panelFill: Color
+    let cardFill: Color
+    let onBack: () -> Void
+    let onClose: () -> Void
+    let onStop: (String) -> Void
+
+    @State private var commandFolded = false
+    @State private var copied = false
+
+    private var task: Hermesh_Session_V1_BackgroundTask? {
+        tasks.first { $0.taskID == taskID }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            topBar
+            Divider()
+            if let bt = task {
+                TimelineView(.periodic(from: .now, by: bt.status == .running ? 1 : 30)) { ctx in
+                    detailContent(bt, now: ctx.date)
+                }
+            } else {
+                Spacer()
+            }
+        }
+        .background(panelFill.ignoresSafeArea())
+        .accessibilityIdentifier("background-task-detail")
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 8) {
+            Button(action: onBack) {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Background Tasks")
+                        .font(.subheadline.weight(.medium))
+                }
+                .foregroundStyle(.primary)
+                .padding(.vertical, 6)
+                .padding(.trailing, 8)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("background-detail-back")
+
+            Spacer(minLength: 4)
+
+            if let bt = task, bt.status == .running {
+                Button {
+                    onStop(bt.taskID)
+                } label: {
+                    Text("Stop")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 11).padding(.vertical, 6)
+                        .background(Color.red.opacity(0.14), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("bg-detail-stop-\(bt.taskID)")
+            }
+
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 32, height: 32)
+                    .background(Palette.fill2, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "Close"))
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+    }
+
+    private func detailContent(_ bt: Hermesh_Session_V1_BackgroundTask, now: Date) -> some View {
+        let isRunning = bt.status == .running
+        let title = BackgroundTaskFormat.label(of: bt)
+        let brief = bt.kind == .subagent
+            ? (bt.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? bt.title : bt.command)
+            : bt.command.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanOutput = BackgroundTaskFormat.stripANSI(bt.outputTail)
+        let summaryTrimmed = bt.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shownSummary = summaryTrimmed != "stopped by user" ? summaryTrimmed : ""
+        let status = BackgroundTaskFormat.statusLine(of: bt, now: now)
+        let badgeColor: Color = switch bt.status {
+        case .running: .accentColor
+        case .completed: .green
+        case .failed: .red
+        default: .orange
+        }
+
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                // 1. Hero status & title card
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 7) {
+                        Text(verbatim: status.text.isEmpty ? BackgroundTaskFormat.kindTitle(bt.kind) : (isRunning ? "\(String(localized: "Running")) · \(status.text)" : status.text))
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(badgeColor)
+                            .padding(.horizontal, 9).padding(.vertical, 3.5)
+                            .background(badgeColor.opacity(0.14), in: Capsule())
+
+                        Text(verbatim: BackgroundTaskFormat.kindTitle(bt.kind))
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8).padding(.vertical, 3.5)
+                            .background(Palette.fill2, in: Capsule())
+                    }
+
+                    Text(verbatim: title)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(15)
+                .background(cardSurface)
+
+                // 2. Collapsible Command / Brief box
+                if !brief.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Button {
+                                withAnimation(.snappy(duration: 0.18)) { commandFolded.toggle() }
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Text(bt.kind == .subagent ? String(localized: "Task brief") : String(localized: "Command"))
+                                        .font(.caption.weight(.medium))
+                                        .foregroundStyle(.secondary)
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(.tertiary)
+                                        .rotationEffect(.degrees(commandFolded ? -90 : 0))
+                                }
+                            }
+                            .buttonStyle(.plain)
+
+                            Spacer()
+
+                            Button {
+                                UIPasteboard.general.string = brief
+                                copied = true
+                                Task {
+                                    try? await Task.sleep(for: .milliseconds(1400))
+                                    copied = false
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                    Text(copied ? String(localized: "Copied") : String(localized: "Copy"))
+                                }
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Palette.fill2, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        if !commandFolded {
+                            Text(verbatim: brief)
+                                .font(bt.kind == .subagent ? .footnote : .system(size: 12, design: .monospaced))
+                                .foregroundStyle(.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(14)
+                    .background(cardSurface)
+                }
+
+                // 3. Terminal Output Box
+                if !cleanOutput.isEmpty {
+                    let lineCount = cleanOutput.components(separatedBy: .newlines).count
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack {
+                            Text(String(localized: "Output · \(lineCount) lines"))
+                                .font(.caption2.weight(.medium).monospacedDigit())
+                                .foregroundStyle(Color.white.opacity(0.62))
+                            Spacer()
+                            if isRunning {
+                                Text(String(localized: "Live"))
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                        .padding(.horizontal, 13).padding(.vertical, 8)
+                        .background(Color.white.opacity(0.05))
+
+                        ScrollViewReader { proxy in
+                            ScrollView(.vertical) {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Text(verbatim: cleanOutput)
+                                        .font(.system(size: 11.5, design: .monospaced))
+                                        .foregroundStyle(Color(white: 0.88))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .textSelection(.enabled)
+                                    Color.clear.frame(height: 1).id("bg-log-bottom")
+                                }
+                                .padding(13)
+                            }
+                            .frame(maxHeight: 280)
+                            .onAppear { proxy.scrollTo("bg-log-bottom", anchor: .bottom) }
+                            .onChange(of: cleanOutput) { _, _ in
+                                if isRunning { proxy.scrollTo("bg-log-bottom", anchor: .bottom) }
+                            }
+                        }
+                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color(red: 0x0a / 255, green: 0x0b / 255, blue: 0x0f / 255))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
+                            )
+                    )
+                } else if isRunning && shownSummary.isEmpty {
+                    Text("No output yet")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                }
+
+                // 4. Summary
+                if !shownSummary.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Summary")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        MarkdownText(text: shownSummary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(14)
+                    .background(cardSurface)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
     }
 
-    private func statusText(_ bt: Hermesh_Session_V1_BackgroundTask) -> String {
-        switch bt.status {
-        case .running: String(localized: "Running")
-        case .completed: bt.hasExitCode ? String(localized: "Completed (\(bt.exitCode))") : String(localized: "Completed")
-        case .failed: bt.hasExitCode ? String(localized: "Failed (\(bt.exitCode))") : String(localized: "Failed")
-        default: String(localized: "Stopped")
-        }
-    }
-
-    private static func stripANSI(_ text: String) -> String {
-        text.replacingOccurrences(of: #"\u{001B}\[[0-9;]*[A-Za-z]"#, with: "", options: .regularExpression)
+    private var cardSurface: some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(cardFill)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Palette.settledAnswerBorder, lineWidth: 0.5)
+            )
     }
 }
 

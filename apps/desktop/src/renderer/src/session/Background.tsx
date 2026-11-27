@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   BackgroundTaskKind,
@@ -9,9 +9,8 @@ import {
 import { dateOf } from "@hermesh/core";
 import { i18n } from "../../../shared/i18n";
 import { Icon } from "../icons";
-import { TitleShine } from "../runningMotion";
 import { useNow, useStore } from "../store";
-import { formatTaskTiming, stripAnsi, taskLabel, taskSecondary, type TimeTranslate } from "./backgroundModel";
+import { formatTaskTiming, latestOutputLine, stripAnsi, taskLabel, type TimeTranslate } from "./backgroundModel";
 import { Markdown } from "./Markdown";
 import { TerminalOutput } from "./TerminalOutput";
 
@@ -27,12 +26,22 @@ function taskTime(bt: BackgroundTask, now: Date): string {
   );
 }
 
+function kindIconName(kind: BackgroundTaskKind): string {
+  switch (kind) {
+    case BackgroundTaskKind.SUBAGENT:
+      return "sparkle";
+    case BackgroundTaskKind.SCHEDULE:
+      return "clock";
+    case BackgroundTaskKind.DAEMON:
+      return "pulse";
+    default:
+      return "terminal";
+  }
+}
+
 /**
- * The background card: in the info card's place, over the conversation's top right under its own
- * bar, the same glass card and width, so the tasks read as the session's own. Tasks are rows like
- * the sidebar's sessions: a working one's title shimmers and its time gives way on hover to stop;
- * a stopped or failed one has a dot. Clicking a row opens its execution in the card's place,
- * following the end while it runs; back returns to the list.
+ * Right-side single-column background tasks panel on Mac: collapsible Running / Completed sections
+ * and individual rounded cards that expand vertically in place to inspect commands, live output, and summaries.
  */
 export function Background({
   tasks,
@@ -43,8 +52,39 @@ export function Background({
 }) {
   const { t } = useTranslation("thread");
   const st = useStore();
-  const running = tasks.filter((x) => x.status === BackgroundTaskStatus.RUNNING).length;
+  const runningTasks = tasks.filter((x) => x.status === BackgroundTaskStatus.RUNNING);
+  const finishedTasks = tasks.filter((x) => x.status !== BackgroundTaskStatus.RUNNING);
+  const running = runningTasks.length;
   const now = useNow(running > 0 ? 1000 : 30_000);
+
+  const [foldRunning, setFoldRunning] = useState(false);
+  const [foldDone, setFoldDone] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() =>
+    st.bgTask ? new Set([st.bgTask]) : new Set(),
+  );
+  const [confirmStopAll, setConfirmStopAll] = useState(false);
+
+  useEffect(() => {
+    if (running <= 1 && confirmStopAll) setConfirmStopAll(false);
+  }, [running, confirmStopAll]);
+
+  useEffect(() => {
+    if (!st.bgTask) return;
+    const target = tasks.find((x) => x.taskId === st.bgTask);
+    if (!target) return;
+    if (target.status === BackgroundTaskStatus.RUNNING) setFoldRunning(false);
+    else setFoldDone(false);
+    setExpandedIds((prev) => {
+      if (prev.has(target.taskId)) return prev;
+      const next = new Set(prev);
+      next.add(target.taskId);
+      return next;
+    });
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-testid="bg-task-${CSS.escape(target.taskId)}"]`)?.scrollIntoView({ block: "nearest" });
+    });
+  }, [st.bgTask, tasks]);
+
   const done = tasks.filter((x) => x.status === BackgroundTaskStatus.COMPLETED).length;
   const stopped = tasks.filter((x) => x.status === BackgroundTaskStatus.STOPPED).length;
   const failed = tasks.filter((x) => x.status === BackgroundTaskStatus.FAILED).length;
@@ -60,38 +100,118 @@ export function Background({
       : done === tasks.length
         ? t("background.allDone")
         : parts.join(" · ");
-  const sel = st.bgTask ? tasks.find((x) => x.taskId === st.bgTask) : undefined;
+
+  const toggleCard = (taskId: string) => {
+    setConfirmStopAll(false);
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+    if (st.bgTask === taskId) st.set({ bgTask: null });
+  };
+
+  const handleStopAll = () => {
+    if (running <= 1 || confirmStopAll) {
+      setConfirmStopAll(false);
+      onStop("");
+    } else {
+      setConfirmStopAll(true);
+    }
+  };
 
   return (
     <div className="insp-col bgc-stack" role="complementary" aria-label={t("background.title")} data-testid="background-panel">
       <section className="insp bgc">
-        {sel ? (
-          <Process key={sel.taskId} bt={sel} now={now} onStop={onStop} />
-        ) : (
-          <>
-            <div className="bgc-h">
-              <h3>{t("background.title")}</h3>
-              {running > 0 && (
-                <button
-                  type="button"
-                  className="bgc-stopall"
-                  data-testid="background-stop-all"
-                  onClick={() => onStop("")}
-                >
-                  {t("background.stopAll")}
-                </button>
+        <div className="bgc-h">
+          <h3>{t("background.title")}</h3>
+          {running > 0 && (
+            <button
+              type="button"
+              className={`bgc-stopall ${confirmStopAll ? "confirm" : ""}`}
+              data-testid="background-stop-all"
+              onClick={handleStopAll}
+            >
+              {confirmStopAll ? t("background.confirmStopAll", { count: running }) : t("background.stopAll")}
+            </button>
+          )}
+          <button
+            type="button"
+            className="bgc-close"
+            aria-label={t("background.close")}
+            title={t("background.close")}
+            onClick={() => st.set({ background: false, bgTask: null })}
+          >
+            <Icon name="x" />
+          </button>
+        </div>
+
+        <div className="bgc-sub">
+          <span>{sub}</span>
+        </div>
+
+        <div className="bgc-list">
+          {runningTasks.length > 0 && (
+            <div className="bgc-sec">
+              <button
+                type="button"
+                className={`bgc-sec-h ${foldRunning ? "folded" : ""}`}
+                aria-expanded={!foldRunning}
+                data-testid="background-sec-running"
+                onClick={() => setFoldRunning((v) => !v)}
+              >
+                <span>{t("background.sectionRunning")}</span>
+                <span className="bgc-sec-cnt">{runningTasks.length}</span>
+                <Icon name="chevD" className="chev" />
+              </button>
+              {!foldRunning && (
+                <div className="bgc-cards">
+                  {runningTasks.map((bt) => (
+                    <TaskCard
+                      key={bt.taskId}
+                      bt={bt}
+                      now={now}
+                      expanded={expandedIds.has(bt.taskId)}
+                      onToggle={() => toggleCard(bt.taskId)}
+                      onStop={onStop}
+                    />
+                  ))}
+                </div>
               )}
             </div>
-            <div className="bgc-sub">
-              <span>{sub}</span>
+          )}
+
+          {finishedTasks.length > 0 && (
+            <div className="bgc-sec">
+              <button
+                type="button"
+                className={`bgc-sec-h ${foldDone ? "folded" : ""}`}
+                aria-expanded={!foldDone}
+                data-testid="background-sec-done"
+                onClick={() => setFoldDone((v) => !v)}
+              >
+                <span>{t("background.sectionDone")}</span>
+                <span className="bgc-sec-cnt">{finishedTasks.length}</span>
+                <Icon name="chevD" className="chev" />
+              </button>
+              {!foldDone && (
+                <div className="bgc-cards">
+                  {finishedTasks.map((bt) => (
+                    <TaskCard
+                      key={bt.taskId}
+                      bt={bt}
+                      now={now}
+                      expanded={expandedIds.has(bt.taskId)}
+                      onToggle={() => toggleCard(bt.taskId)}
+                      onStop={onStop}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="bgc-list">
-              {tasks.map((bt) => (
-                <Row key={bt.taskId} bt={bt} now={now} onStop={onStop} />
-              ))}
-            </div>
-          </>
-        )}
+          )}
+        </div>
       </section>
     </div>
   );
@@ -149,69 +269,143 @@ function useStatusLabel() {
   };
 }
 
-function Row({
+function TaskCard({
   bt,
   now,
+  expanded,
+  onToggle,
   onStop,
 }: {
   bt: BackgroundTask;
   now: Date;
+  expanded: boolean;
+  onToggle: () => void;
   onStop: (taskId?: string) => void;
 }) {
-  const st = useStore();
+  const { t } = useTranslation("thread");
   const kindLabel = useKindLabel();
   const statusLabel = useStatusLabel();
   const isRunning = bt.status === BackgroundTaskStatus.RUNNING;
   const label = taskLabel(bt);
-  const second = taskSecondary(bt, kindLabel(bt.kind));
-  const open = () => st.set({ bgTask: bt.taskId });
+  const peek = isRunning && !expanded ? latestOutputLine(bt.outputTail) : "";
+  const cleanOutput = stripAnsi(bt.outputTail);
+  const shownSummary = bt.summary.trim() !== "" && bt.summary.trim() !== "stopped by user" ? bt.summary.trim() : "";
+  const briefText = bt.kind === BackgroundTaskKind.SUBAGENT ? (bt.command.trim() || bt.title.trim()) : bt.command.trim();
+  const took = taskTime(bt, now);
+
   return (
     <div
-      className={`srow ${isRunning ? "has-act" : ""}`}
-      role="button"
-      tabIndex={0}
-      title={statusLabel(bt.status)}
+      className={`bgc-card srow ${isRunning ? "running" : ""} ${expanded ? "expanded" : ""}`}
       data-testid={`bg-task-${bt.taskId}`}
-      onClick={open}
-      onKeyDown={(e) =>
-        (e.key === "Enter" || e.key === " ") &&
-        e.target === e.currentTarget &&
-        (e.preventDefault(), open())
-      }
     >
-      <span className="smain">
-        <span className="sl1">
-          <span className={`stitle ${isRunning ? "run" : ""}`}>
-            {label}
-            {isRunning && <TitleShine text={label} />}
+      <div className="bgc-card-head">
+        <button
+          type="button"
+          className="bgc-card-main"
+          aria-expanded={expanded}
+          title={statusLabel(bt.status)}
+          onClick={onToggle}
+        >
+          <span className="bgc-kicon">
+            <Icon name={kindIconName(bt.kind)} />
           </span>
-          <Meta bt={bt} now={now} />
-          {isRunning && (
-            <StopButton
-              bt={bt}
-              onStop={onStop}
-              className="rowact stop"
-              testId={`bg-task-stop-${bt.taskId}`}
+
+          <span className="bgc-cbody">
+            <span className={`bgc-ctitle ${isRunning ? "run" : ""}`}>{label}</span>
+            {peek !== "" && <span className="bgc-peek">{peek}</span>}
+            <span className="bgc-cmeta">
+              <span className="bgc-kind">{kindLabel(bt.kind)}</span>
+              <CardStatusMeta bt={bt} took={took} />
+            </span>
+          </span>
+
+          {!isRunning && (
+            <span className="bgc-ctrail">
+              <span className="bgc-chev" aria-hidden="true">
+                <Icon name="chevR" />
+              </span>
+            </span>
+          )}
+        </button>
+
+        {isRunning && (
+          <StopRingButton bt={bt} onStop={onStop} testId={`bg-task-stop-${bt.taskId}`} />
+        )}
+      </div>
+
+      {expanded && (
+        <div className="bgc-detail">
+          {briefText !== "" && (
+            <Said
+              caption={t(bt.kind === BackgroundTaskKind.SUBAGENT ? "background.brief" : "background.command")}
+              text={briefText}
+              mono={bt.kind !== BackgroundTaskKind.SUBAGENT}
+              folds
             />
           )}
-        </span>
-        <span className="sl2">
-          <span className={`sl2t ${second.mono ? "k" : ""}`}>{second.text}</span>
-        </span>
-      </span>
+          {cleanOutput !== "" && (
+            <TerminalOutput
+              text={bt.outputTail}
+              follow={isRunning}
+              className="bgc-out sel-text"
+              testId={`bg-task-output-${bt.taskId}`}
+            />
+          )}
+          {shownSummary !== "" && (
+            <div className="am">
+              <Markdown text={shownSummary} />
+            </div>
+          )}
+          {isRunning && cleanOutput === "" && shownSummary === "" && (
+            <p className="bgc-note">{t("background.noOutput")}</p>
+          )}
+          {bt.status === BackgroundTaskStatus.COMPLETED && (
+            <p className="bgc-done">
+              <Icon name="check" className="sm" />
+              <span>{[t("background.done"), took].filter(Boolean).join(" · ")}</span>
+            </p>
+          )}
+          {bt.status === BackgroundTaskStatus.STOPPED && (
+            <p className="bgc-note int">{[t("background.stoppedNote"), took].filter(Boolean).join(" · ")}</p>
+          )}
+          {bt.status === BackgroundTaskStatus.FAILED && (
+            <p className="bgc-note bad">
+              {bt.exitCode !== undefined && bt.exitCode !== 0
+                ? t("background.failedExit", { code: bt.exitCode })
+                : t("background.failedNote")}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function StopButton({
+function CardStatusMeta({ bt, took }: { bt: BackgroundTask; took: string }) {
+  const { t } = useTranslation("thread");
+  if (bt.status === BackgroundTaskStatus.RUNNING) {
+    return <span className="bgc-dur">{took}</span>;
+  }
+  if (bt.status === BackgroundTaskStatus.COMPLETED) {
+    return <span className="bgc-dur">{[t("background.statusCompleted"), took].filter(Boolean).join(" · ")}</span>;
+  }
+  if (bt.status === BackgroundTaskStatus.FAILED) {
+    const label =
+      bt.exitCode !== undefined && bt.exitCode !== 0
+        ? t("background.failedExit", { code: bt.exitCode })
+        : t("background.statusFailed");
+    return <span className="bgc-st bad">{[label, took].filter(Boolean).join(" · ")}</span>;
+  }
+  return <span className="bgc-st warn">{[t("background.statusStopped"), took].filter(Boolean).join(" · ")}</span>;
+}
+
+function StopRingButton({
   bt,
   onStop,
-  className,
   testId,
 }: {
   bt: BackgroundTask;
   onStop: (taskId?: string) => void;
-  className: string;
   testId?: string;
 }) {
   const { t } = useTranslation("thread");
@@ -222,7 +416,7 @@ function StopButton({
   return (
     <button
       type="button"
-      className={className}
+      className="bgc-stop-ring"
       title={hint}
       aria-label={t("background.stop")}
       data-testid={testId}
@@ -231,133 +425,19 @@ function StopButton({
         onStop(bt.taskId);
       }}
     >
-      <Icon name="stop" className="fill" />
+      <svg className="ring-svg" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+        <circle cx="13" cy="13" r="10.2" stroke="currentColor" strokeOpacity=".26" strokeWidth="1.55" />
+        <path
+          className="spin-arc"
+          d="M13 2.8 A10.2 10.2 0 0 1 22.6 9.6"
+          stroke="currentColor"
+          strokeOpacity=".88"
+          strokeWidth="1.65"
+          strokeLinecap="round"
+        />
+      </svg>
+      <span className="stop-sq" aria-hidden="true" />
     </button>
-  );
-}
-
-function Meta({ bt, now }: { bt: BackgroundTask; now: Date }) {
-  const statusLabel = useStatusLabel();
-  const dot =
-    bt.status === BackgroundTaskStatus.STOPPED
-      ? "w"
-      : bt.status === BackgroundTaskStatus.FAILED
-        ? "c"
-        : "";
-  return (
-    <span className={`smeta ${dot}`}>
-      {dot ? (
-        <>
-          <span className={`sdot ${dot}`} />
-          {statusLabel(bt.status)}
-        </>
-      ) : (
-        taskTime(bt, now)
-      )}
-    </span>
-  );
-}
-
-/** The selected task's execution in the card's place: back to the list, stop while running, and its live output. */
-function Process({
-  bt,
-  now,
-  onStop,
-}: {
-  bt: BackgroundTask;
-  now: Date;
-  onStop: (taskId?: string) => void;
-}) {
-  const { t } = useTranslation("thread");
-  const st = useStore();
-  const kindLabel = useKindLabel();
-  const log = useRef<HTMLDivElement>(null);
-  const follow = useRef(true);
-  const cleanOutput = stripAnsi(bt.outputTail);
-  const shownSummary = bt.summary.trim() !== "" && bt.summary.trim() !== "stopped by user" ? bt.summary.trim() : "";
-
-  useLayoutEffect(() => {
-    const el = log.current;
-    if (el && follow.current) el.scrollTop = el.scrollHeight;
-  }, [cleanOutput, shownSummary, bt.status]);
-
-  const label = taskLabel(bt);
-  const isRunning = bt.status === BackgroundTaskStatus.RUNNING;
-  const briefText = bt.kind === BackgroundTaskKind.SUBAGENT ? (bt.command.trim() || bt.title.trim()) : bt.command.trim();
-  const took = bt.status === BackgroundTaskStatus.COMPLETED ? taskTime(bt, now) : "";
-
-  return (
-    <>
-      <div className="bgc-h">
-        <button
-          type="button"
-          className="bgc-btn"
-          title={t("background.back")}
-          aria-label={t("background.back")}
-          data-testid="background-back"
-          onClick={() => st.set({ bgTask: null })}
-        >
-          <Icon name="chevL" />
-        </button>
-        <h3 className="bgc-name" title={label}>{label}</h3>
-        {isRunning && (
-          <StopButton
-            bt={bt}
-            onStop={onStop}
-            className="bgc-btn stop"
-            testId={`bg-task-stop-${bt.taskId}`}
-          />
-        )}
-      </div>
-      <div className="bgc-sub">
-        <span>{kindLabel(bt.kind)}</span>
-        <Meta bt={bt} now={now} />
-      </div>
-      <div
-        className="bgc-log"
-        ref={log}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          follow.current = el.scrollTop + el.clientHeight > el.scrollHeight - 40;
-        }}
-      >
-        {briefText !== "" && (
-          <Said
-            caption={t(bt.kind === BackgroundTaskKind.SUBAGENT ? "background.brief" : "background.command")}
-            text={briefText}
-            mono={bt.kind !== BackgroundTaskKind.SUBAGENT}
-            folds
-          />
-        )}
-        {cleanOutput !== "" && (
-          <TerminalOutput text={bt.outputTail} follow={isRunning} className="bgc-out sel-text" testId={`bg-task-output-${bt.taskId}`} />
-        )}
-        {shownSummary !== "" && (
-          <div className="am">
-            <Markdown text={shownSummary} />
-          </div>
-        )}
-        {isRunning && cleanOutput === "" && shownSummary === "" && (
-          <p className="bgc-note">{t("background.noOutput")}</p>
-        )}
-        {bt.status === BackgroundTaskStatus.COMPLETED && (
-          <p className="bgc-done">
-            <Icon name="check" className="sm" />
-            <span>{[t("background.done"), took].filter(Boolean).join(" · ")}</span>
-          </p>
-        )}
-        {bt.status === BackgroundTaskStatus.STOPPED && (
-          <p className="bgc-note int">{t("background.stoppedNote")}</p>
-        )}
-        {bt.status === BackgroundTaskStatus.FAILED && (
-          <p className="bgc-note bad">
-            {bt.exitCode !== undefined && bt.exitCode !== 0
-              ? t("background.failedExit", { code: bt.exitCode })
-              : t("background.failedNote")}
-          </p>
-        )}
-      </div>
-    </>
   );
 }
 
@@ -374,10 +454,25 @@ function Said({
 }) {
   const { t } = useTranslation("thread");
   const [open, setOpen] = useState(false);
-  const long = folds && (text.split("\n").length > 3 || text.length > 120);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<number | null>(null);
+  const long = folds && (text.split("\n").length > 3 || text.length > 140);
+
+  const handleCopy = () => {
+    void navigator.clipboard?.writeText(text).catch(() => {});
+    setCopied(true);
+    if (copyTimer.current) window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopied(false), 1400);
+  };
+
   return (
     <div className="bgc-said">
-      <span className="bgc-cap">{caption}</span>
+      <div className="bgc-said-h">
+        <span className="bgc-cap">{caption}</span>
+        <button type="button" className="bgc-copy" onClick={handleCopy} title={t("background.copy")}>
+          <Icon name={copied ? "check" : "copy"} />
+        </button>
+      </div>
       <p className={`sel-text ${mono ? "mono" : ""} ${long && !open ? "clamp" : ""}`}>{text}</p>
       {long && (
         <button type="button" className="link" onClick={() => setOpen(!open)}>

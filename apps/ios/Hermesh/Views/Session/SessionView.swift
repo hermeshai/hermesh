@@ -585,8 +585,10 @@ struct SessionBar: View {
     var starting: Starting?
 
     struct BackgroundTasks {
-        let running: Bool
+        let runningCount: Int
+        var isOpen = false
         let open: () -> Void
+        var running: Bool { runningCount > 0 }
     }
 
     struct Starting {
@@ -599,10 +601,10 @@ struct SessionBar: View {
 
     var body: some View {
         let running = backgroundTasks.flatMap { $0.running ? $0 : nil }
-        // A wide screen: the side panel's button (docs/session-files.md §15).
         let wide = model.wide != nil && session != nil
+        let shownBg = backgroundTasks.flatMap { ($0.running || (wide && $0.isOpen) || wide) ? $0 : nil }
         // As wide on the left as on the right, so the title is in the middle.
-        let buttons = 1 + (running == nil ? 0 : 1) + (wide ? 1 : 0)
+        let buttons = 1 + (shownBg == nil ? 0 : 1) + (wide ? 1 : 0)
         let side: CGFloat = sideBars ? 0 : CGFloat(buttons) * 44 + CGFloat(buttons - 1) * 8
         HStack(spacing: 8) {
             HStack(spacing: 8) {
@@ -622,11 +624,24 @@ struct SessionBar: View {
             Spacer(minLength: 0)
             HStack(spacing: 8) {
                 if let session, !sideBars {
-                    if let running {
-                        Button(action: running.open) { BarIcon(systemImage: "terminal") }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Background Tasks")
-                            .accessibilityIdentifier("thread-background-tasks")
+                    if let shownBg {
+                        Button(action: shownBg.open) {
+                            BarIcon(systemImage: "terminal")
+                                .overlay(alignment: .topTrailing) {
+                                    if shownBg.runningCount > 0 {
+                                        Text(verbatim: "\(shownBg.runningCount)")
+                                            .font(.system(size: 10, weight: .bold).monospacedDigit())
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 4.5)
+                                            .frame(minWidth: 16, minHeight: 16)
+                                            .background(Color.accentColor, in: Capsule())
+                                            .offset(x: 3, y: -3)
+                                    }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Background Tasks")
+                        .accessibilityIdentifier("thread-background-tasks")
                     }
                     if wide { SidePanelButton(sessionID: session.sessionID) }
                     Menu {
@@ -860,10 +875,14 @@ private struct SessionDuoWideItems: ToolbarContent {
             .axisBehavior(.verticalPreferred)
         }
         ToolbarSpacer(.fixed, placement: .topBarTrailing)
-        if let tasks = backgroundTasks, tasks.running {
+        if let tasks = backgroundTasks {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Background Tasks", systemImage: "terminal", action: tasks.open)
-                    .accessibilityIdentifier("thread-background-tasks")
+                Button(action: tasks.open) {
+                    Image(systemName: tasks.isOpen ? "terminal.fill" : "terminal")
+                }
+                .tint(tasks.isOpen || tasks.running ? Color.accentColor : nil)
+                .accessibilityLabel("Background Tasks")
+                .accessibilityIdentifier("thread-background-tasks")
             }
             .axisBehavior(.verticalPreferred)
         }

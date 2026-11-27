@@ -1,0 +1,2116 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="black">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hermesh 后台任务 · 宽屏版（Mac 桌面 & Duo / iPad 宽屏）交互原型 Demo</title>
+<style>
+@font-face {
+  font-family: "Google Sans Flex";
+  src: url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-flex.ttf") format("truetype");
+  font-weight: 100 1000;
+}
+@font-face {
+  font-family: "Google Sans Code";
+  src: url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-code.ttf") format("truetype");
+  font-weight: 300 800;
+}
+
+:root {
+  --font-mac: "Google Sans Flex", "Google Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  --font-ios: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  --mono: "Google Sans Code", ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 1. Onyx Pure Black (Matches Screenshot 3 deep dark contrast) */
+html[data-theme="black"] {
+  --page: #08090d;
+  --page-fg: #ededf3;
+  --page-fg2: #9296a6;
+  --page-card: #12141c;
+  --page-bd: rgba(255, 255, 255, .08);
+
+  --win: #0a0a0d;
+  --side: #101015;
+  --panel: #0e0e12;
+  --card: #19191f;
+  --card-hover: #202028;
+  --card-sel: #232534;
+  --card-sel-bd: rgba(110, 136, 255, .38);
+  --card-bd: rgba(255, 255, 255, .055);
+  --cmp: #15151b;
+  --cmp-bd: rgba(255, 255, 255, .09);
+  --term: #07080b;
+  --term-bar: #111218;
+
+  --l1: rgba(255, 255, 255, .93);
+  --l1-run: rgba(255, 255, 255, .72);
+  --l2: rgba(235, 235, 245, .56);
+  --l3: rgba(235, 235, 245, .35);
+  --l4: rgba(255, 255, 255, .14);
+  --sep: rgba(255, 255, 255, .08);
+  --fill: rgba(255, 255, 255, .055);
+  --fill2: rgba(255, 255, 255, .10);
+
+  --accent: #4a66ff;
+  --accent-t: #92a6ff;
+  --accent-bg: rgba(74, 102, 255, .17);
+  --ok: #42d38a;
+  --ok-bg: rgba(66, 211, 138, .14);
+  --warn: #f7ad45;
+  --warn-bg: rgba(247, 173, 69, .15);
+  --red: #ff646e;
+  --red-bg: rgba(255, 100, 110, .15);
+  --glass: rgba(28, 28, 35, .82);
+  --shadow-win: 0 0 0 .5px rgba(255, 255, 255, .14), 0 28px 80px rgba(0, 0, 0, .72);
+  color-scheme: dark;
+}
+
+/* 2. Standard Dark Gray */
+html[data-theme="dark"] {
+  --page: #0d0f15;
+  --page-fg: #ececf2;
+  --page-fg2: #9699a8;
+  --page-card: #161821;
+  --page-bd: rgba(255, 255, 255, .08);
+
+  --win: #1c1c20;
+  --side: #232329;
+  --panel: #18181c;
+  --card: #24242a;
+  --card-hover: #2b2b33;
+  --card-sel: #292d40;
+  --card-sel-bd: rgba(120, 144, 255, .40);
+  --card-bd: rgba(255, 255, 255, .065);
+  --cmp: #26262c;
+  --cmp-bd: rgba(255, 255, 255, .11);
+  --term: #101116;
+  --term-bar: #171820;
+
+  --l1: rgba(255, 255, 255, .91);
+  --l1-run: rgba(255, 255, 255, .70);
+  --l2: rgba(255, 255, 255, .56);
+  --l3: rgba(255, 255, 255, .35);
+  --l4: rgba(255, 255, 255, .15);
+  --sep: rgba(255, 255, 255, .09);
+  --fill: rgba(255, 255, 255, .06);
+  --fill2: rgba(255, 255, 255, .11);
+
+  --accent: #4a66ff;
+  --accent-t: #95a8ff;
+  --accent-bg: rgba(74, 102, 255, .18);
+  --ok: #3fcf86;
+  --ok-bg: rgba(63, 207, 134, .14);
+  --warn: #f5a623;
+  --warn-bg: rgba(245, 166, 35, .15);
+  --red: #ff6670;
+  --red-bg: rgba(255, 102, 112, .15);
+  --glass: rgba(36, 36, 42, .82);
+  --shadow-win: 0 0 0 .5px rgba(255, 255, 255, .15), 0 26px 72px rgba(0, 0, 0, .58);
+  color-scheme: dark;
+}
+
+/* 3. Soft Light ("柔白") */
+html[data-theme="soft"] {
+  --page: #dfe3ec;
+  --page-fg: #1f2128;
+  --page-fg2: #5f6370;
+  --page-card: #f4f5f8;
+  --page-bd: rgba(32, 33, 39, .09);
+
+  --win: #f4f5f7;
+  --side: #eceef3;
+  --panel: #eef0f5;
+  --card: #ffffff;
+  --card-hover: #fafbfe;
+  --card-sel: #ebf0fc;
+  --card-sel-bd: rgba(55, 98, 228, .34);
+  --card-bd: rgba(32, 33, 39, .07);
+  --cmp: #ffffff;
+  --cmp-bd: rgba(32, 33, 39, .11);
+  --term: #15171e;
+  --term-bar: #1d2029;
+
+  --l1: #1e2026;
+  --l1-run: rgba(30, 32, 38, .70);
+  --l2: #5d606c;
+  --l3: #858996;
+  --l4: rgba(32, 33, 39, .15);
+  --sep: rgba(32, 33, 39, .085);
+  --fill: rgba(32, 33, 39, .05);
+  --fill2: rgba(32, 33, 39, .095);
+
+  --accent: #355ee8;
+  --accent-t: #294fd1;
+  --accent-bg: rgba(53, 94, 232, .11);
+  --ok: #168a4a;
+  --ok-bg: rgba(22, 138, 74, .11);
+  --warn: #c46806;
+  --warn-bg: rgba(196, 104, 6, .12);
+  --red: #d4313d;
+  --red-bg: rgba(212, 49, 61, .10);
+  --glass: rgba(255, 255, 255, .86);
+  --shadow-win: 0 0 0 .5px rgba(20, 24, 34, .18), 0 24px 68px rgba(14, 22, 46, .18);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--page);
+  color: var(--page-fg);
+  font: 13.5px/1.48 var(--font-mac);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  padding-bottom: 96px;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+svg { display: block; flex: none; }
+code { font: 12px var(--mono); background: var(--fill); padding: 1px 5px; border-radius: 5px; }
+
+.ic {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ic.lg { width: 18px; height: 18px; }
+.ic.sm { width: 14px; height: 14px; }
+.ic.xs { width: 12px; height: 12px; }
+
+/* ---------- Page Header ---------- */
+.hdr {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 16px 24px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.hdr-t h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.badge {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
+.hdr-t p { margin: 3px 0 0; font-size: 12.5px; color: var(--page-fg2); }
+
+.seg-bar {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--page-card);
+  border: 1px solid var(--page-bd);
+  border-radius: 12px;
+}
+.seg-bar button {
+  padding: 5px 13px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--page-fg2);
+  transition: background .15s, color .15s;
+}
+.seg-bar button.on { background: var(--accent); color: #fff; }
+
+/* ---------- Stage & Responsive Fit ---------- */
+.stage {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 8px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.fit-box {
+  max-width: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.fit-inner { transform-origin: top center; }
+
+/* ==========================================================================
+   1. MAC DESKTOP WIDESCREEN SHELL (1240 x 740)
+   ========================================================================== */
+.mac-win {
+  width: 1240px;
+  height: 740px;
+  border-radius: 13px;
+  background: var(--win);
+  box-shadow: var(--shadow-win);
+  display: flex;
+  overflow: hidden;
+  position: relative;
+  color: var(--l1);
+  user-select: none;
+}
+.lights {
+  position: absolute;
+  top: 15px;
+  left: 16px;
+  display: flex;
+  gap: 8px;
+  z-index: 20;
+}
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
+.lights i:nth-child(2) { background: #febc2e; }
+.lights i:nth-child(3) { background: #28c840; }
+
+/* Left Session Sidebar */
+.mac-side {
+  width: 214px;
+  flex: none;
+  background: var(--side);
+  border-right: .5px solid var(--sep);
+  padding: 44px 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mac-side.collapsed { width: 0; padding: 0; border-right: 0; overflow: hidden; }
+.s-nav {
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--l2);
+}
+.s-head {
+  padding: 12px 9px 4px;
+  font-size: 11.5px;
+  color: var(--l3);
+}
+.s-item {
+  height: 32px;
+  padding: 0 9px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.8px;
+  color: var(--l2);
+}
+.s-item.sel { background: var(--fill2); color: var(--l1); font-weight: 500; }
+.s-item .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
+
+/* Main Content Area (Conversation + Right Background/Files Panel) */
+.mac-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mac-toolbar {
+  height: 44px;
+  flex: none;
+  padding: 0 12px 0 18px;
+  border-bottom: .5px solid var(--sep);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mac-toolbar.no-side {
+  padding-left: 78px;
+}
+.mac-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+.mac-title h2 {
+  margin: 0;
+  font-size: 13.8px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mac-title span { font-size: 12px; color: var(--l3); white-space: nowrap; }
+
+.tb-btn {
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--l2);
+  transition: background .15s, color .15s;
+}
+.tb-btn:hover { background: var(--fill); color: var(--l1); }
+.tb-btn.on { background: var(--accent-bg); color: var(--accent-t); }
+.tb-pill-cnt {
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 17px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.mac-work {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  position: relative;
+}
+
+/* Conversation Column */
+.conv-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.conv-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 28px 18px;
+}
+.conv-inner {
+  max-width: 680px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.um {
+  align-self: flex-end;
+  max-width: 82%;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 16px 16px 4px 16px;
+  padding: 9px 15px;
+  font-size: 13.8px;
+  line-height: 1.52;
+}
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.8px;
+  color: var(--l2);
+}
+.am { font-size: 14px; line-height: 1.64; color: var(--l1); }
+.am p { margin: 0 0 8px; }
+.am p:last-child { margin: 0; }
+.am ul { margin: 4px 0 8px; padding-left: 18px; }
+.am li { margin: 3px 0; }
+
+.wait-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.8px;
+  color: var(--l2);
+  padding: 4px 8px;
+  margin-left: -8px;
+  border-radius: 8px;
+}
+.wait-row:hover { background: var(--fill); color: var(--l1); }
+.sparkle-mark { width: 15px; height: 15px; flex: none; }
+
+/* Bottom Composer + Proportional Live Status Pill */
+.conv-foot {
+  flex: none;
+  padding: 6px 24px 16px;
+}
+.conv-foot-inner {
+  max-width: 680px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* NEW Widescreen Compact Status Bar above Composer (replaces stretched Screenshot 1 bar!) */
+.wide-bg-pill {
+  align-self: flex-start;
+  max-width: 100%;
+  height: 34px;
+  padding: 0 11px 0 9px;
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 .5px var(--cmp-bd), 0 4px 14px rgba(0, 0, 0, .18);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  transition: background .15s, transform .12s;
+}
+.wide-bg-pill:hover { background: var(--card-hover); }
+.wide-bg-pill .orb {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--accent-bg);
+  color: var(--accent-t);
+  display: grid;
+  place-items: center;
+}
+.wide-bg-pill .orb.done { background: var(--ok-bg); color: var(--ok); }
+.wide-bg-pill .txt {
+  font-weight: 550;
+  color: var(--l1);
+  white-space: nowrap;
+  flex: none;
+}
+.wide-bg-pill .sub {
+  color: var(--l2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+  max-width: 260px;
+  font-variant-numeric: tabular-nums;
+}
+.wide-bg-pill .act {
+  color: var(--l3);
+  white-space: nowrap;
+  flex: none;
+}
+
+.mac-cmp {
+  background: var(--cmp);
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 .5px var(--cmp-bd), 0 6px 20px rgba(0, 0, 0, .12);
+  padding: 10px 12px 9px;
+}
+.mac-cmp .ph { font-size: 13.5px; color: var(--l3); padding-bottom: 12px; }
+.mac-cmp .row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--l2); }
+.mac-cmp .send {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+/* ==========================================================================
+   RIGHT WIDESCREEN BACKGROUND TASKS PANEL (Single Column 388px OR Split 688px!)
+   ========================================================================== */
+.bg-panel {
+  width: 388px;
+  flex: none;
+  background: var(--panel);
+  border-left: .5px solid var(--sep);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  transition: width .24s var(--ease);
+}
+.bg-panel.split {
+  width: 700px;
+}
+
+.bgp-top {
+  height: 42px;
+  flex: none;
+  padding: 0 12px;
+  border-bottom: .5px solid var(--sep);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.bgp-mode-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--fill);
+}
+.bgp-mode-tabs button {
+  height: 25px;
+  padding: 0 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--l2);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.bgp-mode-tabs button.on { background: var(--card); color: var(--l1); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.bgp-top-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.icon-btn {
+  width: 27px;
+  height: 27px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: var(--l2);
+}
+.icon-btn:hover, .icon-btn.on { background: var(--fill2); color: var(--l1); }
+
+.bgp-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.bgp-list-col {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.bg-panel.split .bgp-list-col {
+  width: 306px;
+  flex: none;
+  border-right: .5px solid var(--sep);
+}
+
+.bgp-subhead {
+  flex: none;
+  padding: 12px 15px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.bgp-subhead h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -.015em;
+}
+.stop-all-pill {
+  height: 25px;
+  padding: 0 9px;
+  border-radius: 99px;
+  font-size: 11.5px;
+  font-weight: 500;
+  background: var(--fill);
+  color: var(--l2);
+}
+.stop-all-pill:hover { background: var(--red-bg); color: var(--red); }
+.stop-all-pill.confirm { background: var(--red-bg); color: var(--red); font-weight: 600; }
+
+.bgp-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 13px 22px;
+}
+.bgp-scroll::-webkit-scrollbar { width: 6px; }
+.bgp-scroll::-webkit-scrollbar-thumb { background: var(--l4); border-radius: 99px; }
+
+/* Collapsible Section Header */
+.sec-hdr {
+  width: 100%;
+  padding: 10px 3px 7px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--l2);
+}
+.sec-hdr .chev { width: 13px; height: 13px; transition: transform .18s var(--ease); }
+.sec-hdr.folded .chev { transform: rotate(-90deg); }
+.sec-hdr .hint { margin-left: auto; font-size: 11px; font-weight: 400; color: var(--l3); }
+
+.card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* Task Card (Screenshot 3 refined aesthetic) */
+.tcard {
+  background: var(--card);
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 .5px var(--card-bd);
+  transition: background .14s, box-shadow .14s;
+  overflow: hidden;
+}
+.tcard:hover { background: var(--card-hover); }
+.tcard.sel {
+  background: var(--card-sel);
+  box-shadow: inset 0 0 0 1px var(--card-sel-bd);
+}
+.tcard-main {
+  width: 100%;
+  padding: 12px 13px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+.tk-icon {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  flex: none;
+  color: var(--l2);
+  display: grid;
+  place-items: center;
+}
+.tcard.running .tk-icon { color: var(--l1); }
+.tk-body { flex: 1; min-width: 0; }
+.tk-title {
+  font-size: 13.3px;
+  line-height: 1.38;
+  font-weight: 460;
+  color: var(--l1);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.tcard.running .tk-title { color: var(--l1-run); }
+.tk-peek {
+  margin-top: 4px;
+  font: 11px/1.35 var(--mono);
+  color: var(--l3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tk-meta {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.8px;
+  font-variant-numeric: tabular-nums;
+  flex-wrap: wrap;
+}
+.tk-kind { color: var(--l1); font-weight: 520; }
+.tk-dur { color: var(--l2); }
+.tk-st-bad { color: var(--red); font-weight: 550; }
+.tk-st-warn { color: var(--warn); font-weight: 550; }
+
+/* Signature Circular Stop Ring `◎` */
+@keyframes spinArc { to { transform: rotate(360deg); } }
+.stop-ring {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  position: relative;
+  display: grid;
+  place-items: center;
+  color: var(--l1);
+  flex: none;
+  transition: color .14s, background .14s, transform .12s;
+}
+.stop-ring:hover { color: var(--red); background: var(--red-bg); }
+.stop-ring:active { transform: scale(.9); }
+.stop-ring svg { position: absolute; inset: 0; width: 26px; height: 26px; }
+.stop-ring .spin-arc { transform-origin: 13px 13px; animation: spinArc 2.6s linear infinite; }
+.stop-ring .stop-sq { width: 7px; height: 7px; border-radius: 1.8px; background: currentColor; }
+
+.chev-trail {
+  width: 18px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  color: var(--l3);
+  transition: transform .18s var(--ease);
+}
+.tcard.expanded .chev-trail { transform: rotate(90deg); }
+
+/* Inline Card Unfold (Single-column mode) */
+.tk-inline {
+  padding: 0 13px 12px;
+  border-top: .5px solid var(--sep);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tk-inline-cmd {
+  margin-top: 9px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: var(--term);
+  border: .5px solid rgba(255,255,255,.08);
+  font: 11px/1.45 var(--mono);
+  color: #d6dae8;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tk-inline-cmd code { background: none; padding: 0; color: inherit; font: inherit; word-break: break-all; }
+.tk-inline-pre {
+  margin: 0;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: var(--term);
+  border: .5px solid rgba(255,255,255,.07);
+  font: 11px/1.52 var(--mono);
+  color: #c2c7d8;
+  max-height: 240px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tk-inline-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.sm-btn {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--fill);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--l1);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.sm-btn:hover { background: var(--fill2); }
+.sm-btn.primary { background: var(--accent-bg); color: var(--accent-t); }
+.sm-btn.danger { background: var(--red-bg); color: var(--red); }
+
+/* Right Detail Pane in Split Mode (Full 80-col Live Terminal Inspector!) */
+.bgp-detail-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--win);
+}
+.det-head {
+  padding: 13px 16px 11px;
+  border-bottom: .5px solid var(--sep);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.det-head-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.st-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 99px;
+}
+.st-pill.running { background: var(--accent-bg); color: var(--accent-t); }
+.st-pill.completed { background: var(--ok-bg); color: var(--ok); }
+.st-pill.failed { background: var(--red-bg); color: var(--red); }
+.st-pill.stopped { background: var(--warn-bg); color: var(--warn); }
+.det-head h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.38;
+}
+.det-cmd-strip {
+  padding: 9px 16px;
+  background: var(--panel);
+  border-bottom: .5px solid var(--sep);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.det-cmd-strip .lbl {
+  display: block;
+  font-size: 10.5px;
+  color: var(--l3);
+  margin-bottom: 2px;
+}
+.det-cmd-strip code {
+  background: none;
+  padding: 0;
+  font: 11.5px/1.48 var(--mono);
+  color: var(--l1);
+  word-break: break-all;
+}
+.det-term-wrap {
+  flex: 1;
+  min-height: 0;
+  background: var(--term);
+  display: flex;
+  flex-direction: column;
+}
+.det-term-bar {
+  height: 30px;
+  flex: none;
+  padding: 0 14px;
+  background: var(--term-bar);
+  border-bottom: .5px solid rgba(255,255,255,.07);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #8f95ab;
+}
+.det-term-pre {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 12px 15px;
+  font: 11.8px/1.58 var(--mono);
+  color: #d6dae8;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.det-foot-sum {
+  padding: 10px 16px;
+  background: var(--panel);
+  border-top: .5px solid var(--sep);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--l1);
+}
+.ansi-ok { color: #52d896; }
+.ansi-info { color: #82b4ff; }
+.ansi-warn { color: #f6b24f; }
+.ansi-err { color: #ff6e78; }
+
+/* ==========================================================================
+   2. iPHONE DUO UNFOLDED / iPAD WIDESCREEN SHELL (980 x 676)
+   ========================================================================== */
+.duo-win {
+  width: 980px;
+  height: 676px;
+  border-radius: 38px;
+  padding: 11px;
+  background: #1a1b20;
+  box-shadow: 0 28px 75px rgba(0, 0, 0, .52), inset 0 0 0 1.5px #383a44;
+  position: relative;
+  user-select: none;
+  font-family: var(--font-ios);
+}
+/* Center Hinge Fold Line */
+.duo-win::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  margin-left: -1px;
+  background: linear-gradient(to bottom, rgba(255,255,255,.15), rgba(255,255,255,.03) 18%, rgba(255,255,255,.03) 82%, rgba(255,255,255,.15));
+  z-index: 85;
+  pointer-events: none;
+}
+.duo-scr {
+  width: 100%;
+  height: 100%;
+  border-radius: 28px;
+  background: var(--win);
+  color: var(--l1);
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+.duo-rail {
+  width: 62px;
+  flex: none;
+  background: var(--side);
+  border-right: .5px solid var(--sep);
+  padding: 16px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.duo-rail .ri {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: var(--l2);
+}
+.duo-rail .ri.sel { background: var(--fill2); color: var(--l1); }
+/* Right Vertical System Bar (02:40 + 5GA ring matching Screenshot 3!) */
+.duo-vbar {
+  width: 64px;
+  flex: none;
+  background: #060608;
+  border-left: .5px solid rgba(255,255,255,.10);
+  padding: 15px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 11px;
+  color: #f5f5f7;
+  z-index: 60;
+}
+.duo-vbar .vc { font-size: 13.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.duo-vbar .vr {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2.2px solid #f5f5f7;
+  border-bottom-color: transparent;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.duo-vbar .vr .bars { display: flex; align-items: flex-end; gap: 2px; height: 11px; margin-top: -2px; }
+.duo-vbar .vr .bars i { width: 2.5px; background: #f5f5f7; border-radius: 1px; }
+.duo-vbar .vr .net { position: absolute; bottom: -3px; font-size: 9px; font-weight: 700; }
+.duo-vcap {
+  width: 44px;
+  padding: 3px;
+  border-radius: 22px;
+  background: rgba(255,255,255,.10);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.duo-vbtn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #f5f5f7;
+  position: relative;
+}
+.duo-vbtn.on { background: rgba(91, 121, 255, .32); color: #9db0ff; }
+.duo-vbadge {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  min-width: 15px;
+  height: 15px;
+  border-radius: 99px;
+  background: #4a66ff;
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+/* ---------- LEGACY ROUGH UI OVERLAYS (Comparison Mode) ---------- */
+/* Legacy Wide iOS Scrim Modal (Screenshot 1 & 2) */
+.legacy-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, .58);
+  z-index: 70;
+  display: grid;
+  place-items: center;
+}
+.legacy-modal {
+  width: 560px;
+  background: rgba(34, 34, 38, .94);
+  backdrop-filter: blur(28px);
+  border-radius: 28px;
+  box-shadow: 0 0 0 .5px rgba(255,255,255,.14), 0 24px 64px rgba(0,0,0,.65);
+  padding: 10px 18px 24px;
+  color: #f5f5f7;
+}
+/* Legacy Cramped 244px Mac Card */
+.legacy-mac-card {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 244px;
+  background: var(--card);
+  border-radius: 14px;
+  box-shadow: 0 0 0 .5px var(--sep), 0 8px 26px rgba(0,0,0,.35);
+  padding: 10px 12px;
+  z-index: 30;
+}
+
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 84px;
+  transform: translateX(-50%);
+  padding: 7px 15px;
+  border-radius: 99px;
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 0 0 .5px var(--sep), 0 8px 24px rgba(0,0,0,.35);
+  font-size: 12.5px;
+  font-weight: 500;
+  z-index: 95;
+  pointer-events: none;
+}
+
+/* ---------- Spec Summary Grid Below Device ---------- */
+.spec-grid {
+  width: 100%;
+  max-width: 1240px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+@media (max-width: 960px) {
+  .spec-grid { grid-template-columns: 1fr; }
+}
+.scard {
+  background: var(--page-card);
+  border: 1px solid var(--page-bd);
+  border-radius: 15px;
+  padding: 15px 17px;
+  font-size: 12.8px;
+  line-height: 1.6;
+}
+.scard h3 { margin: 0 0 7px; font-size: 14px; font-weight: 650; }
+.scard ul { margin: 0; padding-left: 18px; color: var(--page-fg2); }
+.scard li { margin: 4px 0; }
+.scard li b { color: var(--page-fg); }
+
+/* ---------- Fixed Control Bar ---------- */
+.ctl {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--page-card) 92%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--page-bd);
+  padding: 9px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+  z-index: 120;
+}
+.ctl .g { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.ctl .g b { color: var(--page-fg2); font-weight: 550; margin-right: 3px; }
+.ctl button {
+  padding: 4px 11px;
+  border-radius: 8px;
+  background: var(--fill);
+  color: var(--page-fg);
+  font-size: 12px;
+  font-weight: 500;
+}
+.ctl button.on { background: var(--accent); color: #fff; }
+.ctl button.warn.on { background: var(--warn); color: #111; }
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-t">
+    <h1>
+      Hermesh 后台任务 · 宽屏机器版 Demo
+      <span class="badge" id="top-badge">✦ 无遮罩右侧单列 + 纵向原位展开</span>
+    </h1>
+    <p>同时覆盖 <b>Mac 桌面宽屏</b> 与 <b>iPhone Duo 展开横屏 / iPad 宽屏</b>：充分利用宽屏纵向高度，不拆复杂双栏、不挤占左侧会话栏，点击任意卡片直接纵向展开命令与实时终端输出。</p>
+  </div>
+  <div class="seg-bar" id="device-tabs">
+    <button class="on" data-dev="mac">Mac 桌面端宽屏 (1240×740)</button>
+    <button data-dev="duo">Duo 展开横屏 / iPad 宽屏 (对齐中轴折痕)</button>
+  </div>
+</header>
+
+<main class="stage">
+  <div class="fit-box" id="fit-box" data-design-w="1240">
+    <div class="fit-inner" id="stage-mount"></div>
+  </div>
+
+  <section class="spec-grid">
+    <div class="scard">
+      <h3>1. 宽屏告别模态遮罩（解决图 2 痛点）</h3>
+      <ul>
+        <li><b>不挡对话正文</b>：图 2 在宽屏上弹出居中大弹窗并压暗全屏，看任务就看不了对话；新版直接作为<b>右侧并排分栏</b>（Duo 上精准对齐中轴折痕），边读回复边盯构建进度。</li>
+        <li><b>与「项目文件」同栏共生</b>：修复桌面端打开文件就强制隐藏后台任务的割裂体验，面板顶栏一键切换 <code>后台任务</code> 与 <code>项目文件</code>。</li>
+      </ul>
+    </div>
+    <div class="scard">
+      <h3>2. 善用纵向高度：纯单列原位展开</h3>
+      <ul>
+        <li><b>Mac 单列即够用（360px–388px）</b>：Mac 窗口纵向高度充裕，无需拆成复杂双栏或收起左侧会话列表；点开任意卡片直接<b>纵向展开</b>命令与 280px 实时滚动终端。</li>
+        <li><b>多任务同时对照</b>：可同时展开多个运行中或已完成的卡片上下对照日志，分组 <code>运行中 ⌄</code> 与 <code>已完成 13 ⌄</code> 随时一键收拢。</li>
+      </ul>
+    </div>
+    <div class="scard">
+      <h3>3. 收敛底栏胶囊（解决图 1 痛点）</h3>
+      <ul>
+        <li><b>内容自适应胶囊</b>：取代图 1 横跨整屏、中间大片留白且红字「全部停下」紧贴发送钮的高危长条；改为左对齐紧凑胶囊，展示主任务名与 <code>14分钟4秒</code> 自然耗时。</li>
+        <li><b>顶栏 / 右侧竖栏常驻徽标</b>：即使任务全部结束，也能随时从顶栏或 Duo 右侧竖栏点开查阅 13+ 项历史输出。</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<footer class="ctl" id="ctl-bar"></footer>
+
+<script>
+const IC = {
+  term: `<svg class="ic" viewBox="0 0 20 20"><path d="M3.5 5.5L8 10l-4.5 4.5M10.5 14.5h6"/></svg>`,
+  agent: `<svg class="ic" viewBox="0 0 20 20"><path d="M10 3l1.6 3.9L15.5 8.5l-3.9 1.6L10 14l-1.6-3.9L4.5 8.5l3.9-1.6L10 3zM15.5 13.5l.8 1.8 1.8.8-1.8.8-.8 1.8-.8-1.8-1.8-.8 1.8-.8.8-1.8z"/></svg>`,
+  clock: `<svg class="ic" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 6.2V10l2.6 1.8"/></svg>`,
+  daemon: `<svg class="ic" viewBox="0 0 20 20"><path d="M3 10h3l2-4.5 4 9 2-4.5h3"/></svg>`,
+  chevD: `<svg class="ic chev" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg>`,
+  chevR: `<svg class="ic sm" viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5"/></svg>`,
+  chevL: `<svg class="ic sm" viewBox="0 0 16 16"><path d="M10.5 3.5L6 8l4.5 4.5"/></svg>`,
+  x: `<svg class="ic sm" viewBox="0 0 16 16"><path d="M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6"/></svg>`,
+  split: `<svg class="ic sm" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M6.5 2.5v11"/></svg>`,
+  folder: `<svg class="ic sm" viewBox="0 0 16 16"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.8l1.4 1.5h4.8A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-7z"/></svg>`,
+  sidebar: `<svg class="ic" viewBox="0 0 18 18"><rect x="2.2" y="3" width="13.6" height="12" rx="2.2"/><path d="M6.5 3v12"/></svg>`,
+  copy: `<svg class="ic xs" viewBox="0 0 16 16"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 5.5V3.8A1.3 1.3 0 0 0 9.2 2.5H3.8A1.3 1.3 0 0 0 2.5 3.8v5.4a1.3 1.3 0 0 0 1.3 1.3h1.7"/></svg>`,
+  check: `<svg class="ic xs" viewBox="0 0 16 16"><path d="M3.2 8.5l3.2 3.2 6.4-6.8"/></svg>`,
+  up: `<svg class="ic sm" viewBox="0 0 16 16"><path d="M8 12.5v-9M4 7.5l4-4 4 4"/></svg>`,
+  more: `<svg class="ic" viewBox="0 0 20 20"><circle cx="5" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1.3" fill="currentColor" stroke="none"/></svg>`,
+  sparkle: `<svg class="sparkle-mark" viewBox="0 0 20 20" fill="none"><path d="M4 10h12M7 4.8l6 10.4M13 4.8L7 15.2" stroke="#5e8bff" stroke-width="2" stroke-linecap="round"/></svg>`
+};
+
+function makeTasks() {
+  return [
+    {
+      id: "bt-1",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "running",
+      awaited: true,
+      stopScope: "single",
+      elapsedSec: 844,
+      title: "Build and sign the desktop app (arm64) from the merged tree",
+      command: "pnpm --filter @hermesh/desktop build:mac --arch arm64 && scripts/codesign-verify.sh dist/mac-arm64/Hermesh.app",
+      peek: "▸ codesign --verify --deep --strict dist/mac-arm64/Hermesh.app",
+      logs: [
+        "$ pnpm --filter @hermesh/desktop build:mac --arch arm64",
+        "[vite] building renderer + preload bundles for production...",
+        "[vite] ✓ 418 modules transformed in 4.82s",
+        "[electron-builder] • packaging       platform=darwin arch=arm64 electron=35.1.2 appOutDir=dist/mac-arm64",
+        "[codesign] signing Frameworks/Electron Framework.framework/Versions/A/Helpers/Hermesh Helper.app",
+        "[codesign] signing Contents/MacOS/Hermesh --options runtime --entitlements build/entitlements.mac.plist",
+        "▸ codesign --verify --deep --strict dist/mac-arm64/Hermesh.app"
+      ],
+      summary: ""
+    },
+    {
+      id: "bt-2",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "running",
+      awaited: true,
+      stopScope: "single",
+      elapsedSec: 70,
+      title: "In the temporary checkout, run the first steps then the usage step of E2E suite",
+      command: "cd /tmp/hermesh-verify-tree && go test ./e2e -run '^TestThreadV2EndToEnd/UsageBreakdown$' -v -count=1",
+      peek: "=== RUN   TestThreadV2EndToEnd/UsageBreakdown/VerifyLedgerRollup",
+      logs: [
+        "$ go test ./e2e -run '^TestThreadV2EndToEnd/UsageBreakdown$' -v -count=1",
+        "=== RUN   TestThreadV2EndToEnd",
+        "    relay_harness.go:118: isolated E2EE relay listening on 127.0.0.1:59412",
+        "    session_harness.go:204: paired ephemeral owner + worker machine_01m8ee",
+        "=== RUN   TestThreadV2EndToEnd/UsageBreakdown",
+        "=== RUN   TestThreadV2EndToEnd/UsageBreakdown/VerifyLedgerRollup"
+      ],
+      summary: ""
+    },
+    {
+      id: "bt-3",
+      kind: "schedule",
+      kindLabel: "定时唤醒",
+      status: "running",
+      awaited: true,
+      stopScope: "single",
+      elapsedSec: 42,
+      title: "90 秒后复查 iOS TestFlight #724 符号表处理结果并继续汇报",
+      command: "schedule(duration: 90s, condition: 'any') → 检查 App Store Connect 处理进度",
+      peek: "剩余 48 秒触发唤醒（前置消息到达时自动提前取消）",
+      logs: [
+        "[schedule] 一次性后台唤醒任务已创建 (duration=90s, timer_condition=any)",
+        "[schedule] 唤醒提示词：复查 iOS TestFlight #724 处理状态并向用户汇总",
+        "[schedule] 静默等待中：已过去 42s / 90s..."
+      ],
+      summary: ""
+    },
+    {
+      id: "bt-101",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 134,
+      title: "In the separate checkout at the merged commit, skip the broken snapshot fixture and verify core",
+      command: "pnpm --filter @hermesh/core test -- --grep '^(?!.*legacy-snapshot)'",
+      logs: [
+        "✓ packages/core/src/transcript.test.ts (42 tests) 412ms",
+        "✓ packages/core/src/threads.test.ts (29 tests) 288ms",
+        "Test Files  2 passed (2) · Tests 71 passed (71)"
+      ],
+      summary: "核心状态投影与后台任务归并单测 71 项全部通过。"
+    },
+    {
+      id: "bt-102",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 196,
+      title: "Run the same end-to-end test on the code without this change, in clean worktree",
+      command: "go test ./e2e -run '^TestThreadV2EndToEnd/PromoteToSteer$' -count=1",
+      logs: [
+        "=== RUN   TestThreadV2EndToEnd/PromoteToSteer",
+        "--- PASS: TestThreadV2EndToEnd/PromoteToSteer (195.82s)",
+        "PASS · ok hermesh/e2e 196.104s"
+      ],
+      summary: "基线对照分支端到端回归通过，无回归偏差。"
+    },
+    {
+      id: "bt-103",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 64,
+      title: "Install the iPhone build on the user's iPhone via devicectl",
+      command: "xcrun devicectl device install app --device 00008140-001A4C82 DerivedData/Hermesh.app",
+      logs: [
+        "Connecting to iPhone Duo (iOS 27.1)...",
+        "Copying Hermesh.app to device [100%]",
+        "Application installed: app.hermesh.ios (bundleVersion 724)"
+      ],
+      summary: "真机安装包写入与签名校验完成。"
+    },
+    {
+      id: "bt-104",
+      kind: "subagent",
+      kindLabel: "子智能体",
+      status: "completed",
+      elapsedSec: 52,
+      title: "Codebase Researcher · 对比桌面端 Background.tsx 与移动端后台任务字段支持度",
+      command: "调研 BackgroundTask 在 Mac 与 iOS 端的展示差异及可复用格式化模型",
+      logs: [
+        "[subagent] Inspected apps/desktop/src/renderer/src/session/Background.tsx",
+        "[subagent] Inspected apps/ios/Hermesh/Views/Session/SessionPage.swift",
+        "[subagent] Returned structured comparison report."
+      ],
+      summary: "确认桌面端原卡片仅 244px 宽且与侧面板互斥；建议升级为右侧并排分栏并支持双栏终端检视。"
+    },
+    {
+      id: "bt-105",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "failed",
+      exitCode: 1,
+      elapsedSec: 46,
+      title: "Verify notarization staple ticket on unsigned local DMG artifact",
+      command: "xcrun stapler validate dist/Hermesh-0.1.7-arm64-unsigned.dmg",
+      logs: [
+        "Processing: dist/Hermesh-0.1.7-arm64-unsigned.dmg",
+        "CloudKit query failed due to \"Record not found\".",
+        "The validate action failed! Error 65 (exit code 1)."
+      ],
+      summary: "本地未公证 DMG 尚无票据（退出码 1），已改由签名归档包继续验证。"
+    },
+    {
+      id: "bt-106",
+      kind: "schedule",
+      kindLabel: "定时唤醒",
+      status: "stopped",
+      elapsedSec: 52,
+      title: "120 秒后轮询远端 Relay 节点重连心跳状态",
+      command: "schedule(duration: 120s) → 检查节点 node_hk02 在线状态",
+      logs: ["[schedule] 第 52s 收到用户手动停止指令，计时器已取消。"],
+      summary: "已由用户在第 52 秒手动停止。"
+    },
+    {
+      id: "bt-107",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 41,
+      title: "Build HermeshKit Swift package and run session projection tests",
+      command: "swift test --package-path packages/HermeshKit --filter TranscriptTests",
+      logs: ["Test Suite 'TranscriptTests' passed. Executed 38 tests, 0 failures."],
+      summary: "Swift 侧状态归并测试通过。"
+    },
+    {
+      id: "bt-108",
+      kind: "daemon",
+      kindLabel: "常驻服务",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 318,
+      title: "Local Vite renderer preview server on port 5179 for UI snapshot check",
+      command: "pnpm --filter @hermesh/desktop preview --port 5179 --host 127.0.0.1",
+      logs: ["➜ Local: http://127.0.0.1:5179/", "Server gracefully terminated after snapshot run."],
+      summary: "预览服务已完成截图比对并安全退出。"
+    },
+    {
+      id: "bt-109",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 19,
+      title: "Regenerate Protobuf TypeScript and Swift bindings via buf generate",
+      command: "buf generate",
+      logs: ["Generated 14 files across TypeScript and Swift targets."],
+      summary: "跨端协议代码生成完毕。"
+    },
+    {
+      id: "bt-110",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 28,
+      title: "Run TypeScript strict typecheck across all workspace packages",
+      command: "pnpm -r typecheck",
+      logs: ["Scope: 6 of 7 workspace projects · Done in 9.4s"],
+      summary: "全仓 TypeScript 类型检查零错误通过。"
+    },
+    {
+      id: "bt-111",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 73,
+      title: "Compile Go kernel daemon and run engine_background_test.go",
+      command: "go test ./internal/kernel -run 'TestEngineBackground' -count=1",
+      logs: ["ok hermesh/internal/kernel 4.812s"],
+      summary: "Go 内核后台任务停止信号测试通过。"
+    },
+    {
+      id: "bt-112",
+      kind: "subagent",
+      kindLabel: "子智能体",
+      status: "completed",
+      elapsedSec: 37,
+      title: "Locale Auditor · 核对桌面端与移动端后台任务中英文文案键",
+      command: "核查 thread.json 与 Localizable.xcstrings 键值完整性",
+      logs: ["Verified 28 localization entries across en & zh-CN."],
+      summary: "多语言词条校验一致。"
+    },
+    {
+      id: "bt-113",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 95,
+      title: "Build iOS Hermesh scheme for iPhone 18 Pro simulator (Debug)",
+      command: "xcodebuild -project apps/ios/Hermesh.xcodeproj -scheme Hermesh build",
+      logs: ["** BUILD SUCCEEDED ** [94.6 sec]"],
+      summary: "模拟器编译通过。"
+    }
+  ];
+}
+
+const STREAM_LINES = [
+  "[codesign] verifying nested helper Hermesh Helper (Renderer).app ... OK",
+  "[codesign] verifying nested helper Hermesh Helper (Plugin).app ... OK",
+  "[e2e]   step 4/6: received streaming SessionEvent seq=152 (active_background_count=3)",
+  "[codesign] Mach-O arm64 code directory hash verified (SHA-256)",
+  "[e2e]   step 5/6: verifying StopBackgroundTask clean process-group signal..."
+];
+
+const S = {
+  theme: "black",       // "black" | "dark" | "soft"
+  dev: "mac",           // "mac" | "duo"
+  legacy: false,
+  panelOpen: true,
+  panelTab: "bg",       // "bg" | "files"
+  splitDetail: false,   // Mac uses clean single-column vertical inline expand!
+  duoDetailId: null,    // On Duo single-page right column: optional drill-down or inline unfold
+  duoClickMode: "inline", // "inline" | "push"
+  foldRunning: false,
+  foldDone: false,
+  selectedId: "bt-1",
+  expandedIds: new Set(["bt-1"]),
+  confirmStopAll: false,
+  toast: null,
+  tick: 0,
+  tasks: makeTasks()
+};
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function fmtDur(sec) {
+  const s = Math.max(1, Math.floor(sec));
+  if (s < 60) return `${s}秒`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m < 60) return r > 0 ? `${m}分钟${r}秒` : `${m}分钟`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm > 0 ? `${h}小时${rm}分` : `${h}小时`;
+}
+
+function kindIcon(k) {
+  if (k === "subagent") return IC.agent;
+  if (k === "schedule") return IC.clock;
+  if (k === "daemon") return IC.daemon;
+  return IC.term;
+}
+
+function colorizeLog(line) {
+  const safe = esc(line);
+  if (/PASS|✓|SUCCEEDED|OK|installed/.test(safe)) return `<span class="ansi-ok">${safe}</span>`;
+  if (/failed|Error|exit code 1/.test(safe)) return `<span class="ansi-err">${safe}</span>`;
+  if (/▸|=== RUN|\[codesign\]|\$/.test(safe)) return `<span class="ansi-info">${safe}</span>`;
+  if (/\[schedule\]|剩余/.test(safe)) return `<span class="ansi-warn">${safe}</span>`;
+  return safe;
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  S.toast = msg;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { S.toast = null; render(); }, 1800);
+}
+
+function renderStopRing(id) {
+  return `
+    <button class="stop-ring" data-stop="${esc(id)}" title="停止此任务">
+      <svg viewBox="0 0 26 26" fill="none">
+        <circle cx="13" cy="13" r="10.2" stroke="currentColor" stroke-opacity=".26" stroke-width="1.6"/>
+        <path class="spin-arc" d="M13 2.8 A10.2 10.2 0 0 1 22.6 9.6" stroke="currentColor" stroke-opacity=".9" stroke-width="1.7" stroke-linecap="round"/>
+      </svg>
+      <span class="stop-sq"></span>
+    </button>`;
+}
+
+function renderCard(bt, isSplitMode) {
+  const isRun = bt.status === "running";
+  const isSel = isSplitMode && S.selectedId === bt.id;
+  const isInlineOpen = !isSplitMode && S.expandedIds.has(bt.id) && !(S.dev === "duo" && S.duoClickMode === "push");
+
+  let statusMeta = "";
+  if (isRun) statusMeta = `<span class="tk-dur">${fmtDur(bt.elapsedSec)}</span>`;
+  else if (bt.status === "completed") statusMeta = `<span class="tk-dur">已完成 · ${fmtDur(bt.elapsedSec)}</span>`;
+  else if (bt.status === "failed") statusMeta = `<span class="tk-st-bad">失败 (退出码 ${bt.exitCode ?? 1})</span>`;
+  else statusMeta = `<span class="tk-st-warn">已停止 · ${fmtDur(bt.elapsedSec)}</span>`;
+
+  const inlineDrawer = isInlineOpen ? `
+    <div class="tk-inline">
+      <div class="tk-inline-cmd">
+        <code>${esc(bt.command)}</code>
+        <button class="sm-btn" data-copy="${esc(bt.id)}" title="复制命令">${IC.copy}</button>
+      </div>
+      <pre class="tk-inline-pre">${bt.logs.slice(-5).map(colorizeLog).join("\n")}</pre>
+      <div class="tk-inline-foot">
+        <span style="font-size:11px;color:var(--l3)">${isRun ? "● 正在实时跟随尾部输出" : esc(bt.summary || "执行完毕")}</span>
+        ${S.dev === "duo" ? `<button class="sm-btn primary" data-duopush="${esc(bt.id)}">完整终端 ${IC.chevR}</button>` : ""}
+      </div>
+    </div>` : "";
+
+  return `
+    <div class="tcard ${isRun ? "running" : ""} ${isSel ? "sel" : ""} ${isInlineOpen ? "expanded" : ""}">
+      <div class="tcard-main" role="button" tabindex="0" data-card="${esc(bt.id)}">
+        <span class="tk-icon">${kindIcon(bt.kind)}</span>
+        <div class="tk-body">
+          <div class="tk-title">${esc(bt.title)}</div>
+          ${isRun && bt.peek && !isInlineOpen && !isSplitMode ? `<div class="tk-peek">${esc(bt.peek)}</div>` : ""}
+          <div class="tk-meta">
+            <span class="tk-kind">${esc(bt.kindLabel)}</span>
+            ${statusMeta}
+          </div>
+        </div>
+        ${isRun ? renderStopRing(bt.id) : `<span class="chev-trail">${IC.chevR}</span>`}
+      </div>
+      ${inlineDrawer}
+    </div>`;
+}
+
+function renderSplitDetailPane(bt) {
+  if (!bt) return `<div class="bgp-detail-col" style="display:grid;place-items:center;color:var(--l3)">选择左侧任务查看详情</div>`;
+  const isRun = bt.status === "running";
+  const stMap = {
+    running: ["running", `运行中 · ${fmtDur(bt.elapsedSec)}`],
+    completed: ["completed", `已完成 · 耗时 ${fmtDur(bt.elapsedSec)}`],
+    failed: ["failed", `失败 · 退出码 ${bt.exitCode ?? 1}`],
+    stopped: ["stopped", `已停止 · 运行 ${fmtDur(bt.elapsedSec)}`]
+  };
+  const [stCls, stTxt] = stMap[bt.status] || stMap.completed;
+
+  return `
+    <div class="bgp-detail-col">
+      <div class="det-head">
+        <div class="det-head-row">
+          ${S.dev === "duo" ? `<button class="sm-btn" data-duoback="1">${IC.chevL} 返回列表</button>` : ""}
+          <span class="st-pill ${stCls}">${stTxt}</span>
+          <span style="font-size:11.5px;color:var(--l2)">${esc(bt.kindLabel)} · ${esc(bt.id)}</span>
+          <div style="margin-left:auto;display:flex;gap:6px">
+            ${isRun ? `<button class="sm-btn danger" data-stop="${esc(bt.id)}">停止任务</button>` : ""}
+          </div>
+        </div>
+        <h4>${esc(bt.title)}</h4>
+      </div>
+
+      <div class="det-cmd-strip">
+        <div style="min-width:0;flex:1">
+          <span class="lbl">${bt.kind === "subagent" ? "任务说明 (Brief)" : bt.kind === "schedule" ? "唤醒条件" : "执行命令 (Command)"}</span>
+          <code>${esc(bt.command)}</code>
+        </div>
+        <button class="sm-btn" data-copy="${esc(bt.id)}">${IC.copy} 复制</button>
+      </div>
+
+      <div class="det-term-wrap">
+        <div class="det-term-bar">
+          <span>输出流 · ${bt.logs.length} 行</span>
+          <span style="color:${isRun ? "#52d896" : "#8f95ab"}">${isRun ? "● 实时跟随尾部 (80 列不折行)" : "已归档输出"}</span>
+        </div>
+        <pre class="det-term-pre" id="wide-term-pre">${bt.logs.map(colorizeLog).join("\n")}</pre>
+      </div>
+
+      ${bt.summary ? `<div class="det-foot-sum"><b style="color:var(--l2);margin-right:6px">结果摘要:</b>${esc(bt.summary)}</div>` : ""}
+    </div>`;
+}
+
+function renderFilesMock() {
+  return `
+    <div style="padding:18px;display:flex;flex-direction:column;gap:10px;color:var(--l2);font-size:13px">
+      <div style="font-weight:600;color:var(--l1)">apps/desktop/src/renderer/src/session/Background.tsx</div>
+      <pre style="margin:0;padding:12px;border-radius:10px;background:var(--term);color:#c9d1e3;font:11.5px/1.6 var(--mono)">// 与「后台任务」共享右侧分栏容器，切换标签页即可查看代码，
+// 再也不会因为打开文件而导致后台任务监控面板消失！
+export function BackgroundPanel({ tasks, onStop }: Props) {
+  const running = tasks.filter(t => t.status === RUNNING);
+  return &lt;SplitTaskInspector running={running} /&gt;;
+}</pre>
+      <span style="font-size:12px;color:var(--l3)">提示：点击上方标签栏「后台任务」即可切回实时监控，状态与滚动位置完全保留。</span>
+    </div>`;
+}
+
+function renderRightPanel(isDuo) {
+  const running = S.tasks.filter((t) => t.status === "running");
+  const finished = S.tasks.filter((t) => t.status !== "running");
+  const isSplit = !isDuo && S.splitDetail && S.panelTab === "bg";
+  const selTask = S.tasks.find((t) => t.id === S.selectedId) || S.tasks[0];
+  const duoPushedTask = isDuo && S.duoDetailId ? S.tasks.find((t) => t.id === S.duoDetailId) : null;
+
+  // On Duo unfolded, align right column width cleanly to the physical center hinge (~427px)!
+  const panelStyle = isDuo ? `width:427px` : "";
+
+  return `
+    <aside class="bg-panel ${isSplit ? "split" : ""}" style="${panelStyle}">
+      <div class="bgp-top">
+        <div class="bgp-mode-tabs">
+          <button class="${S.panelTab === "bg" ? "on" : ""}" data-ptab="bg">
+            ${IC.term}<span>后台任务</span>
+            ${running.length > 0 ? `<span class="tb-pill-cnt">${running.length}</span>` : ""}
+          </button>
+          <button class="${S.panelTab === "files" ? "on" : ""}" data-ptab="files">
+            ${IC.folder}<span>项目文件</span>
+          </button>
+        </div>
+        <div class="bgp-top-right">
+          <button class="icon-btn" data-togglepanel="1" title="收起侧栏">${IC.x}</button>
+        </div>
+      </div>
+
+      ${S.panelTab === "files" ? renderFilesMock() : duoPushedTask ? renderSplitDetailPane(duoPushedTask) : `
+        <div class="bgp-body">
+          <div class="bgp-list-col">
+            <div class="bgp-subhead">
+              <h3>后台任务</h3>
+              ${running.length > 1 ? `
+                <button class="stop-all-pill ${S.confirmStopAll ? "confirm" : ""}" data-stopall="1">
+                  ${S.confirmStopAll ? `确认全部停止 (${running.length})` : "全部停止"}
+                </button>` : ""}
+            </div>
+
+            <div class="bgp-scroll">
+              ${running.length > 0 ? `
+                <button class="sec-hdr ${S.foldRunning ? "folded" : ""}" data-fold="running">
+                  <span>运行中</span><span>${running.length}</span>${IC.chevD}
+                  <span class="hint">${isSplit ? "点选右侧看日志" : "点卡片展开"}</span>
+                </button>
+                ${!S.foldRunning ? `<div class="card-stack">${running.map((bt) => renderCard(bt, isSplit)).join("")}</div>` : ""}
+              ` : ""}
+
+              <button class="sec-hdr ${S.foldDone ? "folded" : ""}" data-fold="done">
+                <span>已完成</span><span>${finished.length}</span>${IC.chevD}
+                ${finished.some((x) => x.status === "failed") ? `<span class="hint" style="color:var(--red)">1 项失败</span>` : ""}
+              </button>
+              ${!S.foldDone ? `<div class="card-stack">${finished.map((bt) => renderCard(bt, isSplit)).join("")}</div>` : ""}
+            </div>
+          </div>
+
+          ${isSplit ? renderSplitDetailPane(selTask) : ""}
+        </div>
+      `}
+    </aside>`;
+}
+
+function renderConversationPane(running, finished) {
+  const pillHtml = S.legacy ? `
+    <div style="width:100%;border-radius:20px;padding:10px 16px;background:var(--card);box-shadow:inset 0 0 0 .5px var(--cmp-bd);display:flex;align-items:center;gap:8px">
+      ${IC.sparkle}
+      <span>${Math.max(1, running.length)} 个后台任务进行中</span>
+      <span style="color:var(--l3);font-size:12px">11:20</span>
+      <span style="flex:1"></span>
+      <button data-togglepanel="1" style="color:var(--l2);font-size:13px">详情</button>
+      <button data-stopall="force" style="color:var(--red);font-weight:500;font-size:13px;margin-left:6px">全部停下</button>
+    </div>` : running.length > 0 ? `
+    <button class="wide-bg-pill" data-togglepanel="1">
+      <span class="orb">${kindIcon(running[0].kind)}</span>
+      <span class="txt">${running.length} 项后台任务运行中</span>
+      <span class="sub">${esc(running[0].title)} · ${fmtDur(running[0].elapsedSec)}</span>
+      <span class="act">${S.panelOpen ? "已展开" : "查看 ›"}</span>
+    </button>` : `
+    <button class="wide-bg-pill" data-togglepanel="1">
+      <span class="orb done">${IC.check}</span>
+      <span class="txt">后台任务已全部完成 (${finished.length})</span>
+      <span class="sub">点击查看完整构建与回归输出</span>
+      ${IC.chevR}
+    </button>`;
+
+  return `
+    <div class="conv-col">
+      <div class="conv-scroll">
+        <div class="conv-inner">
+          <div class="um">把合并分支的桌面端 arm64 签名包打出来，同时在临时工作树跑一遍用量对账与 E2E 回归，跑完汇报。</div>
+          <div class="tool-row">${IC.term}<span>已启动 3 项并行后台任务 · 前置已完成 13 项校验</span></div>
+          <div class="am">
+            <p>核心包单元测试、Proto 跨端生成与全仓 <code>typecheck</code> 全部通过。</p>
+            <ul>
+              <li>真实 Relay 转发至远端机器 Antigravity (ACP) 会话的 <code>PROMOTE_TO_STEER</code> 用例，<code>TestThreadV2EndToEnd</code> 通过。</li>
+              <li>桌面端 arm64 签名归档与临时检出目录的 E2E 用量对账正在后台并行执行，你可以继续在下方发消息或直接在右侧实时查看输出流。</li>
+            </ul>
+          </div>
+          <button class="wait-row" data-togglepanel="1">
+            ${IC.sparkle}
+            <span>${running.length > 0
+              ? `这一轮前台回复已结束，正在等待 ${running.length} 个后台任务完成后继续汇报。`
+              : `全部 16 项后台任务已执行结束，右侧随时可回看任意步骤日志。`}</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="conv-foot">
+        <div class="conv-foot-inner">
+          ${pillHtml}
+          <div class="mac-cmp">
+            <div class="ph">继续聊，或在后台任务运行时补充新指令...</div>
+            <div class="row">
+              <span>Claude Opus 4.6 · 高推理</span>
+              <span>·</span>
+              <span>hermesh/main</span>
+              <span class="send">${IC.up}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderMacWindow() {
+  const running = S.tasks.filter((t) => t.status === "running");
+  const finished = S.tasks.filter((t) => t.status !== "running");
+  const hideLeftSide = S.panelOpen && S.splitDetail && !S.legacy;
+
+  const legacyCard = S.legacy && S.panelOpen ? `
+    <div class="legacy-mac-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:12px;color:var(--l2)">后台任务</span>
+        <button data-stopall="force" style="font-size:11.5px;color:var(--red)">全部停止</button>
+      </div>
+      <div style="font-size:11px;color:var(--l3);margin-bottom:8px">${running.length} 个执行中 · ${finished.length} 个已完成</div>
+      ${S.tasks.slice(0, 4).map((bt) => `
+        <div style="padding:6px 4px;border-top:.5px solid var(--sep)">
+          <div style="display:flex;justify-content:space-between;gap:6px;font-size:12.5px">
+            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(bt.title)}</span>
+            <span style="color:var(--l3);font-size:11px;flex:none">${bt.status === "running" ? "14:04" : "2m"}</span>
+          </div>
+          <div style="font:11px var(--mono);color:var(--l3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(bt.command)}</div>
+        </div>`).join("")}
+      <div style="margin-top:8px;font-size:11px;color:var(--warn)">▲ 旧版桌面端仅 244px 宽，标题与日志严重截断，且打开项目文件时会自动消失。</div>
+    </div>` : "";
+
+  return `
+    <div class="mac-win">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <aside class="mac-side ${hideLeftSide ? "collapsed" : ""}">
+        <div class="s-nav">${IC.agent}<span>Her</span></div>
+        <div class="s-head">活跃会话</div>
+        <div class="s-item sel"><span class="s-dot"></span><span class="t">桌面端与移动端编译回归</span></div>
+        <div class="s-item"><span class="t">多图连续画廊排版精修</span></div>
+        <div class="s-item"><span class="t">搜索面板双栏重构 #1289</span></div>
+        <div class="s-item"><span class="t">iPhone Duo 侧边竖栏适配</span></div>
+      </aside>
+
+      <div class="mac-main">
+        <div class="mac-toolbar ${hideLeftSide ? "no-side" : ""}">
+          ${hideLeftSide ? `<button class="tb-btn" data-togglesplit="1" title="切回单列并恢复左侧会话栏">${IC.sidebar}</button>` : ""}
+          <div class="mac-title">
+            <h2>桌面端与移动端编译回归</h2>
+            <span>hermesh · main</span>
+          </div>
+          <button class="tb-btn ${S.panelOpen && S.panelTab === "bg" ? "on" : ""}" data-togglepanel="1">
+            ${IC.term}
+            <span>后台任务</span>
+            ${running.length > 0 ? `<span class="tb-pill-cnt">${running.length}</span>` : `<span style="color:var(--l3)">${finished.length}</span>`}
+          </button>
+          <button class="tb-btn ${S.panelOpen && S.panelTab === "files" ? "on" : ""}" data-openfiles="1">
+            ${IC.folder}<span>侧边面板</span>
+          </button>
+        </div>
+
+        <div class="mac-work">
+          ${renderConversationPane(running, finished)}
+          ${!S.legacy && S.panelOpen ? renderRightPanel(false) : ""}
+          ${legacyCard}
+          ${S.toast ? `<div class="toast">${esc(S.toast)}</div>` : ""}
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderDuoWindow() {
+  const running = S.tasks.filter((t) => t.status === "running");
+  const finished = S.tasks.filter((t) => t.status !== "running");
+
+  const legacyScrimModal = S.legacy && S.panelOpen ? `
+    <div class="legacy-modal-backdrop" data-togglepanel="1">
+      <div class="legacy-modal" onclick="event.stopPropagation()">
+        <div style="width:38px;height:4px;border-radius:99px;background:rgba(255,255,255,.22);margin:0 auto 12px"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <button class="icon-btn" data-togglepanel="1" style="border-radius:50%;background:rgba(255,255,255,.1);width:34px;height:34px">${IC.x}</button>
+          <b style="font-size:16px">后台任务</b>
+          <button data-stopall="force" style="padding:6px 14px;border-radius:99px;background:rgba(255,255,255,.1);color:#ff646e;font-size:13px">全部停下</button>
+        </div>
+        <div style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:8px">正在运行</div>
+        <div style="background:rgba(255,255,255,.06);border-radius:16px;overflow:hidden">
+          <div style="padding:13px 15px;border-bottom:.5px solid rgba(255,255,255,.1)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="color:#5b78ff">${IC.clock}</span>
+              <span style="flex:1">Run schedule</span>
+              <span style="color:rgba(255,255,255,.5);font-size:12.5px">11:33</span>
+              <button data-stop="bt-1" style="padding:3px 10px;border-radius:99px;background:rgba(0,0,0,.35);color:#ff646e;font-size:12.5px">停下</button>
+            </div>
+            <div style="font:12px var(--mono);color:rgba(255,255,255,.5);margin-top:5px">90s</div>
+          </div>
+          <div style="padding:13px 15px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="color:#5b78ff">${IC.clock}</span>
+              <span style="flex:1">Run schedule</span>
+              <span style="color:rgba(255,255,255,.5);font-size:12.5px">10:00</span>
+              <button data-stop="bt-2" style="padding:3px 10px;border-radius:99px;background:rgba(0,0,0,.35);color:#ff646e;font-size:12.5px">停下</button>
+            </div>
+            <div style="font:12px var(--mono);color:rgba(255,255,255,.5);margin-top:5px">120s</div>
+          </div>
+        </div>
+        <div style="margin-top:12px;font-size:12px;color:#f7ad45">▲ 图 2 旧版复现：宽屏上弹出全屏遮罩挡住背后对话，且卡片无法点击展开。</div>
+      </div>
+    </div>` : "";
+
+  return `
+    <div class="duo-win">
+      <div class="duo-scr">
+        <nav class="duo-rail">
+          <div class="ri">${IC.sidebar}</div>
+          <div class="ri">${IC.agent}</div>
+          <div class="ri sel"><span style="font-weight:700;color:#ff9e5e">A</span></div>
+        </nav>
+
+        <div class="mac-work" style="flex:1;min-width:0">
+          ${renderConversationPane(running, finished)}
+          ${!S.legacy && S.panelOpen ? renderRightPanel(true) : ""}
+          ${legacyScrimModal}
+          ${S.toast ? `<div class="toast">${esc(S.toast)}</div>` : ""}
+        </div>
+
+        <aside class="duo-vbar">
+          <div class="vc">02:40</div>
+          <div class="vr">
+            <div class="bars">
+              <i style="height:4px"></i><i style="height:6px"></i><i style="height:8.5px"></i><i style="height:11px"></i>
+            </div>
+            <span class="net">5GA</span>
+          </div>
+          <div class="duo-vcap">
+            <button class="duo-vbtn ${S.panelOpen && S.panelTab === "bg" ? "on" : ""}" data-togglepanel="1" title="展开/收起后台任务右页">
+              ${IC.term}
+              ${running.length > 0 ? `<span class="duo-vbadge">${running.length}</span>` : ""}
+            </button>
+            <button class="duo-vbtn ${S.panelOpen && S.panelTab === "files" ? "on" : ""}" data-openfiles="1" title="项目文件">
+              ${IC.folder}
+            </button>
+          </div>
+          <button class="duo-vbtn" data-toast="会话更多菜单" style="margin-top:auto">${IC.more}</button>
+        </aside>
+      </div>
+    </div>`;
+}
+
+function renderControls() {
+  document.getElementById("ctl-bar").innerHTML = `
+    <div class="g"><b>新旧对比</b>
+      <button class="${!S.legacy ? "on" : ""}" data-legacy="0">✦ 新版宽屏单列原位展开</button>
+      <button class="warn ${S.legacy ? "on" : ""}" data-legacy="1">旧版痛点复现 (图1/2 & 244px小框)</button>
+    </div>
+    ${S.dev === "duo" ? `
+      <div class="g"><b>Duo 右页交互</b>
+        <button class="${S.duoClickMode === "inline" ? "on" : ""}" data-duomode="inline">卡片原位展开</button>
+        <button class="${S.duoClickMode === "push" ? "on" : ""}" data-duomode="push">右页推入完整终端</button>
+      </div>` : ""}
+    <div class="g"><b>动态模拟</b>
+      <button data-sim="add">+ 新增运行任务</button>
+      <button data-sim="finish">完成 1 项任务</button>
+      <button data-sim="reset">重置</button>
+    </div>
+    <div class="g"><b>主题</b>
+      <button class="${S.theme === "black" ? "on" : ""}" data-theme="black">纯黑 Onyx</button>
+      <button class="${S.theme === "dark" ? "on" : ""}" data-theme="dark">深灰</button>
+      <button class="${S.theme === "soft" ? "on" : ""}" data-theme="soft">柔白</button>
+    </div>`;
+}
+
+function fitStage() {
+  const box = document.getElementById("fit-box");
+  const inner = document.getElementById("stage-mount");
+  if (!box || !inner) return;
+  const designW = S.dev === "mac" ? 1240 : 980;
+  box.dataset.designW = String(designW);
+  inner.style.transform = "none";
+  box.style.height = "auto";
+  const avail = Math.min(window.innerWidth - 32, 1400);
+  const scale = avail < designW ? avail / designW : 1;
+  if (scale < 0.995) {
+    const rawH = inner.offsetHeight;
+    inner.style.transform = `scale(${scale.toFixed(4)})`;
+    box.style.width = `${Math.floor(designW * scale)}px`;
+    box.style.height = `${Math.ceil(rawH * scale) + 8}px`;
+  } else {
+    box.style.width = "";
+    box.style.height = "";
+  }
+}
+
+function render() {
+  document.documentElement.dataset.theme = S.theme;
+  const badge = document.getElementById("top-badge");
+  if (S.legacy) {
+    badge.className = "badge warn";
+    badge.textContent = "⚠️ 旧版宽屏痛点复现（全屏模态遮罩 / 244px 截断小框）";
+  } else {
+    badge.className = "badge";
+    badge.textContent = "✦ 无遮罩右侧单列 + 纵向原位展开";
+  }
+
+  document.querySelectorAll("#device-tabs button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.dev === S.dev);
+  });
+
+  document.getElementById("stage-mount").innerHTML = S.dev === "mac" ? renderMacWindow() : renderDuoWindow();
+  renderControls();
+  requestAnimationFrame(fitStage);
+
+  const pre = document.getElementById("wide-term-pre");
+  if (pre) pre.scrollTop = pre.scrollHeight;
+}
+
+window.addEventListener("resize", fitStage);
+
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("button,[data-card]");
+  if (!el) return;
+  const d = el.dataset;
+
+  if (d.dev) {
+    S.dev = d.dev;
+    S.panelOpen = true;
+    S.duoDetailId = null;
+  } else if (d.theme) {
+    S.theme = d.theme;
+  } else if (d.legacy !== undefined) {
+    S.legacy = d.legacy === "1";
+    S.panelOpen = true;
+  } else if (d.togglepanel) {
+    if (S.panelOpen && S.panelTab !== "bg") {
+      S.panelTab = "bg";
+    } else {
+      S.panelOpen = !S.panelOpen;
+    }
+  } else if (d.openfiles) {
+    S.legacy = false;
+    if (S.panelOpen && S.panelTab === "files") S.panelOpen = false;
+    else { S.panelOpen = true; S.panelTab = "files"; }
+  } else if (d.ptab) {
+    S.panelTab = d.ptab;
+  } else if (d.togglesplit) {
+    S.splitDetail = !S.splitDetail;
+  } else if (d.setsplit !== undefined) {
+    S.legacy = false;
+    S.panelOpen = true;
+    S.panelTab = "bg";
+    S.splitDetail = d.setsplit === "1";
+  } else if (d.opensplit) {
+    e.stopPropagation();
+    S.selectedId = d.opensplit;
+    S.splitDetail = true;
+  } else if (d.duomode) {
+    S.duoClickMode = d.duomode;
+    S.duoDetailId = null;
+  } else if (d.duopush) {
+    e.stopPropagation();
+    S.duoDetailId = d.duopush;
+  } else if (d.duoback) {
+    S.duoDetailId = null;
+  } else if (d.fold) {
+    if (d.fold === "running") S.foldRunning = !S.foldRunning;
+    if (d.fold === "done") S.foldDone = !S.foldDone;
+  } else if (d.card) {
+    S.confirmStopAll = false;
+    S.selectedId = d.card;
+    if (S.dev === "mac" && S.splitDetail) {
+      // Selects into right split terminal pane
+    } else if (S.dev === "duo" && S.duoClickMode === "push") {
+      S.duoDetailId = d.card;
+    } else {
+      if (S.expandedIds.has(d.card)) S.expandedIds.delete(d.card);
+      else S.expandedIds.add(d.card);
+    }
+  } else if (d.stop) {
+    e.stopPropagation();
+    const bt = S.tasks.find((x) => x.id === d.stop);
+    if (bt && bt.status === "running") {
+      bt.status = "stopped";
+      bt.logs.push("[hermesh] 收到用户停止指令，进程组已优雅终止 (SIGTERM)。");
+      bt.summary = `已在运行 ${fmtDur(bt.elapsedSec)} 时手动停止。`;
+      S.confirmStopAll = false;
+      showToast(`已停止：${bt.kindLabel}`);
+    }
+  } else if (d.stopall) {
+    e.stopPropagation();
+    if (d.stopall === "force" || S.confirmStopAll) {
+      let cnt = 0;
+      S.tasks.forEach((bt) => {
+        if (bt.status === "running") {
+          bt.status = "stopped";
+          bt.logs.push("[hermesh] 批量停止后台任务，已安全退出。");
+          bt.summary = "已通过「全部停止」手动终止。";
+          cnt++;
+        }
+      });
+      S.confirmStopAll = false;
+      showToast(`已停止全部 ${cnt} 项运行中任务`);
+    } else {
+      S.confirmStopAll = true;
+    }
+  } else if (d.copy) {
+    e.stopPropagation();
+    const bt = S.tasks.find((x) => x.id === d.copy);
+    if (bt && navigator.clipboard) navigator.clipboard.writeText(bt.command).catch(() => {});
+    showToast("已复制执行命令");
+  } else if (d.sim) {
+    if (d.sim === "reset") {
+      S.tasks = makeTasks();
+      S.selectedId = "bt-1";
+      S.duoDetailId = null;
+      S.panelOpen = true;
+      showToast("已重置演示数据");
+    } else if (d.sim === "add") {
+      const id = "bt-live-" + Math.floor(100 + Math.random() * 900);
+      S.tasks.unshift({
+        id,
+        kind: "subagent",
+        kindLabel: "子智能体",
+        status: "running",
+        awaited: true,
+        stopScope: "single",
+        elapsedSec: 1,
+        title: "Perf Auditor · 采样宽屏双栏开启时渲染帧率与滚动重绘开销",
+        command: "invoke_subagent(role: 'Perf Auditor') → 分析 BackgroundPanel 虚拟滚动与重绘边界",
+        peek: "▸ 正在采集 120Hz ProMotion 滚动火焰图...",
+        logs: [
+          "[subagent] Spawned Perf Auditor in read-only workspace",
+          "▸ 正在采集 120Hz ProMotion 滚动火焰图..."
+        ],
+        summary: ""
+      });
+      S.selectedId = id;
+      S.panelOpen = true;
+      S.panelTab = "bg";
+      S.foldRunning = false;
+      showToast("已新增 1 项运行中任务");
+    } else if (d.sim === "finish") {
+      const run = S.tasks.find((x) => x.status === "running");
+      if (run) {
+        run.status = "completed";
+        run.exitCode = 0;
+        run.logs.push("✓ 任务顺利完成，退出码 0。");
+        run.summary = "后台任务已执行完毕，构建与校验结果正常。";
+        showToast(`已完成：${run.kindLabel}`);
+      } else {
+        showToast("当前没有运行中的任务");
+      }
+    }
+  } else if (d.toast) {
+    showToast(d.toast);
+  }
+
+  render();
+});
+
+setInterval(() => {
+  const running = S.tasks.filter((x) => x.status === "running");
+  if (!running.length) return;
+  S.tick++;
+  running.forEach((bt) => { bt.elapsedSec += 1; });
+  if (S.tick % 4 === 0) {
+    const line = STREAM_LINES[S.tick % STREAM_LINES.length];
+    running[0].peek = line;
+    running[0].logs.push(line);
+    if (running[0].logs.length > 26) running[0].logs.shift();
+  }
+  render();
+}, 1000);
+
+render();
+</script>
+</body>
+</html>

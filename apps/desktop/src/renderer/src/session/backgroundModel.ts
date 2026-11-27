@@ -18,7 +18,7 @@ export function stripAnsi(text: string): string {
   return text.replace(ansiPattern, "");
 }
 
-/** How long a finished background task took, in its two largest units: "48 s", "2 min 14 s", "3 hr 5 min". */
+/** How long a background task has been running or took to finish, in its two largest units: "48 s", "2 min 14 s", "3 hr 5 min". */
 export function formatTaskDuration(ms: number, tTime: TimeTranslate): string {
   const s = Math.max(1, Math.round(ms / 1000));
   const part = (unit: "seconds" | "minutes" | "hours" | "days", count: number) => tTime(`time.${unit}`, { count });
@@ -29,10 +29,29 @@ export function formatTaskDuration(ms: number, tTime: TimeTranslate): string {
   return pair(part("days", Math.trunc(s / 86400)), part("hours", Math.trunc(s / 3600) % 24), Math.trunc(s / 3600) % 24);
 }
 
-/** Single-line label for a background task row, collapsed so shimmer masks match text width. */
-export function taskLabel(bt: Pick<BackgroundTaskSummaryInput, "taskId" | "title" | "command">): string {
-  const raw = bt.title.trim() || bt.command.trim() || bt.taskId;
-  return raw.replace(/\s+/g, " ").trim();
+const genericScheduleTitles = new Set(["run schedule", "schedule", "schedulewakeup"]);
+
+/** Readable primary label for a background task card, humanizing generic schedule placeholders when command/summary carry context. */
+export function taskLabel(bt: Pick<BackgroundTaskSummaryInput, "taskId" | "title" | "command" | "summary">): string {
+  const title = bt.title.replace(/\s+/g, " ").trim();
+  const cmd = bt.command.replace(/\s+/g, " ").trim();
+  const sum = (bt.summary ?? "").replace(/\s+/g, " ").trim();
+  if (genericScheduleTitles.has(title.toLowerCase())) {
+    if (sum && sum !== "stopped by user") return sum;
+    if (cmd) return `${title} · ${cmd}`;
+  }
+  return title || cmd || bt.taskId;
+}
+
+/** Latest non-empty clean output line for a running card's collapsed live peek. */
+export function latestOutputLine(outputTail: string): string {
+  return (
+    stripAnsi(outputTail)
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .at(-1) ?? ""
+  );
 }
 
 /** The second line under a background task row: its command handle when distinct, else latest output or kind. */
@@ -42,12 +61,7 @@ export function taskSecondary(bt: BackgroundTaskSummaryInput, kindText: string):
   if (title !== "" && cmd !== "" && title !== cmd) {
     return { text: cmd.replace(/\s+/g, " "), mono: true };
   }
-  const cleanOut = stripAnsi(bt.outputTail);
-  const lastOut = cleanOut
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .at(-1);
+  const lastOut = latestOutputLine(bt.outputTail);
   if (lastOut) return { text: lastOut, mono: false };
   const sum = bt.summary.trim();
   if (sum && sum !== "stopped by user") {
@@ -56,7 +70,7 @@ export function taskSecondary(bt: BackgroundTaskSummaryInput, kindText: string):
   return { text: kindText, mono: false };
 }
 
-/** Formats a running clock ("0:21", "1:02:03") or completed duration. */
+/** Formats running elapsed time or completed duration in natural localized units ("14 分 4 秒", "21 秒"). */
 export function formatTaskTiming(
   running: boolean,
   started: Date | undefined,
@@ -66,12 +80,7 @@ export function formatTaskTiming(
 ): string {
   if (!started) return "";
   if (running) {
-    const sec = Math.max(0, Math.floor((now.getTime() - started.getTime()) / 1000));
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = sec % 60;
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+    return formatTaskDuration(Math.max(1000, now.getTime() - started.getTime()), tTime);
   }
   return ended ? formatTaskDuration(Math.max(0, ended.getTime() - started.getTime()), tTime) : "";
 }

@@ -845,7 +845,8 @@ export function SessionPage() {
   const filesOpen = !!activeSessionId && filePanel.open;
   const info = card !== "hidden" && !background && !filesOpen;
   // The background card keeps the conversation clear of it as the info card does, when there is room for one.
-  const dock = (info && card === "docked") || (background && layoutOf({ ...st, inspector: true, peek: null }).card === "docked");
+  const dockBg = background && !filesOpen && layoutOf({ ...st, inspector: true, peek: null }).card === "docked";
+  const dock = (info && card === "docked") || dockBg;
 
   const runQueueOp = async (req: Parameters<typeof sessionApi.manageQueue>[0]): Promise<boolean> => {
     const busyKey = req.runId || "resume";
@@ -1248,7 +1249,7 @@ export function SessionPage() {
             </div>
           </div>
         ) : (
-          <div className={`dwrap th ${dock ? "dock" : ""}`} data-testid="thread-page">
+          <div className={`dwrap th ${dock ? "dock" : ""} ${dockBg ? "dock-bg" : ""}`} data-testid="thread-page">
             <div className="dmain">
               <ContentScope value={activeSessionId!}>
                 <SessionRunContext.Provider value={codeActions}>

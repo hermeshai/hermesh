@@ -1,0 +1,2198 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hermesh 后台任务 · 直板机交互原型 Demo</title>
+<style>
+@font-face {
+  font-family: "Google Sans Code";
+  src: url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-code.ttf") format("truetype");
+  font-weight: 300 800;
+}
+
+:root {
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Helvetica Neue", system-ui, sans-serif;
+  --mono: "Google Sans Code", ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --spring: cubic-bezier(0.28, 1.14, 0.38, 1);
+}
+
+html[data-theme="dark"] {
+  --page: #090a0f;
+  --page-fg: #ededf3;
+  --page-fg2: #9296a6;
+  --page-card: #13151d;
+  --page-bd: rgba(255, 255, 255, .08);
+
+  --bg: #000000;
+  --sheet: #0d0d10;
+  --sheet-bd: rgba(255, 255, 255, .10);
+  --card: #1a1a1f;
+  --card-hover: #212127;
+  --card-active: #26262d;
+  --card-bd: rgba(255, 255, 255, .055);
+  --term: #111115;
+  --term-bd: rgba(255, 255, 255, .08);
+
+  --l1: rgba(255, 255, 255, .94);
+  --l1-run: rgba(255, 255, 255, .72);
+  --l2: rgba(235, 235, 245, .58);
+  --l3: rgba(235, 235, 245, .36);
+  --l4: rgba(255, 255, 255, .14);
+  --sep: rgba(255, 255, 255, .085);
+  --fill: rgba(120, 120, 132, .20);
+  --fill2: rgba(120, 120, 132, .32);
+
+  --accent: #4a66ff;
+  --accent-t: #8fa4ff;
+  --accent-bg: rgba(74, 102, 255, .18);
+  --ok: #42d38a;
+  --ok-bg: rgba(66, 211, 138, .14);
+  --warn: #f7ad45;
+  --warn-bg: rgba(247, 173, 69, .15);
+  --red: #ff646e;
+  --red-bg: rgba(255, 100, 110, .15);
+
+  --glass: rgba(28, 28, 34, .82);
+  --glass-hi: rgba(255, 255, 255, .12);
+  --glass-bd: rgba(255, 255, 255, .12);
+  --scrim: rgba(0, 0, 0, .56);
+  --vbar: #060608;
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  --page: #e5e8f0;
+  --page-fg: #171820;
+  --page-fg2: #5d606e;
+  --page-card: #ffffff;
+  --page-bd: rgba(0, 0, 0, .08);
+
+  --bg: #f6f7fa;
+  --sheet: #f2f3f7;
+  --sheet-bd: rgba(0, 0, 0, .09);
+  --card: #ffffff;
+  --card-hover: #fcfcfd;
+  --card-active: #eef0f6;
+  --card-bd: rgba(0, 0, 0, .06);
+  --term: #16171d;
+  --term-bd: rgba(0, 0, 0, .12);
+
+  --l1: rgba(0, 0, 0, .90);
+  --l1-run: rgba(0, 0, 0, .68);
+  --l2: rgba(60, 60, 67, .62);
+  --l3: rgba(60, 60, 67, .38);
+  --l4: rgba(60, 60, 67, .14);
+  --sep: rgba(0, 0, 0, .08);
+  --fill: rgba(118, 118, 128, .11);
+  --fill2: rgba(118, 118, 128, .19);
+
+  --accent: #3d5bff;
+  --accent-t: #2a47e8;
+  --accent-bg: rgba(61, 91, 255, .11);
+  --ok: #16904d;
+  --ok-bg: rgba(22, 144, 77, .11);
+  --warn: #c76b08;
+  --warn-bg: rgba(199, 107, 8, .12);
+  --red: #d9323e;
+  --red-bg: rgba(217, 50, 62, .11);
+
+  --glass: rgba(255, 255, 255, .84);
+  --glass-hi: rgba(255, 255, 255, .75);
+  --glass-bd: rgba(0, 0, 0, .09);
+  --scrim: rgba(12, 15, 26, .30);
+  --vbar: #eceef4;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--page);
+  color: var(--page-fg);
+  font: 14px/1.48 var(--font);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  padding-bottom: 96px;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+svg { display: block; flex: none; }
+code { font: 12px var(--mono); background: var(--fill); padding: 1px 5px; border-radius: 5px; }
+
+/* ---------- Page Top Bar ---------- */
+.hdr {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 18px 22px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.hdr-t h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -.015em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.badge {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
+.hdr-t p { margin: 3px 0 0; font-size: 12.5px; color: var(--page-fg2); }
+
+.seg-bar {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--page-card);
+  border: 1px solid var(--page-bd);
+  border-radius: 12px;
+}
+.seg-bar button {
+  padding: 5px 12px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--page-fg2);
+  transition: background .15s, color .15s;
+}
+.seg-bar button.on { background: var(--accent); color: #fff; }
+
+/* ---------- Main Stage ---------- */
+.stage {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 10px 20px 24px;
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ---------- Icons ---------- */
+.ic {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ic.sm { width: 15px; height: 15px; }
+.ic.xs { width: 13px; height: 13px; }
+
+/* ---------- Device Shells ---------- */
+.phone {
+  width: 398px;
+  height: 784px;
+  border-radius: 54px;
+  padding: 11px;
+  background: #1a1b20;
+  box-shadow: 0 28px 75px rgba(0, 0, 0, .48), inset 0 0 0 1.5px #383a44;
+  position: relative;
+  user-select: none;
+  flex: none;
+}
+.phone.duo-outer {
+  width: 454px;
+  height: 676px;
+  border-radius: 44px;
+}
+.scr {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 45px;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--l1);
+  display: flex;
+}
+.phone.duo-outer .scr { border-radius: 34px; }
+
+.phone-main {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.island-top {
+  position: absolute;
+  top: 11px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 116px;
+  height: 34px;
+  border-radius: 20px;
+  background: #000;
+  z-index: 90;
+  pointer-events: none;
+}
+.sb-top {
+  height: 50px;
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 28px 0 32px;
+  font-size: 14.5px;
+  font-weight: 600;
+  z-index: 20;
+}
+.home-ind {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 134px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--l1);
+  opacity: .72;
+  z-index: 95;
+  pointer-events: none;
+}
+
+/* Duo Outer Right Vertical System Bar (matching user screenshot 3!) */
+.dvbar {
+  width: 64px;
+  flex: none;
+  background: var(--vbar);
+  border-left: .5px solid var(--sep);
+  padding: 16px 0 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  z-index: 80;
+}
+.dvbar .vclock {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -.2px;
+  font-variant-numeric: tabular-nums;
+}
+.dvbar .vring {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2.2px solid var(--l1);
+  border-bottom-color: transparent;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.dvbar .vring .bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 11px;
+  margin-top: -2px;
+}
+.dvbar .vring .bars i {
+  width: 2.5px;
+  border-radius: 1px;
+  background: var(--l1);
+}
+.dvbar .vring .net {
+  position: absolute;
+  bottom: -3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: -.2px;
+  color: var(--l1);
+}
+.dvbar .vbtn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--fill);
+  display: grid;
+  place-items: center;
+  color: var(--l1);
+  position: relative;
+  transition: transform .12s, background .15s;
+}
+.dvbar .vbtn:active { transform: scale(.92); }
+.dvbar .vbtn.on { background: var(--accent-bg); color: var(--accent-t); }
+.dvbar .vbadge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+/* ---------- Liquid Glass ---------- */
+.iglass {
+  background: var(--glass);
+  backdrop-filter: blur(26px) saturate(1.6);
+  -webkit-backdrop-filter: blur(26px) saturate(1.6);
+  box-shadow: inset 0 .5px 0 var(--glass-hi), 0 0 0 .5px var(--glass-bd), 0 8px 24px rgba(0, 0, 0, .24);
+}
+
+/* ---------- Top Conversation Nav ---------- */
+.inav {
+  height: 48px;
+  flex: none;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 15;
+}
+.nav-circle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  position: relative;
+  transition: transform .12s;
+}
+.nav-circle:active { transform: scale(.92); }
+.nav-pill-title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}
+.nav-pill-title b {
+  display: block;
+  font-size: 14.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nav-pill-title span {
+  display: block;
+  font-size: 11px;
+  color: var(--l2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nav-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Conversation Stream ---------- */
+.chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.chat-scroll::-webkit-scrollbar { display: none; }
+.um {
+  align-self: flex-end;
+  max-width: 82%;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 18px 18px 5px 18px;
+  padding: 9px 14px;
+  font-size: 14.5px;
+  line-height: 1.48;
+}
+.tool-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--l2);
+}
+.am {
+  font-size: 14.5px;
+  line-height: 1.58;
+  color: var(--l1);
+}
+.am p { margin: 0 0 8px; }
+.am p:last-child { margin: 0; }
+.am ul { margin: 4px 0 8px; padding-left: 18px; }
+.am li { margin: 3px 0; }
+
+/* Inline wake / waiting status line in conversation */
+.wait-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--l2);
+  padding: 2px 0;
+}
+.sparkle-mark {
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  flex: none;
+  color: #5b8cff;
+}
+@keyframes pulseGlow {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .55; transform: scale(.92); }
+}
+.sparkle-mark.live { animation: pulseGlow 2.2s ease-in-out infinite; }
+
+/* ---------- Bottom Zone: Redesigned Background Capsule + Composer ---------- */
+.bottom-zone {
+  flex: none;
+  padding: 6px 14px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: linear-gradient(to bottom, transparent, var(--bg) 28%);
+  z-index: 16;
+}
+.phone.duo-outer .bottom-zone { padding-bottom: 14px; }
+
+/* NEW Refined Entry Capsule above composer */
+.bg-bar-new {
+  width: 100%;
+  border-radius: 18px;
+  padding: 9px 11px 9px 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: transform .14s var(--ease), background .15s;
+}
+.bg-bar-new:active { transform: scale(.985); }
+.bg-bar-orb {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--accent-bg);
+  color: var(--accent-t);
+  display: grid;
+  place-items: center;
+  flex: none;
+  position: relative;
+}
+.bg-bar-orb.done {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.bg-bar-body {
+  flex: 1;
+  min-width: 0;
+}
+.bg-bar-l1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 560;
+  color: var(--l1);
+}
+.bg-bar-l1 .cnt {
+  white-space: nowrap;
+}
+.bg-bar-l2 {
+  font-size: 12px;
+  color: var(--l2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+.bg-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.bg-bar-chip {
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 99px;
+  background: var(--fill);
+  color: var(--l2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* OLD Rough Entry Bar (Screenshot 1 reproduction) */
+.bg-bar-old {
+  width: 100%;
+  border-radius: 20px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bg-bar-old .t { font-size: 14px; color: var(--l1); }
+.bg-bar-old .tm { font-size: 12px; color: var(--l3); font-variant-numeric: tabular-nums; }
+.bg-bar-old .sp { flex: 1; }
+.bg-bar-old .det { font-size: 13px; color: var(--l2); }
+.bg-bar-old .stp { font-size: 13px; font-weight: 500; color: var(--red); margin-left: 4px; }
+
+/* Composer */
+.composer {
+  height: 48px;
+  border-radius: 24px;
+  padding: 0 7px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.cmp-plus {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--fill);
+  display: grid;
+  place-items: center;
+  color: var(--l1);
+}
+.cmp-ph { flex: 1; font-size: 14.5px; color: var(--l3); }
+.cmp-send {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #283666;
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+/* ---------- Sheet Backdrop & Sheet Container ---------- */
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  z-index: 40;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .24s var(--ease);
+}
+.scrim.open { opacity: 1; pointer-events: auto; }
+
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 82%;
+  background: var(--sheet);
+  border-radius: 32px 32px 0 0;
+  box-shadow: 0 -1px 0 var(--sheet-bd), 0 -20px 56px rgba(0, 0, 0, .62);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(104%);
+  transition: transform .32s var(--ease), height .26s var(--ease);
+  overflow: hidden;
+}
+.sheet.open { transform: translateY(0); }
+.sheet.large { height: 93%; }
+.sheet.dragging { transition: none; }
+
+.grab-zone {
+  flex: none;
+  padding: 9px 0 4px;
+  display: grid;
+  place-items: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.grab-pill {
+  width: 40px;
+  height: 4.5px;
+  border-radius: 99px;
+  background: var(--l4);
+}
+
+/* ---------- NEW Sheet Header (Screenshot 3 Refined Style) ---------- */
+.sh-head {
+  flex: none;
+  padding: 6px 18px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.sh-title-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.sh-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -.02em;
+  color: var(--l1);
+}
+.sh-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stop-all-btn {
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 99px;
+  font-size: 12.5px;
+  font-weight: 500;
+  background: var(--fill);
+  color: var(--l2);
+  transition: background .15s, color .15s;
+}
+.stop-all-btn.confirm {
+  background: var(--red-bg);
+  color: var(--red);
+  font-weight: 600;
+}
+.close-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--fill);
+  color: var(--l2);
+  display: grid;
+  place-items: center;
+  transition: transform .12s, background .15s;
+}
+.close-circle:active { transform: scale(.9); background: var(--fill2); }
+
+/* ---------- Scrollable Task List ---------- */
+.sh-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 16px 34px;
+}
+.sh-body::-webkit-scrollbar { display: none; }
+
+/* Collapsible Section Header (`运行中 ⌄`, `已完成 13 ⌄`) */
+.sec-hdr {
+  width: 100%;
+  padding: 12px 4px 9px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--l2);
+  user-select: none;
+}
+.sec-hdr:first-child { padding-top: 4px; }
+.sec-hdr .cnt {
+  color: var(--l2);
+  font-variant-numeric: tabular-nums;
+}
+.sec-hdr .chev {
+  width: 14px;
+  height: 14px;
+  color: var(--l2);
+  transition: transform .2s var(--ease);
+}
+.sec-hdr.folded .chev { transform: rotate(-90deg); }
+.sec-hdr .sec-meta {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--l3);
+}
+
+.card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+/* ---------- Refined Individual Task Card (Screenshot 3 Elevated) ---------- */
+.tcard {
+  background: var(--card);
+  border-radius: 18px;
+  box-shadow: inset 0 .5px 0 var(--card-bd);
+  transition: background .15s, transform .12s;
+  overflow: hidden;
+}
+.tcard-main {
+  width: 100%;
+  padding: 14px 15px;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  cursor: pointer;
+}
+.tcard-main:active { background: var(--card-active); }
+
+.tk-icon {
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  flex: none;
+  color: var(--l2);
+  display: grid;
+  place-items: center;
+}
+.tcard.running .tk-icon { color: var(--l1); }
+
+.tk-body {
+  flex: 1;
+  min-width: 0;
+}
+.tk-title {
+  font-size: 15px;
+  line-height: 1.38;
+  font-weight: 450;
+  color: var(--l1);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  letter-spacing: -.01em;
+}
+.tcard.running .tk-title {
+  color: var(--l1-run);
+}
+
+/* Optional subtle 1-line live output peek on running tasks */
+.tk-peek {
+  margin-top: 5px;
+  font: 11.5px/1.35 var(--mono);
+  color: var(--l3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tk-meta {
+  margin-top: 7px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  flex-wrap: wrap;
+}
+.tk-kind {
+  color: var(--l1);
+  font-weight: 500;
+}
+.tk-dur { color: var(--l2); }
+.tk-tag {
+  font-size: 11px;
+  padding: 1.5px 6px;
+  border-radius: 6px;
+  background: var(--fill);
+  color: var(--l2);
+}
+.tk-tag.wait { background: var(--accent-bg); color: var(--accent-t); }
+.tk-st-bad { color: var(--red); font-weight: 500; }
+.tk-st-warn { color: var(--warn); font-weight: 500; }
+
+/* Trailing Circular Stop Ring (Screenshot 3's signature `◎` button!) */
+.tk-trail {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+@keyframes spinArc {
+  to { transform: rotate(360deg); }
+}
+.stop-ring {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  position: relative;
+  display: grid;
+  place-items: center;
+  color: var(--l1);
+  transition: transform .12s, color .15s, background .15s;
+}
+.stop-ring:hover { color: var(--red); background: var(--red-bg); }
+.stop-ring:active { transform: scale(.88); }
+.stop-ring svg.ring-svg {
+  position: absolute;
+  inset: 0;
+  width: 28px;
+  height: 28px;
+}
+.stop-ring svg.ring-svg .spin-arc {
+  transform-origin: 14px 14px;
+  animation: spinArc 2.6s linear infinite;
+}
+.stop-ring .stop-sq {
+  width: 7.5px;
+  height: 7.5px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.chev-trail {
+  width: 22px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: var(--l2);
+  transition: transform .2s var(--ease);
+}
+.tcard.expanded .chev-trail { transform: rotate(90deg); }
+
+/* ---------- Inline Expanded Drawer inside Card ---------- */
+.tk-inline {
+  padding: 0 15px 14px 15px;
+  border-top: .5px solid var(--sep);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.tk-inline-cmd {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--term);
+  border: .5px solid var(--term-bd);
+  font: 11.5px/1.48 var(--mono);
+  color: #d6d8e2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tk-inline-cmd code {
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  word-break: break-all;
+}
+.tk-inline-out {
+  padding: 9px 10px;
+  border-radius: 11px;
+  background: #0b0c10;
+  border: .5px solid rgba(255,255,255,.08);
+  font: 11.5px/1.52 var(--mono);
+  color: #b8bccb;
+  max-height: 132px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tk-inline-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.mini-btn {
+  height: 27px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--fill);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--l1);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.mini-btn.primary { background: var(--accent-bg); color: var(--accent-t); }
+.mini-btn.danger { background: var(--red-bg); color: var(--red); }
+
+/* ---------- Task Full Detail View (Push Inside Sheet) ---------- */
+.detail-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.det-nav {
+  flex: none;
+  padding: 4px 16px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: .5px solid var(--sep);
+}
+.det-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--l1);
+  padding: 5px 8px 5px 4px;
+  border-radius: 10px;
+}
+.det-back:active { background: var(--fill); }
+.det-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.det-scroll::-webkit-scrollbar { display: none; }
+
+.det-hero {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 14px 16px;
+  box-shadow: inset 0 .5px 0 var(--card-bd);
+}
+.det-hero-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.st-pill {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2.5px 8px;
+  border-radius: 99px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.st-pill.running { background: var(--accent-bg); color: var(--accent-t); }
+.st-pill.completed { background: var(--ok-bg); color: var(--ok); }
+.st-pill.failed { background: var(--red-bg); color: var(--red); }
+.st-pill.stopped { background: var(--warn-bg); color: var(--warn); }
+
+.det-title {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--l1);
+  margin: 0 0 10px;
+}
+.det-kv {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  padding-top: 10px;
+  border-top: .5px solid var(--sep);
+  font-size: 12px;
+}
+.det-kv div span { display: block; color: var(--l3); font-size: 11px; }
+.det-kv div b { font-weight: 500; color: var(--l1); font-variant-numeric: tabular-nums; }
+
+.det-box {
+  background: var(--card);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: inset 0 .5px 0 var(--card-bd);
+}
+.det-box-h {
+  width: 100%;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--l2);
+}
+.det-cmd-body {
+  padding: 0 14px 12px;
+  font: 12px/1.55 var(--mono);
+  color: var(--l1);
+  word-break: break-all;
+}
+.det-term {
+  background: #090a0e;
+  border-radius: 16px;
+  border: .5px solid rgba(255, 255, 255, .10);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.det-term-bar {
+  padding: 8px 12px;
+  background: #12131a;
+  border-bottom: .5px solid rgba(255, 255, 255, .07);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: #969ab0;
+}
+.det-term-pre {
+  margin: 0;
+  padding: 12px 13px;
+  font: 11.5px/1.58 var(--mono);
+  color: #d5d8e6;
+  max-height: 250px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ansi-dim { color: #72778c; }
+.ansi-ok { color: #52d896; }
+.ansi-info { color: #7db0ff; }
+.ansi-warn { color: #f6b24f; }
+.ansi-err { color: #ff6e78; }
+
+.det-summary {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 12px 14px;
+  font-size: 13.5px;
+  line-height: 1.58;
+  color: var(--l1);
+}
+.det-summary h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--l2);
+  font-weight: 550;
+}
+
+/* ---------- OLD Rough Sheet Reproduction (Screenshot 2) ---------- */
+.old-nav {
+  padding: 6px 16px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.old-nav .xbtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--fill);
+  display: grid;
+  place-items: center;
+}
+.old-nav b { font-size: 16px; }
+.old-nav .stopall {
+  padding: 6px 13px;
+  border-radius: 99px;
+  background: var(--fill);
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 500;
+}
+.old-sec {
+  padding: 8px 20px 6px;
+  font-size: 13px;
+  color: var(--l2);
+}
+.old-group {
+  margin: 0 16px 16px;
+  background: var(--card);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.old-row {
+  padding: 12px 14px;
+  border-bottom: .5px solid var(--sep);
+}
+.old-row:last-child { border-bottom: 0; }
+.old-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.old-row-top .t { flex: 1; font-size: 14.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.old-row-top .tm { font-size: 12.5px; color: var(--l2); font-variant-numeric: tabular-nums; }
+.old-row-top .sbtn {
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: rgba(255,255,255,.08);
+  color: var(--red);
+  font-size: 12.5px;
+}
+.old-row-cmd {
+  margin-top: 5px;
+  font: 12px var(--mono);
+  color: var(--l2);
+}
+
+/* ---------- Toast ---------- */
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 92px;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border-radius: 99px;
+  font-size: 12.5px;
+  font-weight: 500;
+  z-index: 95;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ---------- Side Design Notes Column ---------- */
+.notes {
+  width: 390px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ncard {
+  background: var(--page-card);
+  border: 1px solid var(--page-bd);
+  border-radius: 16px;
+  padding: 16px 18px;
+  font-size: 13px;
+  line-height: 1.62;
+}
+.ncard h3 {
+  margin: 0 0 8px;
+  font-size: 14.5px;
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.ncard ul { margin: 4px 0 0; padding-left: 18px; color: var(--page-fg2); }
+.ncard li { margin: 5px 0; }
+.ncard li b { color: var(--page-fg); font-weight: 600; }
+.ncard table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 6px; }
+.ncard th, .ncard td {
+  padding: 6px 6px;
+  border-bottom: 1px solid var(--page-bd);
+  text-align: left;
+  vertical-align: top;
+  color: var(--page-fg2);
+}
+.ncard th { color: var(--page-fg); font-weight: 600; }
+
+/* ---------- Bottom Control Dock ---------- */
+.ctl {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--page-card) 92%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--page-bd);
+  padding: 9px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+  z-index: 120;
+}
+.ctl .g { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.ctl .g b { color: var(--page-fg2); font-weight: 550; margin-right: 3px; }
+.ctl button {
+  padding: 4px 11px;
+  border-radius: 8px;
+  background: var(--fill);
+  color: var(--page-fg);
+  font-size: 12px;
+  font-weight: 500;
+}
+.ctl button.on { background: var(--accent); color: #fff; }
+.ctl button.warn.on { background: var(--warn); color: #111; }
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-t">
+    <h1>
+      Hermesh 后台任务 · 直板机版 Demo
+      <span class="badge" id="top-badge">✦ 独立卡片 + 分组折叠 + 全任务可展开点击</span>
+    </h1>
+    <p>针对图 1/2 粗糙痛点重构，吸收图 3 细节质感并适配 Hermesh 四类后台任务（Shell / 子智能体 / 定时唤醒 / 常驻服务）。所有分组、卡片、停止环均可直接点击。</p>
+  </div>
+  <div class="seg-bar" id="shell-tabs">
+    <button class="on" data-shell="candy">iPhone 直板机竖屏</button>
+    <button data-shell="outer">Duo 合上外屏（含右侧竖栏）</button>
+  </div>
+</header>
+
+<main class="stage">
+  <div id="device-mount"></div>
+
+  <aside class="notes">
+    <div class="ncard">
+      <h3>1. 旧版痛点 vs 新版直板机设计</h3>
+      <table>
+        <tr><th style="width:42%">图 1/2 现有粗糙感</th><th>新版精致化改进</th></tr>
+        <tr>
+          <td><b>底栏文字挤作一团</b><br><code>11:20</code> 像时刻而非耗时；红色「全部停下」紧贴发送键易误触</td>
+          <td><b>紧凑动态胶囊</b>：展示主任务摘要 + <code>14分04秒</code> 自然耗时；整条点击呼出面板，消除底栏误触杀任务风险</td>
+        </tr>
+        <tr>
+          <td><b>列表死板不可点</b><br>全叫 <code>Run schedule</code> + <code>90s</code>，无已完成归档，无法点开看输出</td>
+          <td><b>可折叠分组 + 独立圆角卡片</b>：<code>运行中 ⌄</code> 与 <code>已完成 13 ⌄</code> 均可折叠；卡片直接展示 2 行真实意图，<b>每张卡片皆可点击</b>查看命令与实时日志</td>
+        </tr>
+        <tr>
+          <td><b>停止按钮笨重</b><br>每行一颗红字胶囊「停下」+ 顶栏大号「全部停下」</td>
+          <td><b>图 3 同款旋转圆环停止钮 <code>◎</code></b>：运行态右侧配细线动态圆环与圆角方标，安静克制；顶栏「全部停止」带二次确认防呆</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="ncard">
+      <h3>2. 你可以直接点击体验的交互细节</h3>
+      <ul>
+        <li><b>折叠分组</b>：点 <code>运行中 ⌄</code> 或 <code>已完成 13 ⌄</code> 展开/收起整组卡片。</li>
+        <li><b>点任意卡片（含已完成/失败）</b>：默认推入<b>任务执行详情</b>（完整命令折叠、ANSI 实时滚动终端、耗时与退出码）；也可在底栏切换为<b>「卡片原位手风琴展开」</b>对比手感。</li>
+        <li><b>点右侧圆环 <code>◎</code></b>：单独停止该任务，实时归入下方「已完成/已结束」分组并标记 <code>已停止</code>。</li>
+        <li><b>拖拽抽屉顶条</b>：上下拖动抽屉顶部横条切换半屏 / 满屏高度，或下拉收起回到底部会话胶囊。</li>
+      </ul>
+    </div>
+  </aside>
+</main>
+
+<footer class="ctl" id="ctl-bar"></footer>
+
+<script>
+const ICONS = {
+  term: `<svg class="ic" viewBox="0 0 20 20"><path d="M3.5 5.5L8 10l-4.5 4.5M10.5 14.5h6"/></svg>`,
+  agent: `<svg class="ic" viewBox="0 0 20 20"><path d="M10 3l1.6 3.9L15.5 8.5l-3.9 1.6L10 14l-1.6-3.9L4.5 8.5l3.9-1.6L10 3zM15.5 13.5l.8 1.8 1.8.8-1.8.8-.8 1.8-.8-1.8-1.8-.8 1.8-.8.8-1.8z"/></svg>`,
+  clock: `<svg class="ic" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 6.2V10l2.6 1.8"/></svg>`,
+  daemon: `<svg class="ic" viewBox="0 0 20 20"><path d="M3 10h3l2-4.5 4 9 2-4.5h3"/></svg>`,
+  chevD: `<svg class="ic chev" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg>`,
+  chevR: `<svg class="ic sm" viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5"/></svg>`,
+  chevL: `<svg class="ic sm" viewBox="0 0 16 16"><path d="M10.5 3.5L6 8l4.5 4.5"/></svg>`,
+  x: `<svg class="ic sm" viewBox="0 0 16 16"><path d="M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6"/></svg>`,
+  menu: `<svg class="ic" viewBox="0 0 20 20"><path d="M3.5 6h13M3.5 10h9M3.5 14h13"/></svg>`,
+  more: `<svg class="ic" viewBox="0 0 20 20"><circle cx="5" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1.3" fill="currentColor" stroke="none"/></svg>`,
+  plus: `<svg class="ic" viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11"/></svg>`,
+  up: `<svg class="ic sm" viewBox="0 0 16 16"><path d="M8 12.5v-9M4 7.5l4-4 4 4"/></svg>`,
+  copy: `<svg class="ic xs" viewBox="0 0 16 16"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 5.5V3.8A1.3 1.3 0 0 0 9.2 2.5H3.8A1.3 1.3 0 0 0 2.5 3.8v5.4a1.3 1.3 0 0 0 1.3 1.3h1.7"/></svg>`,
+  check: `<svg class="ic xs" viewBox="0 0 16 16"><path d="M3.2 8.5l3.2 3.2 6.4-6.8"/></svg>`,
+  sparkle: `<svg class="sparkle-mark live" viewBox="0 0 20 20" fill="none"><path d="M4 10h12M7 4.8l6 10.4M13 4.8L7 15.2" stroke="url(#spg)" stroke-width="2" stroke-linecap="round"/><defs><linearGradient id="spg" x1="4" y1="4" x2="16" y2="16" gradientUnits="userSpaceOnUse"><stop stop-color="#38e2d0"/><stop offset=".5" stop-color="#4e7dff"/><stop offset="1" stop-color="#9b6bff"/></linearGradient></defs></svg>`
+};
+
+function makeInitialTasks() {
+  return [
+    {
+      id: "bt-1",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "running",
+      awaited: true,
+      stopScope: "single",
+      elapsedSec: 844, // 14m 4s
+      rawTitle: "Build and sign desktop app",
+      title: "Build and sign the desktop app (arm64) from the merged tree",
+      command: "pnpm --filter @hermesh/desktop build:mac --arch arm64 && scripts/codesign-verify.sh dist/mac-arm64/Hermesh.app",
+      peek: "▸ codesign --verify --deep --strict dist/mac-arm64/Hermesh.app",
+      logs: [
+        "[info] Cleaning previous arm64 bundle staging...",
+        "[vite] ✓ 418 modules transformed in 4.82s",
+        "[electron-builder] • packaging platform=darwin arch=arm64 electron=35.1.2",
+        "[codesign] signing Frameworks/Electron Framework.framework (Developer ID Application)",
+        "[codesign] signing Contents/MacOS/Hermesh --options runtime --entitlements build/entitlements.mac.plist",
+        "▸ codesign --verify --deep --strict dist/mac-arm64/Hermesh.app"
+      ],
+      summary: ""
+    },
+    {
+      id: "bt-2",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "running",
+      awaited: true,
+      stopScope: "single",
+      elapsedSec: 70, // 1m 10s
+      rawTitle: "Temporary checkout usage step",
+      title: "In the temporary checkout, run the first steps then the usage step of E2E suite",
+      command: "cd /tmp/hermesh-verify-tree && go test ./e2e -run '^TestThreadV2EndToEnd/UsageBreakdown$' -v -count=1",
+      peek: "=== RUN   TestThreadV2EndToEnd/UsageBreakdown/VerifyLedgerRollup",
+      logs: [
+        "=== RUN   TestThreadV2EndToEnd",
+        "=== RUN   TestThreadV2EndToEnd/BootstrapIsolatedRelay",
+        "    relay_harness.go:118: local relay listening on 127.0.0.1:59412",
+        "=== RUN   TestThreadV2EndToEnd/UsageBreakdown",
+        "=== RUN   TestThreadV2EndToEnd/UsageBreakdown/VerifyLedgerRollup"
+      ],
+      summary: ""
+    },
+    {
+      id: "bt-3",
+      kind: "schedule",
+      kindLabel: "定时唤醒",
+      status: "running",
+      awaited: true,
+      stopScope: "single",
+      elapsedSec: 38,
+      rawTitle: "Run schedule",
+      rawCmd: "90s",
+      title: "90 秒后复查 iOS TestFlight #724 符号表处理结果并继续汇报",
+      command: "schedule(duration: 90s) → 检查 App Store Connect 构建状态并汇总归档日志",
+      peek: "剩余 52 秒唤醒当前会话（收到前置消息将提前唤醒）",
+      logs: [
+        "[schedule] 已注册一次性唤醒定时器：总时长 90s",
+        "[schedule] 唤醒条件：倒计时归零，或任意子任务提前返回结果",
+        "[schedule] 正在静默等待，已过去 38s / 90s..."
+      ],
+      summary: ""
+    },
+    // 13 Completed / Ended tasks (matching Screenshot 3's `已完成 13`!)
+    {
+      id: "bt-101",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 134,
+      title: "In the separate checkout at the merged commit, skip the broken snapshot fixture and verify core",
+      command: "pnpm --filter @hermesh/core test -- --grep '^(?!.*legacy-snapshot)'",
+      logs: [
+        "✓ packages/core/src/transcript.test.ts (42 tests) 412ms",
+        "✓ packages/core/src/threads.test.ts (29 tests) 288ms",
+        "Test Files  2 passed (2)\nTests       71 passed (71)"
+      ],
+      summary: "核心状态投影与后台任务生命周期单测 71 项全部通过。"
+    },
+    {
+      id: "bt-102",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 196,
+      title: "Run the same end-to-end test on the code without this change, in clean worktree",
+      command: "go test ./e2e -run '^TestThreadV2EndToEnd/PromoteToSteer$' -count=1",
+      logs: [
+        "=== RUN   TestThreadV2EndToEnd/PromoteToSteer",
+        "    thread_v2_test.go:402: steer promoted in 84ms, active turn updated cleanly",
+        "--- PASS: TestThreadV2EndToEnd/PromoteToSteer (195.82s)",
+        "PASS\nok  \thermesh/e2e\t196.104s"
+      ],
+      summary: "基线对照分支端到端回归通过，无历史回归差异。"
+    },
+    {
+      id: "bt-103",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 64,
+      title: "Install the iPhone build on the user's iPhone via devicectl",
+      command: "xcrun devicectl device install app --device 00008140-001A4C82 DerivedData/Hermesh.app",
+      logs: [
+        "Connecting to iPhone 18 Pro (iOS 27.1)...",
+        "Copying Hermesh.app to device [100%]",
+        "Application installed: app.hermesh.ios (bundleVersion 724)"
+      ],
+      summary: "已将 Debug 签名包安装至真机并完成启动校验。"
+    },
+    {
+      id: "bt-104",
+      kind: "subagent",
+      kindLabel: "子智能体",
+      status: "completed",
+      elapsedSec: 52,
+      title: "Codebase Researcher · 梳理桌面端与 iOS 后台任务状态投影字段差异",
+      command: "对比 Background.tsx、SessionPage.swift 与 session.proto 中 BackgroundTask 的字段覆盖率",
+      logs: [
+        "[subagent:research] Read proto/hermesh/session/v1/session.proto#L825-864",
+        "[subagent:research] Read apps/desktop/src/renderer/src/session/Background.tsx",
+        "[subagent:research] Read apps/ios/Hermesh/Views/Session/SessionPage.swift#L2086-2196",
+        "[subagent:research] Completed findings summary (482 tokens)"
+      ],
+      summary: "已定位差异：iOS 旧版仅读取 `title` 与原始 `command`，忽略了 `awaited`、可读耗时格式化以及点击钻取完整 `output_tail` 的能力。"
+    },
+    {
+      id: "bt-105",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "failed",
+      exitCode: 1,
+      elapsedSec: 46,
+      title: "Verify notarization staple ticket on unsigned local DMG artifact",
+      command: "xcrun stapler validate dist/Hermesh-0.1.7-arm64-unsigned.dmg",
+      logs: [
+        "Processing: dist/Hermesh-0.1.7-arm64-unsigned.dmg",
+        "CloudKit query for Hermesh-0.1.7-arm64-unsigned.dmg (2/f9182a...) failed due to \"Record not found\".",
+        "The validate action failed! Error 65."
+      ],
+      summary: "未公证本地产物尚无票据（退出码 1），已在后续步骤切换至签名归档产物重试。"
+    },
+    {
+      id: "bt-106",
+      kind: "schedule",
+      kindLabel: "定时唤醒",
+      status: "stopped",
+      elapsedSec: 52,
+      title: "120 秒后轮询远端 Relay 节点重连心跳状态",
+      command: "schedule(duration: 120s) → 检查节点 node_hk02 在线状态",
+      logs: [
+        "[schedule] 已启动 120s 唤醒计时",
+        "[schedule] 第 52s 收到用户手动停止指令，计时器已安全取消"
+      ],
+      summary: "已由用户在第 52 秒手动停止。"
+    },
+    {
+      id: "bt-107",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 41,
+      title: "Build HermeshKit Swift package and run session projection tests",
+      command: "swift test --package-path packages/HermeshKit --filter TranscriptTests",
+      logs: ["Build complete! (14.21s)", "Test Suite 'TranscriptTests' passed at 20:08:14. Executed 38 tests, with 0 failures."],
+      summary: "HermeshKit 会话转录与后台任务归并测试 38 项通过。"
+    },
+    {
+      id: "bt-108",
+      kind: "daemon",
+      kindLabel: "常驻服务",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 318,
+      title: "Local Vite renderer preview server on port 5179 for UI snapshot check",
+      command: "pnpm --filter @hermesh/desktop preview --port 5179 --host 127.0.0.1",
+      logs: ["➜  Local:   http://127.0.0.1:5179/", "Snapshot check finished, server shut down cleanly."],
+      summary: "本地预览服务已完成截图校验并正常退出。"
+    },
+    {
+      id: "bt-109",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 19,
+      title: "Regenerate Protobuf TypeScript and Swift bindings via buf generate",
+      command: "buf generate",
+      logs: ["buf: generated 14 files in packages/proto/src/gen and packages/HermeshKit/Sources/HermeshProto"],
+      summary: "Proto 跨端类型产物已同步且无 diff 冲突。"
+    },
+    {
+      id: "bt-110",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 28,
+      title: "Run TypeScript strict typecheck across all workspace packages",
+      command: "pnpm -r typecheck",
+      logs: ["Scope: 6 of 7 workspace projects", "apps/desktop typecheck: Done in 9.4s"],
+      summary: "全仓 TypeScript 严格类型检查零错误通过。"
+    },
+    {
+      id: "bt-111",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 73,
+      title: "Compile Go kernel daemon and run engine_background_test.go",
+      command: "go test ./internal/kernel -run 'TestEngineBackground' -count=1",
+      logs: ["ok  \thermesh/internal/kernel\t4.812s"],
+      summary: "Go 内核后台任务停止信号与作用域单测全部通过。"
+    },
+    {
+      id: "bt-112",
+      kind: "subagent",
+      kindLabel: "子智能体",
+      status: "completed",
+      elapsedSec: 37,
+      title: "Locale Auditor · 核对中英文 thread.json 与 Localizable.xcstrings 文案键",
+      command: "检查后台任务状态文案在中英文环境下的复数与占位符一致性",
+      logs: ["Checked 28 localization keys across macOS & iOS bundles."],
+      summary: "多语言键值全部对齐，无缺失占位符。"
+    },
+    {
+      id: "bt-113",
+      kind: "command",
+      kindLabel: "Shell",
+      status: "completed",
+      exitCode: 0,
+      elapsedSec: 95,
+      title: "Build iOS Hermesh scheme for iPhone 18 Pro simulator (Debug)",
+      command: "xcodebuild -project apps/ios/Hermesh.xcodeproj -scheme Hermesh -destination 'platform=iOS Simulator,name=iPhone 18 Pro' build",
+      logs: ["** BUILD SUCCEEDED ** [94.6 sec]"],
+      summary: "iOS 模拟器构建成功，零警告。"
+    }
+  ];
+}
+
+const STREAM_LINES = [
+  "[codesign] verifying nested helper Hermesh Helper (Renderer).app ... OK",
+  "[codesign] verifying nested helper Hermesh Helper (GPU).app ... OK",
+  "[e2e]   step 4/6: received streaming SessionEvent seq=148 (background_task=RUNNING)",
+  "[codesign] sealed resources checksum matched (arm64 Mach-O universal slice)",
+  "[e2e]   step 5/6: asserting StopBackgroundTask idempotency on clean teardown..."
+];
+
+const S = {
+  theme: "dark",
+  shell: "candy",         // "candy" | "outer"
+  legacy: false,          // true = reproduce screenshot 1 & 2 rough UI
+  sheetOpen: true,        // open by default so user immediately sees the refined sheet!
+  sheetLarge: false,
+  clickMode: "push",      // "push" (drill into detail view) | "inline" (expand inside card)
+  foldRunning: false,
+  foldDone: false,
+  selectedId: null,       // task id in detail view
+  expandedIds: new Set(["bt-1"]), // for inline mode
+  cmdFolded: false,
+  confirmStopAll: false,
+  toast: null,
+  streamTick: 0,
+  tasks: makeInitialTasks()
+};
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function fmtHumanDur(sec) {
+  const s = Math.max(1, Math.floor(sec));
+  if (s < 60) return `${s}秒`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m < 60) return r > 0 ? `${m}分钟${r}秒` : `${m}分钟`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm > 0 ? `${h}小时${rm}分` : `${h}小时`;
+}
+
+function fmtCompactTimer(sec) {
+  const m = Math.floor(sec / 60);
+  const s = String(sec % 60).padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+function kindIcon(kind) {
+  if (kind === "subagent") return ICONS.agent;
+  if (kind === "schedule") return ICONS.clock;
+  if (kind === "daemon") return ICONS.daemon;
+  return ICONS.term;
+}
+
+function colorizeLog(line) {
+  const safe = esc(line);
+  if (/PASS|✓|SUCCEEDED|OK|installed/.test(safe)) return `<span class="ansi-ok">${safe}</span>`;
+  if (/failed|Error|退出码/.test(safe)) return `<span class="ansi-err">${safe}</span>`;
+  if (/▸|=== RUN|\[codesign\]/.test(safe)) return `<span class="ansi-info">${safe}</span>`;
+  if (/\[schedule\]|剩余/.test(safe)) return `<span class="ansi-warn">${safe}</span>`;
+  return safe;
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  S.toast = msg;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    S.toast = null;
+    render();
+  }, 1800);
+}
+
+function renderStopRing(taskId) {
+  return `
+    <button class="stop-ring" data-stop="${esc(taskId)}" title="停止此任务" aria-label="停止此任务">
+      <svg class="ring-svg" viewBox="0 0 28 28" fill="none">
+        <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-opacity=".26" stroke-width="1.65"/>
+        <path class="spin-arc" d="M14 3 A11 11 0 0 1 24.4 10.4" stroke="currentColor" stroke-opacity=".88" stroke-width="1.75" stroke-linecap="round"/>
+      </svg>
+      <span class="stop-sq"></span>
+    </button>`;
+}
+
+function renderTaskCard(bt) {
+  const isRun = bt.status === "running";
+  const isExpanded = S.clickMode === "inline" && S.expandedIds.has(bt.id);
+  let metaRight = "";
+  if (isRun) {
+    metaRight = `<span class="tk-dur">${fmtHumanDur(bt.elapsedSec)}</span>${bt.awaited ? "" : `<span class="tk-tag">常驻</span>`}`;
+  } else if (bt.status === "completed") {
+    metaRight = `<span class="tk-dur">已完成 · ${fmtHumanDur(bt.elapsedSec)}</span>`;
+  } else if (bt.status === "failed") {
+    metaRight = `<span class="tk-st-bad">失败 (退出码 ${bt.exitCode ?? 1})</span><span class="tk-dur">· ${fmtHumanDur(bt.elapsedSec)}</span>`;
+  } else {
+    metaRight = `<span class="tk-st-warn">已停止</span><span class="tk-dur">· ${fmtHumanDur(bt.elapsedSec)}</span>`;
+  }
+
+  const inlineHtml = isExpanded ? `
+    <div class="tk-inline">
+      <div class="tk-inline-cmd">
+        <code>${esc(bt.command)}</code>
+        <button class="mini-btn" data-copy="${esc(bt.id)}" title="复制命令">${ICONS.copy}</button>
+      </div>
+      <div class="tk-inline-out">${bt.logs.slice(-5).map(colorizeLog).join("\n")}</div>
+      <div class="tk-inline-foot">
+        <span style="font-size:11.5px;color:var(--l3)">${isRun ? "实时跟随尾部输出中…" : esc(bt.summary || "执行完毕")}</span>
+        <button class="mini-btn primary" data-detail="${esc(bt.id)}">完整详情 ${ICONS.chevR}</button>
+      </div>
+    </div>` : "";
+
+  return `
+    <div class="tcard ${isRun ? "running" : ""} ${isExpanded ? "expanded" : ""}">
+      <div class="tcard-main" role="button" tabindex="0" data-card="${esc(bt.id)}">
+        <span class="tk-icon">${kindIcon(bt.kind)}</span>
+        <div class="tk-body">
+          <div class="tk-title">${esc(bt.title)}</div>
+          ${isRun && bt.peek && !isExpanded ? `<div class="tk-peek">${esc(bt.peek)}</div>` : ""}
+          <div class="tk-meta">
+            <span class="tk-kind">${esc(bt.kindLabel)}</span>
+            ${metaRight}
+          </div>
+        </div>
+        <div class="tk-trail">
+          ${isRun ? renderStopRing(bt.id) : `<span class="chev-trail">${ICONS.chevR}</span>`}
+        </div>
+      </div>
+      ${inlineHtml}
+    </div>`;
+}
+
+function renderDetailView(bt) {
+  const isRun = bt.status === "running";
+  const stMap = {
+    running: ["running", `运行中 · ${fmtHumanDur(bt.elapsedSec)}`],
+    completed: ["completed", `已完成 · 耗时 ${fmtHumanDur(bt.elapsedSec)}`],
+    failed: ["failed", `失败 · 退出码 ${bt.exitCode ?? 1}`],
+    stopped: ["stopped", `已停止 · 运行 ${fmtHumanDur(bt.elapsedSec)}`]
+  };
+  const [stCls, stText] = stMap[bt.status] || stMap.completed;
+
+  return `
+    <div class="detail-view">
+      <div class="det-nav">
+        <button class="det-back" data-back="1">${ICONS.chevL}<span>后台任务</span></button>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${isRun ? `<button class="mini-btn danger" data-stop="${esc(bt.id)}">停止任务</button>` : ""}
+          <button class="close-circle" data-closesheet="1" aria-label="关闭">${ICONS.x}</button>
+        </div>
+      </div>
+      <div class="det-scroll">
+        <div class="det-hero">
+          <div class="det-hero-top">
+            <span class="st-pill ${stCls}">${stText}</span>
+            <span class="tk-tag">${esc(bt.kindLabel)}</span>
+            ${bt.awaited ? `<span class="tk-tag wait">前台等待汇报</span>` : ""}
+          </div>
+          <h3 class="det-title">${esc(bt.title)}</h3>
+          <div class="det-kv">
+            <div><span>任务 ID</span><b>${esc(bt.id)}</b></div>
+            <div><span>停止作用域</span><b>${bt.stopScope === "session" ? "与会话共用信号" : "独立进程组"}</b></div>
+          </div>
+        </div>
+
+        <div class="det-box">
+          <button class="det-box-h" data-togglecmd="1">
+            <span>${bt.kind === "subagent" ? "任务说明 (Brief)" : bt.kind === "schedule" ? "唤醒条件与指令" : "执行命令 (Command)"}</span>
+            <span style="display:inline-flex;align-items:center;gap:8px">
+              <span class="mini-btn" data-copy="${esc(bt.id)}" style="height:22px;padding:0 7px;font-size:11px">${ICONS.copy} 复制</span>
+              <span style="transform:rotate(${S.cmdFolded ? "-90deg" : "0deg"});transition:transform .18s">${ICONS.chevD}</span>
+            </span>
+          </button>
+          ${!S.cmdFolded ? `<div class="det-cmd-body">${esc(bt.command)}</div>` : ""}
+        </div>
+
+        <div class="det-term">
+          <div class="det-term-bar">
+            <span>终端输出 · ${bt.logs.length} 行</span>
+            <span style="color:${isRun ? "#52d896" : "#8b90a6"}">${isRun ? "● 实时跟随尾部" : "已归档"}</span>
+          </div>
+          <pre class="det-term-pre" id="det-log-pre">${bt.logs.map(colorizeLog).join("\n")}</pre>
+        </div>
+
+        ${bt.summary ? `
+          <div class="det-summary">
+            <h4>结果摘要</h4>
+            <div>${esc(bt.summary)}</div>
+          </div>` : ""}
+      </div>
+    </div>`;
+}
+
+function renderSheetContent() {
+  const running = S.tasks.filter((t) => t.status === "running");
+  const finished = S.tasks.filter((t) => t.status !== "running");
+
+  if (S.legacy) {
+    // Exact reproduction of Screenshot 2 rough UI for direct comparison
+    const list = running.length ? running : S.tasks.slice(0, 2);
+    return `
+      <div class="old-nav">
+        <button class="xbtn" data-closesheet="1">${ICONS.x}</button>
+        <b>后台任务</b>
+        <button class="stopall" data-stopall="force">全部停下</button>
+      </div>
+      <div class="sh-body" style="padding:0">
+        <div class="old-sec">正在运行</div>
+        <div class="old-group">
+          ${list.map((bt, idx) => `
+            <div class="old-row">
+              <div class="old-row-top">
+                <span style="color:#4a66ff">${ICONS.clock}</span>
+                <span class="t">${esc(bt.rawTitle || "Run schedule")}</span>
+                <span class="tm">${idx === 0 ? "11:33" : "10:00"}</span>
+                <button class="sbtn" data-stop="${esc(bt.id)}">停下</button>
+              </div>
+              <div class="old-row-cmd">${esc(bt.rawCmd || (idx === 0 ? "90s" : "120s"))}</div>
+            </div>`).join("")}
+        </div>
+        <p style="padding:0 22px;font-size:12px;color:var(--l3)">▲ 旧版痛点：标题千篇一律、耗时与时刻混淆、行项无法点击展开详情、已完成任务无折叠计数。</p>
+      </div>`;
+  }
+
+  const sel = S.selectedId ? S.tasks.find((t) => t.id === S.selectedId) : null;
+  if (sel) return renderDetailView(sel);
+
+  return `
+    <div class="sh-head">
+      <div class="sh-title-wrap">
+        <h2 class="sh-title">后台任务</h2>
+      </div>
+      <div class="sh-actions">
+        ${running.length > 1 ? `
+          <button class="stop-all-btn ${S.confirmStopAll ? "confirm" : ""}" data-stopall="1">
+            ${S.confirmStopAll ? `确认全部停止 (${running.length})` : "全部停止"}
+          </button>` : ""}
+        <button class="close-circle" data-closesheet="1" aria-label="关闭">${ICONS.x}</button>
+      </div>
+    </div>
+
+    <div class="sh-body">
+      ${running.length > 0 ? `
+        <button class="sec-hdr ${S.foldRunning ? "folded" : ""}" data-fold="running">
+          <span>运行中</span>
+          <span class="cnt">${running.length}</span>
+          ${ICONS.chevD}
+          <span class="sec-meta">${S.clickMode === "push" ? "点卡片看实时输出" : "点卡片原位展开"}</span>
+        </button>
+        ${!S.foldRunning ? `<div class="card-stack">${running.map(renderTaskCard).join("")}</div>` : ""}
+      ` : ""}
+
+      <button class="sec-hdr ${S.foldDone ? "folded" : ""}" data-fold="done">
+        <span>已完成</span>
+        <span class="cnt">${finished.length}</span>
+        ${ICONS.chevD}
+        ${finished.some((x) => x.status === "failed") ? `<span class="sec-meta" style="color:var(--red)">含 1 项失败</span>` : ""}
+      </button>
+      ${!S.foldDone ? `<div class="card-stack">${finished.map(renderTaskCard).join("")}</div>` : ""}
+    </div>`;
+}
+
+function renderBottomEntryBar(running, finished) {
+  if (S.legacy) {
+    const cnt = Math.max(1, running.length);
+    return `
+      <div class="bg-bar-old iglass" data-opensheet="1">
+        ${ICONS.sparkle}
+        <span class="t">${cnt} 个后台任务进行中</span>
+        <span class="tm">11:20</span>
+        <span class="sp"></span>
+        <span class="det">详情</span>
+        <button class="stp" data-stopall="force">全部停下</button>
+      </div>`;
+  }
+
+  if (running.length > 0) {
+    const lead = running[0];
+    const titleText = running.length === 1
+      ? lead.title
+      : `${running.length} 项后台任务运行中`;
+    const subText = running.length === 1
+      ? `${lead.kindLabel} · 已运行 ${fmtHumanDur(lead.elapsedSec)}`
+      : `${lead.kindLabel} · ${fmtHumanDur(lead.elapsedSec)} · 点此展开详情`;
+
+    return `
+      <button class="bg-bar-new iglass" data-opensheet="1">
+        <span class="bg-bar-orb">${kindIcon(lead.kind)}</span>
+        <span class="bg-bar-body">
+          <span class="bg-bar-l1"><span class="cnt">${esc(titleText)}</span></span>
+          <span class="bg-bar-l2">${esc(subText)}</span>
+        </span>
+        <span class="bg-bar-right">
+          ${finished.length > 0 ? `<span class="bg-bar-chip">已完成 ${finished.length}</span>` : ""}
+          ${ICONS.chevR}
+        </span>
+      </button>`;
+  }
+
+  return `
+    <button class="bg-bar-new iglass" data-opensheet="1">
+      <span class="bg-bar-orb done">${ICONS.check}</span>
+      <span class="bg-bar-body">
+        <span class="bg-bar-l1">后台任务已全部结束</span>
+        <span class="bg-bar-l2">共 ${finished.length} 项记录 · 点击回看终端输出与结果</span>
+      </span>
+      <span class="bg-bar-right">${ICONS.chevR}</span>
+    </button>`;
+}
+
+function renderDevice() {
+  const running = S.tasks.filter((t) => t.status === "running");
+  const finished = S.tasks.filter((t) => t.status !== "running");
+  const isOuter = S.shell === "outer";
+
+  return `
+    <div class="phone ${isOuter ? "duo-outer" : ""}">
+      <div class="scr">
+        <div class="phone-main">
+          ${!isOuter ? `
+            <div class="island-top"></div>
+            <div class="sb-top"><span>20:16</span><span>5G · 96%</span></div>
+            <div class="inav">
+              <button class="nav-circle iglass" data-toast="会话侧栏">${ICONS.menu}</button>
+              <div class="nav-pill-title">
+                <b>桌面端与移动端编译回归</b>
+                <span>hermesh · main</span>
+              </div>
+              <button class="nav-circle iglass" data-opensheet="1" title="后台任务">
+                ${ICONS.term}
+                ${running.length > 0 ? `<span class="nav-badge">${running.length}</span>` : ""}
+              </button>
+            </div>
+          ` : `
+            <div class="inav" style="padding-top:10px;height:54px">
+              <div class="nav-pill-title" style="text-align:left;padding-left:4px">
+                <b>桌面端与移动端编译回归</b>
+                <span>hermesh · Duo 合上态外屏</span>
+              </div>
+            </div>
+          `}
+
+          <div class="chat-scroll">
+            <div class="um">把合并分支的桌面端 arm64 签名包打出来，同时在临时工作树跑一遍用量与 E2E 回归，跑完告诉我。</div>
+            <div class="tool-line">${ICONS.term}<span>已启动 3 项并行后台任务 · 完成了 13 项前置检查</span></div>
+            <div class="am">
+              <p>前置单元测试、HermeshKit 转录校验与全仓 <code>typecheck</code> 全部通过。</p>
+              <ul>
+                <li>真实 Relay 转发至远端机器会话的 <code>PROMOTE_TO_STEER</code> 用例通过。</li>
+                <li>桌面端签名打包与临时检出目录的 E2E 用量对账已放入后台并行运行。</li>
+              </ul>
+            </div>
+            <button class="wait-line" data-opensheet="1">
+              ${ICONS.sparkle}
+              <span>${running.length > 0
+                ? `这一轮前台回复已结束，正在等待 ${running.length} 个后台任务完成后继续汇报。`
+                : `全部后台任务已执行完毕，点击随时查阅 16 项完整输出记录。`}</span>
+            </button>
+          </div>
+
+          <div class="bottom-zone">
+            ${renderBottomEntryBar(running, finished)}
+            <div class="composer iglass">
+              <span class="cmp-plus">${ICONS.plus}</span>
+              <span class="cmp-ph">继续聊...</span>
+              <span class="cmp-send">${ICONS.up}</span>
+            </div>
+          </div>
+
+          <div class="scrim ${S.sheetOpen ? "open" : ""}" data-closesheet="1"></div>
+          <section class="sheet ${S.sheetOpen ? "open" : ""} ${S.sheetLarge ? "large" : ""}" id="bg-sheet">
+            <div class="grab-zone" id="sheet-grab"><span class="grab-pill"></span></div>
+            ${renderSheetContent()}
+          </section>
+
+          ${S.toast ? `<div class="toast iglass">${esc(S.toast)}</div>` : ""}
+          <div class="home-ind"></div>
+        </div>
+
+        ${isOuter ? `
+          <aside class="dvbar">
+            <div class="vclock">02:40</div>
+            <div class="vring">
+              <div class="bars">
+                <i style="height:4px"></i><i style="height:6px"></i><i style="height:8.5px"></i><i style="height:11px"></i>
+              </div>
+              <span class="net">5GA</span>
+            </div>
+            <button class="vbtn ${S.sheetOpen ? "on" : ""}" data-opensheet="1" title="后台任务">
+              ${S.sheetOpen ? ICONS.x : ICONS.term}
+              ${!S.sheetOpen && running.length > 0 ? `<span class="vbadge">${running.length}</span>` : ""}
+            </button>
+            <button class="vbtn" data-toast="更多会话操作">${ICONS.more}</button>
+          </aside>
+        ` : ""}
+      </div>
+    </div>`;
+}
+
+function renderControls() {
+  document.getElementById("ctl-bar").innerHTML = `
+    <div class="g"><b>新旧对比</b>
+      <button class="${!S.legacy ? "on" : ""}" data-legacy="0">✦ 新版精致卡片</button>
+      <button class="warn ${S.legacy ? "on" : ""}" data-legacy="1">旧版截图复现 (图1/2)</button>
+    </div>
+    <div class="g"><b>面板状态</b>
+      <button class="${S.sheetOpen ? "on" : ""}" data-sheettoggle="1">${S.sheetOpen ? "收起回会话底栏" : "打开后台任务抽屉"}</button>
+      <button class="${S.sheetLarge && S.sheetOpen ? "on" : ""}" data-sheetlarge="1">满屏高度</button>
+    </div>
+    <div class="g"><b>卡片点击方式</b>
+      <button class="${S.clickMode === "push" ? "on" : ""}" data-clickmode="push">推入详情页 (›)</button>
+      <button class="${S.clickMode === "inline" ? "on" : ""}" data-clickmode="inline">原位手风琴展开</button>
+    </div>
+    <div class="g"><b>动态模拟</b>
+      <button data-sim="add">+ 新增运行任务</button>
+      <button data-sim="finish">完成 1 项任务</button>
+      <button data-sim="reset">重置数据</button>
+    </div>
+    <div class="g"><b>外观</b>
+      <button class="${S.theme === "dark" ? "on" : ""}" data-theme="dark">深色 OLED</button>
+      <button class="${S.theme === "light" ? "on" : ""}" data-theme="light">浅色</button>
+    </div>`;
+}
+
+function bindSheetGrab() {
+  const grab = document.getElementById("sheet-grab");
+  const sheet = document.getElementById("bg-sheet");
+  if (!grab || !sheet) return;
+  let startY = null, startH = 0, moved = false;
+  grab.onpointerdown = (e) => {
+    startY = e.clientY;
+    startH = sheet.offsetHeight;
+    moved = false;
+    sheet.classList.add("dragging");
+    grab.setPointerCapture(e.pointerId);
+  };
+  grab.onpointermove = (e) => {
+    if (startY === null) return;
+    const dy = e.clientY - startY;
+    if (Math.abs(dy) > 4) moved = true;
+    const hostH = sheet.parentElement.offsetHeight;
+    const nextH = Math.max(180, Math.min(hostH * 0.94, startH - dy));
+    sheet.style.height = `${nextH}px`;
+  };
+  const end = (e) => {
+    if (startY === null) return;
+    const dy = e.clientY - startY;
+    startY = null;
+    sheet.classList.remove("dragging");
+    sheet.style.height = "";
+    if (!moved) {
+      S.sheetLarge = !S.sheetLarge;
+    } else if (dy > 130) {
+      S.sheetOpen = false;
+      S.selectedId = null;
+    } else if (dy < -40) {
+      S.sheetLarge = true;
+    } else if (dy > 40) {
+      S.sheetLarge = false;
+    }
+    render();
+  };
+  grab.onpointerup = end;
+  grab.onpointercancel = end;
+}
+
+function render() {
+  document.documentElement.dataset.theme = S.theme;
+  const badge = document.getElementById("top-badge");
+  if (S.legacy) {
+    badge.className = "badge warn";
+    badge.textContent = "⚠️ 图 1 / 图 2 旧版简陋状态复现（可随时切回新版对比）";
+  } else {
+    badge.className = "badge";
+    badge.textContent = "✦ 独立卡片 + 分组折叠 + 全任务可展开点击";
+  }
+
+  document.querySelectorAll("#shell-tabs button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.shell === S.shell);
+  });
+
+  document.getElementById("device-mount").innerHTML = renderDevice();
+  renderControls();
+  bindSheetGrab();
+
+  const pre = document.getElementById("det-log-pre");
+  if (pre) pre.scrollTop = pre.scrollHeight;
+}
+
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("button,[data-card],[data-opensheet],[data-closesheet]");
+  if (!el) return;
+  const d = el.dataset;
+
+  if (d.shell) {
+    S.shell = d.shell;
+  } else if (d.theme) {
+    S.theme = d.theme;
+  } else if (d.legacy !== undefined) {
+    S.legacy = d.legacy === "1";
+    S.selectedId = null;
+    S.confirmStopAll = false;
+  } else if (d.sheettoggle) {
+    S.sheetOpen = !S.sheetOpen;
+    if (!S.sheetOpen) S.selectedId = null;
+  } else if (d.sheetlarge) {
+    S.sheetOpen = true;
+    S.sheetLarge = !S.sheetLarge;
+  } else if (d.clickmode) {
+    S.clickMode = d.clickmode;
+    S.selectedId = null;
+  } else if (d.opensheet) {
+    if (S.shell === "outer" && S.sheetOpen && e.target.closest(".dvbar")) {
+      S.sheetOpen = false;
+      S.selectedId = null;
+    } else {
+      S.sheetOpen = true;
+    }
+  } else if (d.closesheet) {
+    S.sheetOpen = false;
+    S.selectedId = null;
+    S.confirmStopAll = false;
+  } else if (d.fold) {
+    if (d.fold === "running") S.foldRunning = !S.foldRunning;
+    if (d.fold === "done") S.foldDone = !S.foldDone;
+  } else if (d.stop) {
+    e.stopPropagation();
+    const bt = S.tasks.find((x) => x.id === d.stop);
+    if (bt && bt.status === "running") {
+      bt.status = "stopped";
+      bt.logs.push("[hermesh] 收到用户停止指令，进程组已优雅终止 (SIGTERM)。");
+      bt.summary = `已由用户在运行 ${fmtHumanDur(bt.elapsedSec)} 时手动停止。`;
+      S.confirmStopAll = false;
+      showToast(`已停止：${bt.kindLabel}`);
+    }
+  } else if (d.stopall) {
+    e.stopPropagation();
+    if (d.stopall === "force" || S.confirmStopAll) {
+      let n = 0;
+      S.tasks.forEach((bt) => {
+        if (bt.status === "running") {
+          bt.status = "stopped";
+          bt.logs.push("[hermesh] 批量停止后台任务，已安全退出。");
+          bt.summary = "已通过「全部停止」手动终止。";
+          n++;
+        }
+      });
+      S.confirmStopAll = false;
+      showToast(`已停止全部 ${n} 项运行中任务`);
+    } else {
+      S.confirmStopAll = true;
+    }
+  } else if (d.detail) {
+    e.stopPropagation();
+    S.selectedId = d.detail;
+  } else if (d.card) {
+    S.confirmStopAll = false;
+    if (S.clickMode === "push") {
+      S.selectedId = d.card;
+    } else {
+      if (S.expandedIds.has(d.card)) S.expandedIds.delete(d.card);
+      else S.expandedIds.add(d.card);
+    }
+  } else if (d.back) {
+    S.selectedId = null;
+  } else if (d.togglecmd) {
+    S.cmdFolded = !S.cmdFolded;
+  } else if (d.copy) {
+    e.stopPropagation();
+    const bt = S.tasks.find((x) => x.id === d.copy);
+    if (bt && navigator.clipboard) navigator.clipboard.writeText(bt.command).catch(() => {});
+    showToast("已复制执行命令");
+  } else if (d.sim) {
+    if (d.sim === "reset") {
+      S.tasks = makeInitialTasks();
+      S.selectedId = null;
+      S.sheetOpen = true;
+      showToast("已重置演示任务列表");
+    } else if (d.sim === "add") {
+      const id = "bt-live-" + Math.floor(100 + Math.random() * 900);
+      S.tasks.unshift({
+        id,
+        kind: "subagent",
+        kindLabel: "子智能体",
+        status: "running",
+        awaited: true,
+        stopScope: "single",
+        elapsedSec: 1,
+        title: "UI Verifier · 巡检移动端暗色与浅色主题下卡片对比度与字号层级",
+        command: "invoke_subagent(role: 'UI Verifier') → 校验 HIG 触控热区 ≥ 44pt 及动态字重",
+        peek: "▸ 正在读取 SessionPage.swift 与样式令牌...",
+        logs: [
+          "[subagent] Spawned UI Verifier in shared read-only workspace",
+          "▸ 正在读取 SessionPage.swift 与样式令牌..."
+        ],
+        summary: ""
+      });
+      S.foldRunning = false;
+      S.sheetOpen = true;
+      showToast("已新增 1 项运行中子智能体任务");
+    } else if (d.sim === "finish") {
+      const run = S.tasks.find((x) => x.status === "running");
+      if (run) {
+        run.status = "completed";
+        run.exitCode = 0;
+        run.logs.push("✓ 任务顺利完成，退出码 0。");
+        run.summary = "后台任务已按预期执行完成，输出校验通过。";
+        showToast(`已完成：${run.kindLabel}`);
+      } else {
+        showToast("当前没有运行中的任务");
+      }
+    }
+  } else if (d.toast) {
+    showToast(d.toast);
+  }
+
+  render();
+});
+
+// Live 1s duration ticker + streaming terminal simulation without disturbing scroll unless open
+setInterval(() => {
+  const running = S.tasks.filter((x) => x.status === "running");
+  if (!running.length) return;
+  S.streamTick++;
+  running.forEach((bt) => { bt.elapsedSec += 1; });
+  if (S.streamTick % 4 === 0) {
+    const line = STREAM_LINES[S.streamTick % STREAM_LINES.length];
+    running[0].peek = line;
+    running[0].logs.push(line);
+    if (running[0].logs.length > 24) running[0].logs.shift();
+  }
+  render();
+}, 1000);
+
+render();
+</script>
+</body>
+</html>
