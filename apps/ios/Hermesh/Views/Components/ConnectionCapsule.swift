@@ -77,6 +77,102 @@ struct FollowingConnection<Content: View>: View {
 struct SessionWorkStatus: Equatable {
     var text: String
     var since: Date?
+    var thinkingText: String? = nil
+}
+
+/// Live chain-of-thought preview under the active working line: shows the latest
+/// three lines anchored to the bottom with a top fade when overflowing, and opens
+/// inline to a scrollable full view on tap. Unmounts cleanly once thinking ends.
+struct LiveThinkingView<Header: View>: View {
+    let text: String
+    @ViewBuilder let header: () -> Header
+
+    @State private var open = false
+    @State private var atEnd = true
+    @State private var measuredHeight: CGFloat = 0
+    @ScaledMetric(relativeTo: .footnote) private var lineHeight: CGFloat = 19
+
+    private var bodyText: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var peekHeight: CGFloat { lineHeight * 3 }
+    private var overflows: Bool { measuredHeight > peekHeight + 1 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if bodyText.isEmpty {
+                header()
+            } else {
+                Button {
+                    atEnd = true
+                    withAnimation(.easeOut(duration: 0.16)) { open.toggle() }
+                } label: {
+                    HStack(alignment: .center, spacing: 4) {
+                        header()
+                        Image(systemName: "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(open ? 0 : -90))
+                    }
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("live-thinking-toggle")
+                .accessibilityValue(open ? "expanded" : "collapsed")
+
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(verbatim: bodyText)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .lineSpacing(2)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measuredHeight = $0 }
+                            Color.clear.frame(height: 1).id("live-thinking-end")
+                        }
+                    }
+                    .scrollDisabled(!open)
+                    .scrollIndicators(open ? .automatic : .hidden)
+                    .defaultScrollAnchor(.bottom)
+                    .onScrollGeometryChange(for: Bool.self) { g in
+                        (g.contentSize.height - g.contentOffset.y - g.containerSize.height) < 12
+                    } action: { _, near in
+                        if open { atEnd = near }
+                    }
+                    .onChange(of: bodyText) { _, _ in
+                        if !open || atEnd {
+                            proxy.scrollTo("live-thinking-end", anchor: .bottom)
+                        }
+                    }
+                    .onChange(of: open) { _, isOpen in
+                        if !isOpen || atEnd {
+                            proxy.scrollTo("live-thinking-end", anchor: .bottom)
+                        }
+                    }
+                    .frame(height: open
+                        ? min(max(measuredHeight, lineHeight), 220)
+                        : (measuredHeight > 0 ? min(measuredHeight, peekHeight) : peekHeight))
+                    .mask {
+                        if !open && overflows {
+                            VStack(spacing: 0) {
+                                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                                    .frame(height: 22)
+                                Color.black
+                            }
+                        } else {
+                            Color.black
+                        }
+                    }
+                    .accessibilityIdentifier("live-thinking-body")
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 }
 
 /// The inline status line at the end of a session's conversation (or under the environment picker on a new session):
@@ -104,24 +200,50 @@ struct ConnectionLine: View {
                         .frame(maxWidth: centered ? nil : .infinity, alignment: centered ? .center : .leading)
                 }
             } else if let work {
-                HStack(alignment: .top, spacing: 8) {
-                    MovingMark(size: 18, motion: .seq)
-                    Text(verbatim: work.text)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(centered ? .center : .leading)
-                    if let since = work.since {
-                        Text(since, style: .timer)
-                            .monospacedDigit()
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                            .fixedSize()
+                if let thinking = work.thinkingText, !thinking.isEmpty {
+                    HStack(alignment: .top, spacing: 8) {
+                        MovingMark(size: 18, motion: .seq)
+                        LiveThinkingView(text: thinking) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(verbatim: work.text)
+                                    .foregroundStyle(.secondary)
+                                    .shimmer(true, paused: phase != .active)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(centered ? .center : .leading)
+                                if let since = work.since {
+                                    Text(since, style: .timer)
+                                        .monospacedDigit()
+                                        .foregroundStyle(.tertiary)
+                                        .lineLimit(1)
+                                        .fixedSize()
+                                }
+                            }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("thread-working")
+                        }
                     }
+                    .font(.footnote)
+                    .frame(maxWidth: centered ? nil : .infinity, alignment: centered ? .center : .leading)
+                } else {
+                    HStack(alignment: .top, spacing: 8) {
+                        MovingMark(size: 18, motion: .seq)
+                        Text(verbatim: work.text)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(centered ? .center : .leading)
+                        if let since = work.since {
+                            Text(since, style: .timer)
+                                .monospacedDigit()
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                                .fixedSize()
+                        }
+                    }
+                    .font(.footnote)
+                    .frame(maxWidth: centered ? nil : .infinity, alignment: centered ? .center : .leading)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("thread-working")
                 }
-                .font(.footnote)
-                .frame(maxWidth: centered ? nil : .infinity, alignment: centered ? .center : .leading)
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("thread-working")
             }
         }
     }

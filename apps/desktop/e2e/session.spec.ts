@@ -1430,6 +1430,51 @@ test("switching across providers in an active session asks for confirmation befo
   }
 });
 
+test("live chain-of-thought peeks three lines while thinking, expands on click, and disappears when thinking ends", async () => {
+  const { app, page } = await launch();
+  try {
+    const prompt = [
+      "think 第一行：检查 SubscribeSession 断线重连序列号。\\n第二行：确认 EventReasoningDelta 实时推送。\\n第三行：验证超过三行时顶部渐隐遮罩。\\n第四行：验证点击展开后显示完整推理内容。\\n第五行：验证思考结束后底部思维链立即消失。",
+      "sleep 5s",
+      "say 思考完成，这是最终答复",
+    ].join("\n");
+    await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "实时思维链", "--prompt", prompt);
+    await open(page, "实时思维链");
+
+    const log = page.getByRole("log", { name: "对话" });
+    const toggle = page.getByTestId("live-thinking-toggle");
+    const body = page.getByTestId("live-thinking-body");
+
+    await expect(toggle).toBeVisible({ timeout: 10_000 });
+    await expect(toggle).toContainText("思考中");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(body).toBeVisible();
+    await expect(body).toHaveClass(/\bover\b/);
+    await expect(body).not.toHaveClass(/\bopen\b/);
+
+    const collapsedHeight = (await body.boundingBox())!.height;
+    expect(collapsedHeight).toBeLessThanOrEqual(62);
+
+    // Clicking expands inline to full scrollable reasoning text.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(body).toHaveClass(/\bopen\b/);
+    await expect(body).toContainText("第一行：检查 SubscribeSession 断线重连序列号。");
+    await expect(body).toContainText("第五行：验证思考结束后底部思维链立即消失。");
+    const expandedHeight = (await body.boundingBox())!.height;
+    expect(expandedHeight).toBeGreaterThan(collapsedHeight + 20);
+
+    // Once thinking ends and the reply arrives, the live thinking view disappears with no leftover reasoning row.
+    await expect(log).toContainText("思考完成，这是最终答复", { timeout: 15_000 });
+    await expect(toggle).toHaveCount(0);
+    await expect(body).toHaveCount(0);
+    await expect(log.locator(".am")).toHaveCount(1);
+    await expect(log.locator(".am")).not.toContainText("第一行：检查 SubscribeSession 断线重连序列号。");
+  } finally {
+    await app.close();
+  }
+});
+
 test("a conversation on a machine gone offline says why: one read before shows with a line under it, one never read says so instead of a blank page", async () => {
   test.skip(onWindows, "it stops the other machine by its process group");
   const { app, page } = await launch();

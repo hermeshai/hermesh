@@ -53,6 +53,7 @@ import {
   sessionFocusText,
   sessionLiveReplies,
   sessionWork,
+  liveReasoningText,
   sessionTranscript,
   statusTitle,
   updatedDate,
@@ -63,7 +64,7 @@ import {
 } from "@hermesh/core";
 import { Mark } from "@hermesh/ui";
 import { local, sessions as sessionApi } from "./api";
-import { ConnectionLine } from "./ConnectionCapsule";
+import { ConnectionLine, LiveThinking } from "./ConnectionCapsule";
 import { GlassBar } from "./glass";
 import { Icon } from "./icons";
 import { layoutOf, setCard } from "./layout";
@@ -1021,7 +1022,11 @@ export function SessionPage() {
     currentSession?.status === SessionStatus.PREPARING ? { text: t("work.starting") }
     : currentSession?.status === SessionStatus.QUEUED && !currentSession.offlineQueued ? { text: statusTitle(SessionStatus.QUEUED) }
     : currentSession?.status === SessionStatus.RUNNING
-      ? { text: sessionFocusText(activeProjection) ?? t(`work.${sessionWork(activeProjection)}`), since: dateOf(activeRun?.startedAt) }
+      ? {
+          text: sessionFocusText(activeProjection) ?? t(`work.${sessionWork(activeProjection)}`),
+          since: dateOf(activeRun?.startedAt),
+          thinking: liveReasoningText(activeProjection),
+        }
     : undefined;
   const handleOpenWakeTask = useCallback(
     (reason: string) => {
@@ -1427,7 +1432,7 @@ function TodoSpine({
   work,
 }: {
   steps: TodoStepView[];
-  work?: { text: string; since?: Date };
+  work?: { text: string; since?: Date; thinking?: string };
 }) {
   const { t } = useTranslation("thread");
   const now = useNow(work?.since ? 1000 : 60_000);
@@ -1471,12 +1476,23 @@ function TodoSpine({
             </span>
           </div>
           {showSub && (
-            <div className="th-todo-sub" data-testid="thread-working">
-              <span className="th-work-t shimmer" title={win.subFocus}>
-                {withSlashBreaks(win.subFocus!)}
-              </span>
-              {elapsed && <span className="el">· {elapsed}</span>}
-            </div>
+            work?.thinking ? (
+              <div className="th-todo-sub tk-sub" data-testid="thread-working">
+                <LiveThinking text={work.thinking}>
+                  <span className="th-work-t shimmer" title={win.subFocus}>
+                    {withSlashBreaks(win.subFocus!)}
+                  </span>
+                  {elapsed && <span className="el">· {elapsed}</span>}
+                </LiveThinking>
+              </div>
+            ) : (
+              <div className="th-todo-sub" data-testid="thread-working">
+                <span className="th-work-t shimmer" title={win.subFocus}>
+                  {withSlashBreaks(win.subFocus!)}
+                </span>
+                {elapsed && <span className="el">· {elapsed}</span>}
+              </div>
+            )
           )}
         </div>
       </div>

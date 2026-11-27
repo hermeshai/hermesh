@@ -168,6 +168,9 @@ final class DemoService {
         if Self.liveProgress {
             seedLiveProgress()
         }
+        if Self.liveThinking {
+            seedLiveThinking()
+        }
         if UserDefaults.standard.bool(forKey: "DemoGitStatus") || ProcessInfo.processInfo.arguments.contains("-DemoGitStatus") {
             seedGitStatusDemo()
         }
@@ -460,6 +463,15 @@ final class DemoService {
     private static let liveProgress: Bool = {
         #if targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("-DemoLiveProgress")
+        #else
+        false
+        #endif
+    }()
+
+    // Simulator-only fixture for LiveThinkingUITests.
+    private static let liveThinking: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-DemoLiveThinking")
         #else
         false
         #endif
@@ -1108,6 +1120,9 @@ final class DemoService {
                 if Self.liveProgress, request.sessionID == "demo-live-progress" {
                     startLiveProgressCompletion()
                 }
+                if Self.liveThinking, request.sessionID == "demo-live-thinking" {
+                    startLiveThinkingCompletion()
+                }
                 #endif
                 do {
                     for e in events[request.sessionID, default: []] where e.seq > request.afterSeq { c.yield(try e.jsonUTF8Data()) }
@@ -1573,6 +1588,68 @@ final class DemoService {
             self.world.sessions[sIdx].progress.turnCount = 2
             self.world.sessions[sIdx].updatedAt = .init(date: .now)
             if let rIdx = self.projections[id]?.runs.firstIndex(where: { $0.runID == "r2" }) {
+                self.projections[id]?.runs[rIdx].status = .completed
+                self.projections[id]?.runs[rIdx].completedAt = .init(date: .now)
+                let doneRun = self.projections[id]!.runs[rIdx]
+                self.emitEvent(id) { $0.type = "run.completed"; $0.run = doneRun }
+            }
+            self.publish()
+        }
+    }
+
+    private func seedLiveThinking() {
+        let id = "demo-live-thinking"
+        var s = session(id, title: "Live thinking session", machine: "demo-mac", status: .running)
+        s.agent = "claude"
+        s.createdBy = "owner"
+        s.activeRunID = "r1"
+        s.updatedAt = .init(date: .now.addingTimeInterval(60))
+        s.progress.turnCount = 0
+        s.progress.turnStartedAt = .init(date: .now)
+        world.sessions.insert(s, at: 0)
+
+        beginRun(id, runID: "r1", ordinal: 1, asker: "owner", status: .running, startedAt: .now)
+        appendItem(id, runID: "r1", kind: .userMessage) {
+            $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+            $0.text = "Trace the reconnect sequence and verify reasoning cleanup."
+        }
+        appendItem(id, runID: "r1", kind: .reasoning) {
+            $0.itemID = "r1:rsn:1"
+            $0.status = "running"
+            $0.streaming = true
+            $0.text = """
+            Line 1: Inspect SubscribeSession afterSeq continuity across tunnel upgrade.
+            Line 2: Confirm EventReasoningDelta updates TurnItem with streaming=true.
+            Line 3: Verify collapsed preview stays anchored to the latest three lines.
+            Line 4: Verify tapping the thinking header opens the full scrollable chain.
+            Line 5: Verify reasoning disappears completely once the turn finishes.
+            """
+        }
+        syncSession(id)
+    }
+
+    private func startLiveThinkingCompletion() {
+        let id = "demo-live-thinking"
+        guard tasks[id] == nil else { return }
+        tasks[id] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(9000))
+            guard !Task.isCancelled, let self,
+                  let sIdx = self.world.sessions.firstIndex(where: { $0.sessionID == id }) else { return }
+            if let rsnIdx = self.projections[id]?.items.firstIndex(where: { $0.itemID == "r1:rsn:1" }) {
+                var doneRsn = self.projections[id]!.items[rsnIdx]
+                doneRsn.status = "completed"
+                doneRsn.streaming = false
+                self.projections[id]?.items[rsnIdx] = doneRsn
+                self.emitEvent(id) { $0.type = "item.updated"; $0.item = doneRsn }
+            }
+            self.appendItem(id, runID: "r1", kind: .assistantMessage) {
+                $0.text = "Final answer after thinking."
+            }
+            self.world.sessions[sIdx].status = .idle
+            self.world.sessions[sIdx].activeRunID = ""
+            self.world.sessions[sIdx].progress.turnCount = 1
+            self.world.sessions[sIdx].updatedAt = .init(date: .now)
+            if let rIdx = self.projections[id]?.runs.firstIndex(where: { $0.runID == "r1" }) {
                 self.projections[id]?.runs[rIdx].status = .completed
                 self.projections[id]?.runs[rIdx].completedAt = .init(date: .now)
                 let doneRun = self.projections[id]!.runs[rIdx]

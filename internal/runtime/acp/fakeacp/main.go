@@ -641,6 +641,8 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 			}
 			update(sid, map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": cid, "status": st,
 				"content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": outTxt}}}})
+		case "think":
+			update(sid, map[string]any{"sessionUpdate": "agent_thought_chunk", "content": map[string]any{"type": "text", "text": strings.ReplaceAll(arg, `\n`, "\n")}})
 		case "sleep":
 			d, _ := time.ParseDuration(arg)
 			select {

@@ -587,3 +587,52 @@ final class PlanReviewFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Plan approved"].exists, "approved receipt copy")
     }
 }
+
+final class LiveThinkingUITests: XCTestCase {
+    let app = XCUIApplication()
+
+    override func setUp() {
+        continueAfterFailure = false
+        app.launchArguments = [
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
+            "-DemoLiveThinking",
+        ]
+        app.launch()
+        let tryDemo = app.buttons["try-demo"]
+        XCTAssertTrue(tryDemo.waitForExistence(timeout: 15), "try-demo")
+        tryDemo.tap()
+        let menu = app.descendants(matching: .any)["menu"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 15), "menu")
+        menu.tap()
+        let row = app.descendants(matching: .any)["session-Live thinking session"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "drawer row Live thinking session")
+        row.tap()
+        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10), "session page")
+    }
+
+    func testLiveThinkingPeeksThreeLinesExpandsOnTapAndDisappearsWhenDone() {
+        let toggle = app.buttons["live-thinking-toggle"].firstMatch
+        let body = app.scrollViews["live-thinking-body"].firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout: 6), "live thinking toggle")
+        XCTAssertTrue(body.waitForExistence(timeout: 6), "live thinking body")
+        XCTAssertEqual(toggle.value as? String, "collapsed")
+        let collapsedHeight = body.frame.height
+        XCTAssertGreaterThan(collapsedHeight, 20)
+        XCTAssertLessThanOrEqual(collapsedHeight, 72)
+
+        // Tap toggles open to full scrollable chain-of-thought.
+        toggle.tap()
+        XCTAssertEqual(toggle.value as? String, "expanded")
+        let expandedHeight = body.frame.height
+        XCTAssertGreaterThan(expandedHeight, collapsedHeight + 20)
+
+        // Once thinking finishes and the final answer arrives, live thinking disappears cleanly.
+        let finalReply = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Final answer after thinking.")).firstMatch
+        XCTAssertTrue(finalReply.waitForExistence(timeout: 15), "final reply streamed")
+        XCTAssertTrue(toggle.waitForNonExistence(timeout: 5), "thinking toggle disappears when thinking ends")
+        XCTAssertTrue(body.waitForNonExistence(timeout: 5), "thinking body disappears when thinking ends")
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Line 1: Inspect SubscribeSession")).firstMatch.exists,
+                       "historical thinking text must not remain in conversation")
+    }
+}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { clockText, elapsedSeconds } from "@hermesh/core";
 import type { Machine } from "@hermesh/proto/local";
@@ -91,6 +91,59 @@ function stripTrailingEllipsis(text: string): string {
 }
 
 /**
+ * Live chain-of-thought preview under the active working line: shows the latest
+ * three lines anchored to the bottom with a top fade when overflowing, and opens
+ * inline to a scrollable full view on click. Unmounts cleanly once thinking ends.
+ */
+export function LiveThinking({ text, children }: { text: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [over, setOver] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const atEnd = useRef(true);
+  const body = text.trim();
+
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    if (open && atEnd.current) el.scrollTop = el.scrollHeight;
+    const inner = el.firstElementChild as HTMLElement | null;
+    setOver(!!inner && inner.offsetHeight > el.clientHeight + 1);
+  }, [body, open]);
+
+  return (
+    <>
+      <button
+        type="button"
+        className="wk-line tk-h"
+        data-testid="live-thinking-toggle"
+        onClick={() => {
+          if (!body) return;
+          atEnd.current = true;
+          setOpen((v) => !v);
+        }}
+        aria-expanded={body ? open : undefined}
+      >
+        {children}
+        {body && <Icon name="chevD" className="chev" />}
+      </button>
+      {body && (
+        <div
+          ref={box}
+          className={`tk-peek sel-text ${open ? "open" : over ? "over" : ""}`}
+          data-testid="live-thinking-body"
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight < 8;
+          }}
+        >
+          <div>{body}</div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
  * The inline status line at the end of a session's conversation (or under the environment picker on a new session):
  * what the agent does while the connection is up, the connection state while idle and disconnected, or both in one
  * line while a running session reconnects.
@@ -103,7 +156,7 @@ export function ConnectionLine({
 }: {
   machine: Machine | undefined;
   linkUp: boolean;
-  work?: { text: string; since?: Date };
+  work?: { text: string; since?: Date; thinking?: string };
   delayWork?: boolean;
 }) {
   const notice = useConnectionNotice(machine, linkUp);
@@ -142,11 +195,26 @@ export function ConnectionLine({
   }
 
   if (work) {
+    const line = (
+      <>
+        <span className="th-work-t shimmer" title={work.text}>{work.text}</span>
+        {work.since && <span className="el">· {clockText(elapsedSeconds(work.since, now))}</span>}
+      </>
+    );
+    if (work.thinking) {
+      return (
+        <div className={`th-work ${delayWork ? "delayed" : ""}`} data-testid="thread-working">
+          <Mark size={18} variant="seq" />
+          <div className="wk-now">
+            <LiveThinking text={work.thinking}>{line}</LiveThinking>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className={`th-work ${delayWork ? "delayed" : ""}`} data-testid="thread-working">
         <Mark size={18} variant="seq" />
-        <span className="th-work-t shimmer" title={work.text}>{work.text}</span>
-        {work.since && <span className="el">· {clockText(elapsedSeconds(work.since, now))}</span>}
+        {line}
       </div>
     );
   }

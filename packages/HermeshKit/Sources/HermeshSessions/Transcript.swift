@@ -336,6 +336,20 @@ public func sessionWork(_ proj: Hermesh_Session_V1_SessionProjection?) -> Sessio
     return .working
 }
 
+/// Live chain-of-thought text while the active run is thinking; `nil` once thinking ends or when withheld.
+public func liveReasoningText(_ proj: Hermesh_Session_V1_SessionProjection?) -> String? {
+    guard let proj,
+          proj.session.status == .running,
+          !proj.session.activeRunID.isEmpty,
+          sessionWork(proj) == .thinking else { return nil }
+    let run = proj.session.activeRunID
+    for it in proj.items.reversed() where it.runID == run && it.kind == .reasoning && it.streaming {
+        let trimmed = it.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+    return nil
+}
+
 /// The `seq` values of replies the agent is still streaming, so their rows sweep in as they grow.
 public func sessionLiveReplies(_ proj: Hermesh_Session_V1_SessionProjection?) -> Set<UInt64> {
     guard let proj else { return [] }

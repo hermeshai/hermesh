@@ -41,6 +41,7 @@ import {
   sessionLiveReplies,
   sessionQuestion,
   sessionWork,
+  liveReasoningText,
   sessionTranscript,
   workspaceDetails,
   workspaceFailedRun,
@@ -218,19 +219,29 @@ describe("unified session transcript", () => {
       ],
     });
     expect(sessionWork(workProj)).toBe("working");
-    workProj.items.push(item(4, "r2", TurnItemKind.REASONING, { text: "weigh it", streaming: true }));
+    expect(liveReasoningText(workProj)).toBeUndefined();
+    workProj.items.push(item(4, "r2", TurnItemKind.REASONING, { text: "  weigh it\nstep 2  ", streaming: true }));
     expect(sessionWork(workProj)).toBe("thinking");
+    expect(liveReasoningText(workProj)).toBe("weigh it\nstep 2");
+    workProj.items[3].text = "   ";
+    expect(liveReasoningText(workProj)).toBeUndefined();
+    workProj.items[3].text = "weigh it";
     workProj.items[3].streaming = false;
     expect(sessionWork(workProj)).toBe("working");
+    expect(liveReasoningText(workProj)).toBeUndefined();
     workProj.items.push(item(5, "r2", TurnItemKind.ASSISTANT_MESSAGE, { text: "On it", streaming: true }));
     expect(sessionWork(workProj)).toBe("replying");
     workProj.items.push(item(6, "r2", TurnItemKind.COMMAND_EXECUTION, { command: "go test ./...", status: "running" }));
     expect(sessionWork(workProj)).toBe("tool");
+    workProj.items[3].streaming = true;
+    expect(liveReasoningText(workProj)).toBeUndefined();
+    workProj.items[3].streaming = false;
     workProj.items[5].status = "completed";
     workProj.items[4].streaming = false;
     expect(sessionWork(workProj)).toBe("working");
     workProj.session!.activeRunId = "";
     expect(sessionWork(workProj)).toBe("working");
+    expect(liveReasoningText(workProj)).toBeUndefined();
   });
 
   test("prompts say who asked, background commands stay running, and continuation runs surface wakeReason", () => {

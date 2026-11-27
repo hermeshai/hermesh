@@ -794,7 +794,7 @@ struct SessionPage: View {
                     .id(q.questionID)
                 }
                 if let todoWindow {
-                    SessionTodoSpine(window: todoWindow, since: workStatus?.since, hasWork: workStatus != nil)
+                    SessionTodoSpine(window: todoWindow, since: workStatus?.since, hasWork: workStatus != nil, thinkingText: workStatus?.thinkingText)
                 }
                 ConnectionLine(machine: machine, linkUp: s.status == .archived || (following && reachable), work: todoWindow == nil ? workStatus : nil)
                 if let f = sessionFailure(currentSession) {
@@ -1110,7 +1110,11 @@ struct SessionPage: View {
             case .waiting: String(localized: "Waiting for model response…")
             case .working: String(localized: "Working…")
             }
-            return SessionWorkStatus(text: sessionFocusText(activeProj) ?? defaultText, since: run.flatMap { dateOf($0.startedAt, set: $0.hasStartedAt) })
+            return SessionWorkStatus(
+                text: sessionFocusText(activeProj) ?? defaultText,
+                since: run.flatMap { dateOf($0.startedAt, set: $0.hasStartedAt) },
+                thinkingText: liveReasoningText(activeProj)
+            )
         case .idle where sessionFailure(currentSession) == nil:
             guard let last = steps.last else { return nil }
             if case .item(.turnEnd) = last { return nil }
@@ -3110,6 +3114,7 @@ private struct SessionTodoSpine: View {
     let window: TodoSpineWindow
     let since: Date?
     let hasWork: Bool
+    var thinkingText: String? = nil
 
     private static let tokenRegex = /`([^`]+)`|(\b[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.\/-]+|\b[a-zA-Z0-9_-]+\.(?:swift|tsx?|jsx?|go|rs|py|css|html|md|json|ya?ml|sql|db|app)\b)/
 
@@ -3181,7 +3186,7 @@ private struct SessionTodoSpine: View {
                 .accessibilityIdentifier(deduplicatedWork ? "thread-working" : "thread-todo-active-\(step.index)")
 
                 if showSub, let subFocus = window.subFocus {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    let subHeader = HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(verbatim: subFocus.replacingOccurrences(of: "/", with: "/\u{200B}"))
                             .font(.footnote)
                             .foregroundStyle(window.hasFailed ? .red : .secondary)
@@ -3200,6 +3205,14 @@ private struct SessionTodoSpine: View {
                     }
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("thread-working")
+
+                    if let thinkingText, !thinkingText.isEmpty {
+                        LiveThinkingView(text: thinkingText) {
+                            subHeader
+                        }
+                    } else {
+                        subHeader
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

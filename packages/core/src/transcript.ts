@@ -410,6 +410,21 @@ export function sessionWork(proj: SessionProjection | null | undefined): Session
   return "working";
 }
 
+/** Live chain-of-thought text while the active run is thinking; undefined once thinking ends or when withheld. */
+export function liveReasoningText(proj: SessionProjection | null | undefined): string | undefined {
+  if (!proj || proj.session?.status !== SessionStatus.RUNNING) return undefined;
+  const run = proj.session.activeRunId;
+  if (!run || sessionWork(proj) !== "thinking") return undefined;
+  for (let i = proj.items.length - 1; i >= 0; i--) {
+    const it = proj.items[i]!;
+    if (it.runId === run && it.kind === TurnItemKind.REASONING && it.streaming) {
+      const text = it.text.trim();
+      return text !== "" ? text : undefined;
+    }
+  }
+  return undefined;
+}
+
 export type TodoStepStatus = "pending" | "in_progress" | "completed" | "skipped" | "failed";
 
 export interface TodoStepView {
