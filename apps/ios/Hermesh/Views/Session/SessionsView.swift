@@ -94,8 +94,13 @@ struct MenuSessionRow: View {
     var hasTwist = false
     var collapsedMark: TreeMark?
 
+    private var isRowRunning: Bool {
+        let kids = isChild ? [] : model.sentFrom(session)
+        return (kids.isEmpty ? (session.isActive && !session.needsAttention) : treeStatus(session, children: kids) == .active) && collapsedMark == nil
+    }
+
     var body: some View {
-        let running = session.isActive && !session.needsAttention
+        let running = isRowRunning
         let paused = !(model.drawerOpen || model.menuInView)
         let logoSize: CGFloat = isChild ? 19 : 22
         HStack(alignment: .top, spacing: isChild ? 10 : 12) {
@@ -163,6 +168,7 @@ struct MenuSessionRow: View {
         switch session.status {
         case .waitingInput, .crashed, .preparing, .queued, .running: return statusTitle(session.status)
         default:
+            if isRowRunning { return statusTitle(.running) }
             if let gitMark = session.gitMark {
                 return gitMark == .pushed ? String(localized: "Pushed") : String(localized: "Merged")
             }

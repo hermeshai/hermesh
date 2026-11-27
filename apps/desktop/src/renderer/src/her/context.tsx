@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 import type { BotSummary, Methods } from "@hermesh/her-protocol";
 import type { Machine } from "@hermesh/proto/local";
+import type { ProgressTaskRef } from "../store";
 import type { Environment } from "./connection";
 
 // What every part of the Her page shares: the environment shown, its
@@ -62,6 +63,10 @@ export type Her = {
   run: (action: () => Promise<unknown>, done?: string) => Promise<boolean>;
   /** The environment's console, in a window of its own; at `page` when one is given ("connectors/github"). */
   openConsole: (page?: string) => void;
+  /** Opens Progress (or one sub-agent's post in it) for the conversation on screen. */
+  openProgress: (task?: ProgressTaskRef) => void;
+  /** Returns from Progress to the conversation on screen. */
+  closeProgress: () => void;
 };
 
 export const HerContext = createContext<Her | null>(null);

@@ -374,11 +374,9 @@ public enum TreeMark: String, Equatable, Sendable {
     case waiting, failed
 }
 
-/// The work under each conversation with Her, newest first, while the view nests it: only work whose
-/// conversation is in `sessions` too, and only while neither is archived (an archived one is listed
-/// on its own).
-public func childrenOf(_ sessions: [Session], nest: Bool = true) -> [String: [Session]] {
-    guard nest else { return [:] }
+/// All non-archived work sent from each non-archived conversation with Her in `sessions`, newest
+/// first, whether or not the list currently nests child rows under it.
+public func herChildren(_ sessions: [Session]) -> [String: [Session]] {
     let parents = Set(sessions.filter { $0.isHerConversation && $0.status != .archived }.map(\.sessionID))
     var out: [String: [Session]] = [:]
     for s in sessions {
@@ -389,6 +387,13 @@ public func childrenOf(_ sessions: [Session], nest: Bool = true) -> [String: [Se
         out[k]?.sort { $0.updatedDate > $1.updatedDate }
     }
     return out
+}
+
+/// The work under each conversation with Her, newest first, while the view nests it: only work whose
+/// conversation is in `sessions` too, and only while neither is archived (an archived one is listed
+/// on its own).
+public func childrenOf(_ sessions: [Session], nest: Bool = true) -> [String: [Session]] {
+    nest ? herChildren(sessions) : [:]
 }
 
 public func childrenOf(_ sessions: [Session], view: SessionListLayout) -> [String: [Session]] {
@@ -559,11 +564,12 @@ public func sessionSections(_ sessions: [Session], view: SessionListLayout, arch
     var by: [String: [Session]] = [:]
     var pinned: [Session] = []
     var gone: [Session] = []
-    // Nested, the work under a conversation with Her goes where the conversation goes, and the
-    // conversation is placed by all of it (docs/her-conversations.md D8, D9).
-    let children = childrenOf(sessions, view: view)
+    // Nested, the work under a conversation with Her goes where the conversation goes; nested or flat,
+    // a conversation is placed by all the work it sent so it never reads as Done while work still runs (docs/her-conversations.md D8, D9).
+    let allChildren = herChildren(sessions)
+    let children = view.nest ? allChildren : [:]
     let nested = Set(children.values.joined().map(\.sessionID))
-    func kidsOf(_ s: Session) -> [Session] { children[s.sessionID] ?? [] }
+    func kidsOf(_ s: Session) -> [Session] { allChildren[s.sessionID] ?? [] }
     for s in sessions {
         if s.status == .archived {
             if archived { gone.append(s) }
@@ -601,7 +607,7 @@ public func sessionSections(_ sessions: [Session], view: SessionListLayout, arch
     }
     func sorted(_ list: [Session], isActiveBucket: Bool = false) -> [Session] {
         sortWithManualOrder(list, timeOf: timeFor, newestFirst: view.newestFirst, manualOrder: activeOrder) {
-            isActiveBucket || ($0.isActive && !$0.needsAttention)
+            isActiveBucket || treeStatus($0, children: kidsOf($0)) == .active
         }
     }
     let active = SessionBucket.active.rawValue
@@ -647,14 +653,15 @@ public func sliceSectionSessions(
     _ sessions: [Session],
     grouping: SessionGrouping?,
     limit: Int = sectionInitialLimit,
-    selectedID: String? = nil
+    selectedID: String? = nil,
+    trees: [String: [Session]] = [:]
 ) -> SectionSlice {
     let cap = max(0, limit)
     guard isCappedGrouping(grouping), sessions.count > cap + 1 else {
         return SectionSlice(visible: sessions, hiddenCount: 0)
     }
     let head = Array(sessions.prefix(cap))
-    let pinned = sessions.dropFirst(cap).filter { $0.sessionID == selectedID || $0.needsAttention || $0.isActive }
+    let pinned = sessions.dropFirst(cap).filter { $0.sessionID == selectedID || treeStatus($0, children: trees[$0.sessionID] ?? []) != .done }
     let hiddenCount = sessions.count - head.count - pinned.count
     if hiddenCount <= 1 {
         return SectionSlice(visible: sessions, hiddenCount: 0)
@@ -667,7 +674,14 @@ public func sliceSectionSessions(
 /// searchable words (title, project, grant, agent, machine).
 public func searchSessions(_ sessions: [Session], query: String, filter: SessionFilter, text: (Session) -> String) -> [Session] {
     let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-    func rank(_ s: Session) -> Int { s.needsAttention ? 0 : s.isActive ? 1 : 2 }
+    let kids = herChildren(sessions)
+    func rank(_ s: Session) -> Int {
+        switch treeStatus(s, children: kids[s.sessionID] ?? []) {
+        case .attention: 0
+        case .active: 1
+        default: 2
+        }
+    }
     return sessions
         .filter { (filter.archived || $0.status != .archived) && filter.matches($0) && (q.isEmpty || text($0).lowercased().contains(q)) }
         .sorted { rank($0) != rank($1) ? rank($0) < rank($1) : $0.updatedDate > $1.updatedDate }

@@ -46,12 +46,17 @@ public struct TeamState: Equatable {
 /// The team's state from the sessions the device holds (archived ones are no part of it) and the requests to connect.
 public func teamState(_ sessions: [Session], requests: Int) -> TeamState {
     let visible = sessions.filter { $0.status != .archived }
+    let kids = herChildren(visible)
+    func childActive(_ s: Session) -> Bool { kids[s.sessionID]?.contains(where: \.isActive) ?? false }
+    func childUnsettled(_ s: Session) -> Bool {
+        kids[s.sessionID]?.contains(where: { $0.isActive || $0.status == .waitingInput }) ?? false
+    }
     return TeamState(
         waiting: visible.filter { $0.status == .waitingInput }.sorted { $0.updatedDate > $1.updatedDate },
         requests: requests,
         failed: visible.filter(\.isFailed).sorted { $0.updatedDate > $1.updatedDate },
-        running: visible.filter(\.isActive).sorted { $0.createdDate > $1.createdDate },
-        finished: visible.filter { !$0.isActive && !$0.needsAttention }.sorted { $0.updatedDate > $1.updatedDate })
+        running: visible.filter { $0.isActive || (!$0.needsAttention && childActive($0)) }.sorted { $0.createdDate > $1.createdDate },
+        finished: visible.filter { !$0.isActive && !$0.needsAttention && !childUnsettled($0) }.sorted { $0.updatedDate > $1.updatedDate })
 }
 
 /// The sessions at hand by coding agent, as the menu's rail shows them (docs/her-team.md §16): those waiting for

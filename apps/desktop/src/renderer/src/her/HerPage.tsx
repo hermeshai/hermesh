@@ -6,7 +6,7 @@ import type { Machine } from "@hermesh/proto/local";
 import type { Session } from "@hermesh/proto/session";
 import { agoText } from "@hermesh/core";
 import { Mark } from "@hermesh/ui";
-import { errorText, useNow, useStore } from "../store";
+import { errorText, useNow, useStore, type ProgressTaskRef } from "../store";
 import type { SendOp } from "./Approval";
 import { AssistantPanel } from "./AssistantPanel";
 import { useConversation, useEnvironment, useKept, useWaiting } from "./connection";
@@ -19,7 +19,7 @@ import { RoutinesPanel } from "./RoutinesPanel";
 import { BrowserPage, EnvironmentPage, ModelPage, ProviderPage, SearchPage, SkillPage, SkillsPage, StoragePage } from "./HerPages";
 import { FirstRun, Setup } from "./Setup";
 import { AccessSheet, HerDialog } from "./sheets";
-import { ConversationBar, TopBar } from "./TopBar";
+import { TopBar } from "./TopBar";
 import "./her.css";
 
 // The Her entry (docs/her-server.md §9): a conversation with Her, the
@@ -88,6 +88,7 @@ function Environment({ machine, envs, choose, task }: { machine: Machine; envs: 
   const waiting = useMemo(() => ({ ...allWaiting, list: allWaiting.list.filter((w) => w.conversation === mine) }), [allWaiting, mine]);
   const [panel, setPanel] = useState<Panel>(null);
   const [sheet, setSheet] = useState<HerSheet>(null);
+  const [convProgress, setConvProgress] = useState<{ task?: ProgressTaskRef } | null>(null);
   const id = machine.machineId;
   // Until her answers, and while the machine is offline: Her and the conversation as this Mac keeps them.
   const bot = env.bots.find((b) => b.default) ?? (task ? undefined : kept?.bot);
@@ -129,6 +130,17 @@ function Environment({ machine, envs, choose, task }: { machine: Machine; envs: 
   const openConsole = useCallback((page?: string) => {
     window.hermesh?.openHerConsole(id, page).catch((e: unknown) => show(errorText(e)));
   }, [id, show]);
+  const openProgress = useCallback(
+    (ref?: ProgressTaskRef) => {
+      if (task) setConvProgress({ task: ref });
+      else set({ selection: { kind: "progress", machine: id, ...(ref && { task: ref }) } });
+    },
+    [task, set, id],
+  );
+  const closeProgress = useCallback(() => {
+    if (task) setConvProgress(null);
+    else set({ selection: { kind: "her", machine: id } });
+  }, [task, set, id]);
   // Her's conversation, as the page and the panels beside it act on it.
   const op: SendOp = useCallback(
     async (o: Op) => {
@@ -148,12 +160,13 @@ function Environment({ machine, envs, choose, task }: { machine: Machine; envs: 
   );
   const key = conversation ? `${id}#${conversation}` : id;
   const her = useMemo<Her>(
-    () => ({ machine, conversation: conversation || undefined, key, envs, choose, env, bot, panel, setPanel, sheet, setSheet, call, run, openConsole }),
-    [machine, conversation, key, envs, choose, env, bot, panel, sheet, call, run, openConsole],
+    () => ({ machine, conversation: conversation || undefined, key, envs, choose, env, bot, panel, setPanel, sheet, setSheet, call, run, openConsole, openProgress, closeProgress }),
+    [machine, conversation, key, envs, choose, env, bot, panel, sheet, call, run, openConsole, openProgress, closeProgress],
   );
   // Progress (docs/her-team.md §15) is this page too: the same connections, so going from one to the other reads nothing again.
   const sel = st.selection;
-  const progress = sel.kind === "progress" && !!bot && !task;
+  const progress = !!bot && (task ? !!convProgress : sel.kind === "progress");
+  const progressTask = task ? convProgress?.task : sel.kind === "progress" ? sel.task : undefined;
   const shown = bot && !progress ? panel : null;
   const visibleBot = !task && !progress && !sheet && !st.sheet && !st.searching && conv.view ? bot?.id : undefined;
   useLayoutEffect(() => {
@@ -168,10 +181,10 @@ function Environment({ machine, envs, choose, task }: { machine: Machine; envs: 
       <div className={`her ${shown ? "bgopen" : ""}`}>
         <div className="scol">
           {progress ? (
-            <Progress bot={bot} conv={conv} op={op} task={sel.kind === "progress" ? sel.task : undefined} />
+            <Progress bot={bot} conv={conv} op={op} task={progressTask} />
           ) : (
             <>
-              {task ? <ConversationBar task={task} view={conv.view} /> : <TopBar view={conv.view} />}
+              <TopBar view={conv.view} task={task} />
               {bot && conversation !== "" ? <Conversation bot={bot} conv={conv} op={op} waiting={waiting.list} onWaiting={refreshWaiting} /> : <EnvStatus machine={machine} />}
             </>
           )}

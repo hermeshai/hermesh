@@ -27,3 +27,30 @@ func TestHerModels(t *testing.T) {
 		t.Fatalf("effort: %v", opt)
 	}
 }
+
+func TestSnapshotEvents(t *testing.T) {
+	raw := json.RawMessage(`{"session_id":"s_1","snapshot":{
+		"active_task":{"task_id":"t_live","approvals":[{"call_id":"c_main","name":"bash","summary":"rm -rf tmp"}]},
+		"agents":[
+			{"agent_id":"ag_run","name":"research","description":"查文档","call_id":"c_spawn_1","status":"running",
+			 "active_task":{"task_id":"t_ag","approvals":[{"call_id":"c_sub","name":"bash","summary":"touch a.txt"}]}},
+			{"agent_id":"ag_done","name":"old","call_id":"c_spawn_0","status":"completed"}
+		]
+	}}`)
+	evs := snapshotEvents(raw)
+	if len(evs) != 4 {
+		t.Fatalf("got %d events: %s", len(evs), evs)
+	}
+	var types []string
+	for _, b := range evs {
+		var m map[string]any
+		_ = json.Unmarshal(b, &m)
+		types = append(types, m["type"].(string))
+	}
+	want := []string{"task_started", "approval_requested", "agent_started", "agent_event"}
+	for i, w := range want {
+		if types[i] != w {
+			t.Fatalf("event %d: got %q, want %q (%s)", i, types[i], w, evs[i])
+		}
+	}
+}

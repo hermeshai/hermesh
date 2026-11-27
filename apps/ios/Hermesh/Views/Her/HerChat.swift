@@ -16,6 +16,8 @@ final class HerPlace {
     var machine: String? {
         didSet { if persistent { UserDefaults.standard.set(machine, forKey: "her-env") } }
     }
+    /// The conversation on screen when it is one besides Her's main one (`nil` on her main page), so Progress shows its sub-agents.
+    var conversation: String?
     /// Whether the owner accepted iPhone's local first-use Her AI data-sharing disclosure.
     var aiConsentAccepted: Bool {
         didSet { if persistent { UserDefaults.standard.set(aiConsentAccepted, forKey: "her-ai-consent") } }

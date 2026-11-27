@@ -121,10 +121,12 @@ struct SessionRow: View {
     var doing = false
 
     var body: some View {
+        let kids = model.sentFrom(session)
+        let running = kids.isEmpty ? (session.isActive && !session.needsAttention) : treeStatus(session, children: kids) == .active
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 8) {
                 Group {
-                    if session.isActive && !session.needsAttention { ShimmerText(session.displayTitle, paused: false) } else { Text(session.displayTitle) }
+                    if running { ShimmerText(session.displayTitle, paused: false) } else { Text(session.displayTitle) }
                 }
                 .foregroundStyle(session.status == .archived ? .secondary : .primary)
                 .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)

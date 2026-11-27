@@ -80,13 +80,11 @@ export function Progress({ bot, conv, op, task }: { bot: BotSummary; conv: Conv;
 }
 
 function useOpen() {
-  const st = useStore();
   const her = useHer();
-  const machine = her.machine.machineId;
   return {
-    task: (ref: ProgressTaskRef) => st.set({ selection: { kind: "progress", machine, task: ref } }),
-    board: () => st.set({ selection: { kind: "progress", machine } }),
-    chat: () => st.set({ selection: { kind: "her", machine } }),
+    task: (ref: ProgressTaskRef) => her.openProgress(ref),
+    board: () => her.openProgress(),
+    chat: () => her.closeProgress(),
   };
 }
 

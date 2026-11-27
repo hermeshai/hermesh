@@ -1,5 +1,5 @@
 import { SessionStatus, type Question, type QuestionItem, type Session } from "@hermesh/proto/session";
-import { createdDate, isActive, isFailed, needsAttention, updatedDate } from "./sessions";
+import { createdDate, herChildren, isActive, isFailed, needsAttention, updatedDate } from "./sessions";
 
 // What the owner's agents are doing, as Her's name tag, the team panel and
 // Work show it (docs/her-team.md §4.2, §4.3, §14.6): the sessions that wait
@@ -33,11 +33,17 @@ export interface TeamState {
 /** The team's state from the sessions the app holds (archived ones are no part of it) and the requests to connect. */
 export function teamState(sessions: Session[], requests: number): TeamState {
   const visible = sessions.filter((s) => s.status !== SessionStatus.ARCHIVED);
+  const kids = herChildren(visible);
+  const childActive = (s: Session) => kids.get(s.sessionId)?.some(isActive) ?? false;
+  const childUnsettled = (s: Session) =>
+    kids.get(s.sessionId)?.some((c) => isActive(c) || c.status === SessionStatus.WAITING_INPUT) ?? false;
   const latest = (list: Session[]) => list.sort((a, b) => updatedDate(b).getTime() - updatedDate(a).getTime());
   const waiting = latest(visible.filter((s) => s.status === SessionStatus.WAITING_INPUT));
   const failed = latest(visible.filter(isFailed));
-  const running = visible.filter(isActive).sort((a, b) => createdDate(b).getTime() - createdDate(a).getTime());
-  const finished = latest(visible.filter((s) => !isActive(s) && !needsAttention(s)));
+  const running = visible
+    .filter((s) => isActive(s) || (!needsAttention(s) && childActive(s)))
+    .sort((a, b) => createdDate(b).getTime() - createdDate(a).getTime());
+  const finished = latest(visible.filter((s) => !isActive(s) && !needsAttention(s) && !childUnsettled(s)));
   const tag: TeamTag =
     waiting.length === 1 && requests === 0 ? { kind: "waiting", agent: waiting[0].agent }
     : waiting.length + requests > 0 ? { kind: "needYou", count: waiting.length + requests }

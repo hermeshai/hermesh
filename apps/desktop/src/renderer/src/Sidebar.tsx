@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { GitState, SessionStatus, type Session } from "@hermesh/proto/session";
 import {
-  bucketTitle, childrenOf, clockText, HER_SECTION, isHerConversation, isTreeArchivable, sliceChildren, treeMark, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, diffBarBlocks, displayTitle, hasGitDeliveryBox, isActive, isArchivable, isFailed, listTime, naturalSectionKey, needsAttention, needsGitRefresh,
+  bucketTitle, childrenOf, clockText, HER_SECTION, herChildren, isHerConversation, isTreeArchivable, sliceChildren, treeMark, treeStatus, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, diffBarBlocks, displayTitle, hasGitDeliveryBox, isActive, isArchivable, isFailed, listTime, naturalSectionKey, needsAttention, needsGitRefresh,
   SECTION_EXPAND_STEP, SECTION_INITIAL_LIMIT, sessionGitMark, sessionSections, sessionsNeedingGitRefresh, sliceSectionSessions, statusTitle, teamState, updatedDate, type SessionBucket, type SessionSection, type SessionView,
   SCRATCH_PROJECT,
 } from "@hermesh/core";
@@ -41,6 +41,7 @@ export function senderName(st: Pick<Store, "clients">, clientId: string): string
 
 /** A session's second line in lists: who sent the work to which coding agent, and the project. */
 export function senderLine(st: Store, s: Session): string {
+  if (isHerConversation(s)) return i18n.t("common:sidebar.sentToHer");
   return `${senderName(st, s.createdBy)} → ${codingAgentShort(s.agent)} · ${s.projectId}`;
 }
 
@@ -67,7 +68,7 @@ export function togglePin(st: Store, s: Session, slot?: number) {
 
 /** The work a conversation with Her sent, nested in the list or not: it is archived with it (docs/her-conversations.md D14). */
 function sentFrom(st: Pick<Store, "sessions">, s: Session): Session[] {
-  return isHerConversation(s) ? (childrenOf(st.sessions, { nest: true }).get(s.sessionId) ?? []) : [];
+  return isHerConversation(s) ? (herChildren(st.sessions).get(s.sessionId) ?? []) : [];
 }
 
 /** Whether a session can be archived now: a conversation with Her only once all it sent has stopped too. */
@@ -275,42 +276,47 @@ function Sessions({ now }: { now: Date }) {
   const limits = expanded.group === view.group ? expanded.limits : {};
   const sel = st.selection;
   const selectedId = sel.kind === "session" ? sel.id : null;
+  // All non-archived work sent from each conversation with Her, and the subset nested in the list.
+  const allTrees = useMemo(() => herChildren(archived ? sessions : sessions.filter((x) => x.status !== SessionStatus.ARCHIVED)), [sessions, archived]);
+  const trees = useMemo(() => (view.nest ? allTrees : new Map<string, Session[]>()), [allTrees, view.nest]);
   const rendered = useMemo(
     () =>
       sections.map((sec) => {
         const id = `${sec.grouping}:${sec.key}`;
         const open = !st.collapsed.includes(id);
         const limit = limits[id] ?? SECTION_INITIAL_LIMIT;
-        const slice = sliceSectionSessions(sec.sessions, sec.grouping, limit, selectedId);
+        const slice = sliceSectionSessions(sec.sessions, sec.grouping, limit, selectedId, allTrees);
         return { sec, id, open, limit, slice };
       }),
-    [sections, st.collapsed, limits, selectedId],
+    [sections, st.collapsed, limits, selectedId, allTrees],
   );
   const anyTruncated = rendered.some((r) => r.slice.hiddenCount > 0);
-  // The work under each conversation with Her while the view nests it; each tree open unless the owner closed it.
-  const trees = useMemo(() => childrenOf(archived ? sessions : sessions.filter((x) => x.status !== SessionStatus.ARCHIVED), view), [sessions, archived, view]);
   const [allKids, setAllKids] = useState<ReadonlySet<string>>(() => new Set());
   const toggleTree = (id: string) => {
     const key = `tree:${id}`;
     const cur = latest.current;
     cur.set({ collapsed: cur.collapsed.includes(key) ? cur.collapsed.filter((c) => c !== key) : [...cur.collapsed, key] });
   };
-  const row = (s: Session, _sec: SessionSection, tree?: { kids: Session[]; shut: boolean }, child?: boolean) => (
-    <SessionRow
-      key={s.sessionId}
-      s={s}
-      sel={sel.kind === "session" && sel.id === s.sessionId}
-      sender={senderName(st, s.createdBy)}
-      meta={view.metadata}
-      renaming={st.renaming === s.sessionId}
-      store={latest}
-      hover={hoverCtrl}
-      child={child}
-      twist={tree ? (tree.shut ? "shut" : "open") : undefined}
-      treeMark={tree?.shut ? treeMark(s, tree.kids) : undefined}
-      onTwist={tree ? toggleTree : undefined}
-    />
-  );
+  const row = (s: Session, _sec: SessionSection, tree?: { kids: Session[]; shut: boolean }, child?: boolean) => {
+    const kids = child ? undefined : allTrees.get(s.sessionId);
+    return (
+      <SessionRow
+        key={s.sessionId}
+        s={s}
+        sel={sel.kind === "session" && sel.id === s.sessionId}
+        sender={senderName(st, s.createdBy)}
+        meta={view.metadata}
+        renaming={st.renaming === s.sessionId}
+        store={latest}
+        hover={hoverCtrl}
+        child={child}
+        twist={tree ? (tree.shut ? "shut" : "open") : undefined}
+        treeRunning={kids?.length ? treeStatus(s, kids) === "active" : undefined}
+        treeMark={(!tree || tree.shut) && kids?.length ? treeMark(s, kids) : undefined}
+        onTwist={tree ? toggleTree : undefined}
+      />
+    );
+  };
   const withTree = (s: Session, sec: SessionSection) => {
     const kids = trees.get(s.sessionId);
     if (!kids?.length) return row(s, sec);
@@ -562,7 +568,7 @@ function Sessions({ now }: { now: Date }) {
         }
       }
 
-      const curKids = childrenOf(latest.current.sessions, latest.current.view).get(sObj.sessionId) ?? [];
+      const curKids = sentFrom(latest.current, sObj);
       const natSecId = naturalSectionKey(latest.current.view, sObj, new Date(), curKids);
       const natGroup = container.querySelector<HTMLElement>(`[data-sec-id="${CSS.escape(natSecId)}"]`);
       if (natGroup && !natGroup.querySelector(".grp-h.shut")) {
@@ -880,18 +886,19 @@ type RowHoverController = {
  * failed, or a delivered Git icon when pushed/merged); with metadata, who sent the work
  * to which agent, the project and the time. Quick archive/unarchive (when applicable) and ⋯ in the mark's place on hover; right-click for the native menu.
  */
-export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renaming, store, hover, child, twist, treeMark, onTwist }: {
+export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renaming, store, hover, child, twist, treeRunning, treeMark, onTwist }: {
   s: Session; sel: boolean; sender: string; meta: boolean; renaming: boolean; store: RefObject<Store>; hover?: RefObject<RowHoverController>;
   /** Work under a conversation with Her: no pin of its own, and it goes where the conversation goes. */
   child?: boolean;
   /** A conversation with work under it: open or shut, with the tree's most urgent mark while shut (D12). */
   twist?: "open" | "shut";
+  treeRunning?: boolean;
   treeMark?: "waiting" | "failed";
   onTwist?: (id: string) => void;
 }) {
   const { t } = useTranslation("common");
   const archived = s.status === SessionStatus.ARCHIVED;
-  const running = isActive(s) && !needsAttention(s);
+  const running = (treeRunning ?? (isActive(s) && !needsAttention(s))) && !treeMark;
   const runLabel = running ? t(s.status === SessionStatus.QUEUED ? "status.queued" : s.status === SessionStatus.PREPARING ? "status.preparing" : "status.running") : undefined;
   // Where the ⋯ menu opens (under its button), while it is open.
   const [menu, setMenu] = useState<{ x: number; y: number; key: boolean } | null>(null);
@@ -957,7 +964,7 @@ export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renam
               }}
             />
           ) : (
-            <RowTitle s={s} title={shownTitle} />
+            <RowTitle s={s} title={shownTitle} running={running} />
           )}
           {!renaming && <span className="smeta">{treeMark ? <TreeMark mark={treeMark} /> : <RowMark s={s} />}</span>}
           {!renaming && (
@@ -1122,8 +1129,8 @@ function RowMenu({ s, at, store, onClose }: { s: Session; at: { x: number; y: nu
 }
 
 /** A row's title; while it runs (and nothing needs the owner), a fainter band crosses it left to right (app.css .stitle.run). */
-function RowTitle({ s, title }: { s: Session; title: string }) {
-  const run = (isActive(s) && !needsAttention(s)) || s.titleGenerating;
+function RowTitle({ s, title, running }: { s: Session; title: string; running: boolean }) {
+  const run = running || s.titleGenerating;
   return (
     <span className={`stitle ${run ? "run" : ""}`} title={title}>
       {title}
@@ -1270,7 +1277,7 @@ function SessionHoverCard({ s, sender, now, anchor }: {
         <span className="shover-logo"><AgentLogo agent={s.agent} size={18} /></span>
         <div className="shover-hmain">
           <div className="shover-title">{displayTitle(s)}</div>
-          <div className="shover-sub">{sender} → {codingAgentShort(s.agent)} · {s.projectId} · {timeText}</div>
+          <div className="shover-sub">{isHerConversation(s) ? t("sidebar.sentToHer") : `${sender} → ${codingAgentShort(s.agent)} · ${s.projectId}`} · {timeText}</div>
         </div>
       </div>
       {hasGitDeliveryBox(s) && (

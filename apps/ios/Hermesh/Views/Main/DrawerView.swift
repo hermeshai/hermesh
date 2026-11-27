@@ -202,12 +202,13 @@ private struct MenuSessions: View {
     var body: some View {
         let machines = model.machines.sorted { $0.machineName.localizedStandardCompare($1.machineName) == .orderedAscending }.map(\.machineID)
         let sections = sessionSections(model.sessions, view: model.listView, archived: model.showArchived, now: model.now, machines: machines, alwaysActive: true, pinnedOrder: model.pinnedOrder, activeOrder: model.activeOrder)
-        let trees = childrenOf(model.showArchived ? model.sessions : model.sessions.filter { $0.status != .archived }, view: model.listView)
+        let allTrees = herChildren(model.showArchived ? model.sessions : model.sessions.filter { $0.status != .archived })
+        let trees = model.listView.nest ? allTrees : [:]
         let limits = expandedGroup == model.listView.group ? expandedLimits : [:]
         let rendered = sections.map { section in
             let open = !model.collapsed.contains(section.id)
             let limit = limits[section.id] ?? sectionInitialLimit
-            let slice = sliceSectionSessions(section.sessions, grouping: section.grouping, limit: limit, selectedID: model.chosenSession)
+            let slice = sliceSectionSessions(section.sessions, grouping: section.grouping, limit: limit, selectedID: model.chosenSession, trees: allTrees)
             return RenderedSection(section: section, open: open, limit: limit, slice: slice)
         }
         let anyTruncated = rendered.contains { $0.slice.hiddenCount > 0 }
@@ -221,7 +222,7 @@ private struct MenuSessions: View {
                         .plainRow()
                         .accessibilityIdentifier("none-now")
                 }
-                let rows = sectionRows(item.slice.visible, trees: trees)
+                let rows = sectionRows(item.slice.visible, trees: trees, allTrees: allTrees)
                 if section.key == SessionBucket.pinned.rawValue || (section.grouping == .status && section.key == SessionBucket.active.rawValue) {
                     ForEach(rows) { r in rowView(r) }
                         .onMove { from, to in moveFlatRows(in: section, rows: rows, from: from, to: to) }
@@ -373,12 +374,13 @@ private struct MenuSessions: View {
 
     /// Flattens each tree into separate List rows so every parent and child row owns its own context menu,
     /// while keeping children non-draggable and moving whole trees together (docs/her-conversations.md D13).
-    private func sectionRows(_ visible: [Session], trees: [String: [Session]]) -> [SectionRow] {
+    private func sectionRows(_ visible: [Session], trees: [String: [Session]], allTrees: [String: [Session]]) -> [SectionRow] {
         var out: [SectionRow] = []
         for s in visible {
             let kids = trees[s.sessionID] ?? []
             if kids.isEmpty {
-                out.append(.session(s, twistShut: nil, mark: nil))
+                let flatKids = allTrees[s.sessionID] ?? []
+                out.append(.session(s, twistShut: nil, mark: flatKids.isEmpty ? nil : treeMark(s, children: flatKids)))
                 continue
             }
             let shut = model.collapsedTrees.contains(s.sessionID)

@@ -19,7 +19,6 @@ import { MenuButton } from "./menus";
  */
 export function BusyBubble({ busy }: { busy: { her: boolean; agents: BusyAgent[] } }) {
   const { t, i18n } = useTranslation("her");
-  const st = useStore();
   const her = useHer();
   const [turn, setTurn] = useState(0);
   // The names stay while the pointer is on the line or its menu is open: what is under it is what is clicked.
@@ -27,7 +26,7 @@ export function BusyBubble({ busy }: { busy: { her: boolean; agents: BusyAgent[]
   const [menuOpen, setMenuOpen] = useState(false);
   const agents = busy.agents;
   const shown = agents.length ? agents[turn % agents.length] : undefined;
-  const open = (a?: BusyAgent) => st.set({ selection: { kind: "progress", machine: her.machine.machineId, ...(a && { task: { agent: a.id, fromHer: true } }) } });
+  const open = (a?: BusyAgent) => her.openProgress(a ? { agent: a.id, fromHer: true } : undefined);
   const words = (
     <span className="wb-sweep" onAnimationIteration={() => agents.length > 1 && !hovered && !menuOpen && setTurn((n) => n + 1)}>
       <span className="dots" aria-hidden="true">

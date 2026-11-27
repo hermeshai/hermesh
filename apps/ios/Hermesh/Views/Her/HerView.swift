@@ -102,7 +102,10 @@ private struct HerPage: View {
         .onChange(of: model.sheet) { team = false }
         .onChange(of: model.accountPresented) { team = false }
         .onChange(of: model.drawerOpen) { team = false }
-        .onAppear { model.her.machine = machine.machineID }
+        .onAppear {
+            model.her.machine = machine.machineID
+            model.her.conversation = nil
+        }
         .herConnections(chat, machine: machine)
         // Nothing is unread while the owner looks.
         .task(id: [chat.bot?.unread ?? 0, chat.envUp ? 1 : 0, phase == .active ? 1 : 0]) { if phase == .active { await chat.markRead() } }
@@ -373,98 +376,169 @@ private struct HerConnections: ViewModifier {
 }
 
 /// A conversation of the owner's with Her besides her main one, opened from the task list (docs/her-conversations.md §3.2):
-/// Her's chat on that conversation, under a compact task bar with the task's title, Her and her machine (plus non-default model),
-/// and ⋯ for task actions and Her's settings.
+/// Her's chat on that conversation, under the same Her header as her main page (her large animated mark, her floating name
+/// and team capsule, and Progress on the right), plus ⋯ for this conversation's actions and Her's settings.
 struct HerConversationPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var phase
+    @Environment(\.accessibilityReduceMotion) private var still
     @Environment(\.barsOnTheSide) private var sideBars
     let sessionID: String
+    @State private var team = false
+    @State private var statusBar: CGFloat = 0
+    @State private var barHeight: CGFloat = 0
     @State private var renaming = false
     @State private var deleting = false
     @State private var offlinePrompt: (text: String, sent: Date?, attachments: [Hermesh_Session_V1_AttachmentRef])?
+
+    private let fade: CGFloat = 20
+    private let tagHeight: CGFloat = 36
 
     private var session: Session? { model.session(sessionID) }
     private var machine: HerMachine? { session.flatMap { s in model.machines.first { $0.machineID == s.machineID } } }
 
     var body: some View {
         if let session, let machine {
-            let convID = session.providerSessionRef
-            let chat = model.her.chat(machine.machineID, conversation: convID, model: model)
-            let state = herState(machine)
-            Group {
-                if chat.bot != nil && !convID.isEmpty {
-                    HerConversation(chat: chat, machine: machine, state: state, archived: session.status == .archived)
-                } else if session.offlineQueued {
-                    offlineQueuedView(session: session, machine: machine)
-                } else {
-                    HerStatus(machine: machine, state: state)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .scrollEdgeEffectStyle(.soft, for: .top)
-            .safeAreaBar(edge: .top) {
-                VStack(spacing: 6) {
-                    topBar(session: session, machine: machine, chat: chat)
-                    if session.status == .archived {
-                        ArchivedNote(session: session).padding(.horizontal, 16)
-                    }
-                }
-                .keyboardAwayOnTap()
-            }
+            conversationScreen(session: session, machine: machine)
+        } else {
+            loadingScreen
+        }
+    }
+
+    private func conversationScreen(session: Session, machine: HerMachine) -> some View {
+        let convID = session.providerSessionRef
+        let chat = model.her.chat(machine.machineID, conversation: convID, model: model)
+        return conversationStage(session: session, machine: machine, chat: chat, convID: convID)
             .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
             .background { if !sideBars { SwipesBack() } }
-            .toolbar {
-                if sideBars {
-                    if model.path.isEmpty { MenuToolbarItem() }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            moreItems(session: session, machine: machine)
-                        } label: {
-                            Image(systemName: "ellipsis")
-                        }
-                        .accessibilityLabel("More")
-                        .accessibilityIdentifier("session-more")
-                    }
-                }
+            .toolbar { sideBarItems(session: session, machine: machine, chat: chat, convID: convID) }
+            .onChange(of: model.path) { team = false }
+            .onChange(of: model.sheet) { team = false }
+            .onChange(of: model.accountPresented) { team = false }
+            .onChange(of: model.drawerOpen) { team = false }
+            .onAppear {
+                model.her.machine = machine.machineID
+                model.her.conversation = convID.isEmpty ? nil : convID
+            }
+            .onChange(of: convID) { _, next in
+                model.her.conversation = next.isEmpty ? nil : next
             }
             .herConnections(chat, machine: machine)
             .herAISharingAlert(chat)
             .sessionDialogs(session, renaming: $renaming, deleting: $deleting)
             .onChange(of: deleting) { _, on in if on { hideKeyboard() } }
             .task(id: "\(sessionID)/\(session.offlineQueued)") {
-                guard session.offlineQueued, convID.isEmpty, let res = try? await model.api?.getSession(sessionID, cachedOnly: true) else { return }
-                if let item = res.projection.items.first(where: { $0.kind == .userMessage }) {
-                    offlinePrompt = (item.text, dateOf(item.createdAt, set: item.hasCreatedAt), item.attachments)
-                } else if let run = res.projection.runs.first {
-                    offlinePrompt = (run.prompt, dateOf(run.createdAt, set: run.hasCreatedAt), run.attachments)
+                await loadOfflinePrompt(session: session, convID: convID)
+            }
+    }
+
+    private func conversationStage(session: Session, machine: HerMachine, chat: HerChat, convID: String) -> some View {
+        let state = herState(machine)
+        return Group {
+            if chat.bot != nil && !convID.isEmpty {
+                HerConversation(chat: chat, machine: machine, state: state, archived: session.status == .archived)
+            } else if session.offlineQueued {
+                offlineQueuedView(session: session, machine: machine)
+            } else {
+                HerStatus(machine: machine, state: state)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .scrollEdgeEffectHidden(true, for: .top)
+        .mask { topFadeMask }
+        .overlay(alignment: .top) { teamOverlay }
+        .safeAreaBar(edge: .top) {
+            VStack(spacing: 6) {
+                header(session: session, machine: machine, chat: chat, convID: convID)
+                if session.status == .archived {
+                    ArchivedNote(session: session).padding(.horizontal, 16)
                 }
             }
-        } else {
-            PageLoader(text: "Reading the conversation…", bare: true)
-                .safeAreaBar(edge: .top) {
-                    HStack {
-                        if !sideBars {
-                            if !model.path.isEmpty {
-                                Button { model.path.removeLast() } label: { BarIcon(systemImage: "chevron.backward") }
-                                    .buttonStyle(.plain)
-                                    .accessibilityLabel("Back")
-                                    .accessibilityIdentifier("BackButton")
-                            } else {
-                                GlassMenuButton()
-                            }
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16).padding(.bottom, 4)
-                }
-                .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
+            .keyboardAwayOnTap()
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0 }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { statusBar = $0 }
+    }
+
+    private var topFadeMask: some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: max(statusBar + barHeight - fade, statusBar))
+            LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: fade)
+            Color.black
+        }
+        .ignoresSafeArea()
+    }
+
+    @ViewBuilder private var teamOverlay: some View {
+        if team {
+            ZStack(alignment: .top) {
+                Color.black.opacity(0.22).ignoresSafeArea()
+                    .onTapGesture { showTeam(false) }
+                    .accessibilityElement()
+                    .accessibilityLabel("Close")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { showTeam(false) }
+                    .accessibilityIdentifier("team-close")
+                TeamPanel { showTeam(false) }
+                    .padding(.top, -tagHeight - 4)
+                    .transition(still ? .opacity : .scale(scale: 0.3, anchor: .top).combined(with: .opacity))
+            }
+            .transition(.opacity)
         }
     }
 
-    private func topBar(session: Session, machine: HerMachine, chat: HerChat) -> some View {
-        let side: CGFloat = sideBars ? 0 : 44
-        return HStack(spacing: 8) {
+    @ToolbarContentBuilder
+    private func sideBarItems(session: Session, machine: HerMachine, chat: HerChat, convID: String) -> some ToolbarContent {
+        if sideBars {
+            if model.path.isEmpty { MenuToolbarItem() }
+            if chat.bot != nil && !convID.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) { HerProgressButton(marks: herProgressMarks(chat), inBar: true) }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    moreItems(session: session, machine: machine)
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .accessibilityLabel("More")
+                .accessibilityIdentifier("session-more")
+            }
+        }
+    }
+
+    private func loadOfflinePrompt(session: Session, convID: String) async {
+        guard session.offlineQueued, convID.isEmpty, let res = try? await model.api?.getSession(sessionID, cachedOnly: true) else { return }
+        if let item = res.projection.items.first(where: { $0.kind == .userMessage }) {
+            offlinePrompt = (item.text, dateOf(item.createdAt, set: item.hasCreatedAt), item.attachments)
+        } else if let run = res.projection.runs.first {
+            offlinePrompt = (run.prompt, dateOf(run.createdAt, set: run.hasCreatedAt), run.attachments)
+        }
+    }
+
+    private var loadingScreen: some View {
+        PageLoader(text: "Reading the conversation…", bare: true)
+            .safeAreaBar(edge: .top) {
+                HStack {
+                    if !sideBars {
+                        if !model.path.isEmpty {
+                            Button { model.path.removeLast() } label: { BarIcon(systemImage: "chevron.backward") }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Back")
+                                .accessibilityIdentifier("BackButton")
+                        } else {
+                            GlassMenuButton()
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 16).padding(.bottom, 4)
+            }
+            .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
+    }
+
+    private func header(session: Session, machine: HerMachine, chat: HerChat, convID: String) -> some View {
+        let waits = herRoutineDot(chat.bot?.routines ?? []) == .failed
+        return ZStack(alignment: .top) {
             HStack(spacing: 8) {
                 if !sideBars {
                     if !model.path.isEmpty {
@@ -476,50 +550,11 @@ struct HerConversationPage: View {
                         GlassMenuButton()
                     }
                 }
-            }
-            .frame(width: side, alignment: .leading)
-            Spacer(minLength: 0)
-            TimelineView(.periodic(from: .now, by: chat.live?.live?.retryAt != nil ? 1 : 60)) { tick in
-                let status = chat.live.flatMap { herStatus($0, now: tick.date.timeIntervalSince1970 * 1000) }
-                let statusText = status.map(HerTag.words(for:))
-                let rawModel = (chat.live?.model).flatMap { $0.isEmpty ? nil : $0 }
-                    ?? ((session.modelSelection.model.isEmpty || session.modelSelection.model == "default") ? nil : session.modelSelection.model)
-                let namedModel: String = if let rawModel, let def = chat.models.defaultModel, !def.isEmpty {
-                    rawModel == def ? "" : chat.models.title(rawModel)
-                } else {
-                    ""
-                }
-                let subtitle = [chat.bot?.name ?? "Her", machine.machineName, namedModel, statusText ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
-                VStack(spacing: 1) {
-                    Text(verbatim: session.displayTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .accessibilityIdentifier("thread-title")
-                    HStack(spacing: 4) {
-                        HerSmallCat(size: 13)
-                        Text(verbatim: subtitle)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .shimmer(statusText != nil, paused: phase != .active)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("session-where")
-                }
-                .padding(.horizontal, 16)
-                .frame(maxWidth: 280)
-                .frame(height: 44)
-                .glassEffect(.regular, in: .capsule)
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("her-conversation-bar")
-            }
-            .layoutPriority(1)
-            Spacer(minLength: 0)
-            HStack(spacing: 8) {
+                Spacer()
                 if !sideBars {
+                    if chat.bot != nil && !convID.isEmpty {
+                        HerProgressButton(marks: herProgressMarks(chat))
+                    }
                     Menu {
                         moreItems(session: session, machine: machine)
                     } label: {
@@ -530,9 +565,56 @@ struct HerConversationPage: View {
                     .accessibilityIdentifier("session-more")
                 }
             }
-            .frame(width: side, alignment: .trailing)
+            VStack(spacing: -16) {
+                Button {
+                    if team {
+                        showTeam(false)
+                    } else {
+                        model.her.machine = machine.machineID
+                        model.path.append(.herSettings)
+                    }
+                } label: {
+                    HerAvatar(size: 72, busy: chat.live.map(herBusy) ?? false)
+                        .overlay(alignment: .topTrailing) {
+                            if waits {
+                                Circle().fill(.orange).frame(width: 72 * 0.17, height: 72 * 0.17)
+                                    .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2.5))
+                                    .offset(x: -72 * 0.03, y: 72 * 0.05)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(waits ? Text("\(chat.bot?.name ?? "Her"), something is waiting for you") : Text(chat.bot?.name ?? "Her"))
+                .accessibilityHint(team ? Text("Closes the team panel") : Text("Opens Her’s page"))
+                .accessibilityIdentifier("her-avatar")
+                .zIndex(1)
+
+                Button {
+                    showTeam(true)
+                } label: {
+                    HerTag(name: chat.bot?.name ?? "Her",
+                           session: chat.live,
+                           team: teamState(model.sessions, requests: model.pairings.count),
+                           paused: phase != .active)
+                        .frame(height: tagHeight)
+                        .padding(.horizontal, 14)
+                        .glassEffect(.regular.interactive(), in: .capsule)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(Text("Shows what your agents are doing"))
+                .accessibilityIdentifier("her-tag")
+                .opacity(team ? 0 : 1)
+                .allowsHitTesting(!team)
+            }
         }
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .padding(.horizontal, 16).padding(.bottom, 4)
+    }
+
+    private func showTeam(_ on: Bool) {
+        if on { hideKeyboard() }
+        withAnimation(still ? .easeOut(duration: 0.15) : .snappy(duration: 0.36, extraBounce: 0.08)) { team = on }
     }
 
     @ViewBuilder private func moreItems(session: Session, machine: HerMachine) -> some View {
