@@ -17,8 +17,10 @@ function Svg({ svg }: { svg: string }) {
   return <div ref={ref} className="md-diagram-svg" />;
 }
 
-function currentDiagramTheme(): "light" | "dark" | "black" {
-  if (!matchMedia("(prefers-color-scheme: dark)").matches) return "light";
+function currentDiagramTheme(): "light" | "soft" | "dark" | "black" {
+  if (!matchMedia("(prefers-color-scheme: dark)").matches) {
+    return document.documentElement.dataset.lightStyle === "soft" ? "soft" : "light";
+  }
   return document.documentElement.dataset.darkStyle === "black" ? "black" : "dark";
 }
 
@@ -37,7 +39,7 @@ export default function MermaidBlock({ text }: { text: string }) {
     const update = () => setTheme(currentDiagramTheme());
     media.addEventListener("change", update);
     const mo = new MutationObserver(update);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-dark-style"] });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-light-style", "data-dark-style"] });
     return () => {
       media.removeEventListener("change", update);
       mo.disconnect();
