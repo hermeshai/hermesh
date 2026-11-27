@@ -1,0 +1,1315 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>会话图片去卡片化与正文融合 · 视觉探索原型</title>
+<style>
+@font-face {
+  font-family: "Google Sans Flex";
+  src: url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-flex.ttf") format("truetype");
+  font-style: oblique 0deg 10deg;
+  font-weight: 100 1000;
+}
+@font-face {
+  font-family: "Google Sans Code";
+  src: url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-code.ttf") format("truetype");
+  font-weight: 300 800;
+}
+
+:root {
+  --font: "Google Sans Flex", "Google Sans", -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif;
+  --mono: "Google Sans Code", ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+  --ease-out: cubic-bezier(.2, 0, 0, 1);
+  --ease: cubic-bezier(.22, 1, .36, 1);
+}
+
+/* ---------- Light Mode (Default — matches user's latest screenshot) ---------- */
+[data-theme="light"] {
+  --page: #ecedf2;
+  --page-fg: #181920;
+  --page-fg2: #5d606d;
+  --page-fg3: #8b8f9e;
+  --page-card: #ffffff;
+  --page-bd: rgba(0,0,0,.075);
+  --page-bar: rgba(255,255,255,.88);
+
+  --win: #ffffff;
+  --win2: #f4f5f8;
+  --code: #f6f7fa;
+  --l1: rgba(0,0,0,.88);
+  --l2: rgba(0,0,0,.56);
+  --l3: rgba(0,0,0,.35);
+  --l4: rgba(0,0,0,.13);
+  --sep: rgba(0,0,0,.075);
+  --fill: rgba(0,0,0,.042);
+  --fill2: rgba(0,0,0,.072);
+  --fill3: rgba(0,0,0,.115);
+
+  --accent: #3d5bff;
+  --accent-t: #2c4ae8;
+  --accent-bg: rgba(61,91,255,.09);
+  --ok: #158f4c;
+  --ok-bg: rgba(21,143,76,.10);
+  --warn: #c96a04;
+  --warn-bg: rgba(201,106,4,.10);
+  --danger: #dc2626;
+
+  --shadow-win: 0 0 0 .5px rgba(0,0,0,.12), 0 22px 64px rgba(15,23,42,.13);
+  /* Whisper optical lift for frameless images on white paper */
+  --img-whisper: 0 0 0 .5px rgba(0,0,0,.055), 0 4px 18px rgba(15,23,42,.055);
+  --img-whisper-hover: 0 0 0 .5px rgba(0,0,0,.09), 0 8px 26px rgba(15,23,42,.085);
+  --deck-layer: rgba(0,0,0,.045);
+  --deck-bd: rgba(0,0,0,.075);
+}
+
+/* ---------- Pure Black OLED ---------- */
+[data-theme="black"] {
+  --page: #08090d;
+  --page-fg: #ededf2;
+  --page-fg2: #9498a6;
+  --page-fg3: #616574;
+  --page-card: #121319;
+  --page-bd: rgba(255,255,255,.08);
+  --page-bar: rgba(15,16,22,.88);
+
+  --win: #000000;
+  --win2: #121318;
+  --code: #0b0c10;
+  --l1: rgba(255,255,255,.92);
+  --l2: rgba(235,235,245,.58);
+  --l3: rgba(235,235,245,.34);
+  --l4: rgba(255,255,255,.15);
+  --sep: rgba(255,255,255,.085);
+  --fill: rgba(255,255,255,.052);
+  --fill2: rgba(255,255,255,.09);
+  --fill3: rgba(255,255,255,.14);
+
+  --accent: #4a66ff;
+  --accent-t: #8fa2ff;
+  --accent-bg: rgba(74,102,255,.18);
+  --ok: #38ce86;
+  --ok-bg: rgba(56,206,134,.15);
+  --warn: #f5a53c;
+  --warn-bg: rgba(245,165,60,.15);
+  --danger: #ff6670;
+
+  --shadow-win: 0 0 0 1px rgba(255,255,255,.10), 0 26px 72px rgba(0,0,0,.78);
+  --img-whisper: 0 0 0 .5px rgba(255,255,255,.085), 0 8px 26px rgba(0,0,0,.45);
+  --img-whisper-hover: 0 0 0 .5px rgba(255,255,255,.15), 0 12px 32px rgba(0,0,0,.6);
+  --deck-layer: rgba(255,255,255,.05);
+  --deck-bd: rgba(255,255,255,.10);
+}
+
+/* ---------- Dark Gray ---------- */
+[data-theme="dark"] {
+  --page: #0e1015;
+  --page-fg: #ececf1;
+  --page-fg2: #989ba8;
+  --page-fg3: #666977;
+  --page-card: #171922;
+  --page-bd: rgba(255,255,255,.085);
+  --page-bar: rgba(20,21,28,.88);
+
+  --win: #1e1e22;
+  --win2: #26262b;
+  --code: #17171b;
+  --l1: rgba(255,255,255,.90);
+  --l2: rgba(255,255,255,.57);
+  --l3: rgba(255,255,255,.34);
+  --l4: rgba(255,255,255,.15);
+  --sep: rgba(255,255,255,.09);
+  --fill: rgba(255,255,255,.055);
+  --fill2: rgba(255,255,255,.09);
+  --fill3: rgba(255,255,255,.14);
+
+  --accent: #4a66ff;
+  --accent-t: #95a8ff;
+  --accent-bg: rgba(74,102,255,.18);
+  --ok: #3fcf86;
+  --ok-bg: rgba(63,207,134,.15);
+  --warn: #f5a623;
+  --warn-bg: rgba(245,166,35,.15);
+  --danger: #ff6b75;
+
+  --shadow-win: 0 0 0 .5px rgba(255,255,255,.14), 0 24px 68px rgba(0,0,0,.56);
+  --img-whisper: 0 0 0 .5px rgba(255,255,255,.08), 0 6px 22px rgba(0,0,0,.28);
+  --img-whisper-hover: 0 0 0 .5px rgba(255,255,255,.14), 0 10px 28px rgba(0,0,0,.38);
+  --deck-layer: rgba(255,255,255,.055);
+  --deck-bd: rgba(255,255,255,.10);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--page);
+  color: var(--page-fg);
+  font: 13.5px/1.55 var(--font);
+  min-height: 100vh;
+  padding-bottom: 118px;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+svg { display: block; flex: none; }
+code { font-family: var(--mono); }
+
+/* ---------- Top Header ---------- */
+.top {
+  max-width: 1620px;
+  margin: 0 auto;
+  padding: 18px 24px 6px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px 20px;
+  flex-wrap: wrap;
+}
+.top-l { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.top h1 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -.015em; }
+.top .sub { font-size: 13px; color: var(--page-fg2); }
+.pbadge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 9px; border-radius: 99px; font-size: 11.5px; font-weight: 560;
+  background: var(--accent-bg); color: var(--accent-t);
+}
+.pbadge.ok { background: var(--ok-bg); color: var(--ok); }
+.pbadge.warn { background: var(--warn-bg); color: var(--warn); }
+
+.wrap {
+  max-width: 1620px;
+  margin: 0 auto;
+  padding: 10px 24px 20px;
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+#stage {
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* ---------- Side Design Rationale Card ---------- */
+.notes {
+  width: 344px;
+  max-width: 100%;
+  flex: none;
+  background: var(--page-card);
+  border: 1px solid var(--page-bd);
+  border-radius: 14px;
+  padding: 15px 17px;
+  font-size: 12.6px;
+  line-height: 1.62;
+}
+.notes h3 { margin: 0 0 6px; font-size: 14px; font-weight: 650; }
+.notes p { margin: 0; color: var(--page-fg2); }
+.notes ul { margin: 6px 0 0; padding-left: 17px; color: var(--page-fg2); }
+.notes li { margin: 5px 0; }
+.notes li b { color: var(--page-fg); font-weight: 600; }
+.notes .blk { margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--page-bd); }
+.notes code { font-size: 11.3px; padding: 1px 5px; border-radius: 4px; background: var(--fill2); color: var(--page-fg); }
+
+/* ---------- Simulated Conversation Surface (728px Prose Column) ---------- */
+.surface {
+  width: 856px;
+  max-width: 100%;
+  border-radius: 16px;
+  background: var(--win);
+  box-shadow: var(--shadow-win);
+  padding: 28px 64px 36px;
+  color: var(--l1);
+  transition: width .2s var(--ease-out), padding .2s var(--ease-out);
+}
+.surface.narrow {
+  width: 500px;
+  padding: 22px 26px 30px;
+}
+.prose {
+  max-width: 728px;
+  margin: 0 auto;
+  font-size: 14.5px;
+  line-height: 1.65;
+}
+.prose > * { margin: 0; }
+.prose > * + * { margin-top: 12px; }
+.prose h2 {
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 650;
+  letter-spacing: -.015em;
+  margin-bottom: 4px;
+}
+.prose h2:not(:first-child) { margin-top: 22px; }
+.prose hr {
+  border: 0;
+  border-top: .5px solid var(--sep);
+  margin: 18px 0;
+}
+.prose p { color: var(--l1); }
+.prose code {
+  font-family: var(--mono);
+  font-size: .89em;
+  background: var(--fill);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.md-tbl {
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 13.5px;
+}
+.md-tbl table { width: 100%; border-collapse: collapse; }
+.md-tbl th, .md-tbl td { padding: 8px 12px; border-bottom: .5px solid var(--sep); text-align: left; }
+.md-tbl th { background: var(--win2); font-weight: 600; }
+.md-tbl tr:last-child td { border-bottom: 0; }
+
+/* ==========================================================================
+   0. CURRENT BOXED / CARDIFIED VERSION (What felt abrupt in user's test)
+   ========================================================================== */
+.boxed-stage {
+  width: 100%;
+  border-radius: 10px;
+  background: var(--win2);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  overflow: hidden;
+  user-select: none;
+}
+.boxed-main {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2584 / 1404;
+  max-height: 410px;
+  background: var(--code);
+  display: grid;
+  place-items: center;
+}
+.boxed-main.portrait { aspect-ratio: auto; height: 340px; }
+.boxed-main svg { width: 100%; height: 100%; object-fit: contain; cursor: pointer; }
+.boxed-main.portrait svg { width: auto; height: 100%; }
+.boxed-pill {
+  position: absolute; top: 10px; right: 10px;
+  padding: 3px 9px; border-radius: 99px;
+  background: rgba(15,16,22,.72); color: #fff;
+  font-size: 11.5px; font-weight: 560; font-variant-numeric: tabular-nums;
+}
+.boxed-nav {
+  position: absolute; top: 50%; margin-top: -16px;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(20,21,28,.68); color: #fff;
+  display: grid; place-items: center;
+}
+.boxed-nav.prev { left: 10px; }
+.boxed-nav.next { right: 10px; }
+.boxed-cap {
+  padding: 9px 13px;
+  border-top: .5px solid var(--sep);
+  font-size: 13px; line-height: 1.5; color: var(--l1);
+}
+.boxed-strip {
+  display: flex; gap: 6px; padding: 8px 10px 10px;
+  border-top: .5px solid var(--sep);
+  background: var(--fill);
+  overflow-x: auto; scrollbar-width: none;
+}
+.boxed-strip::-webkit-scrollbar { display: none; }
+.boxed-th {
+  flex: 0 0 64px; height: 38px; border-radius: 6px; overflow: hidden;
+  opacity: .52; box-shadow: inset 0 0 0 .5px var(--sep);
+}
+.boxed-th.portrait { flex: 0 0 34px; height: 50px; }
+.boxed-th.on { opacity: 1; box-shadow: 0 0 0 2px var(--accent); }
+.boxed-th svg { width: 100%; height: 100%; }
+
+/* ==========================================================================
+   SHARED FRAMELESS ARTWORK CANVAS (Zero outer box, zero gray slab)
+   ========================================================================== */
+.pure-canvas {
+  position: relative;
+  width: 100%;
+  user-select: none;
+}
+.pure-frame {
+  position: relative;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--img-whisper);
+  cursor: pointer;
+  transition: box-shadow .18s var(--ease-out);
+}
+.pure-frame:hover { box-shadow: var(--img-whisper-hover); }
+.pure-frame svg { width: 100%; height: auto; display: block; }
+
+/* Portrait image floats naturally on page ground without a gray 728px wall behind it! */
+.pure-canvas.portrait {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.pure-canvas.portrait .pure-frame {
+  width: auto;
+  height: 360px;
+  aspect-ratio: 390 / 844;
+}
+.pure-canvas.portrait .pure-frame svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Hover-only subtle glass arrows ("Shown when wanted" — just like Hermesh MarkdownTable) */
+.hover-nav {
+  position: absolute;
+  top: 50%;
+  margin-top: -15px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(18, 19, 25, .48);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.22);
+  color: rgba(255,255,255,.95);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity .16s var(--ease-out), background .14s, transform .14s;
+  z-index: 2;
+}
+.pure-canvas:hover .hover-nav { opacity: 1; }
+.hover-nav:hover { background: rgba(18, 19, 25, .74); transform: scale(1.04); }
+.hover-nav.prev { left: 10px; }
+.hover-nav.next { right: 10px; }
+
+/* ==========================================================================
+   IDEA A: FRAMELESS EDITORIAL FIGURE + FLOATING HAIRLINE FILMSTRIP (推荐 1)
+   ========================================================================== */
+.ed-a {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px 0 16px;
+}
+.ed-cap-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.52;
+  color: var(--l2);
+  padding: 1px 1px 0;
+}
+.ed-num {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--l3);
+  font-variant-numeric: tabular-nums;
+}
+.ed-cap-txt {
+  color: var(--l2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ed-cap-txt b { color: var(--l1); font-weight: 560; }
+
+/* Trayless floating micro-frames: no background bar, no top divider, no heavy blue border */
+.ed-thumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 1px 4px;
+}
+.ed-thumbs::-webkit-scrollbar { display: none; }
+.ed-th {
+  flex: 0 0 54px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.ed-th.portrait { flex: 0 0 30px; }
+.ed-th-pic {
+  width: 100%;
+  height: 31px;
+  border-radius: 4.5px;
+  overflow: hidden;
+  opacity: .38;
+  box-shadow: 0 0 0 .5px var(--sep);
+  transition: opacity .16s var(--ease-out), transform .16s var(--ease-out);
+}
+.ed-th.portrait .ed-th-pic { height: 46px; }
+.ed-th:hover .ed-th-pic { opacity: .72; }
+.ed-th.on .ed-th-pic {
+  opacity: 1;
+  transform: translateY(-1px);
+  box-shadow: var(--img-whisper);
+}
+.ed-th-pic svg { width: 100%; height: 100%; }
+.ed-th-bar {
+  width: 12px;
+  height: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: width .18s var(--ease-out), background .18s;
+}
+.ed-th.on .ed-th-bar {
+  width: 18px;
+  background: var(--l1);
+}
+
+/* ==========================================================================
+   IDEA B: PURE TYPOGRAPHIC FOOTNOTE INDEX (Zero Thumbnail Clutter · 推荐 2)
+   ========================================================================== */
+.ed-b {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 14px 0 16px;
+}
+.ed-b-bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+  border-bottom: .5px solid var(--sep);
+  padding-bottom: 6px;
+}
+.ed-b-chip {
+  position: relative;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--l3);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+  transition: color .14s, background .14s;
+}
+.ed-b-chip i {
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.ed-b-chip:hover {
+  color: var(--l1);
+  background: var(--fill);
+}
+.ed-b-chip.on {
+  color: var(--l1);
+  font-weight: 580;
+  background: var(--fill2);
+}
+/* Quiet hover micro-preview Loupe above inactive index chip */
+.ed-b-loupe {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  width: 132px;
+  aspect-ratio: 2584 / 1404;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,.26), 0 0 0 .5px var(--sep);
+  background: var(--win);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .14s, transform .14s;
+  z-index: 10;
+}
+.ed-b-chip:not(.on):hover .ed-b-loupe {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.ed-b-loupe svg { width: 100%; height: 100%; }
+
+/* ==========================================================================
+   IDEA C: EDITORIAL SPINE DIRECTORY (Image + Borderless Left-Line Outline)
+   ========================================================================== */
+.ed-c {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 208px;
+  gap: 16px;
+  align-items: start;
+  margin: 14px 0 16px;
+}
+.surface.narrow .ed-c, .mcard .ed-c {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.ed-c-spine {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--sep);
+  padding: 1px 0;
+  max-height: 290px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.ed-c-spine::-webkit-scrollbar { display: none; }
+.ed-c-item {
+  position: relative;
+  text-align: left;
+  padding: 5px 8px 5px 12px;
+  font-size: 12.2px;
+  line-height: 1.4;
+  color: var(--l3);
+  transition: color .14s;
+}
+.ed-c-item:hover { color: var(--l2); }
+.ed-c-item.on {
+  color: var(--l1);
+  font-weight: 560;
+}
+.ed-c-item.on::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 5px;
+  bottom: 5px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--l1);
+}
+.ed-c-item small {
+  font-family: var(--mono);
+  font-size: 10.8px;
+  margin-right: 4px;
+  opacity: .7;
+}
+.ed-c-sub {
+  margin-top: 7px;
+  font-size: 12.6px;
+  line-height: 1.5;
+  color: var(--l2);
+}
+
+/* ==========================================================================
+   IDEA D: TACTILE PAPER STACK + COLLAPSIBLE FOOTLINE (Minimalist Zero-Bar)
+   ========================================================================== */
+.ed-d {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0 18px;
+}
+.ed-d-stack {
+  position: relative;
+  padding-right: 10px;
+  padding-bottom: 6px;
+}
+/* Two whisper paper edges peeking behind on right/bottom to signify a stack of N shots */
+.ed-d-stack::before,
+.ed-d-stack::after {
+  content: "";
+  position: absolute;
+  border-radius: 8px;
+  background: var(--deck-layer);
+  box-shadow: inset 0 0 0 .5px var(--deck-bd);
+  pointer-events: none;
+}
+.ed-d-stack::before {
+  top: 5px; left: 6px; right: 5px; bottom: 3px;
+  z-index: 0;
+}
+.ed-d-stack::after {
+  top: 10px; left: 12px; right: 0; bottom: 0;
+  z-index: 0;
+  opacity: .65;
+}
+.ed-d-stack .pure-canvas { z-index: 1; }
+.ed-d-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ed-d-stepper {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--l2);
+  font-variant-numeric: tabular-nums;
+}
+.ed-d-stepper button {
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--l2);
+}
+.ed-d-stepper button:hover {
+  background: var(--fill2);
+  color: var(--l1);
+}
+
+/* ==========================================================================
+   FRAMELESS 2-UP PAIR & SINGLE IMAGE BLEND
+   ========================================================================== */
+.ed-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 14px 0 16px;
+}
+.ed-pair-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ed-pair-cap {
+  font-size: 12.4px;
+  line-height: 1.45;
+  color: var(--l2);
+}
+.ed-pair-cap b { color: var(--l1); font-weight: 560; }
+
+/* ---------- 2x2 Panorama Matrix ---------- */
+.matrix {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 560px));
+  gap: 18px;
+  justify-content: center;
+  width: 100%;
+}
+@media (max-width: 1180px) {
+  .matrix { grid-template-columns: minmax(0, 640px); }
+}
+.mcard {
+  background: var(--win);
+  border-radius: 14px;
+  box-shadow: var(--shadow-win);
+  overflow: hidden;
+}
+.mcard-hd {
+  padding: 10px 16px;
+  border-bottom: .5px solid var(--sep);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.mcard-hd b { font-size: 13px; font-weight: 620; color: var(--l1); }
+.mcard-in { padding: 16px 22px 20px; }
+.mcard-in h4 { margin: 0 0 10px; font-size: 15.5px; font-weight: 650; color: var(--l1); }
+
+/* ---------- Lightbox ---------- */
+.slb {
+  position: fixed; inset: 0; z-index: 500;
+  display: flex; flex-direction: column;
+  background: rgba(10, 11, 16, .74);
+  backdrop-filter: blur(24px) saturate(1.25);
+  -webkit-backdrop-filter: blur(24px) saturate(1.25);
+  color: #fff; user-select: none;
+}
+.slb-top {
+  height: 54px; display: grid; grid-template-columns: 80px 1fr 80px;
+  align-items: center; padding: 0 18px; text-align: center;
+}
+.slb-title { font-size: 13.5px; font-weight: 560; }
+.slb-meta { font-size: 11.5px; color: rgba(255,255,255,.62); font-variant-numeric: tabular-nums; }
+.slb-close {
+  justify-self: end; width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(255,255,255,.14); color: #fff; display: grid; place-items: center;
+}
+.slb-body {
+  flex: 1; min-height: 0; display: grid; place-items: center; padding: 12px 64px 32px;
+}
+.slb-art { width: min(940px, 100%); border-radius: 10px; overflow: hidden; box-shadow: 0 24px 70px rgba(0,0,0,.5); }
+.slb-art svg { width: 100%; height: auto; }
+
+/* ---------- Bottom Controls ---------- */
+.ctl {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 200;
+  background: var(--page-bar);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border-top: 1px solid var(--page-bd);
+  padding: 9px 18px;
+  display: flex; flex-wrap: wrap; gap: 7px 18px;
+  align-items: center; justify-content: center;
+  font-size: 12px;
+}
+.ctl .g { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.ctl .g b { color: var(--page-fg2); font-weight: 550; margin-right: 3px; }
+.ctl button {
+  padding: 4px 10px; border-radius: 7px;
+  background: var(--fill2); color: var(--page-fg);
+  transition: background .12s, color .12s;
+}
+.ctl button:hover { background: var(--fill3); }
+.ctl button.on { background: var(--accent); color: #fff; font-weight: 560; }
+.ctl button.warn-on { background: var(--danger); color: #fff; font-weight: 560; }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="top-l">
+    <h1>会话图片「去卡片化 · 融入正文」视觉探索原型</h1>
+    <span class="sub">复现你刚测试的浅色正文页上下文，拆掉生硬外框、灰底托盘与常驻黑胶囊，对比 4 套无框融合思路</span>
+  </div>
+  <div>
+    <span class="pbadge ok">悬停主图才浮现翻页钮 · 点击看原图</span>
+  </div>
+</div>
+
+<div class="wrap">
+  <div id="stage"></div>
+  <aside class="notes" id="notes"></aside>
+</div>
+
+<div class="ctl" id="ctl"></div>
+<div id="lbRoot"></div>
+
+<script>
+const IC = {
+  chevL: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg>',
+  chevR: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg>',
+  x: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>'
+};
+
+const SLIDES = [
+  {
+    name: "b2-spine-normal.png",
+    tag: "B2 呼吸脊柱",
+    caption: "B2 · 呼吸脊柱三行视窗（精修首选 · 常规态）：18px 轴心贯穿 1px 细脊线，默认收敛为「已完成折叠 → 当前主步 + 微观流光子动作 → 下一步预告」三行视窗",
+    dim: "2584 × 1404", size: "312 KB", lightShot: false, accent: "#3d5bff"
+  },
+  {
+    name: "b2-spine-expanded.png",
+    tag: "B2 展开态",
+    caption: "B2 · 点击展开全部步骤：已完成项柔和收拢为单行暗灰勾，当前执行步高亮极光三束光标，零背景框体干扰",
+    dim: "2584 × 1404", size: "328 KB", lightShot: false, accent: "#22d3ee"
+  },
+  {
+    name: "b2-light-paper.png",
+    tag: "浅色同底校验",
+    caption: "B2 · 浅色白底截图校验（测试白图贴在白纸上的边界感）：不靠生硬灰框，仅靠 0.5px 光学微边与柔和纸面落影自然区分边界",
+    dim: "2584 × 1404", size: "284 KB", lightShot: true, accent: "#3d5bff"
+  },
+  {
+    name: "b1-minimal-row.png",
+    tag: "B1 极简随流",
+    caption: "B1 · 单行极简随流：与对话末尾原有的 .th-work 状态行完全合一，仅用分数 5/6 标注总进度",
+    dim: "2584 × 1404", size: "265 KB", lightShot: false, accent: "#38ce86"
+  },
+  {
+    name: "b3-compact-indent.png",
+    tag: "B3 缩进树",
+    caption: "B3 · 双层缩进树：当前主步骤下方挂载实时工具输出摘要，适合长耗时编译与端到端测试任务",
+    dim: "2584 × 1404", size: "304 KB", lightShot: false, accent: "#a78bfa"
+  },
+  {
+    name: "b4-milestone-dots.png",
+    tag: "B4 步进圆点",
+    caption: "B4 · 步进圆点刻度：左侧一列微缩圆点对应全部步骤状态，右侧仅聚焦当前步骤标题",
+    dim: "2584 × 1404", size: "276 KB", lightShot: false, accent: "#f59e0b"
+  },
+  {
+    name: "extreme-long-text.png",
+    tag: "超长文案校验",
+    caption: "极端场景 1 · 超长双语路径与命令换行：验证 728px 与 iPhone 360pt 下两行截断不撑破布局",
+    dim: "2584 × 1404", size: "319 KB", lightShot: false, accent: "#3d5bff"
+  },
+  {
+    name: "extreme-12-steps.png",
+    tag: "12 步长清单",
+    caption: "极端场景 2 · 12 步长清单滚动上限：展开态限高平滑内滚，绝不把输入框顶出视口",
+    dim: "2584 × 1404", size: "340 KB", lightShot: false, accent: "#06b6d4"
+  },
+  {
+    name: "ios-scrolled-pill.png",
+    tag: "iPhone 上滑态",
+    caption: "极端场景 3 · iPhone 上滑阅读历史消息：底部回滚圆钮轻巧变形为单行进度胶囊，点击一键回到底部",
+    dim: "2584 × 1404", size: "298 KB", lightShot: true, accent: "#3d5bff"
+  }
+];
+
+const PORTRAIT_SLIDES = [
+  { name: "iphone-b2-dark.png", tag: "纯黑常态", caption: "iPhone 端纯黑 OLED 常态：零玻璃卡片，直接融入对话末尾", dim: "1206 × 2622", size: "218 KB", portrait: true, lightShot: false, accent: "#4a66ff" },
+  { name: "iphone-b2-light.png", tag: "浅色常态", caption: "iPhone 端浅色白底常态：竖屏图直接按自然比例左对齐立在正文中，左右不留大灰墙", dim: "1206 × 2622", size: "212 KB", portrait: true, lightShot: true, accent: "#3d5bff" },
+  { name: "iphone-b2-open.png", tag: "点击展开", caption: "iPhone 端点击展开完整 6 步清单：平滑弹簧过渡", dim: "1206 × 2622", size: "234 KB", portrait: true, lightShot: false, accent: "#38ce86" },
+  { name: "iphone-b2-scroll.png", tag: "上滑胶囊", caption: "iPhone 端上滑看历史时的迷你进度胶囊", dim: "1206 × 2622", size: "226 KB", portrait: true, lightShot: false, accent: "#a78bfa" }
+];
+
+function shotSVG(s, idx) {
+  if (s.portrait) {
+    const bg = s.lightShot ? "#ffffff" : "#07080c";
+    const card = s.lightShot ? "#f4f5f9" : "#14161f";
+    const fg = s.lightShot ? "#15171f" : "#f1f2f7";
+    const fg2 = s.lightShot ? "#6c7080" : "#858a9e";
+    const bd = s.lightShot ? "#e3e6ef" : "#242838";
+    return `<svg viewBox="0 0 390 844" xmlns="http://www.w3.org/2000/svg">
+      <rect width="390" height="844" fill="${bg}"/>
+      <rect x="134" y="14" width="122" height="34" rx="17" fill="#000"/>
+      <rect x="96" y="62" width="198" height="38" rx="19" fill="${card}" stroke="${bd}"/>
+      <text x="122" y="86" font-family="-apple-system,sans-serif" font-size="13.5" font-weight="600" fill="${fg}">实现 iPhone 端交互</text>
+      <rect x="118" y="128" width="248" height="58" rx="16" fill="${s.accent}"/>
+      <text x="134" y="162" font-family="-apple-system,sans-serif" font-size="13.5" fill="#fff">对齐双端随流任务步骤提示</text>
+      <text x="26" y="226" font-family="-apple-system,sans-serif" font-size="14" fill="${fg}">桌面端与后端回归测试已全部通过，正在执行真机验证。</text>
+      <line x1="34" y1="274" x2="34" y2="390" stroke="${s.accent}" stroke-opacity=".45" stroke-width="1.5"/>
+      <circle cx="34" cy="280" r="4.5" fill="#22c55e"/>
+      <text x="50" y="285" font-family="-apple-system,sans-serif" font-size="13" fill="${fg2}">已完成前 4 步 · 共 6 步 ›</text>
+      <circle cx="34" cy="326" r="5" fill="${s.accent}"/>
+      <text x="50" y="331" font-family="-apple-system,sans-serif" font-size="14" font-weight="600" fill="${fg}">${s.tag} · 正在运行 UI 测试</text>
+      <circle cx="34" cy="376" r="4" stroke="${fg2}" fill="none"/>
+      <text x="50" y="381" font-family="-apple-system,sans-serif" font-size="13" fill="${fg2}">下一步：更新设计文档</text>
+      <rect x="20" y="764" width="350" height="46" rx="23" fill="${card}" stroke="${bd}"/>
+    </svg>`;
+  }
+
+  /* Recreates the exact dual Mac + iPhone screenshot look from user's uploaded image */
+  const outer = s.lightShot ? "#ffffff" : "#07080c";
+  const win = s.lightShot ? "#fbfcfe" : "#0b0c11";
+  const fg = s.lightShot ? "#161821" : "#eef0f6";
+  const fg2 = s.lightShot ? "#696e80" : "#878c9f";
+  const bd = s.lightShot ? "#e3e6ee" : "#202330";
+  const cmp = s.lightShot ? "#ffffff" : "#13151d";
+
+  return `<svg viewBox="0 0 800 435" xmlns="http://www.w3.org/2000/svg">
+    <rect width="800" height="435" fill="${outer}"/>
+    <text x="18" y="18" font-family="-apple-system,sans-serif" font-size="10.5" font-weight="600" fill="${fg2}">macOS 桌面端 (728px 会话列嵌于 768px 输入框内各 20px)</text>
+    <text x="518" y="18" font-family="-apple-system,sans-serif" font-size="10.5" font-weight="600" fill="${fg2}">iPhone 端 (常规对称 20pt 正文边距)</text>
+    <!-- Mac Window -->
+    <rect x="16" y="26" width="478" height="394" rx="12" fill="${win}" stroke="${bd}"/>
+    <circle cx="34" cy="44" r="4.2" fill="#ff5f57"/><circle cx="48" cy="44" r="4.2" fill="#febc2e"/><circle cx="62" cy="44" r="4.2" fill="#28c840"/>
+    <text x="78" y="48" font-family="-apple-system,sans-serif" font-size="11" font-weight="600" fill="${fg}">实现 iPhone 端交互与桌面端回归 · ${s.tag}</text>
+    <rect x="172" y="70" width="298" height="30" rx="12" fill="${s.accent}"/>
+    <text x="186" y="89" font-family="-apple-system,sans-serif" font-size="11" fill="#fff">把桌面端和 iPhone 端的随流任务步骤提示打磨精致</text>
+    <text x="48" y="128" font-family="monospace" font-size="10.5" fill="${fg2}">已读取 4 个文件 · 已运行 pnpm test ›</text>
+    <text x="48" y="152" font-family="-apple-system,sans-serif" font-size="11.5" fill="${fg}">桌面端与后端回归测试已全部通过，阶段性改动已提交；接下来在严格遵循</text>
+    <text x="48" y="170" font-family="-apple-system,sans-serif" font-size="11.5" fill="${fg}">728px 对话列宽与 18px 前导图标网格的前提下完成双端收尾验证。</text>
+    <!-- Spine -->
+    <line x1="55" y1="196" x2="55" y2="270" stroke="${s.accent}" stroke-opacity=".4" stroke-width="1.2"/>
+    <circle cx="55" cy="198" r="4" fill="#22c55e"/>
+    <text x="68" y="202" font-family="-apple-system,sans-serif" font-size="10.8" fill="${fg2}">已完成前 4 步 · 共 6 步 ›</text>
+    <circle cx="55" cy="226" r="4.5" fill="${s.accent}"/>
+    <text x="68" y="230" font-family="-apple-system,sans-serif" font-size="11.5" font-weight="600" fill="${fg}">实现 iPhone 端代码与端到端测试  5/6</text>
+    <text x="68" y="247" font-family="-apple-system,sans-serif" font-size="10.5" fill="${fg2}">正在运行 SessionDetailUITests 与快照断言… · 4:18</text>
+    <circle cx="55" cy="268" r="3.8" stroke="${fg2}" fill="none"/>
+    <text x="68" y="272" font-family="-apple-system,sans-serif" font-size="10.8" fill="${fg2}">下一步：更新设计文档已实现章节</text>
+    <!-- Composer -->
+    <rect x="40" y="336" width="430" height="66" rx="16" fill="${cmp}" stroke="${bd}"/>
+    <text x="56" y="359" font-family="-apple-system,sans-serif" font-size="11" fill="${fg2}">继续说，会排到下一轮…</text>
+    <circle cx="76" cy="384" r="6" fill="${s.accent}"/>
+    <text x="88" y="388" font-family="-apple-system,sans-serif" font-size="10.5" fill="${fg}">Gemini 4 Carbon · 高 ▾</text>
+
+    <!-- iPhone Slice -->
+    <rect x="514" y="26" width="270" height="394" rx="34" fill="${win}" stroke="${bd}" stroke-width="1.5"/>
+    <rect x="610" y="36" width="78" height="18" rx="9" fill="#000"/>
+    <text x="534" y="96" font-family="-apple-system,sans-serif" font-size="11" fill="${fg}">iPhone 端新包已签名安装到「Yi's iPhone」。接下</text>
+    <text x="534" y="114" font-family="-apple-system,sans-serif" font-size="11" fill="${fg}">来等待 macOS 桌面端 Hermesh.app 编译打包完成。</text>
+    <text x="534" y="158" font-family="-apple-system,sans-serif" font-size="11" fill="${fg}">全部组件已编译完成，正在执行应用打包与签名。</text>
+    <circle cx="540" cy="198" r="4" fill="#22c55e"/>
+    <text x="552" y="202" font-family="-apple-system,sans-serif" font-size="10.5" fill="${fg2}">已完成前 3 步 · 共 5 步 ›</text>
+    <circle cx="540" cy="224" r="4.5" fill="${s.accent}"/>
+    <text x="552" y="228" font-family="-apple-system,sans-serif" font-size="11" font-weight="600" fill="${fg}">Build signed Hermesh.app  4/5</text>
+    <rect x="530" y="376" width="238" height="32" rx="16" fill="${cmp}" stroke="${bd}"/>
+  </svg>`;
+}
+
+const S = {
+  idea: "a",         // 'boxed' | 'a' | 'b' | 'c' | 'd' | 'matrix'
+  scene: "nine",     // 'nine' | 'pair' | 'portrait'
+  width: "wide",     // 'wide' (728px) | 'narrow' (448px split)
+  theme: "light",    // 'light' | 'black' | 'dark'
+  idx: 0,
+  lb: null
+};
+
+function curList() {
+  if (S.scene === "pair") return [SLIDES[0], SLIDES[2]]; // 1 dark shot + 1 white-bg shot!
+  if (S.scene === "portrait") return PORTRAIT_SLIDES;
+  return SLIDES;
+}
+
+function setOpt(k, v) {
+  S[k] = v;
+  if (k === "theme") document.documentElement.dataset.theme = v;
+  if (k === "scene") S.idx = 0;
+  render();
+}
+
+function stepIdx(delta, e) {
+  if (e) e.stopPropagation();
+  const list = curList();
+  S.idx = (S.idx + delta + list.length) % list.length;
+  render();
+}
+
+function pickIdx(i, e) {
+  if (e) e.stopPropagation();
+  S.idx = i;
+  render();
+}
+
+function openLB(i, e) {
+  if (e) e.stopPropagation();
+  S.lb = i;
+  renderLB();
+}
+
+function closeLB() {
+  S.lb = null;
+  renderLB();
+}
+
+window.addEventListener("keydown", (e) => {
+  if (S.lb !== null) {
+    if (e.key === "Escape") closeLB();
+    return;
+  }
+  if (e.key === "ArrowLeft") stepIdx(-1);
+  else if (e.key === "ArrowRight") stepIdx(1);
+});
+
+function pad2(n) { return String(n).padStart(2, "0"); }
+
+function renderPureCanvas(slide, idx, total) {
+  const portrait = Boolean(slide.portrait);
+  return `
+    <div class="pure-canvas ${portrait ? "portrait" : ""}">
+      <div class="pure-frame" onclick="openLB(${idx}, event)" title="点击打开毛玻璃灯箱查看原图 (${slide.dim})">
+        ${shotSVG(slide, idx)}
+        ${total > 1 ? `
+          <button class="hover-nav prev" onclick="stepIdx(-1, event)" aria-label="上一张">${IC.chevL}</button>
+          <button class="hover-nav next" onclick="stepIdx(1, event)" aria-label="下一张">${IC.chevR}</button>
+        ` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function renderFigure(ideaKey) {
+  const list = curList();
+  const n = list.length;
+  const idx = Math.min(S.idx, n - 1);
+  const cur = list[idx];
+  const portrait = Boolean(cur.portrait);
+
+  /* 2-up Pair: compare boxed vs frameless editorial pair */
+  if (n === 2 && ideaKey !== "boxed") {
+    return `
+      <div class="ed-pair">
+        ${list.map((s, i) => `
+          <div class="ed-pair-item">
+            <div class="pure-frame" onclick="openLB(${i}, event)">${shotSVG(s, i)}</div>
+            <div class="ed-pair-cap"><span class="ed-num">${pad2(i + 1)}</span> <b>${s.tag}</b> · ${s.caption.replace(/^[^：]+：/, "")}</div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  /* 0. CURRENT BOXED */
+  if (ideaKey === "boxed") {
+    return `
+      <div class="boxed-stage">
+        <div class="boxed-main ${portrait ? "portrait" : ""}" onclick="openLB(${idx}, event)">
+          ${shotSVG(cur, idx)}
+          <span class="boxed-pill">${idx + 1} / ${n} · ${cur.dim}</span>
+          <button class="boxed-nav prev" onclick="stepIdx(-1, event)">${IC.chevL}</button>
+          <button class="boxed-nav next" onclick="stepIdx(1, event)">${IC.chevR}</button>
+        </div>
+        <div class="boxed-cap">${cur.caption}</div>
+        <div class="boxed-strip">
+          ${list.map((s, i) => `
+            <button class="boxed-th ${portrait ? "portrait" : ""} ${i === idx ? "on" : ""}" onclick="pickIdx(${i}, event)">
+              ${shotSVG(s, i)}
+            </button>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  /* IDEA A: FRAMELESS EDITORIAL + FLOATING HAIRLINE THUMBS */
+  if (ideaKey === "a") {
+    return `
+      <figure class="ed-a">
+        ${renderPureCanvas(cur, idx, n)}
+        <figcaption class="ed-cap-row">
+          <span class="ed-num">${pad2(idx + 1)} / ${pad2(n)}</span>
+          <span class="ed-cap-txt">${cur.caption}</span>
+        </figcaption>
+        <div class="ed-thumbs">
+          ${list.map((s, i) => `
+            <button class="ed-th ${portrait ? "portrait" : ""} ${i === idx ? "on" : ""}" onclick="pickIdx(${i}, event)" title="${s.tag}">
+              <span class="ed-th-pic">${shotSVG(s, i)}</span>
+              <span class="ed-th-bar"></span>
+            </button>
+          `).join("")}
+        </div>
+      </figure>
+    `;
+  }
+
+  /* IDEA B: PURE TYPOGRAPHIC FOOTNOTE INDEX (ZERO THUMBNAIL CLUTTER) */
+  if (ideaKey === "b") {
+    return `
+      <figure class="ed-b">
+        ${renderPureCanvas(cur, idx, n)}
+        <div class="ed-b-bar">
+          ${list.map((s, i) => `
+            <button class="ed-b-chip ${i === idx ? "on" : ""}" onclick="pickIdx(${i}, event)">
+              <i>${pad2(i + 1)}</i><span>${s.tag}</span>
+              ${!portrait ? `<span class="ed-b-loupe">${shotSVG(s, i)}</span>` : ""}
+            </button>
+          `).join("")}
+        </div>
+        <figcaption class="ed-cap-row">
+          <span class="ed-cap-txt">${cur.caption}</span>
+        </figcaption>
+      </figure>
+    `;
+  }
+
+  /* IDEA C: EDITORIAL SPINE DIRECTORY */
+  if (ideaKey === "c") {
+    return `
+      <div class="ed-c">
+        <div>
+          ${renderPureCanvas(cur, idx, n)}
+          <div class="ed-c-sub">${cur.caption}</div>
+        </div>
+        <div class="ed-c-spine">
+          ${list.map((s, i) => `
+            <button class="ed-c-item ${i === idx ? "on" : ""}" onclick="pickIdx(${i}, event)">
+              <small>${pad2(i + 1)}</small>${s.tag}
+            </button>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  /* IDEA D: TACTILE PAPER STACK + QUIET STEPPER FOOTLINE */
+  return `
+    <figure class="ed-d">
+      <div class="ed-d-stack">
+        ${renderPureCanvas(cur, idx, n)}
+      </div>
+      <figcaption class="ed-d-foot">
+        <span class="ed-d-stepper">
+          <button onclick="stepIdx(-1, event)" title="上一张">‹</button>
+          <span>${idx + 1} / ${n}</span>
+          <button onclick="stepIdx(1, event)" title="下一张">›</button>
+        </span>
+        <span class="ed-cap-txt">${cur.caption}</span>
+      </figcaption>
+    </figure>
+  `;
+}
+
+function renderDocument(ideaKey) {
+  return `
+    <div class="surface ${S.width === "narrow" ? "narrow" : ""}">
+      <div class="prose">
+        <p>桌面端与后端回归测试已全部通过。下面针对 <code>728px</code> 会话阅读列与 iPhone 对称边距，给出四版精修方案与极端场景实测截图：</p>
+        <h2>二、四版「随流内嵌」精修方案对比与极端场景校验</h2>
+        ${renderFigure(ideaKey)}
+        <hr>
+        <h2>三、四版随流方案怎么选？</h2>
+        <div class="md-tbl">
+          <table>
+            <thead>
+              <tr><th>方案</th><th>气质定位</th><th>最擅长解决什么</th><th>细微取舍</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><b>B2 · 呼吸脊柱</b></td><td>克制、结构感强</td><td>折中兼顾已完成折叠与下一步预期</td><td>比纯单行多占约 36px 高度</td></tr>
+              <tr><td><b>B1 · 单行随流</b></td><td>极致安静隐形</td><td>90% 常规短任务零存在感</td><td>看不到下一步预告</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderMatrix() {
+  const items = [
+    { key: "a", title: "思路 A · 无框杂志画册 + 悬浮短线微帧（推荐 1）", badge: "0外框 · 最直觉", cls: "ok" },
+    { key: "b", title: "思路 B · 纯排版数字脚标（悬停数字浮出微预览 · 推荐 2）", badge: "消灭小图色块 · 最融于文字", cls: "ok" },
+    { key: "c", title: "思路 C · 侧轴目录脊柱（点选方案标题切图）", badge: "一眼看全 9 个标题", cls: "" },
+    { key: "d", title: "思路 D · 轻影叠纸画叠 + 单行微翻页脚标", badge: "极致留白 · 最安静", cls: "" }
+  ];
+  return `
+    <div class="matrix">
+      ${items.map((it) => `
+        <div class="mcard">
+          <div class="mcard-hd">
+            <b>${it.title}</b>
+            <span class="pbadge ${it.cls}">${it.badge}</span>
+          </div>
+          <div class="mcard-in">
+            <h4>二、四版「随流内嵌」精修方案对比</h4>
+            ${renderFigure(it.key)}
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderNotes() {
+  const spec = {
+    boxed: {
+      title: "现状问题剖析：为什么显得「卡片化、突兀」？",
+      lead: "把你刚测的截图拆解开，突兀感来自 4 层叠加：",
+      pts: [
+        "<b>三层灰底套娃</b>：外框 <code>--win2</code> 灰底 + 舞台 <code>--code</code> 灰底 + 底部 <code>--fill</code> 灰条，在纯白/纯黑正文页里形成了一大块异质色板。",
+        "<b>三条横框分割线</b>：外圈实线框 + 图注顶部分割线 + 缩略条顶部分割线，把图片切成了后台表单卡片。",
+        "<b>常驻黑胶囊与圆钮抢戏</b>：<code>1/9 · 2584×1404</code> 和左右黑圆钮一直压在画面上（而 Hermesh 表格工具栏是悬停才显现）。",
+        "<b>缩略帧高饱和蓝框</b>：底部一排带实线框的小色块加重了「播放器控件感」。"
+      ]
+    },
+    a: {
+      title: "思路 A · 无框杂志画册（推荐 1 · 改动最小最自然）",
+      lead: "保留底部直觉缩略条，但彻底剥离「卡片壳」：",
+      pts: [
+        "<b>0 外框、0 灰托盘、0 分割线</b>：整个组件背景完全透明，图片直接长在正文白纸/纯黑底上。",
+        "<b>光学微影防同色融边</b>：切到第 3 张「浅色同底校验」可看——白底截图贴在白纸上时，靠极轻柔的 <code>0.5px</code> 光学微边 + 纸面柔影自然分界，不画生硬灰框。",
+        "<b>画面零常驻遮挡</b>：平时 100% 纯净无字无钮，鼠标移入图片才轻柔浮现半透明 <code>‹ ›</code>；分辨率退回灯箱。",
+        "<b>杂志式图注 + 短线微帧</b>：<code>01 / 09</code> 用等宽弱化色排在图注行首；缩略小帧无托盘悬浮，选中态用底部 <code>18×2px</code> 墨水短线代替粗蓝框。"
+      ]
+    },
+    b: {
+      title: "思路 B · 纯排版数字脚标（推荐 2 · 极致文字融合）",
+      lead: "连底部那排花花绿绿的缩略小图也化为纯排版语言：",
+      pts: [
+        "<b>彻底消灭小色块堆叠</b>：底部一排 9 张深色小截图在白底页面上天然像一串黑斑；换成 <code>01 B2 呼吸脊柱</code> 排版脚标后，与 Markdown 正文、代码 chip 和表格浑然一体。",
+        "<b>悬停微距镜（Loupe）</b>：把鼠标移到任意未选中的数字脚标上试试——上方会轻巧浮出 <code>132px</code> 缩略预览窗，兼顾了「看图跳页」和「平时极简」！",
+        "<b>自动提炼短名</b>：从图注冒号/破折号前自动提取 4~6 字短标签（无图注时退化为简洁数字 <code>01  02  03</code>）。"
+      ]
+    },
+    c: {
+      title: "思路 C · 无框侧轴目录脊柱（结构化审阅台）",
+      lead: "借用引用块与步骤条的 1px 竖脊线语言：",
+      pts: [
+        "<b>点文字即切图</b>：宽栏下右侧立一条无框 <code>1px</code> 细竖线目录，9 张图的标题一目了然，不用逐个点开猜内容。",
+        "<b>窄栏自适应</b>：切到下方「分栏窄列」可看自动叠排回落效果。",
+        "<b>取舍</b>：横向分配了 208px 给目录，主图比全宽略小一圈（约 504px 宽）。"
+      ]
+    },
+    d: {
+      title: "思路 D · 轻影叠纸画叠（最安静的物理隐喻）",
+      lead: "连导航条都不占一行，用两层微露纸边暗示「这是一叠图」：",
+      pts: [
+        "<b>双层叠纸边（Stack Peek）</b>：图片右/下侧露出 <code>5px</code> 极淡纸边，不画任何 UI 控件就能一眼感知背后还有多张图。",
+        "<b>单行微翻页脚标</b>：下方只有一行 <code>‹ 1 / 9 ›</code> + 图注文案，纵向占用最小、留白呼吸感最强。",
+        "<b>取舍</b>：适合顺序翻阅；想从第 1 张直接跳第 8 张需进灯箱或连按。"
+      ]
+    },
+    matrix: {
+      title: "四套去卡片化新思路同屏总览",
+      lead: "所有新思路都遵循同一条底层纪律：",
+      pts: [
+        "<b>不包外框、不垫异色底板</b>（竖屏手机图切到「竖屏场景」看更明显：再也不会出现左右两大片灰墙）。",
+        "<b>不压常驻黑胶囊与圆钮</b>（悬停才显现控件，与 Hermesh 表格工具栏哲学一致）。",
+        "<b>第 3 张专门放了「白底截图」</b>：可以在底部点选第 3 帧或切换浅色 / 纯黑 OLED，检验同色截图在无外框下的边界清晰度。"
+      ]
+    }
+  };
+  const cur = spec[S.idea];
+  return `
+    <h3>${cur.title}</h3>
+    <p>${cur.lead}</p>
+    <div class="blk">
+      <ul>${cur.pts.map((p) => `<li>${p}</li>`).join("")}</ul>
+    </div>
+    <div class="blk">
+      <h3>快速体验建议</h3>
+      <ul>
+        <li>点选第 <b>03 浅色同底校验</b>，看白底图在白纸上如何靠光学微影自然立住而不显黑框。</li>
+        <li>切到 <b>思路 B</b> 后把鼠标悬停在未选中的数字标签上，体验悬浮微预览窗。</li>
+        <li>切到 <b>竖屏手机图</b> 或 <b>2 张并排</b>，对比去掉 <code>--code</code> 灰底墙后的清爽度。</li>
+      </ul>
+    </div>
+  `;
+}
+
+function renderCtl() {
+  const b = (k, v, label, warn = false) =>
+    `<button class="${S[k] === v ? (warn ? "warn-on" : "on") : ""}" onclick="setOpt('${k}','${v}')">${label}</button>`;
+  return `
+    <div class="g">
+      <b>融合思路</b>
+      ${b("idea", "boxed", "当前卡片版（对照）", true)}
+      ${b("idea", "a", "思路 A · 无框画册+短线微帧（推荐 1）")}
+      ${b("idea", "b", "思路 B · 纯排版数字脚标（推荐 2）")}
+      ${b("idea", "c", "思路 C · 侧轴目录脊柱")}
+      ${b("idea", "d", "思路 D · 轻影叠纸画叠")}
+      ${b("idea", "matrix", "2×2 四思路同屏")}
+    </div>
+    <div class="g">
+      <b>图片场景</b>
+      ${b("scene", "nine", "9 张横屏（含白底同色图 #3）")}
+      ${b("scene", "pair", "2 张并排（深色 + 白底）")}
+      ${b("scene", "portrait", "4 张竖屏手机图（无左右灰墙）")}
+    </div>
+    <div class="g">
+      <b>列宽</b>
+      ${b("width", "wide", "728px 标准正文列")}
+      ${b("width", "narrow", "分栏窄列")}
+    </div>
+    <div class="g">
+      <b>外观</b>
+      ${b("theme", "light", "浅色（同你截图）")}
+      ${b("theme", "black", "纯黑 OLED")}
+      ${b("theme", "dark", "深色灰")}
+    </div>
+  `;
+}
+
+function renderLB() {
+  const root = document.getElementById("lbRoot");
+  if (S.lb === null) { root.innerHTML = ""; return; }
+  const list = curList();
+  const s = list[S.lb];
+  root.innerHTML = `
+    <div class="slb" onclick="closeLB()">
+      <div class="slb-top" onclick="event.stopPropagation()">
+        <div></div>
+        <div>
+          <div class="slb-title">${s.name}</div>
+          <div class="slb-meta">${S.lb + 1} / ${list.length} · ${s.dim} · ${s.size}（像素尺寸收纳在灯箱内，不打扰正文）</div>
+        </div>
+        <button class="slb-close" onclick="closeLB()">${IC.x}</button>
+      </div>
+      <div class="slb-body">
+        <div class="slb-art" onclick="event.stopPropagation()">${shotSVG(s, S.lb)}</div>
+      </div>
+    </div>
+  `;
+}
+
+function render() {
+  document.getElementById("stage").innerHTML = S.idea === "matrix" ? renderMatrix() : renderDocument(S.idea);
+  document.getElementById("notes").innerHTML = renderNotes();
+  document.getElementById("ctl").innerHTML = renderCtl();
+  renderLB();
+}
+
+render();
+</script>
+</body>
+</html>

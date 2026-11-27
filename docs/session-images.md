@@ -60,9 +60,9 @@ Shared between TypeScript (`packages/her-client/src/refs.ts`) and Swift (`Hermes
 ### 3.1 Mac Desktop
 
 - **Inline presentation**:
-  - Single image: left-aligned in the prose column, `max-width: 100%`, `max-height: 400px`, `object-fit: contain`, `border-radius: var(--r-lg)` (`10px`), `0.5px` inner border (`var(--sep)`), `var(--fill)` ground for transparent PNGs, `cursor: zoom-in`. A `1206 × 2622` portrait phone screenshot sits at `~184 × 400 px` instead of dominating 1,000 px of vertical scroll, while a wide desktop screenshot fills the prose column flush.
-  - 2 images in one block/strip: full prose-width (`var(--md-prose-width)`) 2-column side-by-side comparison (`gap: 10px`) with clean 2-line captions placed underneath the image frame instead of covering the screenshot.
-  - 3+ consecutive images (from `carousel`, multi-image paragraphs, blank-line-separated pure-image blocks, pure-image lists, or linked-image strips): full prose-width **Focus Stage + Filmstrip** (`simg-stage`, `aspect-ratio` locked to first decoded slide within `[1.25, 2.2]` and bounded by `min-height: 200px` / `max-height: min(440px, 56vh)` so wide screenshots fill edge-to-edge without pillarbox bars or scroll jump, `1 / N · W × H` pill, `‹` / `›` + keyboard arrow stepping, 2-line caption bar, and `64 × 38px` filmstrip thumbnails; active & neighbor slides prioritized in the fetch queue).
+  - Single image: frameless editorial figure directly on the prose surface (`max-width: 100%`, `max-height: 400px`, `object-fit: contain`, `border-radius: 8px`, subtle optical edge whisper `--simg-whisper` on the bitmap itself rather than an outer gray card).
+  - 2 images in one block/strip: full prose-width (`var(--md-prose-width)`) frameless 2-column side-by-side comparison (`gap: 14px`) with unboxed secondary captions placed directly underneath each image.
+  - 3+ consecutive images (from `carousel`, multi-image paragraphs, blank-line-separated pure-image blocks, pure-image lists, or linked-image strips): **Frameless Stage + Typographic Footnote Index** (`simg-stage`: zero outer card box, zero gray backing wall, hover-only `‹` / `›` arrows, `aspect-ratio` locked to first decoded slide within `[1.25, 2.2]`, compact `01 短标签` typographic index chips with hover `136px` micro-preview loupe + trailing `1 / N` counter, and unboxed 2-line caption; only active + neighbor/hovered slides fetch initially).
 - **Blurred Lightbox**:
   - Full-window portal with dark translucent veil + Gaussian blur (`backdrop-filter: blur(22px) saturate(1.28)`), paired with `html.vibrant:has(..., .lightbox)` so macOS sidebar vibrancy turns opaque and never bleeds sharp text through the blur.
   - **Symmetric top bar (`96px minmax(0, 1fr) 96px`)**:
@@ -75,7 +75,7 @@ Shared between TypeScript (`packages/her-client/src/refs.ts`) and Swift (`Hermes
 
 - **Inline presentation**:
   - Single portrait screenshot: capped at `maxHeight: 260pt`, `maxWidth: 100%`, continuous `cornerRadius: 14pt`, `0.5pt` `Palette.separator` stroke. Keeps surrounding chat readable on a `393pt`–`402pt` screen.
-  - 2 images in one block/strip (e.g. Before / After): **2-column side-by-side row** (`HStack(spacing: 8)`) with captions placed below the image frame; 3+ consecutive images use a **Focus Stage + Filmstrip** (`SessionImageStageView`: paged `TabView` stage at `214pt` height, `1 / N` badge, 2-line caption bar, and horizontal `54 × 32pt` filmstrip).
+  - 2 images in one block/strip (e.g. Before / After): frameless **2-column side-by-side row** (`HStack(spacing: 8)`) with unboxed captions below each image; 3+ consecutive images use a **Frameless Stage + Typographic Footnote Index** (`SessionImageStageView`: unboxed paged `TabView` stage at `208pt` height, scrollable `01 短标签` index chips + trailing `1 / N` counter over a `0.5pt` hairline, and unboxed 2-line secondary caption).
   - Long-press (`.contextMenu`): native lift preview + `查看大图`、`存储到相册`、`分享…`、`拷贝路径`.
 - **Full-screen Blurred Lightbox (replaces pushing `SessionFilePage` for images)**:
   - Overlays the session with darkened `.ultraThinMaterial` blur + spring zoom transition.

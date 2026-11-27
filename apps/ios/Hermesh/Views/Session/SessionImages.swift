@@ -407,147 +407,81 @@ private struct SessionImageStageView: View {
 
     var body: some View {
         let activeName = fileBaseName(activeItem.path)
-        VStack(alignment: .leading, spacing: 0) {
-            ZStack(alignment: .topTrailing) {
-                TabView(selection: $activeIndex) {
-                    ForEach(Array(items.enumerated()), id: \.offset) { idx, it in
-                        SessionInlineImageCard(
-                            item: it,
-                            mode: .stage,
-                            fromLinks: fromLinks,
-                            files: files,
-                            run: run,
-                            gallery: gallery,
-                            urgent: abs(idx - safeIndex) <= 1 || idx == 0
-                        )
-                        .tag(idx)
+        VStack(alignment: .leading, spacing: 8) {
+            TabView(selection: $activeIndex) {
+                ForEach(Array(items.enumerated()), id: \.offset) { idx, it in
+                    SessionInlineImageCard(
+                        item: it,
+                        mode: .stage,
+                        fromLinks: fromLinks,
+                        files: files,
+                        run: run,
+                        gallery: gallery,
+                        urgent: abs(idx - safeIndex) <= 1 || idx == 0
+                    )
+                    .tag(idx)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: 208)
+
+            HStack(alignment: .center, spacing: 8) {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 4) {
+                            ForEach(Array(items.enumerated()), id: \.offset) { idx, it in
+                                let tag = shortImageTag(it.caption, fileName: fileBaseName(it.path))
+                                let selected = idx == safeIndex
+                                Button {
+                                    withAnimation(.snappy(duration: 0.2)) { activeIndex = idx }
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Text(verbatim: String(format: "%02d", idx + 1))
+                                            .font(.caption2.monospaced())
+                                        if !tag.isEmpty {
+                                            Text(verbatim: tag)
+                                                .font(.caption.weight(selected ? .semibold : .regular))
+                                                .lineLimit(1)
+                                        }
+                                    }
+                                    .foregroundStyle(selected ? .primary : .tertiary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(selected ? Palette.fill2 : Color.clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(Text(verbatim: it.caption.isEmpty ? fileBaseName(it.path) : it.caption))
+                                .accessibilityIdentifier("session-image-thumb-\(idx)")
+                                .id(idx)
+                            }
+                        }
+                    }
+                    .onChange(of: safeIndex) { _, next in
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(next, anchor: .center)
+                        }
                     }
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .frame(height: 214)
-                .background(Palette.code)
 
                 Text(verbatim: "\(safeIndex + 1) / \(items.count)")
-                    .font(.caption2.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(.black.opacity(0.66), in: .capsule)
-                    .overlay(Capsule().strokeBorder(.white.opacity(0.16), lineWidth: 0.5))
-                    .padding(9)
-                    .allowsHitTesting(false)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
                     .accessibilityIdentifier("session-image-counter")
             }
+            .padding(.bottom, 5)
+            .overlay(alignment: .bottom) { Rectangle().fill(Palette.separator).frame(height: 0.5) }
 
             if anyCaption {
                 Text(verbatim: activeItem.caption.isEmpty ? activeName : activeItem.caption)
                     .font(.footnote)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 8)
-                    .overlay(alignment: .top) { Rectangle().fill(Palette.separator).frame(height: 0.5) }
                     .accessibilityIdentifier("session-image-caption")
             }
-
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(Array(items.enumerated()), id: \.offset) { idx, it in
-                            SessionStageThumbButton(
-                                item: it,
-                                index: idx,
-                                selected: idx == safeIndex,
-                                files: files,
-                                run: run
-                            ) {
-                                withAnimation(.snappy(duration: 0.2)) { activeIndex = idx }
-                            }
-                            .id(idx)
-                        }
-                    }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 7)
-                }
-                .background(Palette.fill)
-                .overlay(alignment: .top) { Rectangle().fill(Palette.separator).frame(height: 0.5) }
-                .onChange(of: safeIndex) { _, next in
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(next, anchor: .center)
-                    }
-                }
-            }
         }
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("session-image-row")
-    }
-}
-
-private struct SessionStageThumbButton: View {
-    let item: ReplyImageItem
-    let index: Int
-    let selected: Bool
-    let files: SessionFilesModel
-    let run: String
-    let action: () -> Void
-
-    @Environment(AppModel.self) private var model
-
-    private var sessionID: String { files.sessionID }
-    private var machineID: String { model.session(sessionID)?.machineID ?? "" }
-    private var online: Bool {
-        guard let m = model.machines.first(where: { $0.machineID == machineID }) else { return true }
-        return m.local || (model.status.relayConnected && m.online)
-    }
-
-    var body: some View {
-        let info = files.info(run: run, path: item.path)
-        let goneByInfo = info?.kind == .missing || info?.kind == .outside
-        let effectivePath = if let info, !goneByInfo, !info.path.isEmpty { info.path } else { item.path }
-        let state = SessionImageStore.shared.state(sessionID: sessionID, run: run, path: effectivePath)
-
-        Button(action: action) {
-            ZStack {
-                Palette.code
-                if case .ready(let loaded)? = state {
-                    Image(uiImage: loaded.thumbnail)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 54, height: 32)
-                        .clipped()
-                } else if goneByInfo || isNonReadyFailure(state) {
-                    Image(systemName: "photo").font(.caption2).foregroundStyle(.tertiary)
-                } else {
-                    ProgressView().controlSize(.mini)
-                }
-            }
-            .frame(width: 54, height: 32)
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .opacity(selected ? 1.0 : 0.54)
-            .overlay {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(selected ? Color.accentColor : Palette.separator, lineWidth: selected ? 2 : 0.5)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: item.caption.isEmpty ? fileBaseName(effectivePath) : item.caption))
-        .accessibilityIdentifier("session-image-thumb-\(index)")
-        .task(id: "\(sessionID)\u{0}\(run)\u{0}\(effectivePath)\u{0}\(online)\u{0}\(goneByInfo)") {
-            guard !goneByInfo else { return }
-            let isOff: Bool = if case .offline? = state { true } else { false }
-            SessionImageStore.shared.request(api: model.api, sessionID: sessionID, run: run, path: effectivePath, retryOffline: isOff && online, urgent: selected)
-        }
-    }
-
-    private func isNonReadyFailure(_ state: SessionImageStore.State?) -> Bool {
-        switch state {
-        case .missing?, .offline?, .tooLarge?, .failed?: true
-        default: false
-        }
     }
 }
 
@@ -647,43 +581,37 @@ private struct SessionInlineImageCard: View {
         }
 
         Button(action: open) {
-            VStack(alignment: .leading, spacing: 0) {
-                switch mode {
-                case .single:
-                    let maxH: CGFloat = 260
-                    let naturalW = min(maxH * ratio, 310)
-                    Image(uiImage: loaded.thumbnail)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: max(110, naturalW), maxHeight: maxH)
-                case .pair:
-                    Image(uiImage: loaded.thumbnail)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity, minHeight: 150, maxHeight: 204)
-                        .background(Palette.code)
-                case .stage:
-                    Image(uiImage: loaded.thumbnail)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity, maxHeight: 214)
+            VStack(alignment: .leading, spacing: 6) {
+                Group {
+                    switch mode {
+                    case .single:
+                        let maxH: CGFloat = 260
+                        let naturalW = min(maxH * ratio, 310)
+                        Image(uiImage: loaded.thumbnail)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: max(110, naturalW), maxHeight: maxH)
+                    case .pair:
+                        Image(uiImage: loaded.thumbnail)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity, maxHeight: 204)
+                    case .stage:
+                        Image(uiImage: loaded.thumbnail)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity, maxHeight: 208, alignment: .leading)
+                    }
                 }
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.separator.opacity(0.65), lineWidth: 0.5))
+
                 if showPairCaption {
                     Text(verbatim: item.caption)
-                        .font(.caption.weight(.regular))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 6)
-                        .overlay(alignment: .top) { Rectangle().fill(Palette.separator).frame(height: 0.5) }
-                }
-            }
-            .background(mode == .stage ? Color.clear : Palette.fill, in: RoundedRectangle(cornerRadius: mode == .stage ? 0 : 14, style: .continuous))
-            .clipShape(RoundedRectangle(cornerRadius: mode == .stage ? 0 : 14, style: .continuous))
-            .overlay {
-                if mode != .stage {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5)
                 }
             }
         }

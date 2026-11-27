@@ -237,18 +237,22 @@ test("a reply's files are tags opening side panel tabs; a page runs there offlin
   await expect(walkReply.locator("pre")).toHaveCount(0);
   await expect(walkReply.getByTestId("session-image-row").getByTestId("session-image")).toHaveCount(2);
 
-  // 3+ consecutive standalone images (separated by blank lines) merge into a Focus Stage + Filmstrip carousel.
+  // 3+ consecutive standalone images (separated by blank lines) merge into a frameless Stage + typographic index bar.
   const stageReply = log.locator(".am").filter({ hasText: "多图舞台：" });
   const stageBox = stageReply.getByTestId("session-image-row");
   await expect(stageBox).toHaveAttribute("data-simg-mode", "stage");
   await expect(stageBox.getByTestId("session-image-thumb")).toHaveCount(4);
-  await expect(stageBox.getByTestId("session-image-counter")).toContainText("1 / 4 · 240 × 135");
+  await expect(stageBox.getByTestId("session-image-thumb").first()).toContainText("01");
+  await expect(stageBox.getByTestId("session-image-thumb").first()).toContainText("方案一 [默认收起]");
+  await expect(stageBox.getByTestId("session-image-counter")).toHaveText("1 / 4");
   await expect(stageBox.getByTestId("session-image-caption")).toHaveText("方案一 [默认收起]：连体抽屉托盘");
   const proseW = await stageReply.locator("p").first().evaluate((el) => el.getBoundingClientRect().width);
   const stageW = await stageBox.evaluate((el) => el.getBoundingClientRect().width);
   expect(Math.abs(stageW - proseW)).toBeLessThanOrEqual(2);
+  await stageBox.getByTestId("session-image-thumb").nth(1).hover();
+  await expect(stageBox.locator(".simg-loupe")).toBeVisible();
   await stageBox.getByTestId("session-image-thumb").nth(2).click();
-  await expect(stageBox.getByTestId("session-image-counter")).toContainText("3 / 4 · 240 × 135");
+  await expect(stageBox.getByTestId("session-image-counter")).toHaveText("3 / 4");
   await expect(stageBox.getByTestId("session-image-caption")).toHaveText("方案三：浅色模式对比");
   await stageBox.getByTestId("session-image").click();
   await expect(lb).toBeVisible();
