@@ -23,7 +23,7 @@
 .pr-a{position:absolute;left:50%;top:50%;width:76px;height:76px;margin:-38px;border:0;padding:0;background:none;display:grid;place-items:center;transition:transform .7s var(--pr-spring),opacity .5s ease,filter .5s ease}
 .pr-a .cat{width:72px;height:72px;filter:drop-shadow(0 6px 18px rgba(179,188,242,.35))}
 .pr-tiles{position:relative;width:64px;height:64px}
-.pr-tiles>*{position:absolute !important;left:12px;top:12px;box-shadow:0 0 0 .5px rgba(0,0,0,.1),0 6px 18px rgba(0,0,0,.25) !important}
+.pr-tiles>*{position:absolute !important;left:12px;top:12px;box-shadow:none !important;filter:drop-shadow(0 1px 2px rgba(0,0,0,.12)) drop-shadow(0 6px 14px rgba(0,0,0,.2))}
 .pr-tiles>:first-child{transform:translate(-15px,4px) rotate(-11deg)}
 .pr-tiles>:last-child{transform:translate(15px,-4px) rotate(10deg)}
 .pr-pair[data-who=her] .pr-her,.pr-pair[data-who=agent] .pr-agent{transform:none;cursor:default}

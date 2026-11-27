@@ -44,9 +44,27 @@ test("Her conversations: given to Her from a new session, the work she sends nes
   const agent = presence.getByRole("button", { name: "Agent" });
   const her = presence.getByRole("button", { name: "Her" });
   await expect(agent).toHaveAttribute("aria-pressed", "true");
-  await expect(her).toHaveAttribute("title", "交给 Her · ⌘N");
+  await expect(her).toHaveAttribute("title", "交给 Her · Tab");
   await expect(page.getByTestId("thread-page")).toHaveAttribute("data-who", "agent");
+  // Tilted provider tiles use alpha-following drop-shadow rather than a rectangular box-shadow around the PNG corners.
+  const tileStyles = await agent.locator(".pr-tiles > *").evaluateAll((els) =>
+    els.map((el) => {
+      const cs = getComputedStyle(el);
+      return { boxShadow: cs.boxShadow, filter: cs.filter };
+    }),
+  );
+  expect(tileStyles).toHaveLength(2);
+  for (const s of tileStyles) {
+    expect(s.boxShadow).toBe("none");
+    expect(s.filter).toContain("drop-shadow");
+  }
   await expect(page.getByRole("heading", { level: 1 })).toContainText("里做什么？");
+  // On Agent, the model panel shows only coding agent providers (no Her).
+  await page.getByTestId("model-picker-trigger").click();
+  const agentPanel = page.getByTestId("model-traits-popover");
+  await expect(agentPanel.locator("[data-testid^=picker-provider-]").first()).toBeVisible();
+  await expect(agentPanel.getByTestId("picker-provider-her")).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await snap(page, "her-conv-new-agent");
 
   // The small cat gives it to Her: her question, where she is, her model; ⌘N back to Agent and again to Her.
@@ -58,14 +76,31 @@ test("Her conversations: given to Her from a new session, the work she sends nes
   await expect(box).toHaveAttribute("placeholder", "发消息给 Her");
   await page.keyboard.press("Meta+N");
   await expect(agent).toHaveAttribute("aria-pressed", "true");
-  await page.keyboard.press("Meta+N");
+  // Empty box: Tab toggles, and → / ← pick Her / Agent directionally.
+  await page.keyboard.press("Tab");
   await expect(her).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("ArrowLeft");
+  await expect(agent).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("ArrowRight");
+  await expect(her).toHaveAttribute("aria-pressed", "true");
+  // With text in the box: ← moves the caret without switching, while ⇧Tab switches and keeps the draft.
+  await box.fill("保留草稿");
+  await page.keyboard.press("ArrowLeft");
+  await expect(her).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Shift+Tab");
+  await expect(agent).toHaveAttribute("aria-pressed", "true");
+  await expect(box).toHaveValue("保留草稿");
+  await page.keyboard.press("Shift+Tab");
+  await expect(her).toHaveAttribute("aria-pressed", "true");
+  await expect(box).toHaveValue("保留草稿");
+  await box.fill("");
   await snap(page, "her-conv-new-her");
 
-  // Her's models come first in the model panel, her default marked.
+  // On Her, the model panel shows only Her's models (no coding agent providers), her default marked.
   await page.getByTestId("model-picker-trigger").click();
   const panel = page.getByTestId("model-traits-popover");
   const groups = panel.locator("[data-testid^=picker-provider-]");
+  await expect(groups).toHaveCount(1);
   await expect(groups.first()).toHaveAttribute("data-testid", "picker-provider-her");
   await expect(panel.getByTestId("picker-provider-her")).toContainText("默认");
   await page.keyboard.press("Escape");

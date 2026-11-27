@@ -183,6 +183,12 @@ import Testing
         #expect(providerUnusable(providers[1], projectAgents: []) == .signedOut)
         #expect(providerUnusable(providers[1], projectAgents: ["claude"]) == .notForProject)
         #expect(preferredProvider(providers.reversed())?.instanceID == "claude")
+
+        var h = Hermesh_Session_V1_ProviderInstance()
+        h.instanceID = herAgent; h.displayName = "Her"; h.enabled = true; h.installed = true; h.authenticated = true
+        let mixed = [providers[0], h, providers[1]]
+        #expect(providersForRole(mixed, forHer: false).map(\.instanceID) == ["claude", "gemini"])
+        #expect(providersForRole(mixed, forHer: true).map(\.instanceID) == [herAgent])
     }
 
     @Test func testProjectOnAnotherMachine() {

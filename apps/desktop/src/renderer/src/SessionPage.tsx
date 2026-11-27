@@ -42,6 +42,7 @@ import {
   pendingRequestOf,
   projectOnMachine,
   projectWorktree,
+  providersForRole,
   providerUnusable,
   queuedRunsOf,
   replyEnds,
@@ -78,7 +79,7 @@ import { stripTerminalEscapes } from "./session/terminalText";
 import { FilesHomeContext, type FilesHome } from "./session/files/files";
 import { SidePanel } from "./session/files/SidePanel";
 import { setOpen as setPanelOpen, usePanel } from "./session/files/panel";
-import { Aurora, HerAsk, herMachine, Presence, rememberedWho, rememberWho, type Who } from "./session/Presence";
+import { Aurora, HerAsk, herMachine, nextWhoForKey, Presence, rememberedWho, rememberWho, type Who } from "./session/Presence";
 import "./session/composer.css";
 
 /**
@@ -266,22 +267,34 @@ export function SessionPage() {
   };
   const whoNow = useRef(chooseWho);
   whoNow.current = chooseWho;
-  // ⌘N on the new session's page gives it to the other one (D20).
-  const canSwitch = !activeSessionId && !!herAt;
+  const stateNow = useRef({ who, prompt, searching: st.searching, sheet: st.sheet });
+  stateNow.current = { who, prompt, searching: st.searching, sheet: st.sheet };
+  // On the new session's page: Tab and ←/→ switch while the box is empty; ⇧Tab and ⌘N switch anytime.
+  const canSwitch = !activeSessionId && !starting && !!herAt;
   useEffect(() => {
     if (!canSwitch) return;
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
-        e.preventDefault();
-        e.stopPropagation();
-        whoNow.current(modelSelNow.current.instanceId === HER ? "agent" : "her");
-      }
+      const el = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const inComposer = !!el && el.matches("textarea.cmp-in");
+      const inOtherEditable =
+        !!el && !inComposer && (el.matches("input,textarea,select,[contenteditable]") || !!el.closest("input,textarea,select,[contenteditable]"));
+      const cur = stateNow.current;
+      const overlayOpen = cur.searching || !!cur.sheet || !!document.querySelector("[role=menu],[role=dialog]");
+      const next = nextWhoForKey(e, {
+        who: cur.who,
+        promptEmpty: cur.prompt === "",
+        inComposer,
+        inOtherEditable,
+        overlayOpen,
+      });
+      if (!next) return;
+      e.preventDefault();
+      e.stopPropagation();
+      whoNow.current(next);
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [canSwitch]);
-  const modelSelNow = useRef(modelSel);
-  modelSelNow.current = modelSel;
 
   const projSession = activeSessionId && projection?.session?.sessionId === activeSessionId ? projection.session : undefined;
   const listedAhead =
@@ -693,23 +706,15 @@ export function SessionPage() {
     setPlace(next);
   };
   const choice = { machineId: effectiveMachineId, projectId: effectiveProjectId, worktree: place.worktree, sel: modelSel, mode: clampedMode, plan: false };
+  const forHer = !activeSessionId && !!herAt && who === "her";
   const modelButtons = (
     <ModelButtons
-      providers={activeSessionId || !herAt ? providers.filter((p) => p.instanceId !== HER) : providers}
+      providers={providersForRole(providers, forHer)}
       sel={modelSel}
       stale={providersStale}
       machineName={targetMachine?.machineName ?? effectiveMachineId}
-      projectAgents={project?.agents ?? []}
-      onModel={(next) => {
-        // Her's model in the panel gives the new session to Her, an agent's to the agent (§3.1).
-        const to: Who = next.instanceId === HER ? "her" : "agent";
-        if (!activeSessionId && to !== who) {
-          rememberWho(to);
-          setRise(true);
-          if (to === "her") pickProject(effectiveMachineId, SCRATCH_PROJECT);
-        }
-        applyConfigUpdate({ sel: next });
-      }}
+      projectAgents={forHer ? [] : project?.agents ?? []}
+      onModel={(next) => applyConfigUpdate({ sel: next })}
       onNotice={(text) => st.show(text)}
     />
   );

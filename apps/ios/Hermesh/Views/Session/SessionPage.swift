@@ -299,31 +299,15 @@ struct SessionPage: View {
             }
         }
         .sheet(isPresented: $pickingModel) {
-            ModelSheet(providers: (!isNew || herAt == nil) ? providers.filter { $0.instanceID != herAgent } : providers,
+            ModelSheet(providers: providersForRole(providers, forHer: who == .her),
                        selection: Binding(
                 get: { selection },
                 set: { next in
-                    if isNew {
-                        let to: NewSessionWho = next.instanceID == herAgent ? .her : .agent
-                        if to != who {
-                            NewSessionWho.remember(to, persistent: !model.isDemo)
-                            rise = true
-                            if to == .her {
-                                if let herAt, !herEnvs.contains(where: { $0.machineID == machineID }) {
-                                    machineID = herAt.machineID
-                                }
-                                projectID = scratchProject
-                            } else {
-                                let list = projects(on: machineID).list
-                                pick(project: projectOnMachine(list, machineID: machineID, current: "", lastUsed: SessionChoices.mine(machineID)?.projectID), in: list)
-                            }
-                        }
-                    }
                     selection = next
                     if !isNew { update { $0.modelSelection = next } }
                 }
             ), stale: providersStale, machineName: machine?.machineName ?? "",
-            projectAgents: (isNew && who == .her) ? [] : projects(on: effectiveMachineID).list.first { $0.projectID == effectiveProjectID }?.agents ?? [],
+            projectAgents: who == .her ? [] : projects(on: effectiveMachineID).list.first { $0.projectID == effectiveProjectID }?.agents ?? [],
             levelTitle: levelTitle) { changed in
                 model.show(String(localized: "\(modelTitle) has no “\(levelTitle(changed.from))” level; thinking is now “\(levelTitle(changed.to))”"))
             }
@@ -1877,7 +1861,6 @@ private struct ModelSheet: View {
     var body: some View {
         let usable = providers
             .filter { p in providerUnusable(p, projectAgents: p.instanceID == herAgent ? [] : projectAgents).map { $0 == .signedOut } ?? true }
-            .sorted { a, b in (a.instanceID == herAgent) && (b.instanceID != herAgent) }
         let groups: [(provider: Hermesh_Session_V1_ProviderInstance, models: [Hermesh_Session_V1_ModelCatalogEntry])] =
             query.trimmingCharacters(in: .whitespaces).isEmpty ? usable.map { ($0, $0.models) } : findModels(usable, query: query).map { ($0.provider, $0.models) }
         NavigationStack {

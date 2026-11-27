@@ -610,7 +610,7 @@ function ModelPanel({ providers, sel, stale, machineName, projectAgents, onSel, 
   const [query, setQuery] = useState("");
   const find = useRef<HTMLInputElement>(null);
   useEffect(() => find.current?.focus(), []);
-  const usable = providers.filter((p) => ["", "signedOut"].includes(providerUnusable(p, projectAgents))).sort((a, b) => Number(b.instanceId === "her") - Number(a.instanceId === "her"));
+  const usable = providers.filter((p) => ["", "signedOut"].includes(providerUnusable(p, projectAgents)));
   const groups = query.trim() ? findModels(usable, query).map((g) => ({ inst: g.inst, models: g.models })) : usable.map((inst) => ({ inst, models: inst.models }));
   const reasoning = reasoningOf(providers, sel);
   const keys = (e: KeyboardEvent) => {

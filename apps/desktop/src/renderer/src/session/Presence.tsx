@@ -4,14 +4,14 @@ import type { Machine } from "@hermesh/proto/local";
 import { AgentTile } from "@hermesh/ui";
 import { Cat } from "../her/Cat";
 import { environments, pickEnvironment, reachable } from "../her/environments";
-import { keys } from "../platform";
+import { nextWhoForKey, type Who } from "./presenceKeys";
 import "./presence.css";
+
+export { nextWhoForKey, type Who };
 
 // Who a new session goes to (docs/her-conversations.md §3.1): a coding agent, or Her. The one chosen stands in the
 // middle; the other waits small beside it, Agent on the left and Her on the right, and a click on it, or ⌘N again,
 // swaps them. The page's light takes the colour of the one chosen.
-
-export type Who = "agent" | "her";
 
 const whoKey = "new-session-who";
 
@@ -56,7 +56,7 @@ export function Aurora() {
 /** The two of them: the chosen one in the middle with its name under it, the other small beside it. */
 export function Presence({ who, onWho }: { who: Who; onWho: (who: Who) => void }) {
   const { t } = useTranslation("thread");
-  const shortcut = keys("CmdOrCtrl+N");
+  const shortcut = "Tab";
   return (
     <div className="pr" data-testid="presence">
       <div className="pr-pair" data-who={who}>
