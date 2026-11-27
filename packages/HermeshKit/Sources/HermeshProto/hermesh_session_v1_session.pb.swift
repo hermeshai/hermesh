@@ -1714,6 +1714,10 @@ public nonisolated struct Hermesh_Session_V1_WorkspaceStrategy: Sendable {
 
   public var fromRemote: Bool = false
 
+  public var archiveCleanupPending: Bool = false
+
+  public var worktreeKept: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -4310,6 +4314,11 @@ public nonisolated struct Hermesh_Session_V1_UpdateSessionRequest: Sendable {
 
   public var locale: String = String()
 
+  /// Seconds to defer irreversible archive cleanup (stopping daemons, removing
+  /// TMPDIR and releasing the Git worktree) so an interactive Undo cancels it
+  /// without loss; 0 cleans up immediately.
+  public var archiveGraceSeconds: UInt32 = 0
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -5965,7 +5974,7 @@ nonisolated extension Hermesh_Session_V1_ProviderInstanceConfig: SwiftProtobuf.M
 
 nonisolated extension Hermesh_Session_V1_WorkspaceStrategy: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".WorkspaceStrategy"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}mode\0\u{3}base_ref\0\u{1}branch\0\u{3}worktree_path\0\u{3}from_remote\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}mode\0\u{3}base_ref\0\u{1}branch\0\u{3}worktree_path\0\u{3}from_remote\0\u{3}archive_cleanup_pending\0\u{3}worktree_kept\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -5978,6 +5987,8 @@ nonisolated extension Hermesh_Session_V1_WorkspaceStrategy: SwiftProtobuf.Messag
       case 3: try { try decoder.decodeSingularStringField(value: &self.branch) }()
       case 4: try { try decoder.decodeSingularStringField(value: &self.worktreePath) }()
       case 5: try { try decoder.decodeSingularBoolField(value: &self.fromRemote) }()
+      case 6: try { try decoder.decodeSingularBoolField(value: &self.archiveCleanupPending) }()
+      case 7: try { try decoder.decodeSingularBoolField(value: &self.worktreeKept) }()
       default: break
       }
     }
@@ -5999,6 +6010,12 @@ nonisolated extension Hermesh_Session_V1_WorkspaceStrategy: SwiftProtobuf.Messag
     if self.fromRemote != false {
       try visitor.visitSingularBoolField(value: self.fromRemote, fieldNumber: 5)
     }
+    if self.archiveCleanupPending != false {
+      try visitor.visitSingularBoolField(value: self.archiveCleanupPending, fieldNumber: 6)
+    }
+    if self.worktreeKept != false {
+      try visitor.visitSingularBoolField(value: self.worktreeKept, fieldNumber: 7)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -6008,6 +6025,8 @@ nonisolated extension Hermesh_Session_V1_WorkspaceStrategy: SwiftProtobuf.Messag
     if lhs.branch != rhs.branch {return false}
     if lhs.worktreePath != rhs.worktreePath {return false}
     if lhs.fromRemote != rhs.fromRemote {return false}
+    if lhs.archiveCleanupPending != rhs.archiveCleanupPending {return false}
+    if lhs.worktreeKept != rhs.worktreeKept {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -10437,7 +10456,7 @@ nonisolated extension Hermesh_Session_V1_ManageQueueResponse: SwiftProtobuf.Mess
 
 nonisolated extension Hermesh_Session_V1_UpdateSessionRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".UpdateSessionRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}command_id\0\u{3}machine_id\0\u{3}session_id\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}interaction_mode\0\u{1}title\0\u{3}has_archived\0\u{1}archived\0\u{3}has_pinned\0\u{1}pinned\0\u{3}regenerate_title\0\u{1}locale\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}command_id\0\u{3}machine_id\0\u{3}session_id\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}interaction_mode\0\u{1}title\0\u{3}has_archived\0\u{1}archived\0\u{3}has_pinned\0\u{1}pinned\0\u{3}regenerate_title\0\u{1}locale\0\u{3}archive_grace_seconds\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -10458,6 +10477,7 @@ nonisolated extension Hermesh_Session_V1_UpdateSessionRequest: SwiftProtobuf.Mes
       case 11: try { try decoder.decodeSingularBoolField(value: &self.pinned) }()
       case 12: try { try decoder.decodeSingularBoolField(value: &self.regenerateTitle) }()
       case 13: try { try decoder.decodeSingularStringField(value: &self.locale) }()
+      case 14: try { try decoder.decodeSingularUInt32Field(value: &self.archiveGraceSeconds) }()
       default: break
       }
     }
@@ -10507,6 +10527,9 @@ nonisolated extension Hermesh_Session_V1_UpdateSessionRequest: SwiftProtobuf.Mes
     if !self.locale.isEmpty {
       try visitor.visitSingularStringField(value: self.locale, fieldNumber: 13)
     }
+    if self.archiveGraceSeconds != 0 {
+      try visitor.visitSingularUInt32Field(value: self.archiveGraceSeconds, fieldNumber: 14)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -10524,6 +10547,7 @@ nonisolated extension Hermesh_Session_V1_UpdateSessionRequest: SwiftProtobuf.Mes
     if lhs.pinned != rhs.pinned {return false}
     if lhs.regenerateTitle != rhs.regenerateTitle {return false}
     if lhs.locale != rhs.locale {return false}
+    if lhs.archiveGraceSeconds != rhs.archiveGraceSeconds {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

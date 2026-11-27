@@ -12,6 +12,7 @@
   },
   "chat": {
     "archived": "Archived: read-only. Worktree released, with changes preserved on the branch.",
+    "archivedKept": "Archived: read-only. Worktree kept for local files.",
     "unarchive": "Unarchive",
     "log": "Conversation",
     "failed": "Failed",

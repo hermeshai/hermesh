@@ -459,6 +459,7 @@ func (n *Machine) releaseWorkspace(ctx context.Context, id string) error {
 		if err := removeVerifiedWorktree(context.WithoutCancel(ctx), repo, path); err != nil {
 			return err
 		}
+		n.sessions.ClearWorktreeKeptLocked(id)
 		n.forgetWorkspace(id)
 		n.log.Info("workspace released", "session", id)
 		return nil

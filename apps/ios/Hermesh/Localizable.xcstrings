@@ -4250,6 +4250,16 @@
         }
       }
     },
+    "Archived: read-only; the worktree is kept for local files.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已归档：只读，含本地文件，工作目录已保留。"
+          }
+        }
+      }
+    },
     "Archived: read-only; the worktree is released and the changes stay on the branch.": {
       "localizations": {
         "zh-Hans": {

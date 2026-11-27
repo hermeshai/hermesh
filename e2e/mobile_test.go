@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -603,5 +604,129 @@ func TestMobileNetwork(t *testing.T) {
 		if c.took < 0 || float64(c.took) > c.max*float64(rtt) {
 			t.Errorf("%s: %s, want at most %.1f round trips", c.what, round(c.took), c.max)
 		}
+	}
+}
+
+// TestMobileArchiveGraceUndoAndDeferredCleanup exercises interactive archiving
+// from a paired phone over the relay: archiving commits state immediately while
+// deferring destructive cleanup until after the Undo grace window, so Undo is
+// lossless and post-grace worktree retention streams back over Watch.
+func TestMobileArchiveGraceUndoAndDeferredCleanup(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
+	if err := os.WriteFile(filepath.Join(w.repo, ".gitignore"), []byte("node_modules/\n.env*\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", ".gitignore"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "ignore"}} {
+		if out, err := exec.Command("git", append([]string{"-C", w.repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
+
+	st, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := identity.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	phone := joinMobile(t, w, st.RelayUrl, t.TempDir(), root)
+	phoneScreen := watchScreenOf(ctx, t, phone.client)
+
+	undoSess, r := w.startSession(time.Minute, "--wait", "--prompt", "write undo.txt v1\nsay ready")
+	if r.code != 0 {
+		t.Fatalf("start undo session: %+v", r)
+	}
+	keptSess, r := w.startSession(time.Minute, "--wait", "--prompt", "write kept.txt v1\nsay ready")
+	if r.code != 0 {
+		t.Fatalf("start kept session: %+v", r)
+	}
+	undoID, keptID := undoSess.SessionID, keptSess.SessionID
+
+	eventually(t, 15*time.Second, "phone sees both idle sessions", phoneScreen.has(func(s *screen) bool {
+		return s.sessions[undoID].GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_IDLE &&
+			s.sessions[keptID].GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_IDLE
+	}))
+
+	// Populate regenerable cache + TMPDIR on undoID, and a non-regenerable local file on keptID.
+	cacheFile := filepath.Join(w.worktree(undoID), "node_modules", "pkg", "index.js")
+	if err := os.MkdirAll(filepath.Dir(cacheFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cacheFile, []byte("cached-bundle"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	undoTmp := filepath.Join(filepath.Dir(filepath.Dir(w.worktree(undoID))), "sessions", undoID, "tmp", "keep.tmp")
+	if err := os.MkdirAll(filepath.Dir(undoTmp), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(undoTmp, []byte("tmp-data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	localEnv := filepath.Join(w.worktree(keptID), ".env.local")
+	if err := os.WriteFile(localEnv, []byte("API_SECRET=1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Archive from phone with a 2s Undo grace window, then Undo before expiry:
+	// state flips immediately, and neither node_modules nor TMPDIR is destroyed.
+	archRes, err := phone.sessions.UpdateSession(ctx, &sessionv1.UpdateSessionRequest{
+		SessionId: undoID, HasArchived: true, Archived: true, ArchiveGraceSeconds: 2,
+	})
+	if err != nil {
+		t.Fatalf("phone archive with grace: %v", err)
+	}
+	if archRes.GetSession().GetStatus() != sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED ||
+		!archRes.GetSession().GetWorkspaceStrategy().GetArchiveCleanupPending() {
+		t.Fatalf("expected archived with pending cleanup, got %+v", archRes.GetSession())
+	}
+	if _, err := os.Stat(cacheFile); err != nil {
+		t.Fatalf("worktree cache removed before Undo grace elapsed: %v", err)
+	}
+
+	if _, err := phone.sessions.UpdateSession(ctx, &sessionv1.UpdateSessionRequest{
+		SessionId: undoID, HasArchived: true, Archived: false,
+	}); err != nil {
+		t.Fatalf("phone undo archive: %v", err)
+	}
+	time.Sleep(2400 * time.Millisecond)
+	if b, err := os.ReadFile(cacheFile); err != nil || string(b) != "cached-bundle" {
+		t.Fatalf("worktree cache lost after Undo: %q %v", b, err)
+	}
+	if b, err := os.ReadFile(undoTmp); err != nil || string(b) != "tmp-data" {
+		t.Fatalf("TMPDIR file lost after Undo: %q %v", b, err)
+	}
+	eventually(t, 10*time.Second, "phone sees undone session back to idle", phoneScreen.has(func(s *screen) bool {
+		return s.sessions[undoID].GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_IDLE
+	}))
+
+	// 2. Archive both sessions with a 1s grace window and let cleanup run:
+	// undoID's clean worktree is released; keptID preserves .env.local and pushes WorktreeKept=true to phone Watch.
+	for _, id := range []string{undoID, keptID} {
+		if _, err := phone.sessions.UpdateSession(ctx, &sessionv1.UpdateSessionRequest{
+			SessionId: id, HasArchived: true, Archived: true, ArchiveGraceSeconds: 1,
+		}); err != nil {
+			t.Fatalf("phone archive %s: %v", id, err)
+		}
+	}
+	eventually(t, 15*time.Second, "phone Watch receives deferred cleanup outcomes", phoneScreen.has(func(s *screen) bool {
+		u, k := s.sessions[undoID], s.sessions[keptID]
+		return u.GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED &&
+			!u.GetWorkspaceStrategy().GetArchiveCleanupPending() &&
+			!u.GetWorkspaceStrategy().GetWorktreeKept() &&
+			k.GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED &&
+			!k.GetWorkspaceStrategy().GetArchiveCleanupPending() &&
+			k.GetWorkspaceStrategy().GetWorktreeKept()
+	}))
+	if _, err := os.Stat(w.worktree(undoID)); !os.IsNotExist(err) {
+		t.Fatalf("expected clean worktree released after grace, got err=%v", err)
+	}
+	if b, err := os.ReadFile(localEnv); err != nil || string(b) != "API_SECRET=1" {
+		t.Fatalf("expected kept worktree .env.local intact, got %q %v", b, err)
 	}
 }

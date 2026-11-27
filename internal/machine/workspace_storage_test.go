@@ -703,3 +703,117 @@ func TestArchiveExtremeFaultsAndRaces(t *testing.T) {
 		t.Fatalf("storm broke final turn execution: %q %v", b, err)
 	}
 }
+
+func TestArchiveGraceUndoAndDeferredCleanup(t *testing.T) {
+	h := newHarness(t, DefaultLimits())
+	ctx := context.Background()
+
+	// 1. Undo within grace window is 100% lossless: TMPDIR, regenerable caches (node_modules),
+	// and live provider lease all survive untouched.
+	undoID := h.start("write undo-keep.txt v1")
+	undoSess := h.wait(undoID, idle)
+	undoWT := h.worktreePath(undoID)
+	cacheFile := filepath.Join(undoWT, "node_modules/pkg/index.js")
+	if err := os.MkdirAll(filepath.Dir(cacheFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cacheFile, []byte("cached"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tmpMarker := filepath.Join(h.n.cfg.DataDir, "sessions", undoID, "tmp", "scratch.txt")
+	if err := os.MkdirAll(filepath.Dir(tmpMarker), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tmpMarker, []byte("tmp-alive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	archUndo, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{
+		SessionId: undoID, HasArchived: true, Archived: true, ArchiveGraceSeconds: 1,
+	})
+	if err != nil {
+		t.Fatalf("archive with grace: %v", err)
+	}
+	if archUndo.GetSession().GetStatus() != archived || !archUndo.GetSession().GetWorkspaceStrategy().GetArchiveCleanupPending() {
+		t.Fatalf("expected archived with cleanup pending, got %+v", archUndo.GetSession())
+	}
+	if !h.worktreeExists(undoID) || h.e.Supervisor().Get(undoSess.ActiveProviderSessionId) == nil {
+		t.Fatal("irreversible cleanup ran before grace period expired")
+	}
+
+	// Undo before the 1s grace expires.
+	unarchRes, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{
+		SessionId: undoID, HasArchived: true, Archived: false,
+	})
+	if err != nil {
+		t.Fatalf("undo archive: %v", err)
+	}
+	if unarchRes.GetSession().GetStatus() != idle || unarchRes.GetSession().GetWorkspaceStrategy().GetArchiveCleanupPending() {
+		t.Fatalf("expected idle without pending cleanup, got %+v", unarchRes.GetSession())
+	}
+	// Sleep past the original 1s grace window and verify nothing was destroyed.
+	time.Sleep(1200 * time.Millisecond)
+	if b, err := os.ReadFile(cacheFile); err != nil || string(b) != "cached" {
+		t.Fatalf("node_modules cache destroyed despite undo: %q %v", b, err)
+	}
+	if b, err := os.ReadFile(tmpMarker); err != nil || string(b) != "tmp-alive" {
+		t.Fatalf("TMPDIR file destroyed despite undo: %q %v", b, err)
+	}
+	if h.e.Supervisor().Get(undoSess.ActiveProviderSessionId) == nil {
+		t.Fatal("live provider session was detached despite undo")
+	}
+
+	// 2. After grace expires without undo: clean session releases worktree quietly;
+	// session with local files keeps worktree and publishes WorktreeKept=true via Watch/Session.
+	cleanID := h.start("say clean")
+	h.wait(cleanID, idle)
+	keptID := h.start("say kept")
+	h.wait(keptID, idle)
+	localEnv := filepath.Join(h.worktreePath(keptID), ".env.local")
+	if err := os.WriteFile(localEnv, []byte("SECRET=1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, id := range []string{cleanID, keptID} {
+		if _, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{
+			SessionId: id, HasArchived: true, Archived: true, ArchiveGraceSeconds: 1,
+		}); err != nil {
+			t.Fatalf("archive %s: %v", id, err)
+		}
+	}
+
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		pClean, _ := h.e.GetSession(ctx, h.kp(), cleanID)
+		pKept, _ := h.e.GetSession(ctx, h.kp(), keptID)
+		if !pClean.GetSession().GetWorkspaceStrategy().GetArchiveCleanupPending() &&
+			!pKept.GetSession().GetWorkspaceStrategy().GetArchiveCleanupPending() {
+			break
+		}
+	}
+	if h.worktreeExists(cleanID) {
+		t.Fatal("clean worktree was not released after grace period")
+	}
+	pClean, _ := h.e.GetSession(ctx, h.kp(), cleanID)
+	if pClean.GetSession().GetWorkspaceStrategy().GetWorktreeKept() {
+		t.Fatal("clean session unexpectedly marked WorktreeKept")
+	}
+	if !h.worktreeExists(keptID) {
+		t.Fatal("worktree with .env.local was deleted instead of kept")
+	}
+	pKept, _ := h.e.GetSession(ctx, h.kp(), keptID)
+	if !pKept.GetSession().GetWorkspaceStrategy().GetWorktreeKept() {
+		t.Fatalf("expected WorktreeKept=true on kept session, got %+v", pKept.GetSession().GetWorkspaceStrategy())
+	}
+
+	// Releasing the kept worktree once cleaned clears WorktreeKept.
+	if err := os.Remove(localEnv); err != nil {
+		t.Fatal(err)
+	}
+	if rel := h.n.ReleaseWorkspaces(ctx, []string{keptID}); len(rel.Results) != 1 || !rel.Results[0].Released {
+		t.Fatalf("expected manual release to succeed, got %+v", rel)
+	}
+	pKeptAfter, _ := h.e.GetSession(ctx, h.kp(), keptID)
+	if pKeptAfter.GetSession().GetWorkspaceStrategy().GetWorktreeKept() {
+		t.Fatal("expected WorktreeKept cleared after manual ReleaseWorkspaces")
+	}
+}

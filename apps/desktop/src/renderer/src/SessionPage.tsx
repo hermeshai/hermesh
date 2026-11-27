@@ -1281,7 +1281,7 @@ export function SessionPage() {
                     archived && session && (
                       <div className="anote">
                         <Icon name="archive" className="sm" />
-                        {ts("chat.archived")}
+                        {ts(session.workspaceStrategy?.worktreeKept ? "chat.archivedKept" : "chat.archived")}
                         <button className="link" onClick={() => unarchive(st, session)}>{ts("chat.unarchive")}</button>
                       </div>
                     )

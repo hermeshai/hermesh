@@ -2630,14 +2630,16 @@ func (x *ProviderInstanceConfig) GetCustomModels() []string {
 }
 
 type WorkspaceStrategy struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Mode          v1.Workspace           `protobuf:"varint,1,opt,name=mode,proto3,enum=hermesh.identity.v1.Workspace" json:"mode,omitempty"`
-	BaseRef       string                 `protobuf:"bytes,2,opt,name=base_ref,json=baseRef,proto3" json:"base_ref,omitempty"`
-	Branch        string                 `protobuf:"bytes,3,opt,name=branch,proto3" json:"branch,omitempty"`
-	WorktreePath  string                 `protobuf:"bytes,4,opt,name=worktree_path,json=worktreePath,proto3" json:"worktree_path,omitempty"`
-	FromRemote    bool                   `protobuf:"varint,5,opt,name=from_remote,json=fromRemote,proto3" json:"from_remote,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	Mode                  v1.Workspace           `protobuf:"varint,1,opt,name=mode,proto3,enum=hermesh.identity.v1.Workspace" json:"mode,omitempty"`
+	BaseRef               string                 `protobuf:"bytes,2,opt,name=base_ref,json=baseRef,proto3" json:"base_ref,omitempty"`
+	Branch                string                 `protobuf:"bytes,3,opt,name=branch,proto3" json:"branch,omitempty"`
+	WorktreePath          string                 `protobuf:"bytes,4,opt,name=worktree_path,json=worktreePath,proto3" json:"worktree_path,omitempty"`
+	FromRemote            bool                   `protobuf:"varint,5,opt,name=from_remote,json=fromRemote,proto3" json:"from_remote,omitempty"`
+	ArchiveCleanupPending bool                   `protobuf:"varint,6,opt,name=archive_cleanup_pending,json=archiveCleanupPending,proto3" json:"archive_cleanup_pending,omitempty"`
+	WorktreeKept          bool                   `protobuf:"varint,7,opt,name=worktree_kept,json=worktreeKept,proto3" json:"worktree_kept,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *WorkspaceStrategy) Reset() {
@@ -2701,6 +2703,20 @@ func (x *WorkspaceStrategy) GetWorktreePath() string {
 func (x *WorkspaceStrategy) GetFromRemote() bool {
 	if x != nil {
 		return x.FromRemote
+	}
+	return false
+}
+
+func (x *WorkspaceStrategy) GetArchiveCleanupPending() bool {
+	if x != nil {
+		return x.ArchiveCleanupPending
+	}
+	return false
+}
+
+func (x *WorkspaceStrategy) GetWorktreeKept() bool {
+	if x != nil {
+		return x.WorktreeKept
 	}
 	return false
 }
@@ -8258,8 +8274,12 @@ type UpdateSessionRequest struct {
 	Pinned          bool                   `protobuf:"varint,11,opt,name=pinned,proto3" json:"pinned,omitempty"`
 	RegenerateTitle bool                   `protobuf:"varint,12,opt,name=regenerate_title,json=regenerateTitle,proto3" json:"regenerate_title,omitempty"`
 	Locale          string                 `protobuf:"bytes,13,opt,name=locale,proto3" json:"locale,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Seconds to defer irreversible archive cleanup (stopping daemons, removing
+	// TMPDIR and releasing the Git worktree) so an interactive Undo cancels it
+	// without loss; 0 cleans up immediately.
+	ArchiveGraceSeconds uint32 `protobuf:"varint,14,opt,name=archive_grace_seconds,json=archiveGraceSeconds,proto3" json:"archive_grace_seconds,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *UpdateSessionRequest) Reset() {
@@ -8381,6 +8401,13 @@ func (x *UpdateSessionRequest) GetLocale() string {
 		return x.Locale
 	}
 	return ""
+}
+
+func (x *UpdateSessionRequest) GetArchiveGraceSeconds() uint32 {
+	if x != nil {
+		return x.ArchiveGraceSeconds
+	}
+	return 0
 }
 
 type UpdateSessionResponse struct {
@@ -10829,14 +10856,16 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\rcustom_models\x18\t \x03(\tR\fcustomModels\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc0\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9d\x02\n" +
 	"\x11WorkspaceStrategy\x122\n" +
 	"\x04mode\x18\x01 \x01(\x0e2\x1e.hermesh.identity.v1.WorkspaceR\x04mode\x12\x19\n" +
 	"\bbase_ref\x18\x02 \x01(\tR\abaseRef\x12\x16\n" +
 	"\x06branch\x18\x03 \x01(\tR\x06branch\x12#\n" +
 	"\rworktree_path\x18\x04 \x01(\tR\fworktreePath\x12\x1f\n" +
 	"\vfrom_remote\x18\x05 \x01(\bR\n" +
-	"fromRemote\"\xbb\x01\n" +
+	"fromRemote\x126\n" +
+	"\x17archive_cleanup_pending\x18\x06 \x01(\bR\x15archiveCleanupPending\x12#\n" +
+	"\rworktree_kept\x18\a \x01(\bR\fworktreeKept\"\xbb\x01\n" +
 	"\x0eSessionLineage\x12*\n" +
 	"\x11parent_session_id\x18\x01 \x01(\tR\x0fparentSessionId\x125\n" +
 	"\x17forked_from_run_ordinal\x18\x02 \x01(\rR\x14forkedFromRunOrdinal\x12\"\n" +
@@ -11448,7 +11477,7 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\x13ManageQueueResponse\x125\n" +
 	"\asession\x18\x01 \x01(\v2\x1b.hermesh.session.v1.SessionR\asession\x128\n" +
 	"\vqueued_runs\x18\x02 \x03(\v2\x17.hermesh.session.v1.RunR\n" +
-	"queuedRuns\"\xa4\x04\n" +
+	"queuedRuns\"\xd8\x04\n" +
 	"\x14UpdateSessionRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1d\n" +
@@ -11467,7 +11496,8 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	" \x01(\bR\thasPinned\x12\x16\n" +
 	"\x06pinned\x18\v \x01(\bR\x06pinned\x12)\n" +
 	"\x10regenerate_title\x18\f \x01(\bR\x0fregenerateTitle\x12\x16\n" +
-	"\x06locale\x18\r \x01(\tR\x06locale\"}\n" +
+	"\x06locale\x18\r \x01(\tR\x06locale\x122\n" +
+	"\x15archive_grace_seconds\x18\x0e \x01(\rR\x13archiveGraceSeconds\"}\n" +
 	"\x15UpdateSessionResponse\x125\n" +
 	"\asession\x18\x01 \x01(\v2\x1b.hermesh.session.v1.SessionR\asession\x12-\n" +
 	"\x12transition_applied\x18\x02 \x01(\tR\x11transitionApplied\"\x91\x04\n" +

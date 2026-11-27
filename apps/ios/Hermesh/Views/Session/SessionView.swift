@@ -14,8 +14,13 @@ struct ArchivedNote: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "archivebox")
-            Text("Archived: read-only; the worktree is released and the changes stay on the branch.")
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if session.workspaceStrategy.worktreeKept {
+                Text("Archived: read-only; the worktree is kept for local files.")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text("Archived: read-only; the worktree is released and the changes stay on the branch.")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             Button("Unarchive") { Task { await model.setArchived(session, false) } }
                 .foregroundStyle(.tint)
         }

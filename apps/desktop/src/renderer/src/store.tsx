@@ -1,7 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { clone } from "@bufbuild/protobuf";
+import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { ConnectError } from "@connectrpc/connect";
 import type { Client, Device, GetStatusResponse, Machine, PairingDetails, Project, Unreachable, Wake } from "@hermesh/proto/local";
-import type { Session } from "@hermesh/proto/session";
+import { SessionSchema, SessionStatus, type Session } from "@hermesh/proto/session";
 import { sessionView, unreachableMachines, withKnownState, type SessionFilter, type SessionView } from "@hermesh/core";
 import type { Peek } from "./layout";
 import { useFirstRunDone, useProgress } from "./firstrun/progress";
@@ -96,6 +98,8 @@ export type Store = Data &
     refresh: () => Promise<void>;
     run: (action: () => Promise<unknown>, done?: string) => Promise<boolean>;
     show: (text: string, undo?: () => void) => void;
+    setPendingArchived: (ids: readonly string[], archived: boolean | null) => void;
+    noteArchiveCleanup: (id: string, title: string | null) => void;
   };
 
 const Ctx = createContext<Store | null>(null);
@@ -194,10 +198,21 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     () => ({ status, clients: world.clients, machines: world.machines, projects: world.projects, projectsUnreachable: unreachable, pairings: world.pairings, devices: world.devices }),
     [status, world.clients, world.machines, world.projects, unreachable, world.pairings, world.devices],
   );
-  const sessions = useMemo(
-    () => withKnownState(world.sessions, world.machines),
-    [world.sessions, world.machines],
-  );
+  const [pendingArchived, setPendingArchivedState] = useState<Record<string, { archived: boolean; at: Date }>>({});
+  const awaitingCleanup = useRef(new Map<string, string>());
+  const sessions = useMemo(() => {
+    const base = withKnownState(world.sessions, world.machines);
+    const keys = Object.keys(pendingArchived);
+    if (keys.length === 0) return base;
+    return base.map((s) => {
+      const p = pendingArchived[s.sessionId];
+      if (!p || (s.status === SessionStatus.ARCHIVED) === p.archived) return s;
+      const copy = clone(SessionSchema, s);
+      copy.status = p.archived ? SessionStatus.ARCHIVED : SessionStatus.IDLE;
+      copy.updatedAt = timestampFromDate(p.at);
+      return copy;
+    });
+  }, [world.sessions, world.machines, pendingArchived]);
   const [ui, setUI] = useState<UI>(() => ({
     selection: { kind: "overview" },
     inspector: saved("inspector", true),
@@ -281,6 +296,58 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     toastTimer.current = setTimeout(() => setUI((u) => (u.toast?.id === id ? { ...u, toast: null } : u)), 5200);
   }, []);
 
+  const setPendingArchived = useCallback((ids: readonly string[], archived: boolean | null) => {
+    if (ids.length === 0) return;
+    const at = new Date();
+    setPendingArchivedState((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const id of ids) {
+        if (archived === null) {
+          if (id in next) {
+            delete next[id];
+            changed = true;
+          }
+        } else if (next[id]?.archived !== archived) {
+          next[id] = { archived, at };
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const noteArchiveCleanup = useCallback((id: string, title: string | null) => {
+    if (title === null) awaitingCleanup.current.delete(id);
+    else awaitingCleanup.current.set(id, title);
+  }, []);
+
+  useEffect(() => {
+    setPendingArchivedState((prev) => {
+      const keys = Object.keys(prev);
+      if (keys.length === 0) return prev;
+      let changed = false;
+      const next = { ...prev };
+      for (const s of world.sessions) {
+        const p = next[s.sessionId];
+        if (p && (s.status === SessionStatus.ARCHIVED) === p.archived) {
+          delete next[s.sessionId];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    for (const s of world.sessions) {
+      if (s.status === SessionStatus.ARCHIVED && !s.workspaceStrategy?.archiveCleanupPending && awaitingCleanup.current.has(s.sessionId)) {
+        const title = awaitingCleanup.current.get(s.sessionId)!;
+        awaitingCleanup.current.delete(s.sessionId);
+        if (s.workspaceStrategy?.worktreeKept) {
+          show(i18n.t("common:sidebar.archivedKept", { title }));
+        }
+      }
+    }
+  }, [world.sessions, show]);
+
   const run = useCallback(
     async (action: () => Promise<unknown>, done?: string) => {
       try {
@@ -329,8 +396,10 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
       refresh,
       run,
       show,
+      setPendingArchived,
+      noteArchiveCleanup,
     }),
-    [data, sessions, world.loaded, world.status, world.next, world.loadOlder, world.workVersion, ui, width, set, select, refresh, run, show],
+    [data, sessions, world.loaded, world.status, world.next, world.loadOlder, world.workVersion, ui, width, set, select, refresh, run, show, setPendingArchived, noteArchiveCleanup],
   );
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

@@ -306,6 +306,8 @@ message WorkspaceStrategy {
   string branch = 3;
   string worktree_path = 4;
   bool from_remote = 5;
+  bool archive_cleanup_pending = 6;
+  bool worktree_kept = 7;
 }
 
 message SessionLineage {
@@ -1091,6 +1093,10 @@ message UpdateSessionRequest {
   bool pinned = 11;
   bool regenerate_title = 12;
   string locale = 13;
+  // Seconds to defer irreversible archive cleanup (stopping daemons, removing
+  // TMPDIR and releasing the Git worktree) so an interactive Undo cancels it
+  // without loss; 0 cleans up immediately.
+  uint32 archive_grace_seconds = 14;
 }
 
 message UpdateSessionResponse {

@@ -49,8 +49,13 @@ export function machineName(st: Store, id: string): string {
   return st.machines.find((m) => m.machineId === id)?.machineName ?? id;
 }
 
-const setSessionArchived = (id: string, archived: boolean) => sessionApi.updateSession({ sessionId: id, hasArchived: true, archived });
+const ARCHIVE_UNDO_GRACE_SECONDS = 6;
+const setSessionArchived = (id: string, archived: boolean, graceSeconds = 0) =>
+  sessionApi.updateSession({ sessionId: id, hasArchived: true, archived, archiveGraceSeconds: archived ? graceSeconds : 0 });
 const setSessionPinned = (id: string, pinned: boolean) => sessionApi.updateSession({ sessionId: id, hasPinned: true, pinned });
+
+let archiveChain: Promise<void> = Promise.resolve();
+const archiveOps = new Map<string, number>();
 
 function insertAt(otherIds: readonly string[], movedId: string, slot: number): string[] {
   const next = otherIds.filter((x) => x !== movedId);
@@ -76,23 +81,60 @@ export function canArchive(st: Pick<Store, "sessions">, s: Session): boolean {
   return isTreeArchivable(s, sentFrom(st, s));
 }
 
+function runTreeArchive(st: Store, tree: Session[], archived: boolean, toastText?: string, undo?: () => void) {
+  if (tree.length === 0) return Promise.resolve(true);
+  const ids = tree.map((x) => x.sessionId);
+  const ops = new Map<string, number>();
+  for (const id of ids) {
+    const next = (archiveOps.get(id) ?? 0) + 1;
+    archiveOps.set(id, next);
+    ops.set(id, next);
+  }
+  const root = tree[0]!;
+  const title = displayTitle(root);
+  st.setPendingArchived(ids, archived);
+  st.noteArchiveCleanup(root.sessionId, archived ? title : null);
+  if (toastText) st.show(toastText, undo);
+
+  const grace = archived ? ARCHIVE_UNDO_GRACE_SECONDS : 0;
+  const runNext = archiveChain.then(async () => {
+    let kept = false;
+    const ok = await st.run(async () => {
+      const res = await Promise.all(tree.map((x) => setSessionArchived(x.sessionId, archived, grace)));
+      kept = res[0]?.transitionApplied === "workspace_kept";
+    });
+    if (!ok) {
+      const rollbackIds = ids.filter((id) => archiveOps.get(id) === ops.get(id));
+      st.setPendingArchived(rollbackIds, null);
+      if (archiveOps.get(root.sessionId) === ops.get(root.sessionId)) {
+        st.noteArchiveCleanup(root.sessionId, null);
+      }
+      return false;
+    }
+    if (archived && kept && archiveOps.get(root.sessionId) === ops.get(root.sessionId)) {
+      st.noteArchiveCleanup(root.sessionId, null);
+      st.show(i18n.t("common:sidebar.archivedKept", { title }), undo);
+    }
+    return true;
+  });
+  archiveChain = runNext.then(() => undefined, () => undefined);
+  return runNext;
+}
+
 export function archive(st: Store, s: Session) {
-  let kept = false;
   const tree = [s, ...sentFrom(st, s)];
-  st.run(async () => {
-    const res = await Promise.all(tree.map((x) => setSessionArchived(x.sessionId, true)));
-    kept = res[0]!.transitionApplied === "workspace_kept";
-  }).then((ok) => {
-    if (ok) st.show(i18n.t(kept ? "common:sidebar.archivedKept" : "common:sidebar.archived", { title: displayTitle(s) }), () => unarchiveAll(st, tree));
+  const title = displayTitle(s);
+  void runTreeArchive(st, tree, true, i18n.t("common:sidebar.archived", { title }), () => {
+    void unarchiveAll(st, tree);
   });
 }
 
 function unarchiveAll(st: Store, tree: Session[]) {
-  return st.run(() => Promise.all(tree.map((x) => setSessionArchived(x.sessionId, false))));
+  return runTreeArchive(st, tree, false);
 }
 
 export function unarchive(st: Store, s: Session, done?: string) {
-  return st.run(() => setSessionArchived(s.sessionId, false), done);
+  return runTreeArchive(st, [s], false, done);
 }
 
 /** Delete, once confirmed: what goes for good, what stays (the branch), and that a turn in progress is interrupted. */

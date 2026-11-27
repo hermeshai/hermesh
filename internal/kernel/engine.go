@@ -287,6 +287,7 @@ type Engine struct {
 	titleSem         chan struct{}                          // bounds concurrent title generations
 	titleCancels     map[string]context.CancelFunc          // session_id -> cancel
 	titleDoneChs     map[string]chan struct{}               // session_id -> closed on completion
+	archiveTimers    map[string]*time.Timer                 // session_id -> deferred archive cleanup
 	sessionSubs      map[string]map[*sessionSub]struct{}
 	shellSubs        map[*shellSub]struct{}
 	gitSyncMu        sync.Mutex
@@ -329,6 +330,7 @@ func Open(cfg Config) (*Engine, error) {
 		titleSem:         make(chan struct{}, maxConcurrentTitleGens),
 		titleCancels:     map[string]context.CancelFunc{},
 		titleDoneChs:     map[string]chan struct{}{},
+		archiveTimers:    map[string]*time.Timer{},
 		sessionSubs:      map[string]map[*sessionSub]struct{}{},
 		shellSubs:        map[*shellSub]struct{}{},
 		gitSyncLastAt:    map[string]time.Time{},
@@ -353,6 +355,7 @@ func Open(cfg Config) (*Engine, error) {
 
 func (e *Engine) Close() error {
 	e.bgCancel()
+	e.stopArchiveTimers()
 	_ = e.sup.Close()
 	e.wg.Wait()
 	return e.st.Close()
@@ -863,7 +866,12 @@ func (e *Engine) recoverOrphans() error {
 			sess.QueuedRunCount = uint32(len(queued))
 			sess.ActiveRunId = ""
 			sess.TitleGenerating = false
-			if hasPendingResumeReq {
+			if sess.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+				sess.PendingRequestId = ""
+				if sess.Progress != nil {
+					sess.Progress.PendingQuestion = nil
+				}
+			} else if hasPendingResumeReq {
 				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT
 			} else if len(queued) > 0 {
 				sess.QueueHeld = true // Hold queue after unexpected crash so user can inspect or resume.
@@ -890,6 +898,15 @@ func (e *Engine) recoverOrphans() error {
 		})
 		if err == nil {
 			e.publish(events, nil)
+		}
+	}
+	for _, s := range sessions {
+		if s.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED && s.GetWorkspaceStrategy().GetArchiveCleanupPending() {
+			rem := DefaultArchiveGrace - time.Since(s.GetArchivedAt().AsTime())
+			if rem < 50*time.Millisecond {
+				rem = 50 * time.Millisecond
+			}
+			e.scheduleArchiveCleanup(s.SessionId, rem)
 		}
 	}
 	return nil
@@ -7141,7 +7158,15 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 		sess.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT) {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("cannot archive a session while a run is active; interrupt it first"))
 	}
-	if archivingNow && sess.ActiveDaemonCount > 0 && lease != nil {
+	grace := min(time.Duration(req.ArchiveGraceSeconds)*time.Second, MaxArchiveGrace)
+	wasCleanupPending := sess.GetWorkspaceStrategy().GetArchiveCleanupPending()
+	deferCleanup := archivingNow && grace > 0
+	immediateCleanup := (archivingNow && grace == 0) ||
+		(req.HasArchived && req.Archived && sess.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED && grace == 0 && wasCleanupPending)
+	if immediateCleanup || unarchivingNow {
+		e.cancelArchiveCleanup(req.SessionId)
+	}
+	if immediateCleanup && sess.ActiveDaemonCount > 0 && lease != nil {
 		if bc, ok := lease.Session.(runtime.BackgroundController); ok {
 			_ = bc.StopBackgroundTask(ctx, "")
 		}
@@ -7193,7 +7218,7 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 		}
 		var stoppedBg []*sessionv1.BackgroundTask
 		var stoppedItems []*sessionv1.TurnItem
-		if archivingNow && sNow.ActiveDaemonCount > 0 {
+		if immediateCleanup && sNow.ActiveDaemonCount > 0 {
 			stoppedBg, stoppedItems, err = tx.StopRunningBackgroundTasks(req.SessionId, "", "session archived")
 			if err != nil {
 				return err
@@ -7206,9 +7231,21 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 					sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED
 					sNow.ArchivedAt = timestamppb.Now()
 				}
+				if deferCleanup || immediateCleanup {
+					if sNow.WorkspaceStrategy == nil {
+						sNow.WorkspaceStrategy = &sessionv1.WorkspaceStrategy{}
+					}
+					sNow.WorkspaceStrategy.ArchiveCleanupPending = deferCleanup
+					sNow.WorkspaceStrategy.WorktreeKept = false
+				}
 			} else if sNow.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+				wasCleanupPending = sNow.GetWorkspaceStrategy().GetArchiveCleanupPending()
 				sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
 				sNow.ArchivedAt = nil
+				if sNow.WorkspaceStrategy != nil {
+					sNow.WorkspaceStrategy.ArchiveCleanupPending = false
+					sNow.WorkspaceStrategy.WorktreeKept = false
+				}
 			}
 		}
 		pinOnly := req.HasPinned &&
@@ -7263,34 +7300,47 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 		return nil, err
 	}
 	nativeRef := currentPS.GetNativeSessionId()
-	if archivingNow {
-		if sess.ActiveProviderSessionId != "" {
-			e.sup.Detach(sess.ActiveProviderSessionId, false)
-		}
-		if e.cfg.DataDir != "" {
-			_ = os.RemoveAll(filepath.Join(e.cfg.DataDir, "sessions", sess.SessionId, "tmp"))
-		}
-		if nativeRef != "" {
-			if arch, ok := drv.(runtime.Archiver); ok {
-				_ = arch.Archive(ctx, nativeRef, true)
+	if deferCleanup {
+		e.scheduleArchiveCleanup(req.SessionId, grace)
+	}
+	if immediateCleanup {
+		kept := e.execArchiveSideEffects(ctx, sess, res.Session, drv, nativeRef)
+		if kept {
+			res.TransitionApplied = "workspace_kept"
+			if res.Session.WorkspaceStrategy == nil {
+				res.Session.WorkspaceStrategy = &sessionv1.WorkspaceStrategy{}
 			}
-		}
-		if sess.GetWorkspaceStrategy().GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE && sess.GetWorkspaceStrategy().GetWorktreePath() != "" {
-			if e.cfg.ReleaseOnArchive != nil {
-				if e.cfg.ReleaseOnArchive(ctx, res.Session) {
-					res.TransitionApplied = "workspace_kept"
-					if req.CommandId != "" {
-						_, _ = e.st.Mutate(func(tx *store.Tx) error {
-							return tx.PutReceipt(req.CommandId, "UpdateSession", res)
-						})
+			res.Session.WorkspaceStrategy.WorktreeKept = true
+			keptEvs, mErr := e.st.Mutate(func(tx *store.Tx) error {
+				sNow, gErr := tx.GetSession(req.SessionId)
+				if gErr == nil {
+					if sNow.WorkspaceStrategy == nil {
+						sNow.WorkspaceStrategy = &sessionv1.WorkspaceStrategy{}
 					}
+					sNow.WorkspaceStrategy.WorktreeKept = true
+					syncSessionSummary(sNow)
+					_ = tx.PutSessionPreserveUpdatedAt(sNow)
+					res.Session = proto.Clone(sNow).(*sessionv1.Session)
 				}
-			} else if ws, wErr := e.st.Workspace(sess.ProjectId); wErr == nil {
-				_ = e.vcs.RemoveWorktree(ctx, ws.Path, sess.GetWorkspaceStrategy().GetWorktreePath())
+				if req.CommandId != "" {
+					return tx.PutReceipt(req.CommandId, "UpdateSession", res)
+				}
+				return nil
+			})
+			if mErr == nil && len(keptEvs) > 0 {
+				events = append(events, keptEvs...)
+			}
+			for _, ev := range events {
+				if ev.Session != nil && ev.Session.SessionId == req.SessionId {
+					if ev.Session.WorkspaceStrategy == nil {
+						ev.Session.WorkspaceStrategy = &sessionv1.WorkspaceStrategy{}
+					}
+					ev.Session.WorkspaceStrategy.WorktreeKept = true
+				}
 			}
 		}
 	}
-	if unarchivingNow {
+	if unarchivingNow && !wasCleanupPending {
 		if e.cfg.DataDir != "" {
 			_ = os.MkdirAll(filepath.Join(e.cfg.DataDir, "sessions", sess.SessionId, "tmp"), 0o700)
 		}
@@ -7308,6 +7358,205 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 		e.spawnTitleGen(req.SessionId, regenTitleSeq, titleGenModeRegenerate, nil)
 	}
 	return res, nil
+}
+
+const (
+	DefaultArchiveGrace = 6 * time.Second
+	MaxArchiveGrace     = 60 * time.Second
+)
+
+func (e *Engine) stopArchiveTimers() {
+	e.mu.Lock()
+	for id, t := range e.archiveTimers {
+		t.Stop()
+		delete(e.archiveTimers, id)
+	}
+	e.mu.Unlock()
+}
+
+func (e *Engine) cancelArchiveCleanup(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	e.mu.Lock()
+	if t, ok := e.archiveTimers[sessionID]; ok {
+		t.Stop()
+		delete(e.archiveTimers, sessionID)
+	}
+	e.mu.Unlock()
+}
+
+func (e *Engine) scheduleArchiveCleanup(sessionID string, delay time.Duration) {
+	if sessionID == "" {
+		return
+	}
+	e.mu.Lock()
+	if e.bgCtx.Err() != nil {
+		e.mu.Unlock()
+		return
+	}
+	if old, ok := e.archiveTimers[sessionID]; ok {
+		old.Stop()
+		delete(e.archiveTimers, sessionID)
+	}
+	if delay <= 0 {
+		e.wg.Add(1)
+		e.mu.Unlock()
+		go func() {
+			defer e.wg.Done()
+			e.runArchiveCleanup(sessionID)
+		}()
+		return
+	}
+	var t *time.Timer
+	t = time.AfterFunc(delay, func() {
+		e.mu.Lock()
+		if e.archiveTimers[sessionID] == t {
+			delete(e.archiveTimers, sessionID)
+		}
+		if e.bgCtx.Err() != nil {
+			e.mu.Unlock()
+			return
+		}
+		e.wg.Add(1)
+		e.mu.Unlock()
+		defer e.wg.Done()
+		e.runArchiveCleanup(sessionID)
+	})
+	e.archiveTimers[sessionID] = t
+	e.mu.Unlock()
+}
+
+func (e *Engine) execArchiveSideEffects(ctx context.Context, before, current *sessionv1.Session, drv runtime.Driver, nativeRef string) bool {
+	if before.GetActiveProviderSessionId() != "" {
+		e.sup.Detach(before.GetActiveProviderSessionId(), false)
+	}
+	if e.cfg.DataDir != "" {
+		_ = os.RemoveAll(filepath.Join(e.cfg.DataDir, "sessions", before.GetSessionId(), "tmp"))
+	}
+	if nativeRef != "" && drv != nil {
+		if arch, ok := drv.(runtime.Archiver); ok {
+			_ = arch.Archive(ctx, nativeRef, true)
+		}
+	}
+	kept := false
+	if before.GetWorkspaceStrategy().GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE && before.GetWorkspaceStrategy().GetWorktreePath() != "" {
+		if e.cfg.ReleaseOnArchive != nil {
+			kept = e.cfg.ReleaseOnArchive(ctx, current)
+		} else if ws, wErr := e.st.Workspace(before.GetProjectId()); wErr == nil {
+			_ = e.vcs.RemoveWorktree(ctx, ws.Path, before.GetWorkspaceStrategy().GetWorktreePath())
+		}
+	}
+	return kept
+}
+
+func (e *Engine) runArchiveCleanup(sessionID string) {
+	unlock := e.lockSession(sessionID)
+	defer unlock()
+	if e.bgCtx.Err() != nil {
+		return
+	}
+	sess, err := e.st.Session(sessionID)
+	if err != nil || sess.Status != sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED || !sess.GetWorkspaceStrategy().GetArchiveCleanupPending() {
+		return
+	}
+	_, drv, _ := e.resolveInstanceConfig(nil, sess.ProjectId, sess.GetModelSelection().GetInstanceId())
+	var currentPS *sessionv1.ProviderSession
+	if sess.ActiveProviderSessionId != "" {
+		pss, _ := e.st.ProviderSessions(sessionID)
+		for _, ps := range pss {
+			if ps.ProviderSessionId == sess.ActiveProviderSessionId {
+				currentPS = ps
+				break
+			}
+		}
+	}
+	lease := e.sup.Get(sess.ActiveProviderSessionId)
+	if sess.ActiveDaemonCount > 0 && lease != nil {
+		if bc, ok := lease.Session.(runtime.BackgroundController); ok {
+			_ = bc.StopBackgroundTask(e.bgCtx, "")
+		}
+	}
+	kept := e.execArchiveSideEffects(e.bgCtx, sess, sess, drv, currentPS.GetNativeSessionId())
+	events, err := e.st.Mutate(func(tx *store.Tx) error {
+		sNow, err := tx.GetSession(sessionID)
+		if err != nil {
+			return err
+		}
+		if sNow.Status != sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+			return nil
+		}
+		var stoppedBg []*sessionv1.BackgroundTask
+		var stoppedItems []*sessionv1.TurnItem
+		if sNow.ActiveDaemonCount > 0 {
+			stoppedBg, stoppedItems, err = tx.StopRunningBackgroundTasks(sessionID, "", "session archived")
+			if err != nil {
+				return err
+			}
+			_, _, _ = tx.RefreshSessionBackgroundCounts(sNow)
+		}
+		if sNow.WorkspaceStrategy == nil {
+			sNow.WorkspaceStrategy = &sessionv1.WorkspaceStrategy{}
+		}
+		sNow.WorkspaceStrategy.ArchiveCleanupPending = false
+		sNow.WorkspaceStrategy.WorktreeKept = kept
+		syncSessionSummary(sNow)
+		if err := tx.PutSessionPreserveUpdatedAt(sNow); err != nil {
+			return err
+		}
+		for _, it := range stoppedItems {
+			if err := tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sessionID,
+				Type:      "item.updated",
+				Session:   sNow,
+				Item:      it,
+			}); err != nil {
+				return err
+			}
+		}
+		for _, bt := range stoppedBg {
+			if err := tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId:      sessionID,
+				Type:           "background_task.updated",
+				Session:        sNow,
+				BackgroundTask: bt,
+			}); err != nil {
+				return err
+			}
+		}
+		return tx.AppendEvent(&sessionv1.SessionEvent{
+			SessionId: sessionID,
+			Type:      "session.updated",
+			Session:   sNow,
+		})
+	})
+	if err == nil && len(events) > 0 {
+		e.publish(events, nil)
+	}
+}
+
+// ClearWorktreeKeptLocked clears WorktreeKept on an archived session once its
+// worktree is released later (caller must already hold WithSessionLock).
+func (e *Engine) ClearWorktreeKeptLocked(sessionID string) {
+	events, err := e.st.Mutate(func(tx *store.Tx) error {
+		sNow, err := tx.GetSession(sessionID)
+		if err != nil || !sNow.GetWorkspaceStrategy().GetWorktreeKept() {
+			return nil
+		}
+		sNow.WorkspaceStrategy.WorktreeKept = false
+		syncSessionSummary(sNow)
+		if err := tx.PutSessionPreserveUpdatedAt(sNow); err != nil {
+			return err
+		}
+		return tx.AppendEvent(&sessionv1.SessionEvent{
+			SessionId: sessionID,
+			Type:      "session.updated",
+			Session:   sNow,
+		})
+	})
+	if err == nil && len(events) > 0 {
+		e.publish(events, nil)
+	}
 }
 
 func (e *Engine) ListCheckpoints(_ context.Context, p *Principal, sessionID string) ([]*sessionv1.Checkpoint, error) {
@@ -7744,6 +7993,7 @@ func (e *Engine) DeleteSession(ctx context.Context, p *Principal, sessionID stri
 		return connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	}
 	e.cancelTitleGen(sessionID)
+	e.cancelArchiveCleanup(sessionID)
 	if sess.ActiveRunId != "" {
 		e.mu.Lock()
 		if cancel, ok := e.runCancels[sess.ActiveRunId]; ok {

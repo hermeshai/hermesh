@@ -147,12 +147,30 @@ final class AppModel {
     var status = StatusResponse()
     let signer = Signer()
 
+    private struct PendingArchiveState: Equatable {
+        var archived: Bool
+        var at: Date
+    }
+
     /// As screens show them, wherever they started: those of a machine that cannot be read now with their state unknown (withKnownState).
     var sessions: [Session] {
-        withKnownState(heldSessions, unreachable: Set(unreachable.map(\.machineID)))
+        let base = withKnownState(heldSessions, unreachable: Set(unreachable.map(\.machineID)))
+        guard !pendingArchived.isEmpty else { return base }
+        return base.map { s in
+            guard let p = pendingArchived[s.sessionID], (s.status == .archived) != p.archived else { return s }
+            var copy = s
+            copy.status = p.archived ? .archived : .idle
+            copy.updatedAt = .init(date: p.at)
+            return copy
+        }
     }
     /// As hermeshd last told of them.
     private var heldSessions: [Session] = []
+    /// Optimistic archive/unarchive overrides while the RPC is in flight.
+    private var pendingArchived: [String: PendingArchiveState] = [:]
+    @ObservationIgnored private var archiveOps: [String: UInt64] = [:]
+    @ObservationIgnored private var archiveChain: Task<Void, Never>?
+    @ObservationIgnored private var awaitingCleanupTitles: [String: String] = [:]
     /// Set by Add a Project once it added one; the new-session page takes it.
     var addedProject: AddedProject?
     var loadingOlder = false
@@ -889,11 +907,13 @@ final class AppModel {
         if r.reset {
             let readNow = Set(machines.filter { $0.online && $0.unreachable.isEmpty && !$0.syncing }.map(\.machineID))
             heldSessions = mergeSessions(resetSessions(heldSessions, r.sessions, next: r.hasNext ? r.next : nil, readNow: readNow), [], deleted: r.deletedSessionIds)
+            reconcileArchiveUpdates(r.sessions)
             if active {
                 Task { await refreshGitStatus(force: true) }
             }
         } else if !r.sessions.isEmpty || !r.deletedSessionIds.isEmpty {
             heldSessions = mergeSessions(heldSessions, r.sessions, deleted: r.deletedSessionIds)
+            reconcileArchiveUpdates(r.sessions)
         }
         if r.workVersion != 0 && r.workVersion != workVersion {
             workVersion = r.workVersion
@@ -1089,7 +1109,21 @@ final class AppModel {
 
     private func replace(_ s: Session) {
         heldSessions = mergeSessions(heldSessions, [s])
+        reconcileArchiveUpdates([s])
         conversations.updateSession(s)
+    }
+
+    private func reconcileArchiveUpdates(_ updated: [Session]) {
+        for s in updated {
+            if let p = pendingArchived[s.sessionID], (s.status == .archived) == p.archived {
+                pendingArchived.removeValue(forKey: s.sessionID)
+            }
+            if s.status == .archived, !s.workspaceStrategy.archiveCleanupPending,
+               let title = awaitingCleanupTitles.removeValue(forKey: s.sessionID),
+               s.workspaceStrategy.worktreeKept {
+                show(String(localized: "Archived “\(title)” (worktree kept for local files)"))
+            }
+        }
     }
 
     func answer(_ s: Session, answers: [Answer], decline: Bool) async -> Bool {
@@ -1134,34 +1168,85 @@ final class AppModel {
         }
     }
 
+    private static let archiveUndoGraceSeconds: UInt32 = 6
+
     func setArchived(_ s: Session, _ archived: Bool, undoable: Bool = true) async {
         await setTreeArchived(archived ? [s] + sentFrom(s) : [s], archived, title: s.displayTitle, undoable: undoable)
     }
 
     private func setTreeArchived(_ tree: [Session], _ archived: Bool, title: String, undoable: Bool) async {
         guard let api, !tree.isEmpty else { return }
-        do {
-            var keptWorkspace = false
-            for (i, item) in tree.enumerated() {
-                let res = try await api.archive(item.sessionID, archived)
-                if res.hasSession { replace(res.session) }
-                if i == 0 && res.transitionApplied == "workspace_kept" { keptWorkspace = true }
+        let at = Date()
+        var ops: [String: UInt64] = [:]
+        for item in tree {
+            let nextOp = (archiveOps[item.sessionID] ?? 0) + 1
+            archiveOps[item.sessionID] = nextOp
+            ops[item.sessionID] = nextOp
+        }
+        withAnimation(.snappy) {
+            for item in tree {
+                pendingArchived[item.sessionID] = PendingArchiveState(archived: archived, at: at)
             }
-            let text = if archived {
-                keptWorkspace
-                    ? String(localized: "Archived “\(title)” (worktree kept for local files)")
-                    : String(localized: "Archived “\(title)”")
-            } else {
-                String(localized: "Unarchived “\(title)”")
+        }
+        let rootID = tree[0].sessionID
+        if archived {
+            awaitingCleanupTitles[rootID] = title
+        } else {
+            awaitingCleanupTitles.removeValue(forKey: rootID)
+        }
+        var undo: (@MainActor () -> Void)?
+        if undoable {
+            undo = { [weak self] in
+                Task { await self?.setTreeArchived(tree, !archived, title: title, undoable: false) }
             }
-            var undo: (@MainActor () -> Void)?
-            if undoable {
-                undo = { [weak self] in
-                    Task { await self?.setTreeArchived(tree, !archived, title: title, undoable: false) }
+        }
+        let immediateText = archived
+            ? String(localized: "Archived “\(title)”")
+            : String(localized: "Unarchived “\(title)”")
+        show(immediateText, undo: undo)
+
+        let prev = archiveChain
+        let grace = archived ? Self.archiveUndoGraceSeconds : 0
+        let task = Task { @MainActor [weak self] in
+            _ = await prev?.value
+            guard let self else { return }
+            do {
+                let responses = try await withThrowingTaskGroup(of: (Int, Hermesh_Session_V1_UpdateSessionResponse).self) { group in
+                    for (i, item) in tree.enumerated() {
+                        group.addTask {
+                            (i, try await api.archive(item.sessionID, archived, graceSeconds: grace))
+                        }
+                    }
+                    var collected: [(Int, Hermesh_Session_V1_UpdateSessionResponse)] = []
+                    for try await pair in group { collected.append(pair) }
+                    return collected.sorted { $0.0 < $1.0 }.map(\.1)
                 }
+                for (item, res) in zip(tree, responses) {
+                    if self.archiveOps[item.sessionID] == ops[item.sessionID] {
+                        if res.hasSession { self.replace(res.session) }
+                        self.pendingArchived.removeValue(forKey: item.sessionID)
+                    }
+                }
+                if archived, responses.first?.transitionApplied == "workspace_kept",
+                   self.archiveOps[rootID] == ops[rootID] {
+                    self.awaitingCleanupTitles.removeValue(forKey: rootID)
+                    self.show(String(localized: "Archived “\(title)” (worktree kept for local files)"), undo: undo)
+                }
+            } catch {
+                withAnimation(.snappy) {
+                    for item in tree where self.archiveOps[item.sessionID] == ops[item.sessionID] {
+                        self.pendingArchived.removeValue(forKey: item.sessionID)
+                    }
+                }
+                if self.archiveOps[rootID] == ops[rootID] {
+                    self.awaitingCleanupTitles.removeValue(forKey: rootID)
+                    if self.toast?.text == immediateText { self.toast = nil }
+                }
+                self.report(error)
             }
-            show(text, undo: undo)
-        } catch { report(error) }
+        }
+        archiveChain = task
+        await task.value
     }
 
     /// Deletes a session for good (its branch stays); off its page if it is open.

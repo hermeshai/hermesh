@@ -12,6 +12,7 @@
   },
   "chat": {
     "archived": "已归档：只读，worktree 已释放，改动还在分支上。",
+    "archivedKept": "已归档：只读，含本地文件，工作目录已保留。",
     "unarchive": "取消归档",
     "log": "对话",
     "failed": "出错了",
