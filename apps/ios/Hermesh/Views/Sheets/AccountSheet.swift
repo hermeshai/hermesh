@@ -318,61 +318,54 @@ struct AccountView: View {
     }
 }
 
-/// Notifications, a page of its own as in Settings: requests to connect
-/// always come; the agents' questions, failed sessions and finished turns
-/// to choose. When iOS has them off, the way to turn them on.
 struct NotificationsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     @State private var status: UNAuthorizationStatus?
+    @State private var prefs = NotificationPrefs.current
 
     var body: some View {
         List {
-            if status == .denied {
-                Section {
+            Section {
+                Toggle("Her replies", isOn: pref(\.herReplies)).accessibilityIdentifier("notify-her-replies")
+                Toggle("Session results", isOn: pref(\.results)).accessibilityIdentifier("notify-results")
+                Toggle("New sessions", isOn: pref(\.sessionsStarted)).accessibilityIdentifier("notify-started")
+            } header: { Text("notificationSettings.sessions") } footer: {
+                Text("When a turn ends, show the reply or the reason it failed.")
+            }
+            Section {
+                Toggle("Her questions and approvals", isOn: pref(\.herRequests)).accessibilityIdentifier("notify-her-requests")
+                Toggle("Session questions and permissions", isOn: pref(\.questions)).accessibilityIdentifier("notify-questions")
+                LabeledContent("Requests to connect") { Text("Always") }
+            } header: { Text("Needs your attention") } footer: {
+                Text("Includes tool approvals, plan reviews, and requests for sensitive input.")
+            }
+            Section {
+                if status == .denied {
                     Label("Notifications are off for Hermesh", systemImage: "bell.slash").foregroundStyle(.secondary)
-                    Button("Allow Notifications in Settings") {
-                        if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
+                }
+                Button("Notification settings on this iPhone") {
+                    if status == .notDetermined {
+                        Task {
+                            _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge, .timeSensitive])
+                            status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+                            await model.askForNotifications()
+                        }
+                    } else if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                        UIApplication.shared.open(url)
                     }
                 }
-            }
-            Section {
-                LabeledContent {
-                    Text("Always")
-                } label: {
-                    Label { Text("Requests to connect") } icon: { SettingsIcon(symbol: "lock.shield.fill", color: .blue) }
-                }
-            }
-            Section {
-                Toggle(isOn: pref(\.sessionsStarted)) {
-                    Label { Text("New sessions") } icon: { SettingsIcon(symbol: "plus.bubble.fill", color: .indigo) }
-                }
-                .accessibilityIdentifier("notify-started")
-                Toggle(isOn: pref(\.questions)) {
-                    Label { Text("Agent questions") } icon: { SettingsIcon(symbol: "questionmark.bubble.fill", color: .orange) }
-                }
-                .accessibilityIdentifier("notify-questions")
-                Toggle(isOn: pref(\.failures)) {
-                    Label { Text("Failed sessions") } icon: { SettingsIcon(symbol: "exclamationmark.triangle.fill", color: .red) }
-                }
-                Toggle(isOn: pref(\.turnsDone)) {
-                    Label { Text("Finished turns") } icon: { SettingsIcon(symbol: "checkmark", color: .green) }
-                }
-                .accessibilityIdentifier("notify-turns")
-            } footer: {
-                Text("A question expires after 30 minutes if no one answers.")
-            }
-            .disabled(status == .denied)
+            } footer: { Text("These settings apply to this device. Notifications stay quiet while you’re viewing the conversation.") }
         }
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.inline)
-        .task { status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus }
+        .task(id: scenePhase) { status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus }
     }
 
     private func pref(_ key: WritableKeyPath<NotificationPrefs, Bool>) -> Binding<Bool> {
-        Binding(get: { NotificationPrefs.current[keyPath: key] }, set: { v in
-            var p = NotificationPrefs.current
-            p[keyPath: key] = v
-            p.save()
+        Binding(get: { prefs[keyPath: key] }, set: { v in
+            prefs[keyPath: key] = v
+            prefs.save()
             model.notificationPrefsChanged()
         })
     }
@@ -464,9 +457,11 @@ struct AppearanceOption: View {
 struct NotificationPrefs: Codable, Equatable {
     var sessionsStarted = true
     var questions = true
-    var failures = true
-    var turnsDone = false
+    var results = true
+    var herReplies = true
+    var herRequests = true
 
+    private enum LegacyKeys: String, CodingKey { case failures, turnsDone }
     private static let key = "notificationPrefs"
 
     init() {}
@@ -477,8 +472,15 @@ struct NotificationPrefs: Codable, Equatable {
         let d = NotificationPrefs()
         sessionsStarted = try c.decodeIfPresent(Bool.self, forKey: .sessionsStarted) ?? d.sessionsStarted
         questions = try c.decodeIfPresent(Bool.self, forKey: .questions) ?? d.questions
-        failures = try c.decodeIfPresent(Bool.self, forKey: .failures) ?? d.failures
-        turnsDone = try c.decodeIfPresent(Bool.self, forKey: .turnsDone) ?? d.turnsDone
+        if let saved = try c.decodeIfPresent(Bool.self, forKey: .results) {
+            results = saved
+        } else {
+            let legacy = try decoder.container(keyedBy: LegacyKeys.self)
+            let old = try [LegacyKeys.failures, .turnsDone].compactMap { try legacy.decodeIfPresent(Bool.self, forKey: $0) }
+            results = old.isEmpty || old.contains(true)
+        }
+        herReplies = try c.decodeIfPresent(Bool.self, forKey: .herReplies) ?? d.herReplies
+        herRequests = try c.decodeIfPresent(Bool.self, forKey: .herRequests) ?? d.herRequests
     }
 
     static var current: NotificationPrefs {

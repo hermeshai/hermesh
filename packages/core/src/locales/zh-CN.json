@@ -86,6 +86,7 @@
   "notice": {
     "startedBody": "{{grant}} 发起 · {{project}} · {{agent}}",
     "questionTitle": "{{grant}} 在等你回答",
+    "requestBody": "打开会话，查看并处理请求。",
     "questionBody": "{{title}}：{{text}}",
     "failedTitle": "「{{title}}」出错了：{{failure}}",
     "failedBody": "{{grant}} · {{agent}} · {{project}}。{{advice}}",

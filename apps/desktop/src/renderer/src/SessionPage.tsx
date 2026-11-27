@@ -1,3 +1,4 @@
+import { useNoticeTarget } from "./useNoticeTarget";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { clone, create, type MessageInitShape } from "@bufbuild/protobuf";
@@ -175,6 +176,7 @@ export function SessionPage() {
   const st = useStore();
   const sel = st.selection;
   const activeSessionId = sel.kind === "session" ? sel.id : undefined;
+  useNoticeTarget(activeSessionId && !st.sheet && !st.searching && !st.peek ? `session:${activeSessionId}` : undefined);
   const listedSession = activeSessionId ? st.sessions.find((x) => x.sessionId === activeSessionId) : undefined;
 
   const [projection, setProjection] = useState<SessionProjection | null>(() =>

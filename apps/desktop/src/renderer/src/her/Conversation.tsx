@@ -116,9 +116,9 @@ const messageId = () => `hw_${crypto.randomUUID().replaceAll("-", "")}`;
  * bar: bubbles on both sides, and the composer. Her says only what it sends. Offline, what was read
  * stays readable, and what is written meanwhile waits on this Mac.
  */
-export function Conversation({ bot, conv, op, waiting, onWaiting }: { bot: BotSummary; conv: Conv; op: SendOp; waiting: HerWaiting[]; onWaiting: () => Promise<HerWaiting[]> }) {
+export function Conversation({ visible, bot, conv, op, waiting, onWaiting }: { visible: boolean; bot: BotSummary; conv: Conv; op: SendOp; waiting: HerWaiting[]; onWaiting: () => Promise<HerWaiting[]> }) {
   const her = useHer();
-  useMarkRead(bot);
+  useMarkRead(bot, visible);
   const state = envState(her.machine);
   return (
     <ContentScope value={`${her.machine.machineId}/${conv.session ?? ""}`}>
@@ -151,19 +151,19 @@ export function OfflineLine({ state }: { state: EnvState }) {
  * says it (main.tsx keeps html.blurred; document.hasFocus can be told otherwise, by a test's driver
  * for one). What comes meanwhile is unread until they are back (bots/read), and notified.
  */
-function useMarkRead(bot: BotSummary) {
+function useMarkRead(bot: BotSummary, visible: boolean) {
   const her = useHer();
   const unread = bot.unread ?? 0;
   const connected = her.env.rpc !== null;
   useEffect(() => {
     const read = () => {
       // Unread is her main conversation's.
-      if (her.conversation || (bot.unread ?? 0) === 0 || document.documentElement.classList.contains("blurred") || !connected) return;
+      if (!visible || her.conversation || (bot.unread ?? 0) === 0 || document.documentElement.classList.contains("blurred") || !connected) return;
       her.call("bots/read", { bot_id: bot.id }).catch(() => {});
     };
     read();
     return window.hermesh?.onWindowFocus((focused) => focused && read());
-  }, [bot.id, unread, connected]);
+  }, [bot.id, unread, connected, visible]);
 }
 
 /** The onboarding while no model works there (ModelOnboarding.tsx), as one row of the conversation. */

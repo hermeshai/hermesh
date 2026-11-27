@@ -101,6 +101,7 @@
 "%@ started it · %@" = "%1$@ 发起 · %2$@";
 "%lld files +%lld −%lld" = "%1$lld 个文件 +%2$lld −%3$lld";
 "A machine calling itself “%@” wants to join" = "一台自称「%@」的机器想加入";
+"Open the session to review the request." = "打开会话，查看并处理请求。";
 "No file changes" = "没有改动文件";
 "Waiting for your answer: %@" = "等你回答：%@";
 "Waiting for your approval: %@" = "等你批准：%@";

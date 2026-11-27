@@ -681,7 +681,9 @@ final class HerChat {
     /// Nothing is unread while the owner looks (bots/read); unread belongs to her main conversation.
     func markRead() async {
         guard isMainConversation, let bot, bot.unread > 0, envUp else { return }
-        _ = try? await call("bots/read", ["bot_id": .string(bot.id)])
+        if (try? await call("bots/read", ["bot_id": .string(bot.id)])) != nil {
+            model?.noteHerRead(machineID)
+        }
     }
 
     // MARK: What this iPhone keeps

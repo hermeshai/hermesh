@@ -16,6 +16,7 @@ final class NotificationService: UNNotificationServiceExtension {
             return contentHandler(request.content)
         }
         NoticeText.fill(content, with: notice, herEnvironments: notice.kind == "her" ? NoticeKey.herEnvironments : 1)
+        content.badge = NSNumber(value: NoticeKey.noteNotice(notice))
         guard notice.kind == "question", NoticeText.quickAnswerable(notice.question), let item = notice.question.items.first else {
             return contentHandler(content)
         }

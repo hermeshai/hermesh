@@ -209,3 +209,60 @@ private final class StubFFITransport: LocalFFITransport, @unchecked Sendable {
     #expect(received.count == 2 && received[0].reset && received[1].status.relayConnected)
     #expect(stub.closedIDs == [7])
 }
+
+@Test func appIconBadgeCountsItemsWaitingOnTheOwner() {
+    var waiting = Hermesh_Session_V1_Session()
+    waiting.sessionID = "s_wait"
+    waiting.status = .waitingInput
+    var failed = Hermesh_Session_V1_Session()
+    failed.sessionID = "s_fail"
+    failed.status = .crashed
+    var running = Hermesh_Session_V1_Session()
+    running.sessionID = "s_run"
+    running.status = .running
+
+    var pairing = Hermesh_Local_V1_PairingDetails()
+    pairing.code = "PAIR-1"
+
+    var herUnread = Hermesh_Local_V1_Machine()
+    herUnread.machineID = "m_1"
+    herUnread.her.enabled = true
+    herUnread.her.unread = 4
+    var herRead = Hermesh_Local_V1_Machine()
+    herRead.machineID = "m_2"
+    herRead.her.enabled = true
+    herRead.her.unread = 0
+    var herOff = Hermesh_Local_V1_Machine()
+    herOff.machineID = "m_3"
+    herOff.her.enabled = false
+    herOff.her.unread = 2
+
+    let initial = NoticeKey.badgeItems(sessions: [waiting, failed, running], pairings: [pairing], machines: [herUnread, herRead, herOff])
+    #expect(initial == ["session:s_wait", "pairing:PAIR-1", "her:m_1"])
+
+    func notice(_ kind: String, _ edit: (inout Hermesh_Session_V1_Notice) -> Void) -> Hermesh_Session_V1_Notice {
+        var n = Hermesh_Session_V1_Notice()
+        n.kind = kind
+        edit(&n)
+        return n
+    }
+
+    var items: Set<String> = []
+    // New sessions and completed/failed turns do not add a badge.
+    items = NoticeKey.applyingNotice(items, notice("session_started") { $0.sessionID = "s_1" })
+    items = NoticeKey.applyingNotice(items, notice("turn_done") { $0.sessionID = "s_1" })
+    items = NoticeKey.applyingNotice(items, notice("failure") { $0.sessionID = "s_1" })
+    #expect(items.isEmpty)
+
+    // Repeated notices for the same session or Her environment count once each.
+    items = NoticeKey.applyingNotice(items, notice("question") { $0.sessionID = "s_1" })
+    items = NoticeKey.applyingNotice(items, notice("session_request") { $0.sessionID = "s_1" })
+    items = NoticeKey.applyingNotice(items, notice("her") { $0.machineID = "m_1"; $0.herKind = "message" })
+    items = NoticeKey.applyingNotice(items, notice("her") { $0.machineID = "m_1"; $0.herKind = "approval" })
+    items = NoticeKey.applyingNotice(items, notice("pairing") { $0.pairingCode = "CODE-9" })
+    #expect(items == ["session:s_1", "her:m_1", "pairing:CODE-9"] && items.count == 3)
+
+    // When a waiting session's turn later finishes or fails, its waiting badge clears.
+    items = NoticeKey.applyingNotice(items, notice("turn_done") { $0.sessionID = "s_1" })
+    #expect(items == ["her:m_1", "pairing:CODE-9"] && items.count == 2)
+}

@@ -167,7 +167,7 @@ extension HermeshUITests {
         before = try pushed()
         herSend("[[mock:ask:synthetic question|yes|no]] hi")
         try waitForPush(after: before)
-        XCTAssertTrue(banner.waitForExistence(timeout: 10), "a question still notifies within the conversation")
+        XCTAssertFalse(banner.waitForExistence(timeout: 5), "a question in the open conversation stays quiet")
     }
 
     /// Sending (docs/her-sending.md) on its own: a message leaves the composer at once and shows once.

@@ -106,16 +106,27 @@ export function NotificationsPage() {
   );
   return (
     <div className="form">
-      <div className="fgroup">
-        <SRow title={t("general.connectionRequests")} desc={t("general.connectionRequestsDesc")}>
-          <Switch on label={t("general.connectionRequests")} disabled />
-        </SRow>
-        {pref("notifyQuestion", t("general.agentQuestions"), t("general.agentQuestionsDesc"))}
-        {pref("notifyFailed", t("general.sessionFailed"))}
-        {pref("notifyStarted", t("general.sessionStarted"))}
-        {pref("notifyTurnDone", t("general.turnDone"))}
-      </div>
+      <p className="set-foot">{t("general.quietWhileViewing")}</p>
+      <section>
+        <h2 className="fhead">{t("general.sessions")}</h2>
+        <div className="fgroup">
+          {pref("notifyHerReply", t("general.herReply"))}
+          {pref("notifyResult", t("general.sessionResults"), t("general.resultsDesc"))}
+          {pref("notifyStarted", t("general.sessionStarted"))}
+        </div>
+      </section>
+      <section>
+        <h2 className="fhead">{t("general.needsYou")}</h2>
+        <div className="fgroup">
+          {pref("notifyHerRequest", t("general.herRequest"))}
+          {pref("notifyQuestion", t("general.sessionRequests"), t("general.requestsDesc"))}
+          <SRow title={t("general.connectionRequests")} desc={t("general.connectionRequestsDesc")}>
+            <Switch on label={t("general.connectionRequests")} disabled />
+          </SRow>
+        </div>
+      </section>
       <div>
+        <h2 className="fhead">{t("general.menuBar")}</h2>
         <div className="fgroup">{pref("menuBadge", t("general.menuBadgeTitle"))}</div>
         <p className="set-foot">{t("general.menuBadge")}</p>
       </div>

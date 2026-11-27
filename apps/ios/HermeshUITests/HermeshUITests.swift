@@ -49,6 +49,115 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "a question arrives as a notification and opens its session") { _ in try notification() }
     }
 
+    func testSessionNotificationPreferences() throws {
+        try join()
+        func expectResultSubscription(_ enabled: Bool) throws {
+            try waitFor("the iPhone registers both session outcomes together") {
+                let kinds = try self.control("registered")["kinds"] as? [String] ?? []
+                return kinds.contains("session_started") && kinds.contains("failure") == enabled &&
+                    kinds.contains("turn_done") == enabled ? true : nil
+            }
+        }
+        openMenu(); tap("account"); tap("notifications")
+        let replies = app.switches["notify-her-replies"]
+        let requests = app.switches["notify-her-requests"]
+        XCTAssertTrue(replies.waitForExistence(timeout: 10))
+        let result = app.switches["notify-results"]
+        XCTAssertEqual(result.value as? String, "1")
+        try expectResultSubscription(true)
+        let resultToggle = result.switches.firstMatch.exists ? result.switches.firstMatch : result
+        resultToggle.tap()
+        try expectResultSubscription(false)
+        let toggle = replies.switches.firstMatch.exists ? replies.switches.firstMatch : replies
+        toggle.tap()
+        XCTAssertEqual(requests.value as? String, "1")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        tap("notifications")
+        XCTAssertEqual(replies.value as? String, "0")
+        XCTAssertEqual(result.value as? String, "0")
+        resultToggle.tap()
+        try expectResultSubscription(true)
+        toggle.tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        tap("close")
+    }
+
+    func testHomeScreenBadge() throws {
+        try join()
+        XCTAssertTrue(app.descendants(matching: .any)["session-选颜色"].firstMatch.waitForExistence(timeout: 30))
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let icon = springboard.icons.matching(NSPredicate(format: "label BEGINSWITH %@ AND NOT (label BEGINSWITH %@)", "Hermesh", "HermeshUI")).firstMatch
+        func goHome() {
+            XCUIDevice.shared.press(.home)
+            if !icon.waitForExistence(timeout: 3) {
+                for _ in 0..<3 where !icon.exists { springboard.swipeLeft() }
+            }
+        }
+        func expectBadge(_ expected: Int) throws {
+            var last = "missing"
+            let deadline = Date().addingTimeInterval(20)
+            while Date() < deadline {
+                if icon.exists {
+                    let value = icon.value as? String ?? ""
+                    let label = icon.label
+                    last = "value=\(value.debugDescription) label=\(label.debugDescription)"
+                    let count = "\(value) \(label)".split(whereSeparator: { !$0.isNumber }).first.flatMap { Int($0) } ?? 0
+                    if count == expected { return }
+                }
+                sleep(1)
+            }
+            XCTFail("expected Home Screen badge \(expected), got \(last)")
+        }
+
+        // Initial world: 1 waiting question ("选颜色"), 2 failed sessions, 1 running session -> badge is 1.
+        goHome()
+        try expectBadge(1)
+
+        // Answering the question clears the badge.
+        app.activate()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        try answerFromOverview()
+        goHome()
+        try expectBadge(0)
+
+        // A new session that finishes adds no badge.
+        _ = try control("start?title=\("顺便跑完".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)", method: "POST")
+        app.activate()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        openMenu()
+        XCTAssertTrue(app.descendants(matching: .any)["session-顺便跑完"].firstMatch.waitForExistence(timeout: 20))
+        app.descendants(matching: .any)["drawer-dim"].tap()
+        goHome()
+        try expectBadge(0)
+
+        // While on the Home Screen, a question and a connection request increment the badge to 1, then 2.
+        _ = try control("ask?title=\("要发布吗".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)", method: "POST")
+        try expectBadge(1)
+        _ = try control("agent", method: "POST")
+        try expectBadge(2)
+
+        // Putting off the connection request drops the badge to 1; answering the question clears it to 0.
+        app.activate()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        showOverview()
+        tap("verify-pairing", timeout: 30)
+        XCTAssertTrue(text("「Cursor」想连接你的电脑").waitForExistence(timeout: 10))
+        app.buttons["拒绝"].tap()
+        goHome()
+        try expectBadge(1)
+
+        app.activate()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        openSession("要发布吗")
+        let panel = app.descendants(matching: .any)["question"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 30))
+        panel.buttons["发布"].tap()
+        tap("answer")
+        try waitFor("answered") { try self.sessionStatus("要发布吗") != "waiting_input" ? true : nil }
+        goHome()
+        try expectBadge(0)
+    }
+
     func testAccountSettingsLayout() throws {
         try join()
         openMenu(); tap("account"); tap("account-settings-open")
@@ -749,7 +858,7 @@ final class HermeshUITests: XCTestCase {
         reach("notifications")
         tap("notifications")
         XCTAssertTrue(app.switches["notify-questions"].waitForExistence(timeout: 10), "the notification settings")
-        XCTAssertTrue(app.switches["notify-turns"].exists && text("连接请求").exists)
+        XCTAssertTrue(app.switches["notify-results"].exists && text("连接请求").exists)
         XCTAssertTrue(app.switches["notify-started"].exists && text("新任务").exists, "new tasks, on by default")
         XCTAssertEqual(app.switches["notify-started"].value as? String, "1")
         app.navigationBars.buttons.element(boundBy: 0).tap()

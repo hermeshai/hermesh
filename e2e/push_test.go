@@ -162,6 +162,17 @@ func TestPushNotices(t *testing.T) {
 		}
 	}
 
+	register("turn_done", "session_request")
+	time.Sleep(time.Second)
+	w.startSession(time.Minute, "--agent", "gemini", "--prompt", "say synthetic final reply", "--wait")
+	if n := waitFor("turn_done"); n.Text != "synthetic final reply" {
+		t.Fatalf("completed reply: %+v", n)
+	}
+	pending, _ := w.startSession(time.Minute, "--agent", "gemini", "--runtime-mode", "auto_edits", "--prompt", "shell echo approved", "--wait")
+	if n := waitFor("session_request"); n.SessionId != pending.SessionID || n.Question != nil {
+		t.Fatalf("permission request: %+v", n)
+	}
+
 	// A new session, once asked for: its title is the long prompt's start.
 	register("question", "failure", "session_started")
 	time.Sleep(time.Second)
@@ -333,6 +344,15 @@ func TestPushHerNotices(t *testing.T) {
 	// immediately after restart succeeds without re-prompting.
 	send(mockSend("重启后仍有效"))
 	one("message", "重启后仍有效")
+
+	// A phone can opt into Her requests alone while earlier clients still subscribe to "her".
+	if _, err := c.RegisterPush(ctx, &localv1.RegisterPushRequest{Token: "abc123", Environment: "development",
+		NoticePublicKey: key.PublicKey().Bytes(), Kinds: []string{"her_request"}}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second)
+	send(mockSend("disabled reply"))
+	none("reply after opting out")
 
 	// An approval: asking before each command, she waits for the owner.
 	if _, err := c.SetHerAssistantMode(ctx, &localv1.SetHerAssistantModeRequest{MachineId: mac, BotId: bot.ID, PermissionMode: "manual"}); err != nil {

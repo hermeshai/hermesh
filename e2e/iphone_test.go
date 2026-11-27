@@ -990,7 +990,16 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		}
 		defer st.Close()
 		targets, _ := st.PushTargets("")
-		reply(rw, map[string]int{"devices": len(targets)})
+		var kinds []string
+		for _, target := range targets {
+			var registration identityv1.PushRegistration
+			if err := identity.Unverified(target.Registration, &registration); err != nil {
+				http.Error(rw, err.Error(), 500)
+				return
+			}
+			kinds = append(kinds, registration.Kinds...)
+		}
+		reply(rw, map[string]any{"devices": len(targets), "kinds": kinds})
 	})
 	// How many notifications reached the Simulator.
 	mux.HandleFunc("GET /pushed", func(rw http.ResponseWriter, _ *http.Request) {

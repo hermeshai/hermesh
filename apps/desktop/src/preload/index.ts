@@ -45,7 +45,7 @@ const bridge: Bridge = {
   releaseMemory: () => webFrame.clearCache(),
   onCommand: (cb: (c: Command) => void) => listen("command", cb),
   setMenuState: (s: MenuState) => ipcRenderer.send("menu-state", s),
-  setVisibleHer: (machineId, botId) => ipcRenderer.send("visible-her", machineId, botId),
+  setNoticeTarget: (target, visible) => ipcRenderer.send("notice-target", target, visible),
   waitForPairings: (on: boolean) => ipcRenderer.send("wait-pairings", on === true),
   openExternal: (url: string) => ipcRenderer.send("open-external", url),
   pickDirectory: () => ipcRenderer.invoke("pick-directory"),

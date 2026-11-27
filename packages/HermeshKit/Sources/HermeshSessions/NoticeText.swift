@@ -24,11 +24,19 @@ public enum NoticeText {
             info["question"] = n.question.questionID
             info["item"] = n.question.items.first?.id ?? ""
             info["options"] = n.question.items.first?.options.map(\.label) ?? []
+        case "session_request":
+            c.title = n.title
+            c.body = String(localized: "Open the session to review the request.", bundle: .module)
+            c.interruptionLevel = .timeSensitive
         case "failure":
             c.title = String(localized: "“\(n.title)” failed", bundle: .module)
             c.body = [failureTitle(n.failure), n.grant, n.project].filter { !$0.isEmpty }.joined(separator: " · ")
         case "turn_done":
             c.title = String(localized: "“\(n.title)”: turn \(Int(n.turn)) done", bundle: .module)
+            if !n.text.isEmpty {
+                c.body = n.text
+                break
+            }
             let files = Int(n.diffStat.filesChanged)
             c.body = files == 0 ? String(localized: "No file changes", bundle: .module)
                 : String(localized: "\(Int(n.diffStat.filesChanged)) files +\(Int(n.diffStat.insertions)) −\(Int(n.diffStat.deletions))", bundle: .module)
@@ -55,6 +63,7 @@ public enum NoticeText {
             }
             c.threadIdentifier = "her:\(n.machineID):\(n.botID)"
             info["her"] = n.machineID
+            info["bot"] = n.botID
         default:
             break
         }

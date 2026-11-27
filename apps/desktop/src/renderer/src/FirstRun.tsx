@@ -40,7 +40,7 @@ function ColdStart() {
 
   const enter = () => {
     // What "Remind me" did on the authorization page before (§5.8): open at login, and notify.
-    for (const k of ["openAtLogin", "notifyQuestion", "notifyFailed"]) save(k, true);
+    for (const k of ["openAtLogin", "notifyQuestion", "notifyResult"]) save(k, true);
     void window.hermesh?.setLoginItem(true);
     // Without Her here, the main window opens on the overview, not on Her's own first run.
     if (!herHere) setNotNow(true);

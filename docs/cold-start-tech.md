@@ -217,7 +217,7 @@ const ready = member && !s.removed && !firstRun && !upgrading;
 
 「进入 Hermesh」：
 
-1. 应用提醒默认值：与现有 `Authorize` 相同，`save("openAtLogin" | "notifyQuestion" | "notifyFailed", true)`，`window.hermesh.setLoginItem(true)`。
+1. 应用提醒默认值：与现有 `Authorize` 相同，`save("openAtLogin" | "notifyQuestion" | "notifyResult", true)`，`window.hermesh.setLoginItem(true)`。
 2. `setProgress(null)`，写入 `firstRunDone`，移除 `data-ob`。
 3. `Root` 随之渲染主窗口，`setWindowMode("main")` 触发现有的窗口增长动画（`platform.grow`）。
 4. 起始页：现有 `start.ts` 在 Her 开启时打开 Her，无需改动；第 3 步因本机不能运行 Her 而跳过时，调用 `setNotNow(true)`，使主窗口打开概览（否则会打开 Her 的「选择 Her 在哪里运行」）。

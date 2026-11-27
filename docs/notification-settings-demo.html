@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hermesh · 通知设置</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f3ef;color:#242824;font:15px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+main{max-width:800px;margin:6vh auto;padding:0 20px}header{display:flex;align-items:center;justify-content:space-between}
+h1{font-size:30px}nav{display:flex;padding:3px;background:#dedfd9;border-radius:9px}button{font:inherit;color:inherit;cursor:pointer}
+nav button{border:0;padding:4px 14px;background:none;border-radius:7px}nav button[aria-pressed=true]{background:white;box-shadow:0 1px 3px #0002}
+article{margin:auto;transition:max-width .2s;max-width:760px}article.phone{max-width:390px}h2{margin:20px 0 6px;font-size:14px;color:#505950}
+section,aside{overflow:hidden;border:1px solid #dbded8;background:#fff;border-radius:12px}
+label,.row{display:flex;gap:12px;justify-content:space-between;align-items:center;padding:11px 16px}section>*+*{border-top:1px solid #eceee9}
+input[type=checkbox]{appearance:none;width:36px;height:22px;border-radius:16px;background:#c4c8c3;cursor:pointer;position:relative;flex:none}
+input[type=checkbox]:checked{background:#33724f}input[type=checkbox]:before{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:white;top:3px;left:3px}input:checked:before{transform:translateX(14px)}
+small,p{font-size:13px;color:#5b625c}small{display:block}.row span{color:#626a62}aside{margin:20px 0;padding:14px 16px;background:#f9fbf7}aside label{padding:4px 0}select{font:inherit;max-width:64%}output{display:block;margin-top:12px;font-weight:600}button.try{padding:5px 12px;background:white;border:1px solid #ccd1c9;border-radius:7px}
+</style>
+<main><header><h1>通知</h1><nav aria-label="设备"><button aria-pressed="true">Mac</button><button aria-pressed="false">iPhone</button></nav></header>
+<article><p>设置仅对本机生效。正在查看对应对话时，消息直接显示在对话里。</p><div id="groups"></div>
+<aside><label>模拟事件<select id="event"></select></label><label>当前窗口<select id="place"><option>另一个对话</option><option>对应对话或请求</option><option>App 在后台</option></select></label><button class="try">模拟通知</button><output aria-live="polite"></output></aside></article></main>
+<script>
+const groups = [
+  ['会话', ['Her 回复', '会话结果', '新任务']],
+  ['需要你处理', ['Her 提问与审批', '会话提问与权限请求', '连接请求']],
+];
+const details = {
+  '会话结果': '一轮结束时，显示回复摘要或失败原因。',
+  '会话提问与权限请求': '包括工具授权、计划确认和敏感信息输入。',
+};
+const examples = {
+  'Her 回复': 'Her · 周报写好了，附件在对话里。',
+  '会话成功': '修复登录 · 已修复登录超时，三个回归用例通过。',
+  'Her 提问与审批': 'Her · 等你批准发送周报。',
+  '会话提问与权限请求': '修复登录 · 打开会话，查看并处理请求。',
+  '连接请求': '测试设备想连接。打开 Hermesh 核对验证码。',
+  '会话失败': '修复登录 · 运行失败，模型服务暂时不可用。',
+  '新任务': '周报整理 · 已开始运行。',
+};
+const choices = { Mac: {}, iPhone: {} };
+const platformButtons = document.querySelectorAll('nav button');
+const eventList = document.querySelector('#event');
+const output = document.querySelector('output');
+let device = 'Mac';
+
+function toggle(name) {
+  const label = document.createElement('label');
+  const title = document.createElement('div');
+  title.textContent = name;
+  if (details[name]) {
+    const description = document.createElement('small');
+    description.textContent = details[name];
+    title.append(description);
+  }
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.checked = choices[device][name] ?? true;
+  input.onchange = () => {
+    choices[device][name] = input.checked;
+    output.textContent = '';
+  };
+  label.append(title, input);
+  return label;
+}
+
+function fixedRow(name, value) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.textContent = name;
+  const detail = document.createElement('span');
+  detail.textContent = value;
+  row.append(detail);
+  return row;
+}
+
+function draw() {
+  const root = document.querySelector('#groups');
+  root.replaceChildren();
+  document.querySelector('article').classList.toggle('phone', device === 'iPhone');
+  const extra = device === 'Mac' ? ['菜单栏', ['菜单栏图标显示圆点']] : ['系统通知', ['通知权限']];
+  for (const [title, items] of [...groups, extra]) {
+    const heading = document.createElement('h2');
+    heading.textContent = title;
+    const section = document.createElement('section');
+    root.append(heading, section);
+    for (const name of items) {
+      if (name === '连接请求') section.append(fixedRow(name, '始终开启'));
+      else if (name === '通知权限') section.append(fixedRow(name, '在系统设置中管理'));
+      else section.append(toggle(name));
+    }
+  }
+  output.textContent = '';
+}
+
+for (const button of platformButtons) {
+  button.onclick = () => {
+    device = button.textContent;
+    for (const other of platformButtons) other.setAttribute('aria-pressed', other === button);
+    draw();
+  };
+}
+for (const name of Object.keys(examples)) eventList.add(new Option(name));
+document.querySelector('.try').onclick = () => {
+  const name = eventList.value;
+  const place = document.querySelector('#place').selectedIndex;
+  const setting = name === '会话成功' || name === '会话失败' ? '会话结果' : name;
+  if (choices[device][setting] === false) output.textContent = '此设备已关闭该类通知。';
+  else if (place === 1) output.textContent = '已在当前页面显示，无系统提醒。';
+  else if (device === 'iPhone' && name === '新任务' && place === 0) output.textContent = '已送达通知中心。';
+  else output.textContent = examples[name];
+};
+draw();
+</script>
+</html>

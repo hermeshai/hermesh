@@ -39,6 +39,73 @@ public enum NoticeKey {
         }
     }
 
+    /// The items waiting on the owner across sessions, pairing requests and Her,
+    /// kept in the shared keychain so the notification extension and the app
+    /// agree on the Home Screen icon's badge count.
+    public static var badgeItems: Set<String> {
+        get {
+            var q = query("badge-items")
+            q[kSecReturnData] = true
+            var item: CFTypeRef?
+            guard SecItemCopyMatching(q as CFDictionary, &item) == errSecSuccess, let d = item as? Data else { return [] }
+            return Set(String(decoding: d, as: UTF8.self).split(separator: "\n").map(String.init).filter { !$0.isEmpty })
+        }
+        set {
+            guard newValue != badgeItems else { return }
+            SecItemDelete(query("badge-items") as CFDictionary)
+            guard !newValue.isEmpty else { return }
+            var add = query("badge-items")
+            add[kSecValueData] = Data(newValue.sorted().joined(separator: "\n").utf8)
+            add[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            SecItemAdd(add as CFDictionary, nil)
+        }
+    }
+
+    /// One badge item per waiting session, pending pairing request, or Her environment with unread messages.
+    public static func badgeItems(
+        sessions: [Hermesh_Session_V1_Session],
+        pairings: [Hermesh_Local_V1_PairingDetails],
+        machines: [Hermesh_Local_V1_Machine]
+    ) -> Set<String> {
+        var out: Set<String> = []
+        for s in sessions where s.status == .waitingInput && !s.sessionID.isEmpty {
+            out.insert("session:\(s.sessionID)")
+        }
+        for p in pairings where !p.code.isEmpty {
+            out.insert("pairing:\(p.code)")
+        }
+        for m in machines where m.her.enabled && m.her.unread > 0 && !m.machineID.isEmpty {
+            out.insert("her:\(m.machineID)")
+        }
+        return out
+    }
+
+    /// Updates the waiting items when a push notice arrives in the background.
+    public static func applyingNotice(_ items: Set<String>, _ notice: Hermesh_Session_V1_Notice) -> Set<String> {
+        var out = items
+        switch notice.kind {
+        case "question", "session_request":
+            if !notice.sessionID.isEmpty { out.insert("session:\(notice.sessionID)") }
+        case "turn_done", "failure":
+            if !notice.sessionID.isEmpty { out.remove("session:\(notice.sessionID)") }
+        case "pairing":
+            if !notice.pairingCode.isEmpty { out.insert("pairing:\(notice.pairingCode)") }
+        case "her":
+            if !notice.machineID.isEmpty { out.insert("her:\(notice.machineID)") }
+        default:
+            break
+        }
+        return out
+    }
+
+    /// Records a decrypted push notice in the shared keychain and returns the updated badge count.
+    @discardableResult
+    public static func noteNotice(_ notice: Hermesh_Session_V1_Notice) -> Int {
+        let next = applyingNotice(badgeItems, notice)
+        badgeItems = next
+        return next.count
+    }
+
     /// The key, created on first use.
     public static func load() throws -> Curve25519.KeyAgreement.PrivateKey {
         var q = query()

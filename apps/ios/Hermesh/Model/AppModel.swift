@@ -309,7 +309,14 @@ final class AppModel {
     var toast: Toast?
     var problem: String?
     /// Pairing requests the owner put off ("Deny"): hidden until they expire.
-    var dismissedPairings: Set<String> = []
+    var dismissedPairings: Set<String> = [] {
+        didSet {
+            let added = dismissedPairings.subtracting(oldValue)
+            guard !added.isEmpty else { return }
+            pairings.removeAll { added.contains($0.code) }
+            for code in added { resolveBadgeItem("pairing:\(code)") }
+        }
+    }
     /// A hermesh:// link the app was opened with, for onboarding.
     var onboardingLink: URL?
 
@@ -364,6 +371,7 @@ final class AppModel {
     @ObservationIgnored private var knownMachineStatus: [String: Hermesh_Machine_V1_MachineStatus] = [:]
     @ObservationIgnored private var gitRefreshBusy = false
     @ObservationIgnored private var gitRefreshLast = Date.distantPast
+    @ObservationIgnored private var syncedBadgeItems: Set<String>?
 
     // MARK: Lifecycle
 
@@ -501,6 +509,7 @@ final class AppModel {
             Task { @MainActor in self?.performFullPause() }
         }
         if phase == .ready {
+            syncBadge(force: true)
             saveWorld(now: false)
         }
         if bgTaskID == .invalid {
@@ -669,6 +678,7 @@ final class AppModel {
         hasWorld = false
         startSettled = false
         keptOwner = ""
+        clearBadge()
         Push.shared.invalidate()
         try? FileManager.default.removeItem(at: worldFile)
         UserDefaults.standard.removeObject(forKey: Guide.key) // the guide is the owner's
@@ -691,13 +701,53 @@ final class AppModel {
         guard !isDemo else { return }
         let s = await UNUserNotificationCenter.current().notificationSettings()
         if s.authorizationStatus == .authorized || s.authorizationStatus == .provisional {
+            syncBadge(force: true)
             Push.shared.requestToken()
             await Push.shared.register(api: api?.live)
         }
     }
 
+    /// Keeps the Home Screen app icon badge and shared keychain aligned with what currently waits on the owner.
+    func syncBadge(force: Bool = false) {
+        guard !isDemo, phase == .ready, sync == nil else { return }
+        let items = NoticeKey.badgeItems(sessions: sessions, pairings: pairings, machines: machines)
+        guard force || items != syncedBadgeItems else { return }
+        syncedBadgeItems = items
+        NoticeKey.badgeItems = items
+        UNUserNotificationCenter.current().setBadgeCount(items.count) { _ in }
+    }
+
+    func resolveBadgeItem(_ item: String) {
+        guard !isDemo else { return }
+        if phase == .ready, sync == nil {
+            syncBadge(force: true)
+            return
+        }
+        var items = syncedBadgeItems ?? NoticeKey.badgeItems
+        guard items.remove(item) != nil else { return }
+        syncedBadgeItems = items
+        NoticeKey.badgeItems = items
+        UNUserNotificationCenter.current().setBadgeCount(items.count) { _ in }
+    }
+
+    func noteHerRead(_ machineID: String) {
+        if let i = machines.firstIndex(where: { $0.machineID == machineID }), machines[i].her.unread > 0 {
+            machines[i].her.unread = 0
+        }
+        resolveBadgeItem("her:\(machineID)")
+    }
+
+    private func clearBadge() {
+        guard !isDemo else { return }
+        syncedBadgeItems = []
+        NoticeKey.badgeItems = []
+        UNUserNotificationCenter.current().setBadgeCount(0) { _ in }
+    }
+
     /// Whether that session is the page on screen (its notifications then stay quiet).
     func isShowing(session id: String) -> Bool {
+        guard UIApplication.shared.applicationState == .active, phase == .ready,
+              !drawerOpen, sheet == nil, !accountPresented else { return false }
         if case .session(let s)? = path.last { return s == id }
         if path.isEmpty, case .session(let s) = root { return s == id }
         return false
@@ -825,6 +875,7 @@ final class AppModel {
         if let res = try? await api.refreshGitStatus(ids), !res.sessions.isEmpty {
             heldSessions = mergeSessions(heldSessions, res.sessions)
             if watched { saveSoon() }
+        syncBadge()
         }
     }
 
@@ -929,6 +980,7 @@ final class AppModel {
         r.deletedSessionIds.forEach(drafts.forget(sessionID:))
         r.deletedSessionIds.forEach(sessionFiles.forget)
         if watched { saveSoon() }
+        syncBadge()
         // Status-only snapshots before joining know no machines yet. Choose from the initialized owner's first
         // snapshot: with none, Work has the way to a first machine. Enabled Her wins over an old Not Now choice.
         if r.reset && status.initialized && !status.signedOut && !startSettled {
@@ -1104,7 +1156,7 @@ final class AppModel {
     /// The owner changed which notifications they want: tell the machines
     /// (they encrypt and send them; see Push).
     func notificationPrefsChanged() {
-        Task { await Push.shared.register(api: api?.live, force: true) }
+        Task { await Push.shared.register(api: api?.live) }
     }
 
     // MARK: Actions
@@ -1113,6 +1165,11 @@ final class AppModel {
         heldSessions = mergeSessions(heldSessions, [s])
         reconcileArchiveUpdates([s])
         conversations.updateSession(s)
+        if s.status == .waitingInput {
+            syncBadge()
+        } else {
+            resolveBadgeItem("session:\(s.sessionID)")
+        }
     }
 
     private func reconcileArchiveUpdates(_ updated: [Session]) {
@@ -1257,6 +1314,7 @@ final class AppModel {
         do {
             try await api.delete(s.sessionID)
             heldSessions = mergeSessions(heldSessions, [], deleted: [s.sessionID])
+            resolveBadgeItem("session:\(s.sessionID)")
             conversations.forget(s.sessionID)
             drafts.forget(sessionID: s.sessionID)
             sessionFiles.forget(s.sessionID)
@@ -1285,6 +1343,7 @@ final class AppModel {
         do {
             try await api.approveClient(p.code, spec: spec)
             pairings.removeAll { $0.code == p.code }
+            resolveBadgeItem("pairing:\(p.code)")
             clients = (try? await api.clients()) ?? clients
             Haptic.success.play()
             return true
@@ -1305,6 +1364,7 @@ final class AppModel {
         do {
             let res = try await api.approveMachine(p.code, name: name)
             pairings.removeAll { $0.code == p.code }
+            resolveBadgeItem("pairing:\(p.code)")
             machines = (try? await api.machines()) ?? machines
             Haptic.success.play()
             return res
@@ -1321,6 +1381,7 @@ final class AppModel {
             let p = try await api.lookupPairing(code)
             pairings.removeAll { $0.code == p.code }
             pairings.append(p)
+            syncBadge()
             sheet = .pairing(p.code)
         } catch {
             report(error)
@@ -1347,6 +1408,7 @@ final class AppModel {
         do {
             let res = try await api.approveDevice(p.code)
             pairings.removeAll { $0.code == p.code }
+            resolveBadgeItem("pairing:\(p.code)")
             devices = (try? await api.devices()) ?? devices
             Haptic.success.play()
             return res

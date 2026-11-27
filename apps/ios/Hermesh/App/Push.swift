@@ -14,6 +14,7 @@ final class Push {
 
     /// The APNs token, hex, once iOS gave one.
     var token: String?
+    private var registering: Task<Void, Never>?
     private var lastSignature: String?
     private var lastRegisteredAt: Date?
 
@@ -44,17 +45,32 @@ final class Push {
         return env
     }()
 
-    /// Registers (again) with what the owner wants to hear about, Her
-    /// always (as on the Mac), and keeps how many machines run Her for the
-    /// extension (each time the app comes to the front).
+    /// Registers this device’s notification choices with its machines.
     func register(api: LocalAPI?, force: Bool = false) async {
+        // An earlier request must finish before a newer device preference can reach the relay.
+        while let registering { await registering.value }
         guard let api, let token else { return }
-        NoticeKey.herEnvironments = await MainActor.run { AppModel.shared.machines.filter(\.her.enabled).count }
+        let task = Task {
+            await registerNow(api: api, token: token, force: force)
+            registering = nil
+        }
+        registering = task
+        await task.value
+    }
+
+    private func registerNow(api: LocalAPI, token: String, force: Bool) async {
+        NoticeKey.herEnvironments = AppModel.shared.machines.filter(\.her.enabled).count
         do {
             let pubKey = try NoticeKey.load().publicKey.rawRepresentation
             let prefs = NotificationPrefs.current
-            let kinds = [prefs.sessionsStarted ? "session_started" : nil, prefs.questions ? "question" : nil, prefs.failures ? "failure" : nil, prefs.turnsDone ? "turn_done" : nil, "her"].compactMap { $0 }
-            let ownerID = await MainActor.run { AppModel.shared.status.ownerID }
+            var kinds: [String] = []
+            if prefs.sessionsStarted { kinds.append("session_started") }
+            if prefs.questions { kinds += ["question", "session_request"] }
+            if prefs.results { kinds += ["failure", "turn_done"] }
+            if prefs.herReplies && prefs.herRequests { kinds.append("her") }
+            else if prefs.herReplies { kinds.append("her_reply") }
+            else if prefs.herRequests { kinds.append("her_request") }
+            let ownerID = AppModel.shared.status.ownerID
             let sig = "\(ownerID)|\(token)|\(Self.environment)|\(pubKey.base64EncodedString())|\(kinds.joined(separator: ","))"
             if !force, sig == lastSignature, let last = lastRegisteredAt, Date().timeIntervalSince(last) < 600 {
                 return

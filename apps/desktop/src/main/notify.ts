@@ -1,9 +1,9 @@
-import { createClient } from "@connectrpc/connect";
+import { createClient, type Client as RpcClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { applyWatch, emptyWorld, filterNotices, herNotices, herSnapshots, noticeDiff, noticeSnapshots, pairingNotice, withKnownState, type HerSnapshot, type NoticeSnapshot } from "@hermesh/core";
 import { LocalService, type Client, type GetStatusResponse, type Machine, type PairingDetails } from "@hermesh/proto/local";
 import { HerLatestKind } from "@hermesh/proto/machine";
-import type { Session } from "@hermesh/proto/session";
+import { SessionService, SessionStatus, type Session } from "@hermesh/proto/session";
 import { app, BrowserWindow, nativeTheme, Notification } from "electron";
 import fs from "node:fs";
 import path from "node:path";
@@ -12,7 +12,7 @@ import type { Command, Preferences } from "../shared/bridge";
 import { i18n, languages, type Language } from "../shared/i18n";
 import { command } from "./ipc";
 import { socketPath } from "./paths";
-import { focusedHer, syncWindowsAppearance } from "./windows";
+import { viewingNoticeTarget, syncWindowsAppearance } from "./windows";
 
 // What reaches the owner while no window may be open: the main process
 // follows hermeshd itself (LocalService.Watch: everything once, then each
@@ -41,7 +41,7 @@ const changed = () => {
 
 // --- Preferences (the settings window sets them) ---
 
-const defaults: Preferences = { appearance: "system", preferredLight: "light", preferredDark: "dark", notifyStarted: true, notifyQuestion: true, notifyFailed: true, notifyTurnDone: false, menuBadge: true, language: "system", stayOnline: true };
+const defaults: Preferences = { appearance: "system", preferredLight: "light", preferredDark: "dark", notifyHerReply: true, notifyHerRequest: true, notifyStarted: true, notifyQuestion: true, notifyResult: true, menuBadge: true, language: "system", stayOnline: true };
 let prefs: Preferences | undefined;
 let legacy: { keepDaemonOnQuit?: boolean; stayOnline?: boolean } = {};
 const prefsFile = () => path.join(app.getPath("userData"), "preferences.json");
@@ -52,6 +52,12 @@ export function preferences(): Preferences {
       const raw = JSON.parse(fs.readFileSync(prefsFile(), "utf8"));
       legacy = { keepDaemonOnQuit: raw.keepDaemonOnQuit, stayOnline: raw.stayOnline };
       delete raw.keepDaemonOnQuit;
+      if (typeof raw.notifyResult !== "boolean") {
+        const old = [raw.notifyFailed, raw.notifyTurnDone].filter((value) => typeof value === "boolean");
+        raw.notifyResult = old.length === 0 || old.includes(true);
+      }
+      delete raw.notifyFailed;
+      delete raw.notifyTurnDone;
       const appearance = isAppearance(raw.appearance) ? raw.appearance : defaults.appearance;
       const preferredLight = isLightPalette(raw.preferredLight) ? raw.preferredLight : isLightPalette(appearance) ? appearance : defaults.preferredLight;
       const preferredDark = isDarkPalette(raw.preferredDark) ? raw.preferredDark : isDarkPalette(appearance) ? appearance : defaults.preferredDark;
@@ -88,7 +94,7 @@ export function applyAppearance() {
 export function setPreferences(p: Partial<Preferences>): Preferences {
   const before = preferences();
   const next = { ...before };
-  for (const k of ["notifyStarted", "notifyQuestion", "notifyFailed", "notifyTurnDone", "menuBadge", "stayOnline"] as const) if (typeof p[k] === "boolean") next[k] = p[k];
+  for (const k of ["notifyHerReply", "notifyHerRequest", "notifyStarted", "notifyQuestion", "notifyResult", "menuBadge", "stayOnline"] as const) if (typeof p[k] === "boolean") next[k] = p[k];
   if (p.language === "system" || languages.includes(p.language as Language)) next[kLanguage] = p.language!;
   if (isLightPalette(p.preferredLight)) next.preferredLight = p.preferredLight;
   if (isDarkPalette(p.preferredDark)) next.preferredDark = p.preferredDark;
@@ -138,12 +144,28 @@ function withdraw(id: string) {
 let seen = new Map<string, NoticeSnapshot>();
 let since: Date | undefined;
 
-function noticeSessions() {
+function noticeSessions(sessionApi: RpcClient<typeof SessionService>) {
   const unnamed = i18n.t(world.status?.machineOnly ? "main:anAgent" : "main:disconnectedGrant");
   const grant = (s: Session) => (s.createdBy === "owner" ? i18n.t("common:sidebar.you") : world.clients.find((c) => c.clientId === s.createdBy)?.label ?? unnamed);
   const look = new Date();
   for (const n of filterNotices(noticeDiff(seen, world.sessions, grant, since), preferences())) {
-    post(`session-${n.kind}-${n.sessionId}`, n.title, n.body, `open:${n.sessionId}`, n.kind === "turnDone" || n.kind === "started");
+    const target = `session:${n.sessionId}`;
+    if (viewingNoticeTarget(target)) continue;
+    const show = (body: string) => post(`session-${n.kind}-${n.sessionId}`, n.title, body, `open:${n.sessionId}`, n.kind === "turnDone" || n.kind === "started");
+    if (n.kind !== "turnDone") {
+      show(n.body);
+      continue;
+    }
+    // BASIC watch snapshots omit reply text. Read the finished turn only when it will notify.
+    const turn = world.sessions.find((s) => s.sessionId === n.sessionId)?.progress?.turnCount;
+    void sessionApi.getSession({ sessionId: n.sessionId }, { timeoutMs: 3000 }).then(({ projection }) => {
+      const s = projection?.session;
+      return s?.progress?.turnCount === turn ? s?.result.trim().slice(0, 240) : undefined;
+    }, () => undefined).then((preview) => {
+      const current = world.sessions.find((s) => s.sessionId === n.sessionId);
+      if (current?.status === SessionStatus.IDLE && current.progress?.turnCount === turn &&
+          preferences().notifyResult && !viewingNoticeTarget(target)) show(preview || n.body);
+    });
   }
   seen = noticeSnapshots(world.sessions);
   since ??= look;
@@ -153,9 +175,10 @@ let herSeen: Map<string, HerSnapshot> | undefined;
 
 function noticeHer() {
   if (herSeen) {
-    const looking = focusedHer();
     for (const n of herNotices(herSeen, world.machines)) {
-      if (n.kind === HerLatestKind.MESSAGE && looking?.machineId === n.machineId && looking.botId === n.botId) continue;
+      const enabled = n.kind === HerLatestKind.QUESTION || n.kind === HerLatestKind.APPROVAL
+        ? preferences().notifyHerRequest : preferences().notifyHerReply;
+      if (!enabled || viewingNoticeTarget(`her:${n.machineId}:${n.botId}`)) continue;
       post(`her-${n.machineId}-${n.botId}`, n.title, n.body, `her:${n.machineId}`);
     }
     for (const m of world.machines) {
@@ -171,7 +194,7 @@ let notifiedPairings = new Set<string>();
 function noticePairings() {
   const now = new Set(world.pairings.map((p) => p.code));
   for (const p of world.pairings) {
-    if (notifiedPairings.has(p.code)) continue;
+    if (notifiedPairings.has(p.code) || viewingNoticeTarget(`pairing:${p.code}`)) continue;
     const n = pairingNotice(p);
     post(pairingId(p.code), n.title, n.body, `pairing:${p.code}`);
   }
@@ -225,6 +248,7 @@ export function watch() {
       let w = emptyWorld;
       const transport = createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } });
       const local = createClient(LocalService, transport);
+      const sessionApi = createClient(SessionService, transport);
       const abort = new AbortController();
       watchAbort = abort;
       watchReconnects++;
@@ -239,7 +263,7 @@ export function watch() {
           world.machines = w.machines;
           world.sessions = withKnownState(w.sessions, world.machines);
           world.pairings = world.status?.initialized ? w.pairings : [];
-          if (w.sessions !== before.sessions || w.machines !== before.machines) noticeSessions();
+          if (w.sessions !== before.sessions || w.machines !== before.machines) noticeSessions(sessionApi);
           if (w.machines !== before.machines) noticeHer();
           if (w.pairings !== before.pairings) noticePairings();
           if (w !== before) changed();

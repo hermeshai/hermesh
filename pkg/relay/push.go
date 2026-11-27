@@ -228,7 +228,7 @@ func (s *Server) deliver(pt *relayv1.PushTarget, sealed []byte, kind, thread str
 	identity.Unverified(pt.Registration, reg)
 	// A question or a request to connect also breaks through Focus as
 	// time-sensitive; Her says too much for that.
-	timeSensitive := kind == "question" || kind == "pairing"
+	timeSensitive := kind == "question" || kind == "session_request" || kind == "pairing"
 	urgent := timeSensitive || kind == "her"
 	level := "active"
 	if timeSensitive {

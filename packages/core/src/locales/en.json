@@ -86,6 +86,7 @@
   "notice": {
     "startedBody": "Started by {{grant}} · {{project}} · {{agent}}",
     "questionTitle": "{{grant}} is waiting for you",
+    "requestBody": "Open the session to review the request.",
     "questionBody": "{{title}}: {{text}}",
     "failedTitle": "“{{title}}” failed: {{failure}}",
     "failedBody": "{{grant}} · {{agent}} · {{project}}. {{advice}}",

@@ -19,6 +19,16 @@ describe("session notices", () => {
     expect(noticeDiff(new Map([["s", noticeSnapshot(s)]]), [s], grant)).toEqual([]);
   });
 
+  test("a pending approval without question items notifies once per request", () => {
+    const s = session("s", SessionStatus.WAITING_INPUT);
+    s.pendingRequestId = "req-1";
+    expect(noticeDiff(new Map(), [s], grant)[0]).toMatchObject({ kind: "question", body: expect.stringContaining("查看并处理请求") });
+    const before = noticeSnapshots([s]);
+    expect(noticeDiff(before, [s], grant)).toEqual([]);
+    s.pendingRequestId = "req-2";
+    expect(noticeDiff(before, [s], grant)).toHaveLength(1);
+  });
+
   test("a session created since the first look is new", () => {
     // Created a minute ago (testing.session), and running already.
     const s = session("s", SessionStatus.RUNNING, { title: "修复登录", updated: 0 });
@@ -35,6 +45,12 @@ describe("session notices", () => {
     s.status = SessionStatus.WAITING_INPUT;
     ask(s);
     expect(noticeDiff(new Map(), [s], grant, at(-61)).map((i) => i.kind)).toEqual(["started", "question"]);
+  });
+
+  test("a quick first turn can already be complete in its first snapshot", () => {
+    const done = session("s", SessionStatus.IDLE, { by: "owner", created: 0, turns: 1 });
+    expect(noticeDiff(new Map(), [done], grant, at(-1)).map((n) => n.kind)).toEqual(["turnDone"]);
+    expect(noticeDiff(new Map(), [done], grant)).toEqual([]);
   });
 
   test("a failure and a finished turn", () => {
@@ -97,10 +113,10 @@ describe("session notices", () => {
       body: "",
     }));
     const kinds = (list: NoticeItem[]) => list.map((i) => i.kind);
-    // Finished turns are off until switched on.
-    expect(kinds(filterNotices(items, {}))).toEqual(["started", "question", "failed"]);
-    expect(kinds(filterNotices(items, { notifyStarted: false, notifyQuestion: false, notifyTurnDone: true }))).toEqual(["failed", "turnDone"]);
-    expect(kinds(filterNotices(items, { notifyFailed: false }))).toEqual(["started", "question"]);
+    // New profiles receive replies. An explicit opt-out is respected.
+    expect(kinds(filterNotices(items, {}))).toEqual(["started", "question", "failed", "turnDone"]);
+    expect(kinds(filterNotices(items, { notifyStarted: false, notifyQuestion: false, notifyResult: true }))).toEqual(["failed", "turnDone"]);
+    expect(kinds(filterNotices(items, { notifyResult: false }))).toEqual(["started", "question"]);
   });
 });
 

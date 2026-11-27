@@ -100,8 +100,8 @@ export type Bridge = {
   onCommand(cb: (c: Command) => void): () => void;
   /** Tells the app menu what the page shows, so its items enable and check right. */
   setMenuState(state: MenuState): void;
-  /** Reports the Her conversation visible in the main window for notification presentation. */
-  setVisibleHer(machineId: string, botId: string): void;
+  /** Reports the notification target visible in this window. */
+  setNoticeTarget(target: string, visible: boolean): void;
   /** The page waits for pairing requests (Connect Your Agent, Add Machine, Add Trusted Device): their notifications come to it. */
   waitForPairings(on: boolean): void;
   openExternal(url: string): void;
@@ -227,10 +227,11 @@ export type Preferences = {
   /** Which light and dark palettes "system" switches between (updated when the person picks one directly). */
   preferredLight?: LightPalette;
   preferredDark?: DarkPalette;
+  notifyHerReply: boolean;
+  notifyHerRequest: boolean;
   notifyStarted: boolean;
   notifyQuestion: boolean;
-  notifyFailed: boolean;
-  notifyTurnDone: boolean;
+  notifyResult: boolean;
   /** A dot on the menu bar icon when something needs the owner. */
   menuBadge: boolean;
   /** The app's language; a change takes effect when the app next starts. */

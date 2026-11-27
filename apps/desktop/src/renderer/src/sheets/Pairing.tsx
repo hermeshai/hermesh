@@ -1,3 +1,4 @@
+import { useNoticeTarget } from "../useNoticeTarget";
 import { useLayoutEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { PairingKind } from "@hermesh/proto/identity";
@@ -63,6 +64,7 @@ export function openPairing(st: Store, code: string) {
 export function PairingSheet({ code, details }: { code: string; details?: PairingDetails }) {
   const { t } = useTranslation("sheets");
   const st = useStore();
+  useNoticeTarget(`pairing:${code}`);
   // Opened again (a notification, a typed code): no longer put off.
   const { dismissed, set } = st;
   useLayoutEffect(() => {

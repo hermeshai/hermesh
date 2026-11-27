@@ -128,7 +128,7 @@ test("the menu bar panel counts what needs the owner and what runs; a count open
   // 通用's switch takes the dot off the icon.
   await page.evaluate(() => window.hermesh?.setPreferences({ menuBadge: false }));
   await expect.poll(async () => (await tray(app)).badge).toBe(false);
-  expect(await page.evaluate(() => window.hermesh?.getPreferences())).toMatchObject({ menuBadge: false, notifyQuestion: true, notifyTurnDone: false });
+  expect(await page.evaluate(() => window.hermesh?.getPreferences())).toMatchObject({ menuBadge: false, notifyQuestion: true, notifyResult: true });
   await app.close();
 });
 
@@ -208,12 +208,19 @@ test("a session an agent starts notifies, unless switched off", async () => {
     const id = await start("新会话通知");
     started.push(id);
     await expect.poll(posted).toContainEqual({ id: `session-started-${id}`, title: "新会话通知", body: "bot 发起 · demo · Gemini CLI" });
+    await expect.poll(posted).toContainEqual(expect.objectContaining({ id: `session-turnDone-${id}`, body: "好" }));
     // Clicking it opens the session.
     await app.evaluate((_e, id) => {
       const hook = (globalThis as unknown as { hermeshTest: Hook }).hermeshTest;
       hook.notifications().find((n) => n.id === `session-started-${id}`)?.click();
     }, id);
     await expect(page.getByRole("heading", { name: "新会话通知" })).toBeVisible();
+
+    // A second turn advances the transcript in the focused session without replacing its notification.
+    await app.evaluate(() => { (globalThis as unknown as { hermeshTest: Hook }).hermeshTest.mainWindow()!.isFocused = () => true; });
+    await cli("session", "send", id, "--message", "say 已经看到的回复", "--wait");
+    await expect(page.getByText("已经看到的回复", { exact: true }).last()).toBeVisible();
+    expect((await posted()).find((n) => n.id === `session-turnDone-${id}`)?.body).toBe("好");
 
     // 通用's switch turns them off: the next one only shows in the list.
     await page.evaluate(() => window.hermesh?.setPreferences({ notifyStarted: false }));

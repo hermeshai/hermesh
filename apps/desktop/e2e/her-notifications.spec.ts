@@ -101,7 +101,11 @@ test("Her notifications follow the visible, focused conversation", async () => {
     await expect.poll(() => app.evaluate(() => shownNotices)).toContain("other assistant synthetic reply");
 
     // Keep the prompt unread long enough to exercise the notification path.
-    await app.evaluate(() => hermeshTest.mainWindow().webContents.send("window-focus", false));
+    await page.evaluate(() => window.hermesh?.setPreferences({ notifyHerReply: false }));
+    await setFocus(false);
+    await send("[[mock:send:disabled synthetic reply]] hi");
+    await expect(replies.filter({ hasText: "disabled synthetic reply" })).toBeVisible();
+    expect(await app.evaluate(() => shownNotices)).not.toContain("disabled synthetic reply");
     await expect(page.locator("html")).toHaveClass(/\bblurred\b/);
     await send("[[mock:ask:synthetic question|yes|no]] hi");
     await expect(replies.filter({ hasText: "synthetic question" })).toBeVisible();

@@ -24,7 +24,7 @@ export function noticeSnapshot(s: Session): NoticeSnapshot {
   return {
     status: s.status,
     turns: s.progress?.turnCount ?? 0,
-    question: pendingQuestion(s)?.questionId ?? "",
+    question: pendingQuestion(s)?.questionId || s.pendingRequestId,
     failed: isFailed(s),
   };
 }
@@ -62,8 +62,9 @@ export function noticeDiff(
   for (const s of sessions) {
     const before = previous.get(s.sessionId);
     const created = dateOf(s.createdAt);
+    const newlyCreated = !before && since && created && created >= since;
     // New work from an agent; the owner knows of a session they started themself.
-    if (!before && since && created && created >= since && s.createdBy !== "owner") {
+    if (newlyCreated && s.createdBy !== "owner") {
       out.push({
         kind: "started",
         sessionId: s.sessionId,
@@ -72,8 +73,9 @@ export function noticeDiff(
       });
     }
     const q = pendingQuestion(s);
-    if (q && q.questionId !== before?.question) {
-      const text = q.items[0]?.text ?? "";
+    const request = q?.questionId || s.pendingRequestId;
+    if (request && request !== before?.question) {
+      const text = q?.items[0]?.text || t("notice.requestBody");
       out.push({
         kind: "question",
         sessionId: s.sessionId,
@@ -81,9 +83,9 @@ export function noticeDiff(
         body: t("notice.questionBody", { title: displayTitle(s), text }),
       });
     }
-    if (!before) continue;
+    if (!before && !newlyCreated) continue;
     const turns = s.progress?.turnCount ?? 0;
-    if (isFailed(s) && !before.failed) {
+    if (isFailed(s) && !before?.failed) {
       const f = s.progress?.lastFailure ?? create(FailureSchema);
       out.push({
         kind: "failed",
@@ -97,8 +99,7 @@ export function noticeDiff(
       !isFailed(s) &&
       !isInterruption(s.progress?.lastFailure) &&
       !(kids.get(s.sessionId)?.some((c) => isActive(c) || c.status === SessionStatus.WAITING_INPUT)) &&
-      turns > before.turns &&
-      before.status !== SessionStatus.IDLE
+      turns > 0 && (!before || turns > before.turns || before.status === SessionStatus.RUNNING || before.status === SessionStatus.WAITING_INPUT)
     ) {
       const d = s.progress?.diffStat;
       const files = d?.filesChanged ?? 0;
@@ -120,13 +121,12 @@ export function noticeDiff(
 export interface NoticePrefs {
   notifyStarted: boolean;
   notifyQuestion: boolean;
-  notifyFailed: boolean;
-  notifyTurnDone: boolean;
+  notifyResult: boolean;
 }
 
 /**
  * The notices the owner wants. A preference not set yet counts as on for
- * new sessions, questions and failures, off for finished turns.
+ * new sessions, questions and failures, and finished turns.
  */
 export function filterNotices(items: NoticeItem[], prefs: Partial<NoticePrefs>): NoticeItem[] {
   return items.filter((item) => {
@@ -136,9 +136,8 @@ export function filterNotices(items: NoticeItem[], prefs: Partial<NoticePrefs>):
       case "question":
         return prefs.notifyQuestion ?? true;
       case "failed":
-        return prefs.notifyFailed ?? true;
       case "turnDone":
-        return prefs.notifyTurnDone ?? false;
+        return prefs.notifyResult ?? true;
     }
   });
 }

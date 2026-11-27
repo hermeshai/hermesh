@@ -113,22 +113,31 @@ func (n *Machine) sessionNotice(sess *sessionv1.Session, ev *sessionv1.SessionEv
 		}
 		nt.Kind = "session_started"
 	case "request.created":
-		if ev.GetRequest().GetKind() != sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT {
+		switch ev.GetRequest().GetKind() {
+		case sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT:
+			q := sess.GetProgress().GetPendingQuestion()
+			if q == nil {
+				return
+			}
+			nt.Kind = "question"
+			nt.Turn = q.GetTurn()
+			nt.Question = trimQuestion(q)
+		case sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
+			sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW,
+			sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_SECRET_INPUT:
+			nt.Kind = "session_request"
+		default:
 			return
 		}
-		q := sess.GetProgress().GetPendingQuestion()
-		if q == nil {
-			return
-		}
-		nt.Kind = "question"
-		nt.Turn = q.GetTurn()
-		nt.Question = trimQuestion(q)
 	case "request.resolved":
-		if ev.GetRequest().GetKind() == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT {
-			n.dropWaitingNotice(sess.SessionId, "question")
-		}
+		n.dropWaitingNotice(sess.SessionId, "question")
+		n.dropWaitingNotice(sess.SessionId, "session_request")
 		return
 	case "run.completed":
+		if sess.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT {
+			return
+		}
+		nt.Text, _ = rt.Truncate(sess.Result, 720)
 		nt.Kind = "turn_done"
 		nt.Turn = cmp.Or(ev.GetRun().GetOrdinal(), sess.GetProgress().GetTurnCount())
 		nt.DiffStat = sess.GetProgress().GetDiffStat()
@@ -181,8 +190,16 @@ func (n *Machine) notify(nt *sessionv1.Notice, thread string, fill func()) {
 	targets := n.notices.targets
 	n.notices.mu.Unlock()
 	var out []*relayv1.SealedNotice
+	subscription := nt.Kind
+	if nt.Kind == "her" {
+		subscription = "her_reply"
+		if nt.HerKind == "question" || nt.HerKind == "approval" {
+			subscription = "her_request"
+		}
+	}
 	for _, t := range targets {
-		if !t.kinds[nt.Kind] {
+		// "her" is the original subscription for all Her notifications.
+		if !t.kinds[nt.Kind] && !t.kinds[subscription] {
 			continue
 		}
 		if len(out) == 0 {

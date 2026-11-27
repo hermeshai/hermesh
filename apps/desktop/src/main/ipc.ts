@@ -10,7 +10,7 @@ import { closeSessionPage, openCheckedFolder, openSessionFolder, openSessionPage
 import { platform } from "./platform";
 import { cancelSignIn, completeResume, completeSignIn, connectURL, errorMessage, signIn, signInPending, takeLinks } from "./signin";
 import { catchUp, check, download, install, openUpdates, returnToApproval, setAutoDownload, snooze, updateInfo } from "./updater";
-import { mainWindow, ours, setMode, setVisibleHer, showHerConsole, showMain, showSettings, showWhatsNew, sizeUpdates } from "./windows";
+import { mainWindow, ours, setMode, setNoticeTarget, showHerConsole, showMain, showSettings, showWhatsNew, sizeUpdates } from "./windows";
 
 // The page's requests to the main process (see shared/bridge.ts). Each
 // handler checks the request comes from one of our own pages.
@@ -90,9 +90,9 @@ export function registerIPC() {
     }
     menuStateListeners.forEach((f) => f());
   });
-  ipcMain.on("visible-her", (e, machineId: unknown, botId: unknown) => {
-    if (!trusted(e) || e.senderFrame !== e.sender.mainFrame || e.sender !== mainWindow()?.webContents) return;
-    if (typeof machineId === "string" && typeof botId === "string") setVisibleHer(machineId, botId);
+  ipcMain.on("notice-target", (e, target: unknown, visible: unknown) => {
+    if (!trusted(e) || e.senderFrame !== e.sender.mainFrame) return;
+    if (typeof target === "string" && typeof visible === "boolean") setNoticeTarget(e.sender, target, visible);
   });
   ipcMain.on("wait-pairings", (e, on: boolean) => {
     if (!trusted(e)) return;

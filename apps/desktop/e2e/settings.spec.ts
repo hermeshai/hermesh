@@ -33,7 +33,9 @@ const page_ = (settings: Page, name: string) => settings.getByRole("main", { nam
 const nav = (settings: Page, name: string) => settings.getByRole("navigation", { name: "设置" }).getByRole("button", { name: new RegExp(`^${name}`) });
 
 test("settings opens on 通用; 授权 lists the grants, one opens its scope, and disconnecting asks first", async () => {
-  const { app, page } = await launch();
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hm-settings-"));
+  fs.writeFileSync(path.join(profile, "preferences.json"), JSON.stringify({ notifyFailed: true, notifyTurnDone: false }));
+  const { app, page } = await launch(fixture.socket, { profile });
   const settings = await openSettings(app, page);
   await expect(nav(settings, "通用")).toHaveAttribute("aria-current", "page");
   // Its rows are the main sidebar's: a bare line icon in the text's colour, 18px, on a 32px row; no coloured tiles.
@@ -59,12 +61,17 @@ test("settings opens on 通用; 授权 lists the grants, one opens its scope, an
   const notify = page_(settings, "通知");
   await expect(notify.getByRole("switch", { name: "连接请求" })).toHaveAttribute("aria-checked", "true");
   await expect(notify.getByRole("switch", { name: "新任务" })).toHaveAttribute("aria-checked", "true");
-  const turnDone = notify.getByRole("switch", { name: "一轮完成" });
-  await expect(turnDone).toHaveAttribute("aria-checked", "false");
-  await turnDone.click();
-  await expect(turnDone).toHaveAttribute("aria-checked", "true");
+  await expect(notify.getByRole("switch", { name: "Her 回复" })).toBeEnabled();
+  await expect(notify.getByRole("switch", { name: "Her 提问与审批" })).toBeEnabled();
+  const sessions = notify.locator("section").filter({ has: settings.getByRole("heading", { name: "会话", exact: true }) });
+  await expect(sessions.getByRole("switch")).toHaveCount(3);
+  await expect(sessions.getByRole("switch", { name: "新任务" })).toBeVisible();
+  const result = sessions.getByRole("switch", { name: "会话结果" });
+  await expect(result).toHaveAttribute("aria-checked", "true");
+  await result.click();
+  await expect(result).toHaveAttribute("aria-checked", "false");
   // Kept by the main process, which posts the notifications.
-  expect((await page.evaluate(() => window.hermesh?.getPreferences()))?.notifyTurnDone).toBe(true);
+  expect((await page.evaluate(() => window.hermesh?.getPreferences()))?.notifyResult).toBe(false);
   // Named after where the icon is on this platform: the menu bar, the notification area, the system tray.
   const badge = process.platform === "win32" ? "通知区域图标显示圆点" : process.platform === "linux" ? "系统托盘图标显示圆点" : "菜单栏图标显示圆点";
   await expect(notify.getByRole("switch", { name: badge })).toHaveAttribute("aria-checked", "true");

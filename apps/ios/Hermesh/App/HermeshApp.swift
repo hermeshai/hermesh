@@ -1,4 +1,5 @@
 import HermeshKit
+import HermeshSessions
 import SwiftUI
 import UserNotifications
 
@@ -63,21 +64,33 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         UserDefaults.standard.bool(forKey: "HermeshTestTurns") ? .allButUpsideDown : ScreenOrientation.allowed
     }
 
-    /// A new session goes to the list. A Her reply stays quiet in its
-    /// active conversation, even when the notification extension didn't run.
+    /// Match the visible page even when the notification extension did not run.
+    @MainActor
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        let info = notification.request.content.userInfo
+        var info = notification.request.content.userInfo
         let envelope = info["hermesh"] as? [String: Any]
-        let kind = envelope?["k"] as? String
-        if kind == "session_started" { return [.list] }
-        if kind == "her", let encoded = envelope?["n"] as? String,
-           let sealed = Data(base64Encoded: encoded), let notice = try? NoticeKey.open(sealed),
-           notice.kind == "her", notice.herKind == "message",
-           await AppModel.shared.isShowingHer(machineID: notice.machineID, botID: notice.botID) {
+        if info["session"] == nil || (info["her"] != nil && info["bot"] == nil),
+           let encoded = envelope?["n"] as? String, let sealed = Data(base64Encoded: encoded),
+           let notice = try? NoticeKey.open(sealed) {
+            let content = UNMutableNotificationContent()
+            NoticeText.fill(content, with: notice)
+            info = content.userInfo
+        }
+        let model = AppModel.shared
+        if let machine = info["her"] as? String, let bot = info["bot"] as? String,
+           model.isShowingHer(machineID: machine, botID: bot) {
+            model.syncBadge(force: true)
             return []
         }
-        let session = info["session"] as? String
-        if let session, await AppModel.shared.isShowing(session: session) { return [] }
+        if let session = info["session"] as? String, !session.isEmpty, model.isShowing(session: session) {
+            model.syncBadge(force: true)
+            return []
+        }
+        if let code = info["pairing"] as? String, model.sheet == .pairing(code) {
+            model.syncBadge(force: true)
+            return []
+        }
+        if envelope?["k"] as? String == "session_started" { return [.list] }
         return [.banner, .list, .sound]
     }
 

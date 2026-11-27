@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useNoticeTarget } from "../useNoticeTarget";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { runningAgents } from "@hermesh/her-client";
 import { useTranslation } from "react-i18next";
 import type { Methods, Op } from "@hermesh/her-protocol";
@@ -168,12 +169,8 @@ function Environment({ machine, envs, choose, task }: { machine: Machine; envs: 
   const progress = !!bot && (task ? !!convProgress : sel.kind === "progress");
   const progressTask = task ? convProgress?.task : sel.kind === "progress" ? sel.task : undefined;
   const shown = bot && !progress ? panel : null;
-  const visibleBot = !task && !progress && !sheet && !st.sheet && !st.searching && conv.view ? bot?.id : undefined;
-  useLayoutEffect(() => {
-    if (!visibleBot) return;
-    window.hermesh?.setVisibleHer(id, visibleBot);
-    return () => window.hermesh?.setVisibleHer("", "");
-  }, [id, visibleBot]);
+  const chatVisible = !progress && !sheet && !st.sheet && !st.searching && !st.peek && !!conv.view;
+  useNoticeTarget(chatVisible && bot ? (task ? `session:${task.sessionId}` : `her:${id}:${bot.id}`) : undefined);
   // Back to Her's page, from a page it opened.
   const home = () => setPanel({ kind: "settings" });
   return (
@@ -185,7 +182,7 @@ function Environment({ machine, envs, choose, task }: { machine: Machine; envs: 
           ) : (
             <>
               <TopBar view={conv.view} task={task} />
-              {bot && conversation !== "" ? <Conversation bot={bot} conv={conv} op={op} waiting={waiting.list} onWaiting={refreshWaiting} /> : <EnvStatus machine={machine} />}
+              {bot && conversation !== "" ? <Conversation visible={chatVisible} bot={bot} conv={conv} op={op} waiting={waiting.list} onWaiting={refreshWaiting} /> : <EnvStatus machine={machine} />}
             </>
           )}
         </div>

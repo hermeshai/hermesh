@@ -13,7 +13,7 @@ export const origin = "app://hermesh";
 export const devURL = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined;
 
 let main: BrowserWindow | undefined;
-let visibleHer: { machineId: string; botId: string } | undefined;
+const noticeTargets = new WeakMap<WebContents, string>();
 let settings: BrowserWindow | undefined;
 const auxiliary = new Map<string, BrowserWindow>();
 // The window opens at the size it had last time (the main window's on a
@@ -53,6 +53,9 @@ function page(hash = ""): string {
 
 function secure(win: BrowserWindow) {
   const wc = win.webContents;
+  const clearTarget = () => noticeTargets.delete(wc);
+  wc.on("did-start-loading", clearTarget);
+  wc.on("render-process-gone", clearTarget);
   // Nothing but our own pages, ever; links open in the browser.
   wc.on("will-navigate", (e, url) => {
     if (!ours(url)) e.preventDefault();
@@ -112,12 +115,14 @@ export function mainWindow(): BrowserWindow | undefined {
   return main;
 }
 
-export function setVisibleHer(machineId: string, botId: string) {
-  visibleHer = machineId && botId ? { machineId, botId } : undefined;
+export function setNoticeTarget(contents: WebContents, target: string, visible: boolean) {
+  if (visible) noticeTargets.set(contents, target);
+  else if (noticeTargets.get(contents) === target) noticeTargets.delete(contents);
 }
 
-export function focusedHer() {
-  if (main?.isVisible() && !main.isMinimized() && main.isFocused()) return visibleHer;
+export function viewingNoticeTarget(target: string): boolean {
+  return BrowserWindow.getAllWindows().some((w) =>
+    w.isVisible() && !w.isMinimized() && w.isFocused() && noticeTargets.get(w.webContents) === target);
 }
 
 export function showMain(): BrowserWindow {
@@ -146,13 +151,7 @@ export function showMain(): BrowserWindow {
       main?.show();
     };
   });
-  const clearHer = () => (visibleHer = undefined);
-  main.webContents.on("did-start-loading", clearHer);
-  main.webContents.on("render-process-gone", clearHer);
-  main.on("closed", () => {
-    main = undefined;
-    clearHer();
-  });
+  main.on("closed", () => { main = undefined; });
   main.loadURL(page());
   return main;
 }
