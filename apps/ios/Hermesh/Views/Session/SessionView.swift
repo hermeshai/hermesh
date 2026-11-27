@@ -813,7 +813,10 @@ private struct SessionDuoWideItems: ToolbarContent {
     }
 
     var body: some ToolbarContent {
-        ToolbarItemGroup(placement: .topBarPinnedTrailing) {
+        // `.topBarTrailing` with `.visibilityPriority(.high)` (not `.topBarPinnedTrailing`): UIKit's
+        // `pinnedTrailingGroup` is a single `UIBarButtonItemGroup?` slot, while SwiftUI emits one group per
+        // child inside `ToolbarItemGroup`, dropping the second button (`side-panel-max`) on Duo's vertical bar.
+        ToolbarItemGroup(placement: .topBarTrailing) {
             SidePanelButton(sessionID: session.sessionID, inBar: true)
             if files.panelOpen {
                 Button {
@@ -825,6 +828,7 @@ private struct SessionDuoWideItems: ToolbarContent {
                 .accessibilityIdentifier("side-panel-max")
             }
         }
+        .visibilityPriority(.high)
         .axisBehavior(.verticalPreferred)
         if files.panelOpen {
             ToolbarSpacer(.fixed, placement: .topBarTrailing)

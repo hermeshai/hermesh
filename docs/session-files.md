@@ -454,10 +454,10 @@ The same ideas as the Mac's side panel (§14), in the iPhone's ways, by the scre
   leading edge puts it away too.
 - **iPhone Duo (`barsOnTheSide`)**: the split between the conversation and the side panel aligns with the physical
   center fold (`screenWidth / 2`). Window and contextual panel controls move into the system's right vertical bar
-  (`ToolbarItemGroup(placement: .topBarPinnedTrailing)` with `.axisBehavior(.verticalPreferred)`): a pinned window
-  capsule (收起侧边面板, 放大 / 缩小), a contextual tab capsule (＋ 新建标签页, Markdown / SVG 源码), and a single
-  sectioned `⋯` menu (the active file's 分享… and 复制路径 over 当前会话's items, avoiding duplicate `⋯` buttons).
-  The panel's own top is then a single slim strip of glass tabs.
+  (`ToolbarItemGroup(placement: .topBarTrailing)` with `.visibilityPriority(.high)` and
+  `.axisBehavior(.verticalPreferred)`): a high-priority window capsule (收起侧边面板, 放大 / 缩小), a contextual tab
+  capsule (＋ 新建标签页, Markdown / SVG 源码), and a single sectioned `⋯` menu (the active file's 分享… and 复制路径 over
+  当前会话's items, avoiding duplicate `⋯` buttons). The panel's own top is then a single slim strip of glass tabs.
 - **Other wide screens** (a Pro Max turned, bars along the top): a compact glass capsule at the trailing end of the
   tab strip holds ＋, 放大 / 缩小 and 收起侧边面板 (so an enlarged panel still hides in one tap), beside 源码 and ⋯.
 - **Unified bottom tree drawer**: instead of a 200 pt column beside the file (which crushes code and deep folder names

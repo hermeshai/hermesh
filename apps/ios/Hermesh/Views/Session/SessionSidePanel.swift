@@ -2,6 +2,7 @@ import HermeshKit
 import HermeshProto
 import HermeshSessions
 import SwiftUI
+import UIKit
 import WebKit
 
 // The session's folder as a tree, and the side panel (docs/session-files.md §15). On a narrow screen a file's page
@@ -220,21 +221,29 @@ private struct SessionPanelDrawer: View {
 }
 
 /// Template symbol for hiding the trailing side panel (`panel` outline + right sidebar divider + right chevron `›`).
+/// Rendered as a template `UIImage` because SwiftUI's `UIBarButtonItem` bridge rasterizes procedural
+/// `Image(size:renderer:)` using `.foreground` as transparent inside navigation/vertical bars.
+private let sidePanelHideUIImage: UIImage = {
+    let format = UIGraphicsImageRendererFormat.default()
+    format.opaque = false
+    return UIGraphicsImageRenderer(size: CGSize(width: 22, height: 22), format: format).image { ctx in
+        let cg = ctx.cgContext
+        cg.setStrokeColor(UIColor.black.cgColor)
+        cg.setLineWidth(1.65)
+        cg.setLineCap(.round)
+        cg.setLineJoin(.round)
+        cg.addPath(UIBezierPath(roundedRect: CGRect(x: 2.5, y: 4, width: 17, height: 14), cornerRadius: 2.6).cgPath)
+        cg.move(to: CGPoint(x: 14, y: 4.3))
+        cg.addLine(to: CGPoint(x: 14, y: 17.7))
+        cg.move(to: CGPoint(x: 8.2, y: 8.7))
+        cg.addLine(to: CGPoint(x: 11, y: 11))
+        cg.addLine(to: CGPoint(x: 8.2, y: 13.3))
+        cg.strokePath()
+    }.withRenderingMode(.alwaysTemplate)
+}()
+
 func sidePanelHideImage() -> Image {
-    Image(size: CGSize(width: 22, height: 22)) { ctx in
-        let stroke = StrokeStyle(lineWidth: 1.65, lineCap: .round, lineJoin: .round)
-        let rect = Path(roundedRect: CGRect(x: 2.5, y: 4, width: 17, height: 14), cornerRadius: 2.6)
-        ctx.stroke(rect, with: .foreground, style: stroke)
-        var line = Path()
-        line.move(to: CGPoint(x: 14, y: 4.3))
-        line.addLine(to: CGPoint(x: 14, y: 17.7))
-        ctx.stroke(line, with: .foreground, style: stroke)
-        var chev = Path()
-        chev.move(to: CGPoint(x: 8.2, y: 8.7))
-        chev.addLine(to: CGPoint(x: 11, y: 11))
-        chev.addLine(to: CGPoint(x: 8.2, y: 13.3))
-        ctx.stroke(chev, with: .foreground, style: stroke)
-    }
+    Image(uiImage: sidePanelHideUIImage)
 }
 
 // MARK: The side panel
