@@ -108,6 +108,8 @@ struct SessionPage: View {
     @State private var renaming = false
     @State private var deleting = false
     @State private var showingBackgroundTasks = false
+    @State private var askHeight: CGFloat = 0
+    @State private var askSpace: CGFloat = 0
     /// Messages to a session go out one after another, in the order sent.
     @State private var lastSend: Task<Void, Never>?
     /// A new session's first message, from Send until its machine answers.
@@ -261,14 +263,32 @@ struct SessionPage: View {
 
     // MARK: A new session
 
+    private var askFits: Bool {
+        askSpace <= 0 || askHeight <= 0 || askSpace >= askHeight + 24
+    }
+
     private var newSession: some View {
         ScrollView {
-            ask
+            Color.clear
                 .frame(maxWidth: .infinity)
-                .containerRelativeFrame(.vertical)
+                .containerRelativeFrame(.vertical) { h, _ in max(0, askSpace > 0 ? askSpace : h) }
+                .overlay {
+                    ask
+                        .fixedSize(horizontal: false, vertical: true)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { askHeight = $0 }
+                        .opacity(askFits ? 1 : 0)
+                        .animation(.easeOut(duration: 0.18), value: askFits)
+                        .allowsHitTesting(askFits)
+                        .accessibilityHidden(!askFits)
+                }
+                .clipped()
                 .contentShape(Rectangle())
                 .onTapGesture { focused = false }
         }
+        .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height } action: { _, h in
+            askSpace = h
+        }
+        .scrollIndicators(.hidden)
         .scrollBounceBehavior(.always)
         .scrollDismissesKeyboard(.immediately)
         .safeAreaInset(edge: .bottom) {

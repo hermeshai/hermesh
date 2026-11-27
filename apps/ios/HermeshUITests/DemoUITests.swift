@@ -804,6 +804,74 @@ final class DemoUITests: XCTestCase {
         app.terminate()
     }
 
+    func testNewSessionAskFadesWhenCrowded() {
+        enterWorkDemo()
+        tap("menu")
+        tap("new-session-place")
+
+        let title = app.descendants(matching: .any)["new-session-title"].firstMatch
+        let machine = app.buttons["thread-machine"]
+        let worktree = app.buttons["thread-worktree"]
+        let composer = app.descendants(matching: .any)["thread-composer"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        tap("thread-project")
+        tap("project-hello-world")
+        XCTAssertTrue(worktree.waitForExistence(timeout: 5))
+        XCTAssertTrue(machine.exists && composer.exists)
+        XCTAssertLessThan(machine.frame.maxY, worktree.frame.minY, "ask sits cleanly above the working-copy bar")
+
+        composer.tap()
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        composer.typeText("https://github.com/pingdotgg/t3code\nstudy how session titles are generated\nand summarize the approach")
+        sleep(1)
+        if app.frame.height <= 700 {
+            XCTAssertTrue(title.waitForNonExistence(timeout: 5), "compact height: ask fades out when composer expands")
+            XCTAssertFalse(machine.exists)
+        } else if title.exists {
+            XCTAssertLessThan(machine.frame.maxY, worktree.frame.minY, "never overlaps working-copy bar")
+        }
+        checkpoint("new-session-composer-default")
+
+        // When vertical room cannot hold ask above the expanded multi-line composer and keyboard, ask fades out
+        // cleanly and comes back once the keyboard is dismissed.
+        app.terminate()
+        app.launchArguments = [
+            "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityMedium",
+        ]
+        app.launch()
+        enterWorkDemo()
+        tap("menu")
+        tap("new-session-place")
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        tap("thread-project")
+        tap("project-hello-world")
+        XCTAssertTrue(worktree.waitForExistence(timeout: 5))
+        XCTAssertTrue(machine.exists)
+        XCTAssertLessThan(machine.frame.maxY, worktree.frame.minY, "with keyboard down, ask fits above working-copy bar")
+
+        composer.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        composer.typeText("line 1\nline 2\nline 3\nline 4\nline 5")
+        XCTAssertTrue(title.waitForNonExistence(timeout: 5), "crowded: ask fades out")
+        XCTAssertFalse(machine.exists, "crowded: machine picker hides with ask")
+        XCTAssertTrue(worktree.isHittable && composer.isHittable)
+        checkpoint("new-session-composer-crowded-hidden")
+
+        let topClearY = (app.navigationBars.firstMatch.frame.maxY + worktree.frame.minY) / 2
+        if worktree.frame.minY - app.navigationBars.firstMatch.frame.maxY >= 24 {
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: app.frame.midX, dy: topClearY)).tap()
+        } else {
+            composer.swipeDown()
+        }
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 10), "empty area above composer or flick dismisses keyboard")
+        XCTAssertTrue(title.waitForExistence(timeout: 5), "keyboard dismissed: ask fades back in")
+        XCTAssertTrue(machine.exists)
+        XCTAssertLessThan(machine.frame.maxY, worktree.frame.minY, "restored cleanly above working-copy bar")
+        checkpoint("new-session-composer-restored")
+    }
+
     private func cancelSearch() {
         let field = app.searchFields.firstMatch
         let frame = field.frame
