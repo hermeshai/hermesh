@@ -54,7 +54,7 @@ func (e *Engine) Wake(ctx context.Context, sessionID string) error {
 	if err != nil {
 		return err
 	}
-	drvSess, err := drv.StartSession(e.bgCtx, e.buildStartSpec(sess, workdir, instCfg, last, ps.ResumeCursor))
+	drvSess, err := drv.StartSession(e.bgCtx, e.buildStartSpec(ctx, sess, workdir, instCfg, last, ps.ResumeCursor))
 	if err != nil {
 		return err
 	}

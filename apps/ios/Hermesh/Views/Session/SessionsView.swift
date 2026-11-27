@@ -218,7 +218,7 @@ struct SessionGitPreviewCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if gitState != .unspecified {
+            if gitState != .unspecified && gitState != .clean {
                 gitBox(gs: gs, state: gitState)
             }
         }

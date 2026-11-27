@@ -4,23 +4,71 @@ import (
 	"cmp"
 	"context"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/shellenv"
 )
 
 // GitStatusInput describes the session workspace and baseline references needed
 // to classify a session's local Git working tree and branch delivery state
 // without making network requests.
 type GitStatusInput struct {
-	Workdir        string
-	RepoPath       string
-	SessionBranch  string
-	BaseRef        string
-	InitialHeadOID string
-	HasChangesHint bool
+	Workdir           string
+	RepoPath          string
+	SessionBranch     string
+	BaseRef           string
+	InitialHeadOID    string
+	InitialTreeOID    string
+	PreExistingDirty  map[string]bool
+	LockSessionBranch bool
+	HasChangesHint    bool
+}
+
+// SyncRemoteTargetBranch checks whether origin's target branch moved ahead of
+// local refs/remotes/origin/<target> via a zero-write ls-remote probe and, only
+// when it advanced, fetches that single ref without writing FETCH_HEAD or tags.
+func (m *Manager) SyncRemoteTargetBranch(ctx context.Context, repoPath, baseRef string) (bool, error) {
+	if !dirExists(repoPath) || !IsGitRepo(ctx, repoPath) {
+		return false, nil
+	}
+	targetName, _ := resolveTargetBranch(ctx, repoPath, repoPath, baseRef)
+	if targetName == "" {
+		return false, nil
+	}
+	if _, err := runGit(ctx, repoPath, nil, "remote", "get-url", "origin"); err != nil {
+		return false, nil
+	}
+	noPromptEnv := append(shellenv.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GCM_INTERACTIVE=never",
+		"GIT_ASKPASS=true",
+		"SSH_ASKPASS=true",
+		"GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=5",
+	)
+	remoteRef := "refs/remotes/origin/" + targetName
+	localOID := resolveCommitOID(ctx, repoPath, remoteRef)
+
+	lsOut, err := runGit(ctx, repoPath, noPromptEnv, "ls-remote", "--heads", "origin", "refs/heads/"+targetName)
+	if err != nil {
+		return false, err
+	}
+	fields := strings.Fields(lsOut)
+	if len(fields) == 0 || !commitIDRE.MatchString(fields[0]) || fields[0] == localOID {
+		return false, nil
+	}
+
+	if _, err := runGit(ctx, repoPath, noPromptEnv,
+		"fetch", "--quiet", "--no-write-fetch-head", "--no-tags", "--no-recurse-submodules",
+		"origin", "+refs/heads/"+targetName+":"+remoteRef,
+	); err != nil {
+		return false, err
+	}
+	newOID := resolveCommitOID(ctx, repoPath, remoteRef)
+	return newOID != "" && newOID != localOID, nil
 }
 
 // InspectGitStatus evaluates the local Git delivery state of a session's
@@ -28,6 +76,11 @@ type GitStatusInput struct {
 // It returns nil when neither Workdir nor RepoPath is a Git repository.
 func (m *Manager) InspectGitStatus(ctx context.Context, in GitStatusInput) *sessionv1.GitStatus {
 	hasWorktree := dirExists(in.Workdir) && IsGitRepo(ctx, in.Workdir)
+	if hasWorktree && in.LockSessionBranch && in.SessionBranch != "" {
+		if cur := CurrentBranch(ctx, in.Workdir); cur != "" && cur != in.SessionBranch {
+			hasWorktree = false
+		}
+	}
 	gitDir := in.Workdir
 	if !hasWorktree {
 		if in.SessionBranch == "" || !dirExists(in.RepoPath) || !IsGitRepo(ctx, in.RepoPath) {
@@ -78,6 +131,11 @@ func (m *Manager) InspectGitStatus(ctx context.Context, in GitStatusInput) *sess
 			switch line[0] {
 			case '1', '2', 'u', '?':
 				if len(line) > 1 && line[1] == ' ' {
+					p := porcelainPath(line)
+					if p != "" && len(in.PreExistingDirty) > 0 && in.InitialTreeOID != "" &&
+						unchangedFromBaseline(ctx, in.Workdir, in.InitialTreeOID, p, in.PreExistingDirty) {
+						continue
+					}
 					dirtyFiles++
 				}
 			}
@@ -158,13 +216,15 @@ func (m *Manager) InspectGitStatus(ctx context.Context, in GitStatusInput) *sess
 		}
 	}
 
-	// 1. Check whether the session's commits were merged (or cherry-picked / rebased)
+	// 1. Check whether the session's commits were merged (or cherry-picked / rebased / squash-merged)
 	// into the target base branch, when working on a distinct branch.
 	if targetDisplay != "" && branch != targetDisplay {
 		notRewound := in.InitialHeadOID == "" || isAncestorCommit(ctx, gitDir, in.InitialHeadOID, headOID)
 		if notRewound {
 			for _, cand := range targetCandidates {
-				if isAncestorCommit(ctx, gitDir, headOID, cand) || isPatchMerged(ctx, gitDir, cand, headOID, in.InitialHeadOID) {
+				if isAncestorCommit(ctx, gitDir, headOID, cand) ||
+					isPatchMerged(ctx, gitDir, cand, headOID, in.InitialHeadOID) ||
+					isSquashMerged(ctx, gitDir, cand, headOID, in.InitialHeadOID) {
 					return &sessionv1.GitStatus{
 						State:       sessionv1.GitState_GIT_STATE_MERGED,
 						Branch:      branch,
@@ -241,6 +301,126 @@ func resolveCommitOID(ctx context.Context, dir, ref string) string {
 		return ""
 	}
 	return strings.TrimSpace(out)
+}
+
+func resolveTreeOID(ctx context.Context, dir, ref string) string {
+	if ref == "" {
+		return ""
+	}
+	out, err := runGit(ctx, dir, nil, "rev-parse", "--verify", "--quiet", "--end-of-options", ref+"^{tree}")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+func porcelainPath(line string) string {
+	switch line[0] {
+	case '?':
+		return line[2:]
+	case '1':
+		if fields := strings.SplitN(line, " ", 9); len(fields) == 9 {
+			return fields[8]
+		}
+	case '2':
+		if fields := strings.SplitN(line, " ", 10); len(fields) == 10 {
+			p, _, _ := strings.Cut(fields[9], "\t")
+			return p
+		}
+	case 'u':
+		if fields := strings.SplitN(line, " ", 11); len(fields) == 11 {
+			return fields[10]
+		}
+	}
+	return ""
+}
+
+func unchangedFromBaseline(ctx context.Context, workdir, initialTreeOID, relPath string, preDirty map[string]bool) bool {
+	if strings.HasSuffix(relPath, "/") {
+		prefix := relPath
+		wantCount := 0
+		for k := range preDirty {
+			if strings.HasPrefix(k, prefix) {
+				wantCount++
+			}
+		}
+		if wantCount == 0 {
+			return false
+		}
+		root := filepath.Join(workdir, filepath.FromSlash(strings.TrimSuffix(relPath, "/")))
+		seen := 0
+		allMatch := true
+		_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+			if err != nil {
+				allMatch = false
+				return filepath.SkipAll
+			}
+			if d.IsDir() {
+				return nil
+			}
+			seen++
+			if seen > wantCount {
+				allMatch = false
+				return filepath.SkipAll
+			}
+			rel, rErr := filepath.Rel(workdir, p)
+			if rErr != nil {
+				allMatch = false
+				return filepath.SkipAll
+			}
+			slashRel := filepath.ToSlash(rel)
+			if !preDirty[slashRel] || !unchangedFileFromBaseline(ctx, workdir, initialTreeOID, slashRel) {
+				allMatch = false
+				return filepath.SkipAll
+			}
+			return nil
+		})
+		return allMatch && seen == wantCount
+	}
+	if !preDirty[relPath] {
+		return false
+	}
+	return unchangedFileFromBaseline(ctx, workdir, initialTreeOID, relPath)
+}
+
+func unchangedFileFromBaseline(ctx context.Context, workdir, initialTreeOID, relPath string) bool {
+	wantOut, wantErr := runGit(ctx, workdir, nil, "rev-parse", "--verify", "--quiet", initialTreeOID+":"+relPath)
+	full := filepath.Join(workdir, filepath.FromSlash(relPath))
+	st, statErr := os.Lstat(full)
+	if wantErr != nil {
+		return os.IsNotExist(statErr)
+	}
+	if statErr != nil || st.IsDir() {
+		return false
+	}
+	gotOut, gotErr := runGit(ctx, workdir, nil, "hash-object", "--", full)
+	return gotErr == nil && strings.TrimSpace(wantOut) != "" && strings.TrimSpace(wantOut) == strings.TrimSpace(gotOut)
+}
+
+func isSquashMerged(ctx context.Context, dir, targetRef, headOID, initialHeadOID string) bool {
+	headTree := resolveTreeOID(ctx, dir, headOID)
+	candTree := resolveTreeOID(ctx, dir, targetRef)
+	if headTree == "" || candTree == "" {
+		return false
+	}
+	baseCommit := initialHeadOID
+	if baseCommit == "" {
+		mb, err := runGit(ctx, dir, nil, "merge-base", targetRef, headOID)
+		if err != nil {
+			return false
+		}
+		baseCommit = strings.TrimSpace(mb)
+	}
+	baseTree := resolveTreeOID(ctx, dir, baseCommit)
+	if baseTree == "" || headTree == baseTree {
+		return false
+	}
+	out, err := runGit(ctx, dir, nil, "merge-tree", "--write-tree", targetRef, headOID)
+	if err != nil {
+		return false
+	}
+	mergedTree, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+	return strings.TrimSpace(mergedTree) == candTree
 }
 
 func isAncestorCommit(ctx context.Context, dir, ancestor, descendant string) bool {

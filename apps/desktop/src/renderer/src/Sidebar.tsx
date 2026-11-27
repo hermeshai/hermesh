@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { GitState, SessionStatus, type Session } from "@hermesh/proto/session";
 import {
-  bucketTitle, childrenOf, clockText, HER_SECTION, isHerConversation, isTreeArchivable, sliceChildren, treeMark, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, diffBarBlocks, displayTitle, isActive, isArchivable, isFailed, listTime, naturalSectionKey, needsAttention,
+  bucketTitle, childrenOf, clockText, HER_SECTION, isHerConversation, isTreeArchivable, sliceChildren, treeMark, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, diffBarBlocks, displayTitle, hasGitDeliveryBox, isActive, isArchivable, isFailed, listTime, naturalSectionKey, needsAttention, needsGitRefresh,
   SECTION_EXPAND_STEP, SECTION_INITIAL_LIMIT, sessionGitMark, sessionSections, sessionsNeedingGitRefresh, sliceSectionSessions, statusTitle, teamState, updatedDate, type SessionBucket, type SessionSection, type SessionView,
   SCRATCH_PROJECT,
 } from "@hermesh/core";
@@ -384,17 +384,36 @@ function Sessions({ now }: { now: Date }) {
     };
   }, []);
 
-  // Re-evaluate local Git delivery state on initial load and whenever the window regains focus.
+  // Refresh Git delivery state on demand when inspecting a specific unsettled code
+  // session (hovering its card or selecting it), plus a small local check on focus.
   const gitRefreshBusy = useRef(false);
   const gitRefreshLast = useRef(0);
+  const gitRefreshedPerSession = useRef(new Map<string, number>());
+  const refreshSingleSessionGit = (sessionId: string | null | undefined) => {
+    if (!sessionId) return;
+    const s = latest.current.sessions.find((x) => x.sessionId === sessionId);
+    if (!s || !needsGitRefresh(s)) return;
+    const nowMs = Date.now();
+    if (nowMs - (gitRefreshedPerSession.current.get(sessionId) ?? 0) < 5000) return;
+    gitRefreshedPerSession.current.set(sessionId, nowMs);
+    sessionApi.refreshGitStatus({ sessionIds: [sessionId] }).catch(() => {});
+  };
   useEffect(() => {
     if (!st.sessionsLoaded) return;
-    const triggerRefresh = (force = false) => {
+    refreshSingleSessionGit(selectedId);
+  }, [st.sessionsLoaded, selectedId]);
+  useEffect(() => {
+    if (!st.sessionsLoaded) return;
+    refreshSingleSessionGit(hovered?.sessionId);
+  }, [st.sessionsLoaded, hovered?.sessionId]);
+  useEffect(() => {
+    if (!st.sessionsLoaded) return;
+    const triggerRefresh = () => {
       const nowMs = Date.now();
-      if (gitRefreshBusy.current || (!force && nowMs - gitRefreshLast.current < 1500)) return;
+      if (gitRefreshBusy.current || nowMs - gitRefreshLast.current < 1500) return;
       const cur = latest.current;
       const selId = cur.selection.kind === "session" ? cur.selection.id : null;
-      const sessionIds = sessionsNeedingGitRefresh(cur.sessions, selId, 20);
+      const sessionIds = sessionsNeedingGitRefresh(cur.sessions, selId, 6);
       if (sessionIds.length === 0) return;
       gitRefreshBusy.current = true;
       gitRefreshLast.current = nowMs;
@@ -402,13 +421,12 @@ function Sessions({ now }: { now: Date }) {
         gitRefreshBusy.current = false;
       });
     };
-    triggerRefresh(true);
     const offIpc = window.hermesh?.onWindowFocus((focused) => {
-      if (focused) triggerRefresh(false);
+      if (focused) triggerRefresh();
     });
-    const onFocus = () => triggerRefresh(false);
+    const onFocus = () => triggerRefresh();
     const onVis = () => {
-      if (document.visibilityState === "visible") triggerRefresh(false);
+      if (document.visibilityState === "visible") triggerRefresh();
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVis);
@@ -1242,11 +1260,6 @@ function SessionHoverCard({ s, sender, now, anchor }: {
     gitIcon = "gitDirty";
     gitLabel = t("git.hoverDirty", { count: Math.max(1, gs?.dirtyFiles ?? diff?.filesChanged ?? 1) });
     gitHint = t("git.hintDirty");
-  } else if (gitState === GitState.CLEAN) {
-    gitTone = "clean";
-    gitIcon = "check";
-    gitLabel = t("git.hoverClean");
-    gitHint = t("git.hintClean");
   }
 
   return createPortal(
@@ -1258,7 +1271,7 @@ function SessionHoverCard({ s, sender, now, anchor }: {
           <div className="shover-sub">{sender} → {codingAgentShort(s.agent)} · {s.projectId} · {timeText}</div>
         </div>
       </div>
-      {gitState !== GitState.UNSPECIFIED && (
+      {hasGitDeliveryBox(s) && (
         <div className={`shover-git ${gitTone}`}>
           <div className="shover-git-top">
             <Icon name={gitIcon} />

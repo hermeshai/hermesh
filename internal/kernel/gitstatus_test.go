@@ -134,4 +134,88 @@ func TestEngineGitStatusTurnSettleAndRefreshPreservesOrder(t *testing.T) {
 	if ref3.Sessions[0].GetGitStatus().GetState() != sessionv1.GitState_GIT_STATE_CLEAN {
 		t.Fatalf("in-place Q&A after external push got %+v, want CLEAN", ref3.Sessions[0].GetGitStatus())
 	}
+
+	// 4. Shared IN_PLACE isolation + pre-existing dirty file + on-demand remote squash-merge sync:
+	if err := exec.Command("sh", "-c", "mkdir -p "+filepath.Join(repo, "skills")+" && printf pre > "+filepath.Join(repo, "skills", "SKILL.md")).Run(); err != nil {
+		t.Fatal(err)
+	}
+	eng.cfg.GitRemoteSyncCooldown = 10 * time.Millisecond
+
+	// Start a concurrent read-only IN_PLACE review session while the shared repo gets switched to a new branch & pushed:
+	reviewStart, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ProjectId:     "proj",
+		Workspace:     &sessionv1.WorkspaceStrategy{Mode: identityv1.Workspace_WORKSPACE_IN_PLACE},
+		InitialPrompt: "sleep 300ms\nsay review deferred",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(80 * time.Millisecond)
+	git(repo, "checkout", "-b", "fix/shared-1331")
+	git(repo, "-c", "user.name=T", "-c", "user.email=t@h.local", "commit", "--allow-empty", "-m", "fix: shared 1331")
+	git(repo, "push", "-u", "origin", "fix/shared-1331")
+
+	reviewSess := waitIdle(reviewStart.Session.SessionId)
+	if reviewSess.GetGitStatus().GetState() != sessionv1.GitState_GIT_STATE_CLEAN || reviewSess.GetGitStatus().GetBranch() != "" {
+		t.Fatalf("concurrent read-only IN_PLACE review session bled shared branch state: got %+v, want CLEAN with empty branch", reviewSess.GetGitStatus())
+	}
+	git(repo, "checkout", "main")
+
+	// Worktree session pushes 2 commits, then remote origin/main squash-merges it externally;
+	// targeted single-session RefreshGitStatus asynchronously syncs origin/main and transitions PUSHED -> MERGED.
+	sqStart, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ProjectId:     "proj",
+		InitialPrompt: "write sq1.txt one\nsay step 1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqSess := waitIdle(sqStart.Session.SessionId)
+	sqWT := sqSess.GetWorkspaceStrategy().GetWorktreePath()
+	sqBranch := sqSess.GetWorkspaceStrategy().GetBranch()
+	git(sqWT, "-c", "user.name=T", "-c", "user.email=t@h.local", "add", "sq1.txt")
+	git(sqWT, "-c", "user.name=T", "-c", "user.email=t@h.local", "commit", "-m", "feat: sq commit 1")
+	if err := exec.Command("sh", "-c", "printf two > "+filepath.Join(sqWT, "sq2.txt")).Run(); err != nil {
+		t.Fatal(err)
+	}
+	git(sqWT, "-c", "user.name=T", "-c", "user.email=t@h.local", "add", "sq2.txt")
+	git(sqWT, "-c", "user.name=T", "-c", "user.email=t@h.local", "commit", "-m", "feat: sq commit 2")
+	git(sqWT, "push", "origin", sqBranch)
+
+	refSqPushed, err := eng.RefreshGitStatus(ctx, owner, []string{sqSess.SessionId})
+	if err != nil || refSqPushed.Sessions[0].GetGitStatus().GetState() != sessionv1.GitState_GIT_STATE_PUSHED {
+		t.Fatalf("expected PUSHED before remote squash merge, got err=%v res=%+v", err, refSqPushed)
+	}
+	sqUpdatedBefore := refSqPushed.Sessions[0].UpdatedAt.AsTime()
+
+	// Squash-merge sqBranch into origin/main via a separate clone (local repo does NOT fetch):
+	remoteClone := filepath.Join(t.TempDir(), "remote-merger")
+	git(t.TempDir(), "clone", origin, remoteClone)
+	git(remoteClone, "fetch", "origin", sqBranch)
+	git(remoteClone, "merge", "--squash", "FETCH_HEAD")
+	git(remoteClone, "-c", "user.name=GH", "-c", "user.email=gh@h.local", "commit", "-m", "feat: squash merge (#200)")
+	git(remoteClone, "push", "origin", "main")
+
+	time.Sleep(20 * time.Millisecond)
+	if _, err := eng.RefreshGitStatus(ctx, owner, []string{sqSess.SessionId}); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		p, err := eng.GetSession(ctx, owner, sqSess.SessionId)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.Session.GetGitStatus().GetState() == sessionv1.GitState_GIT_STATE_MERGED {
+			if !p.Session.UpdatedAt.AsTime().Equal(sqUpdatedBefore) {
+				t.Fatalf("async remote git sync mutated UpdatedAt: got %v, want %v", p.Session.UpdatedAt.AsTime(), sqUpdatedBefore)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expected async remote sync to transition PUSHED -> MERGED, stuck at %+v", p.Session.GetGitStatus())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }

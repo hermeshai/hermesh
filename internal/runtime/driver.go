@@ -157,6 +157,10 @@ type StartSpec struct {
 	ResumeCursor    string
 	ExtraEnv        map[string]string
 	Gate            GateFunc
+	// StartCtx, when non-nil, bounds only process startup and session handshake
+	// (e.g. to an active run's cancellation context) without shortening the
+	// long-lived warm lease context passed to Driver.StartSession.
+	StartCtx context.Context
 	// Limits is told what the agent says of its account's rate limits, when
 	// it does (limits.go).
 	Limits func(Limits)

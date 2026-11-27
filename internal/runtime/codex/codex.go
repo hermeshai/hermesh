@@ -368,7 +368,8 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 	s.alive.Store(true)
 	go s.readLoop()
 
-	if _, err := s.call(ctx, "initialize", map[string]any{
+	startCtx := cmp.Or(spec.StartCtx, ctx)
+	if _, err := s.call(startCtx, "initialize", map[string]any{
 		"clientInfo": map[string]any{"name": "hermesh", "version": "2.0.0"},
 	}); err != nil {
 		proc.Stop(time.Second)
@@ -388,23 +389,23 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 	if spec.ResumeCursor != "" {
 		method = "thread/resume"
 		params["threadId"] = spec.ResumeCursor
-		_, _ = s.call(ctx, "thread/unarchive", map[string]any{"threadId": spec.ResumeCursor})
+		_, _ = s.call(startCtx, "thread/unarchive", map[string]any{"threadId": spec.ResumeCursor})
 	}
 	forked := false
-	raw, err := s.call(ctx, method, params)
+	raw, err := s.call(startCtx, method, params)
 	if err != nil && method == "thread/resume" && strings.Contains(strings.ToLower(err.Error()), "active writer") {
 		for attempt := 0; attempt < 3 && err != nil; attempt++ {
 			select {
-			case <-ctx.Done():
+			case <-startCtx.Done():
 				proc.Stop(time.Second)
-				return nil, ctx.Err()
+				return nil, startCtx.Err()
 			case <-time.After(200 * time.Millisecond):
 			}
-			raw, err = s.call(ctx, "thread/resume", params)
+			raw, err = s.call(startCtx, "thread/resume", params)
 		}
 		if err != nil && strings.Contains(strings.ToLower(err.Error()), "active writer") {
 			method = "thread/fork"
-			raw, err = s.call(ctx, "thread/fork", params)
+			raw, err = s.call(startCtx, "thread/fork", params)
 			if err == nil {
 				forked = true
 			}

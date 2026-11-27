@@ -43,6 +43,12 @@ func (d *Driver) GenerateTitle(ctx context.Context, cfg *sessionv1.ProviderInsta
 	}
 	defer os.RemoveAll(tmpDir)
 
+	releaseSlot, slotErr := prov.acquireStartSlot(ctx)
+	if slotErr != nil {
+		return runtime.TitleGenResult{}, slotErr
+	}
+	defer releaseSlot()
+
 	env := append(slices.Clip(baseEnv), cmd.env...)
 	proc, err := runtime.StartProc(ctx, cmd.bin, cmd.acpArgs(), tmpDir, env)
 	if err != nil {
@@ -171,10 +177,21 @@ func (d *Driver) GenerateTitle(ctx context.Context, cfg *sessionv1.ProviderInsta
 		}
 	}
 
-	newRes, err := call("session/new", map[string]any{
+	newParams := map[string]any{
 		"cwd":        tmpDir,
 		"mcpServers": []any{},
-	})
+	}
+	newRes, err := call("session/new", newParams)
+	if err != nil && strings.Contains(err.Error(), "acp error -32603:") && ctx.Err() == nil {
+		select {
+		case <-proc.Done():
+		case <-ctx.Done():
+			err = ctx.Err()
+		case <-time.After(prov.drv.sessionStartRetryDelay()):
+			newRes, err = call("session/new", newParams)
+		}
+	}
+	releaseSlot()
 	if err != nil {
 		return runtime.TitleGenResult{}, err
 	}

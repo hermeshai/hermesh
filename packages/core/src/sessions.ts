@@ -96,20 +96,35 @@ export function diffBarBlocks(insertions: number, deletions: number): [DiffBlock
 }
 
 /**
+ * Whether a settled session is in a non-terminal Git state (dirty, unpushed,
+ * pushed, or not yet evaluated) whose delivery status can still advance.
+ * Clean Q&A/review sessions and merged sessions are terminal and skipped.
+ */
+export function needsGitRefresh(s: Session): boolean {
+  if (isActive(s) || s.status === SessionStatus.WAITING_INPUT || s.status === SessionStatus.ARCHIVED || s.status === SessionStatus.UNSPECIFIED) return false;
+  const st = s.gitStatus?.state ?? GitState.UNSPECIFIED;
+  return st === GitState.UNSPECIFIED || st === GitState.DIRTY || st === GitState.UNPUSHED || st === GitState.PUSHED;
+}
+
+/**
+ * Whether the hover/preview card should render a Git delivery status box.
+ * Pure Q&A or read-only review sessions (CLEAN) omit the noisy Git box.
+ */
+export function hasGitDeliveryBox(s: Session): boolean {
+  const st = s.gitStatus?.state ?? GitState.UNSPECIFIED;
+  return st !== GitState.UNSPECIFIED && st !== GitState.CLEAN;
+}
+
+/**
  * Settled non-archived sessions whose local Git status may have advanced
  * outside Hermesh (e.g. manual commit/push/merge in terminal or IDE).
  */
 export function sessionsNeedingGitRefresh(sessions: readonly Session[], selectedId?: string | null, limit = 20): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
-  const eligible = (s: Session) => {
-    if (isActive(s) || s.status === SessionStatus.ARCHIVED || s.status === SessionStatus.UNSPECIFIED) return false;
-    const st = s.gitStatus?.state ?? GitState.UNSPECIFIED;
-    return st === GitState.UNSPECIFIED || st === GitState.DIRTY || st === GitState.UNPUSHED || st === GitState.PUSHED;
-  };
   if (selectedId) {
     const sel = sessions.find((s) => s.sessionId === selectedId);
-    if (sel && eligible(sel)) {
+    if (sel && needsGitRefresh(sel)) {
       seen.add(sel.sessionId);
       out.push(sel.sessionId);
     }
@@ -117,7 +132,7 @@ export function sessionsNeedingGitRefresh(sessions: readonly Session[], selected
   for (const s of sessions) {
     if (out.length >= limit) break;
     if (seen.has(s.sessionId)) continue;
-    if (eligible(s)) {
+    if (needsGitRefresh(s)) {
       seen.add(s.sessionId);
       out.push(s.sessionId);
     }

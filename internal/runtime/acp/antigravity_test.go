@@ -682,10 +682,117 @@ func TestACPLogin(t *testing.T) {
 func TestAntigravityAuthHint(t *testing.T) {
 	t.Setenv("FAKE_ACP_STATE", t.TempDir())
 	t.Setenv("FAKE_ACP_AUTH", "oauth-personal")
-	p := &Provider{Agent: antigravityAgent("darwin"), Binary: fakeBin}
+	callsFile := filepath.Join(t.TempDir(), "new.calls")
+	t.Setenv("FAKE_ACP_NEW_CALLS_FILE", callsFile)
+	drv := NewDriver("")
+	drv.SessionStartRetryDelay = 5 * time.Millisecond
+	p := &Provider{Agent: antigravityAgent("darwin"), Binary: fakeBin, drv: drv}
 	if _, err := runRuntimeTurn(t, p, runtime.StartSpec{Workdir: t.TempDir()}, "say never"); err == nil || !strings.Contains(err.Error(), "hermesh agent login antigravity") {
 		t.Fatalf("auth hint: %v", err)
 	}
+	if calls, _ := os.ReadFile(callsFile); len(calls) != 1 {
+		t.Fatalf("auth error must fail immediately without retrying session/new, got %d calls", len(calls))
+	}
+}
+
+func TestAntigravitySessionNewAndResumeTransientRecovery(t *testing.T) {
+	stateDir := t.TempDir()
+	t.Setenv("FAKE_ACP_STATE", stateDir)
+	t.Setenv("FAKE_ACP_RESUME", "resume")
+
+	drv := NewDriver("")
+	drv.SessionStartRetryDelay = 5 * time.Millisecond
+
+	t.Run("in_proc_session_new_retry", func(t *testing.T) {
+		callsFile := filepath.Join(t.TempDir(), "new.calls")
+		argsLog := filepath.Join(t.TempDir(), "args.log")
+		t.Setenv("FAKE_ACP_NEW_CALLS_FILE", callsFile)
+		t.Setenv("FAKE_ACP_NEW_FAIL_FIRST", "1")
+		t.Setenv("FAKE_ACP_NEW_CRASH_FIRST", "0")
+		t.Setenv("FAKE_ACP_ARGS_LOG", argsLog)
+
+		p := &Provider{Agent: antigravityAgent("darwin"), Binary: fakeBin, drv: drv}
+		evs, err := runRuntimeTurn(t, p, runtime.StartSpec{Workdir: t.TempDir()}, "say recovered in-proc")
+		if err != nil {
+			t.Fatalf("expected transient -32603 recovery, got %v", err)
+		}
+		if calls, _ := os.ReadFile(callsFile); len(calls) != 2 {
+			t.Fatalf("expected 2 session/new calls, got %d", len(calls))
+		}
+		if spawns := readArgsLog(t, argsLog); len(spawns) != 1 {
+			t.Fatalf("expected in-proc retry without respawning binary, got %d spawns", len(spawns))
+		}
+		var got string
+		for _, ev := range evs {
+			if ev.Kind == runtime.EventAssistantMessage {
+				got = ev.Text
+			}
+		}
+		if got != "recovered in-proc" {
+			t.Fatalf("unexpected reply %q", got)
+		}
+	})
+
+	t.Run("wedged_and_crashed_proc_respawn_retry", func(t *testing.T) {
+		callsFile := filepath.Join(t.TempDir(), "new.calls")
+		argsLog := filepath.Join(t.TempDir(), "args.log")
+		t.Setenv("FAKE_ACP_NEW_CALLS_FILE", callsFile)
+		t.Setenv("FAKE_ACP_NEW_CRASH_FIRST", "1")
+		t.Setenv("FAKE_ACP_NEW_FAIL_FIRST", "3")
+		t.Setenv("FAKE_ACP_ARGS_LOG", argsLog)
+
+		p := &Provider{Agent: antigravityAgent("darwin"), Binary: fakeBin, drv: drv}
+		evs, err := runRuntimeTurn(t, p, runtime.StartSpec{Workdir: t.TempDir()}, "write note.txt ok")
+		if err != nil {
+			t.Fatalf("expected respawn recovery after crash + -32603, got %v", err)
+		}
+		if spawns := readArgsLog(t, argsLog); len(spawns) < 2 {
+			t.Fatalf("expected fresh process respawn, got %d spawns", len(spawns))
+		}
+		var nativeID string
+		for _, ev := range evs {
+			if ev.Kind == runtime.EventNativeSession {
+				nativeID = ev.NativeID
+			}
+		}
+		if nativeID == "" {
+			t.Fatal("missing native session id")
+		}
+
+		// Transient -32603 on session/resume must recover the existing native session
+		// rather than throwing away native conversation state.
+		resCalls := filepath.Join(t.TempDir(), "resume.calls")
+		t.Setenv("FAKE_ACP_NEW_FAIL_FIRST", "0")
+		t.Setenv("FAKE_ACP_NEW_CRASH_FIRST", "0")
+		t.Setenv("FAKE_ACP_RESUME_CALLS_FILE", resCalls)
+		t.Setenv("FAKE_ACP_RESUME_FAIL_FIRST", "1")
+
+		evs2, err := runRuntimeTurn(t, p, runtime.StartSpec{Workdir: t.TempDir(), ResumeCursor: nativeID}, "history")
+		if err != nil {
+			t.Fatalf("expected transient session/resume recovery, got %v", err)
+		}
+		var hist string
+		for _, ev := range evs2 {
+			if ev.Kind == runtime.EventAssistantMessage {
+				hist = ev.Text
+			}
+		}
+		if hist != "history: 2 turns" {
+			t.Fatalf("expected native history preserved, got %q", hist)
+		}
+
+		// Missing session (-32002) must still fail immediately without retrying.
+		resMissingCalls := filepath.Join(t.TempDir(), "resume_missing.calls")
+		t.Setenv("FAKE_ACP_RESUME_CALLS_FILE", resMissingCalls)
+		t.Setenv("FAKE_ACP_RESUME_FAIL_FIRST", "0")
+		_, err = runRuntimeTurn(t, p, runtime.StartSpec{Workdir: t.TempDir(), ResumeCursor: "fake-does-not-exist"}, "history")
+		if err == nil {
+			t.Fatal("expected missing session resume to fail")
+		}
+		if calls, _ := os.ReadFile(resMissingCalls); len(calls) != 1 {
+			t.Fatalf("missing session (-32002) must not retry session/resume, got %d calls", len(calls))
+		}
+	})
 }
 
 // Asked (agy 1.5.16 `-p /usage`, recorded), Antigravity says its quota a

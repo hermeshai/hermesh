@@ -8,10 +8,12 @@ import {
   dateOf,
   dayOf,
   diffBarBlocks,
+  hasGitDeliveryBox,
   isFailed,
   mergeSessions,
   naturalSectionKey,
   needsAttention,
+  needsGitRefresh,
   pendingQuestion,
   relistedCursor,
   reorderIds,
@@ -411,5 +413,17 @@ describe("git status marks and diff bar", () => {
       "unpushed",
       "unset",
     ]);
+    expect(needsGitRefresh(clean)).toBe(false);
+    expect(needsGitRefresh(merged)).toBe(false);
+    expect(needsGitRefresh(running)).toBe(false);
+    expect(needsGitRefresh(pushed)).toBe(true);
+    expect(needsGitRefresh(dirty)).toBe(true);
+
+    expect(hasGitDeliveryBox(clean)).toBe(false);
+    expect(hasGitDeliveryBox(unset)).toBe(false);
+    expect(hasGitDeliveryBox(dirty)).toBe(true);
+    expect(hasGitDeliveryBox(unpushed)).toBe(true);
+    expect(hasGitDeliveryBox(pushed)).toBe(true);
+    expect(hasGitDeliveryBox(merged)).toBe(true);
   });
 });
