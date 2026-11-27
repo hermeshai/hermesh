@@ -2115,6 +2115,15 @@ public nonisolated struct Hermesh_Session_V1_SessionProgress: @unchecked Sendabl
   /// Clears the value of `turnStartedAt`. Subsequent reads from it will return its default value.
   public mutating func clearTurnStartedAt() {_uniqueStorage()._turnStartedAt = nil}
 
+  public var quietSince: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_storage._quietSince ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_uniqueStorage()._quietSince = newValue}
+  }
+  /// Returns true if `quietSince` has been explicitly set.
+  public var hasQuietSince: Bool {_storage._quietSince != nil}
+  /// Clears the value of `quietSince`. Subsequent reads from it will return its default value.
+  public mutating func clearQuietSince() {_uniqueStorage()._quietSince = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -6647,7 +6656,7 @@ nonisolated extension Hermesh_Session_V1_QuestionResolved: SwiftProtobuf.Message
 
 nonisolated extension Hermesh_Session_V1_SessionProgress: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SessionProgress"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}turn_count\0\u{1}phase\0\u{3}last_message_excerpt\0\u{3}current_tool\0\u{3}diff_stat\0\u{1}usage\0\u{3}last_event_seq\0\u{3}last_failure\0\u{3}pending_question\0\u{3}turn_started_at\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}turn_count\0\u{1}phase\0\u{3}last_message_excerpt\0\u{3}current_tool\0\u{3}diff_stat\0\u{1}usage\0\u{3}last_event_seq\0\u{3}last_failure\0\u{3}pending_question\0\u{3}turn_started_at\0\u{3}quiet_since\0")
 
   fileprivate class _StorageClass {
     var _turnCount: UInt32 = 0
@@ -6660,6 +6669,7 @@ nonisolated extension Hermesh_Session_V1_SessionProgress: SwiftProtobuf.Message,
     var _lastFailure: Hermesh_Session_V1_Failure? = nil
     var _pendingQuestion: Hermesh_Session_V1_Question? = nil
     var _turnStartedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+    var _quietSince: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -6680,6 +6690,7 @@ nonisolated extension Hermesh_Session_V1_SessionProgress: SwiftProtobuf.Message,
       _lastFailure = source._lastFailure
       _pendingQuestion = source._pendingQuestion
       _turnStartedAt = source._turnStartedAt
+      _quietSince = source._quietSince
     }
   }
 
@@ -6708,6 +6719,7 @@ nonisolated extension Hermesh_Session_V1_SessionProgress: SwiftProtobuf.Message,
         case 8: try { try decoder.decodeSingularMessageField(value: &_storage._lastFailure) }()
         case 9: try { try decoder.decodeSingularMessageField(value: &_storage._pendingQuestion) }()
         case 10: try { try decoder.decodeSingularMessageField(value: &_storage._turnStartedAt) }()
+        case 11: try { try decoder.decodeSingularMessageField(value: &_storage._quietSince) }()
         default: break
         }
       }
@@ -6750,6 +6762,9 @@ nonisolated extension Hermesh_Session_V1_SessionProgress: SwiftProtobuf.Message,
       try { if let v = _storage._turnStartedAt {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 10)
       } }()
+      try { if let v = _storage._quietSince {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 11)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -6769,6 +6784,7 @@ nonisolated extension Hermesh_Session_V1_SessionProgress: SwiftProtobuf.Message,
         if _storage._lastFailure != rhs_storage._lastFailure {return false}
         if _storage._pendingQuestion != rhs_storage._pendingQuestion {return false}
         if _storage._turnStartedAt != rhs_storage._turnStartedAt {return false}
+        if _storage._quietSince != rhs_storage._quietSince {return false}
         return true
       }
       if !storagesAreEqual {return false}

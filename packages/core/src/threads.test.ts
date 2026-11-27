@@ -60,7 +60,7 @@ describe("unified session domain helpers & event reducer", () => {
     expect(composerPrimaryAction(running, true, false, true)).toBe("stop");
     expect(composerPrimaryAction(running, true, true, true)).toBe("steer");
     expect(composerPrimaryAction(running, true, true, false)).toBe("queue");
-    expect(composerPrimaryAction(waiting, true, true, true)).toBe("queue");
+    expect(composerPrimaryAction(waiting, true, true, true)).toBe("send");
   });
 
   it("builds default selection and cycles reasoning effort descriptors", () => {

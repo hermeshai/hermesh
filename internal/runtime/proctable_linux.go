@@ -7,6 +7,32 @@ import (
 	"syscall"
 )
 
+// procCPU returns pid's cumulative utime + stime clock ticks from /proc/<pid>/stat.
+func procCPU(pid int) (uint64, bool) {
+	if pid <= 0 {
+		return 0, false
+	}
+	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return 0, false
+	}
+	s := string(b)
+	i := strings.LastIndexByte(s, ')')
+	if i < 0 {
+		return 0, false
+	}
+	f := strings.Fields(s[i+1:]) // f[0] is field 3 (state); utime=14 (f[11]), stime=15 (f[12])
+	if len(f) < 13 {
+		return 0, false
+	}
+	utime, uErr := strconv.ParseUint(f[11], 10, 64)
+	stime, sErr := strconv.ParseUint(f[12], 10, 64)
+	if uErr != nil || sErr != nil {
+		return 0, false
+	}
+	return utime + stime, true
+}
+
 // procArgs returns pid's arguments (nil when they cannot be read).
 func procArgs(pid int) []string {
 	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/cmdline")

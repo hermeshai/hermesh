@@ -495,6 +495,13 @@ export function SessionPage() {
   const running =
     isSessionRunningOrWaiting(currentSession) &&
     (currentSession?.status !== SessionStatus.WAITING_INPUT || currentSession.activeRunId !== "");
+  const waitingInput = currentSession?.status === SessionStatus.WAITING_INPUT;
+  const canLiveSteer = Boolean(
+    currentSession?.status === SessionStatus.RUNNING &&
+      !currentSession.pendingRequestId &&
+      activeInst?.capabilities?.midTurnSteer &&
+      (!modelSel.instanceId || !currentSession.modelSelection?.instanceId || modelSel.instanceId === currentSession.modelSelection.instanceId),
+  );
 
   // Shift+Cmd/Ctrl+E cycles how hard it thinks.
   useEffect(() => {
@@ -562,11 +569,18 @@ export function SessionPage() {
       clearDraft(targetKey);
       setSlashOpenKey(null);
       setSpoken((n) => n + 1);
+      const defaultIntent = !machineOnline
+        ? DispatchIntent.QUEUE
+        : waitingInput
+          ? DispatchIntent.AUTO
+          : running
+            ? (canLiveSteer ? DispatchIntent.STEER : DispatchIntent.QUEUE)
+            : DispatchIntent.AUTO;
       const req = {
         sessionId: targetSessionId,
         text,
         attachments: sent,
-        intent: explicitIntent ?? DispatchIntent.QUEUE,
+        intent: explicitIntent ?? defaultIntent,
         modelSelection: modelSel.instanceId ? modelSel : undefined,
         runtimeMode: clampedMode,
         interactionMode,
@@ -1298,8 +1312,12 @@ export function SessionPage() {
                           setSlashOpenKey(v.startsWith("/") && !v.includes(" ") ? draftKey : null);
                         }}
                         onSend={() => submitMessage()}
+                        onSteer={() => submitMessage(DispatchIntent.STEER)}
+                        onQueue={() => submitMessage(DispatchIntent.QUEUE)}
                         onStop={handleStop}
                         running={running}
+                        liveSteer={canLiveSteer}
+                        waitingInput={waitingInput}
                         sending={busySend}
                         placeholder={running ? t("composer.placeholderRunning") : t("composer.placeholderIdle")}
                         attachments={attachments}

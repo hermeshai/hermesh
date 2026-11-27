@@ -1028,6 +1028,7 @@ type acpBgTask struct {
 	output         string
 	awaited        bool
 	asyncLaunch    bool
+	launchAcked    bool
 	launchedTurn   uint64
 	maxTriggers    int
 	triggersSeen   int
@@ -1062,25 +1063,25 @@ type session struct {
 	emitMu       sync.RWMutex
 	eventsClosed bool
 
-	mu                 sync.Mutex
-	pending            map[int64]func(rpcRes)
-	terminals          map[string]*managedTerm
-	agentTerms         map[string]*acpAgentTerm
-	tools              map[string]*acpToolState
-	bgTasks            map[string]*acpBgTask
-	agyMessagesDir     string
-	seenTaskMsgs       map[string]bool
-	turnSeq            uint64
-	turnCtx            context.Context
-	inPrompt           bool
-	awaitingMerge      bool
-	mergeTimer         *time.Timer
-	wakeSteps          runtime.TurnStepTracker
-	outOfTurnTimer     *time.Timer
-	agyInitialMsgs     map[string]bool
-	openServerReqs     int
-	msgItemID          string
-	msgBuf             strings.Builder
+	mu             sync.Mutex
+	pending        map[int64]func(rpcRes)
+	terminals      map[string]*managedTerm
+	agentTerms     map[string]*acpAgentTerm
+	tools          map[string]*acpToolState
+	bgTasks        map[string]*acpBgTask
+	agyMessagesDir string
+	seenTaskMsgs   map[string]bool
+	turnSeq        uint64
+	turnCtx        context.Context
+	inPrompt       bool
+	awaitingMerge  bool
+	mergeTimer     *time.Timer
+	wakeSteps      runtime.TurnStepTracker
+	outOfTurnTimer *time.Timer
+	agyInitialMsgs map[string]bool
+	openServerReqs int
+	msgItemID      string
+	msgBuf         strings.Builder
 }
 
 func tailUTF8(s string, maxBytes int) string {
@@ -3048,6 +3049,10 @@ func (s *session) ForceStop() error {
 	return nil
 }
 
+func (s *session) Diagnose() runtime.Diagnosis {
+	return s.proc.Diagnose()
+}
+
 func (s *session) Close() error {
 	s.alive.Store(false)
 	s.mu.Lock()
@@ -3502,12 +3507,16 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		var startPoller [2]string
 		// When an async-launch tool (`run_in_background: true`, `_meta...isAsync: true`,
 		// or Antigravity's `Tool is running as a background task with task id: ...`)
-		// immediately reports `status: "completed"`, that event is only the launch ack:
-		// keep its transcript item running and register the live BackgroundTask right away.
-		isLaunchAck := bg == nil && st.asyncLaunch && status == "completed"
-		if isLaunchAck {
-			st.status = "in_progress"
-			status = "in_progress"
+		// reports `status: "completed"` right away, that event is only the launch ack:
+		// keep its transcript item running. Also register and poll immediately if an
+		// `in_progress` / `pending` update already carries async-launch metadata or log URI.
+		isLaunchAck := st.asyncLaunch && status == "completed" && (bg == nil || !bg.launchAcked)
+		registerAsyncNow := bg == nil && st.asyncLaunch && (isLaunchAck || status == "in_progress" || status == "pending")
+		if registerAsyncNow {
+			if isLaunchAck {
+				st.status = "in_progress"
+				status = "in_progress"
+			}
 			if kind, bgTitle, bgCmd, awaited, ok := classifyACPBackgroundTool(st); ok {
 				if st.asyncLogPath != "" {
 					if tail, _, _, err := readFileTailUTF8(st.asyncLogPath, 16384); err == nil && tail != "" {
@@ -3531,6 +3540,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					output:         tailUTF8(outText, 16384),
 					awaited:        awaited,
 					asyncLaunch:    true,
+					launchAcked:    isLaunchAck,
 					launchedTurn:   s.turnSeq,
 					maxTriggers:    maxTrig,
 					timerCondition: timerCond,
@@ -3568,12 +3578,27 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		} else {
 			killedEvs = s.reconcileACPTaskControlLocked(st.rawInput, status, outText)
 		}
-		if !isLaunchAck && bg != nil && bg.running {
+		if !registerAsyncNow && bg != nil && bg.running {
+			if isLaunchAck {
+				bg.launchAcked = true
+				st.status = "in_progress"
+				status = "in_progress"
+				if st.asyncAgentID != "" && bg.agentID == "" {
+					bg.agentID = st.asyncAgentID
+				}
+				if st.asyncLogPath != "" && bg.logPath == "" {
+					bg.logPath = st.asyncLogPath
+					if d := bg.messagesDir(); d != "" {
+						s.recordAgyMessagesDirLocked(d)
+					}
+					startPoller = [2]string{bg.taskID, bg.logPath}
+				}
+			}
 			bg.output = tailUTF8(outText, 16384)
 			if cmd != "" && bg.command == "" {
 				bg.command = cmd
 			}
-			if status == "completed" || status == "failed" {
+			if !isLaunchAck && (status == "completed" || status == "failed") {
 				bg.running = false
 				bgStatus := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
 				exitCode := int32(0)
@@ -3631,8 +3656,8 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			}
 			return
 		}
-		hasEmitIdentity := isLaunchAck || toolName != "" || cmd != "" || filePath != "" || inText != "" || stSnap.summary != ""
-		if status != "completed" && status != "failed" && hasEmitIdentity && (!wasStarted || u.SessionUpdate == "tool_call" || isLaunchAck || toolName != "" || cmd != "" || filePath != "" || inText != "") {
+		hasEmitIdentity := registerAsyncNow || toolName != "" || cmd != "" || filePath != "" || inText != "" || stSnap.summary != ""
+		if status != "completed" && status != "failed" && hasEmitIdentity && (!wasStarted || u.SessionUpdate == "tool_call" || registerAsyncNow || toolName != "" || cmd != "" || filePath != "" || inText != "") {
 			s.emit(runtime.Event{
 				Kind:     runtime.EventToolStarted,
 				ItemID:   id,

@@ -47,10 +47,10 @@ type ToolGateRequest struct {
 	// the foreground turn, so a foreground turn's end neither cancels nor clears it.
 	Background bool
 	Kind       sessionv1.RuntimeRequestKind
-	Approval  *sessionv1.ToolApprovalPayload
-	UserInput *sessionv1.UserInputPayload
-	Plan      *sessionv1.PlanReviewPayload
-	Secret    *sessionv1.SecretInputPayload
+	Approval   *sessionv1.ToolApprovalPayload
+	UserInput  *sessionv1.UserInputPayload
+	Plan       *sessionv1.PlanReviewPayload
+	Secret     *sessionv1.SecretInputPayload
 }
 
 // ToolGateResult is returned to the blocked provider session once policy or the
@@ -261,6 +261,13 @@ type BackgroundController interface {
 // turn settles.
 type WakeupProbe interface {
 	PendingWakeup() bool
+}
+
+// Diagnoser is optionally implemented by Sessions backed by a local OS process
+// so the kernel can inspect descendant tool processes, CPU liveness, and stderr
+// during quiet periods.
+type Diagnoser interface {
+	Diagnose() Diagnosis
 }
 
 // MaxBackgroundIdleTTL bounds how long awaited background work can keep an

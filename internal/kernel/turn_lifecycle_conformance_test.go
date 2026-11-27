@@ -968,7 +968,7 @@ func (b *conformanceHerBridge) Attach(context.Context, string) (her.Conversation
 	b.conv = c
 	return c, nil
 }
-func (b *conformanceHerBridge) Op(context.Context, string, any) error        { return nil }
+func (b *conformanceHerBridge) Op(context.Context, string, any) error            { return nil }
 func (b *conformanceHerBridge) DeleteConversation(context.Context, string) error { return nil }
 
 func TestCrossProviderUnifiedLifecycleConformance(t *testing.T) {

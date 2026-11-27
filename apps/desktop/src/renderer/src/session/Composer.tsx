@@ -36,12 +36,18 @@ import "../her/her.css";
  * The box (docs/thread-composer.md §17): the text, growing with what is written, over a row that holds ＋, the model
  * and how hard it thinks, Stop and Send. It is always both: it does not fold to one line while empty.
  */
-export function ThreadComposer({ value, onChange, onSend, onStop, running, sending, placeholder, attachments, onAttach, onRemove, offline, blocked = false, mode, maxCeiling, onMode, model }: {
+export function ThreadComposer({ value, onChange, onSend, onSteer, onQueue, onStop, running, liveSteer = false, waitingInput = false, sending, placeholder, attachments, onAttach, onRemove, offline, blocked = false, mode, maxCeiling, onMode, model }: {
   value: string;
   onChange: (v: string) => void;
   onSend: () => void;
+  onSteer?: () => void;
+  onQueue?: () => void;
   onStop?: () => void;
   running: boolean;
+  /** Running turn supports non-destructive mid-turn steer (Enter = Steer, secondary button = Queue). */
+  liveSteer?: boolean;
+  /** Session is paused on a question or plan; Enter sends immediately while Queue remains available. */
+  waitingInput?: boolean;
   sending: boolean;
   placeholder: string;
   attachments: AttachmentRef[];
@@ -72,6 +78,9 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
   }, [attachments.map((a) => a.blobSha256).join("\0")]);
   const ready = !sending && !blocked && (value.trim() !== "" || attachments.length > 0);
   const shellShortcut = /^[\t ]*!(?!\[)/.test(value);
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+  const steerKeys = isMac ? "⌘↩" : "Ctrl+Enter";
+  const queueKeys = isMac ? "⌥↩" : "Alt+Enter";
   // Files dragged anywhere over the window come here, as to Her's box.
   const dropping = useFileDrop((files) => (onAttach(files), area.current?.focus()));
   // The text grows with what is written, up to ten lines, then scrolls (as Her's).
@@ -93,7 +102,11 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
     window.addEventListener("keydown", type, true);
     return () => window.removeEventListener("keydown", type, true);
   }, []);
-  const sendTitle = running ? t("composer.queue") : offline ? t("composer.queueOffline") : t("composer.send");
+  const sendTitle = offline
+    ? t("composer.queueOffline")
+    : running && !waitingInput
+      ? (liveSteer && !shellShortcut ? t("composer.steer") : t("composer.queue"))
+      : t("composer.send");
   const plus = (
     <MenuButton
       className="cmp-plus"
@@ -174,7 +187,22 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
           data-testid="thread-composer-input"
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key !== "Enter" || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey || e.nativeEvent.isComposing) return;
+            if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+            if ((e.metaKey || e.ctrlKey) && !e.altKey) {
+              e.preventDefault();
+              if (!ready) return;
+              if (running && !shellShortcut && !offline && onSteer) onSteer();
+              else onSend();
+              return;
+            }
+            if (e.altKey && !e.metaKey && !e.ctrlKey) {
+              e.preventDefault();
+              if (!ready) return;
+              if ((running || waitingInput) && !shellShortcut && !offline && onQueue) onQueue();
+              else onSend();
+              return;
+            }
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
             e.preventDefault();
             if (ready) onSend();
           }}
@@ -190,6 +218,32 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
           </span>
         )}
         <span className="th-grow" />
+        {ready && !offline && !shellShortcut && running && !waitingInput && (
+          liveSteer && onQueue ? (
+            <button
+              type="button"
+              className="th-act"
+              title={t("composer.queueHint", { keys: queueKeys })}
+              aria-label={t("composer.queue")}
+              data-testid="composer-queue-btn"
+              onClick={onQueue}
+            >
+              <span>{t("composer.queue")}</span>
+            </button>
+          ) : !liveSteer && onSteer ? (
+            <button
+              type="button"
+              className="th-act steer"
+              title={t("composer.steerHint", { keys: steerKeys })}
+              aria-label={t("composer.steerNow")}
+              data-testid="composer-steer-btn"
+              onClick={onSteer}
+            >
+              <Icon name="bolt" />
+              <span>{t("composer.steerNow")}</span>
+            </button>
+          ) : null
+        )}
         {running && onStop && (
           <button className="th-stop" title={t("composer.stop")} aria-label={t("composer.stop")} data-testid="composer-stop-btn" onClick={onStop}>
             <Icon name="stop" />

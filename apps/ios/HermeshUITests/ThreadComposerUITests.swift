@@ -216,7 +216,13 @@ extension HermeshUITests {
         XCTAssertGreaterThan(working.frame.minY, sent.frame.maxY, "under the last message")
         XCTAssertLessThan(working.frame.maxY, app.descendants(matching: .any)["thread-composer"].firstMatch.frame.minY, "over the box")
         shot("composer-working")
-        send("say after_the_stop")
+        let qBox = app.descendants(matching: .any)["thread-composer"].firstMatch
+        XCTAssertTrue(qBox.waitForExistence(timeout: 10))
+        qBox.tap()
+        qBox.typeText("say after_the_stop")
+        let queueBtn = app.buttons["thread-queue"]
+        XCTAssertTrue(waitUntil { queueBtn.exists && queueBtn.isEnabled }, "Queue button beside live Steer")
+        press(queueBtn)
         XCTAssertTrue(app.descendants(matching: .any)["thread-queued-0"].waitForExistence(timeout: 15), "waiting for the next turn")
         shot("composer-queued")
         tap("thread-stop")

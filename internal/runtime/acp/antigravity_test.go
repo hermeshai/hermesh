@@ -826,3 +826,64 @@ func TestAgyUsage(t *testing.T) {
 		}
 	}
 }
+
+func TestInProgressAsyncLaunchPollsTaskLogImmediately(t *testing.T) {
+	tmp := t.TempDir()
+	tasksDir := filepath.Join(tmp, ".system_generated", "tasks")
+	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	logFile := filepath.Join(tasksDir, "task-42.log")
+	if err := os.WriteFile(logFile, []byte("Compiling crate A...\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	drv := NewDriver("")
+	drv.TaskLogPollInterval = 15 * time.Millisecond
+	s := &session{
+		drv:           drv,
+		events:        make(chan runtime.Event, 32),
+		tools:         map[string]*acpToolState{},
+		bgTasks:       map[string]*acpBgTask{},
+		terminals:     map[string]*managedTerm{},
+		agentTerms:    map[string]*acpAgentTerm{},
+		sessionCtx:    ctx,
+		sessionCancel: cancel,
+		turnCtx:       ctx,
+		inPrompt:      true,
+	}
+	s.alive.Store(true)
+
+	logURI := "file://" + filepath.ToSlash(logFile)
+	ackText := "Tool is running as a background task with task id: conv-1/task-42\nTask Description: cargo build\nTask logs are available at: " + logURI
+	rawUpdate, _ := json.Marshal(map[string]any{
+		"update": map[string]any{
+			"sessionUpdate": "tool_call_update",
+			"toolCallId":    "call_bg_inprog",
+			"title":         "run_command",
+			"kind":          "execute",
+			"status":        "in_progress",
+			"rawInput":      map[string]any{"CommandLine": "cargo build", "toolSummary": "Build workspace"},
+			"rawOutput":     ackText,
+		},
+	})
+	s.handleSessionUpdate(rawUpdate)
+
+	if err := os.WriteFile(logFile, []byte("Compiling crate A...\nCompiling crate B...\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case ev := <-s.events:
+			if ev.Kind == runtime.EventBackgroundTask && strings.Contains(ev.Output, "Compiling crate B...") {
+				return
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for live task log poll while tool status is in_progress")
+		}
+	}
+}

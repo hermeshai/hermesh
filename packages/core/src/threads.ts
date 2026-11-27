@@ -150,7 +150,7 @@ export function composerPrimaryAction(
     return supportsLiveSteer ? "steer" : "queue";
   }
   if (session.status === SessionStatus.WAITING_INPUT) {
-    return hasInput ? "queue" : "stop";
+    return hasInput ? "send" : "stop";
   }
   return "send";
 }

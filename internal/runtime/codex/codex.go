@@ -578,6 +578,7 @@ func (s *session) gateCtx() context.Context {
 
 func (s *session) Events() <-chan runtime.Event { return s.events }
 func (s *session) Alive() bool                  { return s.alive.Load() }
+func (s *session) Diagnose() runtime.Diagnosis  { return s.proc.Diagnose() }
 
 func (s *session) PendingWakeup() bool {
 	s.mu.Lock()

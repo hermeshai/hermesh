@@ -49,6 +49,7 @@
     "thinking": "Thinking…",
     "replying": "Replying…",
     "tool": "Running tools…",
+    "waiting": "Waiting for model response…",
     "working": "Working…"
   },
   "todo": {
@@ -107,7 +108,10 @@
     "start": "Start Thread",
     "send": "Send",
     "steer": "Steer",
+    "steerNow": "Steer",
+    "steerHint": "Interrupt & send now ({{keys}})",
     "queue": "Queue",
+    "queueHint": "Queue for next turn ({{keys}})",
     "queueOffline": "Queue Offline",
     "stop": "Stop",
     "forceStop": "Force Stop",
