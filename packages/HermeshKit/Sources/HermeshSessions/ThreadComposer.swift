@@ -83,6 +83,11 @@ public func providerUnusable(_ inst: Hermesh_Session_V1_ProviderInstance, projec
     return nil
 }
 
+/// The providers the model picker offers for the active role: only Her when talking to Her, else only coding agents.
+public func providersForRole(_ providers: [Hermesh_Session_V1_ProviderInstance], forHer: Bool) -> [Hermesh_Session_V1_ProviderInstance] {
+    providers.filter { ($0.instanceID == herAgent) == forHer }
+}
+
 /// The provider a new session starts with when nothing was used on the machine before: the coding agents most
 /// people use first, then any ready one.
 public func preferredProvider(_ providers: [Hermesh_Session_V1_ProviderInstance]) -> Hermesh_Session_V1_ProviderInstance? {

@@ -16,6 +16,7 @@ import {
   grantsReaching,
   projectOnMachine,
   projectWorktree,
+  providersForRole,
   providerUnusable,
   reasoningOf,
   selectModel,
@@ -86,6 +87,13 @@ describe("the unified session composer", () => {
     expect(providerUnusable(gemini, ["claude"])).toBe("notForProject");
     expect(providerUnusable(gemini, ["gemini"])).toBe("signedOut");
     expect(providerUnusable(create(ProviderInstanceSchema, { instanceId: "codex", enabled: true }), [])).toBe("notInstalled");
+  });
+
+  it("keeps Her and coding agent providers separate in the model picker", () => {
+    const her = create(ProviderInstanceSchema, { instanceId: "her", displayName: "Her", enabled: true, installed: true, authenticated: true });
+    const all = [claude, her, gemini];
+    expect(providersForRole(all, false).map((p) => p.instanceId)).toEqual(["claude", "gemini"]);
+    expect(providersForRole(all, true).map((p) => p.instanceId)).toEqual(["her"]);
   });
 
   it("keeps the project on another machine when it has one of that name", () => {

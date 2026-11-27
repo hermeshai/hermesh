@@ -83,6 +83,11 @@ export function providerUnusable(inst: ProviderInstance, projectAgents: readonly
   return "";
 }
 
+/** The providers the model picker offers for the active role: only Her when talking to Her, else only coding agents. */
+export function providersForRole(providers: readonly ProviderInstance[], forHer: boolean): ProviderInstance[] {
+  return providers.filter((p) => (p.instanceId === "her") === forHer);
+}
+
 /** What the search finds, by provider: a model matches by its name, short name or its provider's name. */
 export function findModels(providers: readonly ProviderInstance[], query: string): { inst: ProviderInstance; models: ModelCatalogEntry[] }[] {
   const q = query.trim().toLowerCase();

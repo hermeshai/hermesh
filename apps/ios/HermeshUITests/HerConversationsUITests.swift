@@ -34,6 +34,16 @@ extension HermeshUITests {
         XCTAssertTrue(any["new-session-title"].firstMatch.exists)
         herShot("Her conversations: new session defaults to Agent")
 
+        // On Agent, the model sheet lists coding agent providers and hides Her.
+        let box = any["thread-composer"].firstMatch
+        box.tap()
+        XCTAssertTrue(app.buttons["thread-model"].waitForExistence(timeout: 10))
+        tap("thread-model")
+        let otherProviders = any.matching(NSPredicate(format: "identifier BEGINSWITH 'provider-' AND identifier != 'provider-her'"))
+        XCTAssertTrue(otherProviders.firstMatch.waitForExistence(timeout: 30), "agent providers in the model sheet on Agent")
+        XCTAssertFalse(any["provider-her"].firstMatch.exists, "Her hidden in the model sheet on Agent")
+        tap("model-done")
+
         // 2. Tapping the small cat gives the new session to Her: her question, her machine, her placeholder.
         press(herRole)
         XCTAssertTrue(waitUntil { herRole.isSelected }, "Her selected")
@@ -41,31 +51,19 @@ extension HermeshUITests {
         XCTAssertEqual(any["new-session-title"].firstMatch.label, "要 Her 做什么？")
         let whereLine = any["launch-her-where"].firstMatch
         XCTAssertTrue(whereLine.waitForExistence(timeout: 10) && whereLine.label.contains("Her 在 owner-mac"), whereLine.label)
-        let box = any["thread-composer"].firstMatch
         XCTAssertEqual(box.placeholderValue, "发消息给 Her")
         herShot("Her conversations: new session given to Her")
 
-        // 3. Model sheet: Her's group comes first, her default model marked "默认", and picking an agent model syncs back to Agent.
+        // 3. Model sheet on Her: shows only Her's models with her default marked "默认" (no coding agent providers).
         box.tap()
         XCTAssertTrue(app.buttons["thread-model"].waitForExistence(timeout: 10))
         tap("thread-model")
         let herProvider = any["provider-her"].firstMatch
         XCTAssertTrue(herProvider.waitForExistence(timeout: 30), "Her provider in the model sheet")
-        let otherProviders = any.matching(NSPredicate(format: "identifier BEGINSWITH 'provider-' AND identifier != 'provider-her'"))
-        if otherProviders.firstMatch.waitForExistence(timeout: 10) {
-            XCTAssertLessThan(herProvider.frame.minY, otherProviders.firstMatch.frame.minY, "Her provider comes first")
-        }
+        XCTAssertFalse(otherProviders.firstMatch.exists, "coding agent providers hidden in the model sheet on Her")
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'model-' AND label CONTAINS '默认'")).firstMatch.exists, "default model marked")
-        herShot("Her conversations: Her models first in ModelSheet")
-        // Picking an agent model switches the new session back to Agent; tapping Her switches back to Her.
-        if app.buttons["model-gemini-3-pro"].exists {
-            tap("model-gemini-3-pro")
-            XCTAssertTrue(waitUntil { agentRole.isSelected }, "agent model picked: role switched to Agent")
-            press(herRole)
-            XCTAssertTrue(waitUntil { herRole.isSelected }, "switched back to Her")
-        } else {
-            tap("model-done")
-        }
+        herShot("Her conversations: Her models only in ModelSheet")
+        tap("model-done")
 
         // 4. Send prompt asking Her to start a coding agent: opens HerConversationPage under its compact bar, asks approval first.
         let prompt = #"[[mock:mesh:session_start:{"project":"owner-mac/demo","agent":"gemini","prompt":"sleep 70s\nsay 做完了","title":"对话派的活"}]] 开工"#
