@@ -196,8 +196,54 @@ func ask(_ s: inout Session) {
     ask(&w)
     let all = [session("i", .idle, updated: -10), session("r", .running, updated: -500), w, session("x", .archived)]
     #expect(searchSessions(all, query: "", filter: SessionFilter(), text: { $0.projectID }).map(\.sessionID) == ["w", "r", "i"])
+    #expect(searchSessions(all, query: "", filter: SessionFilter(archived: true), text: { $0.projectID }).map(\.sessionID).contains("x"))
     #expect(searchSessions(all, query: " APP ", filter: SessionFilter(), text: { $0.projectID }).count == 3)
     #expect(searchSessions(all, query: "nothing", filter: SessionFilter(), text: { $0.projectID }).isEmpty)
+}
+
+@Test func searchHelpersExtractBranchExcerptAndHighlights() {
+    var s = session("s", .idle)
+    s.branch = "feat/legacy"
+    #expect(s.effectiveBranch == "feat/legacy")
+    s.workspaceStrategy.branch = "feat/strategy"
+    #expect(s.effectiveBranch == "feat/strategy")
+    s.gitStatus.branch = " feat/live-git "
+    #expect(s.effectiveBranch == "feat/live-git")
+
+    s.result = "All\n  done   cleanly"
+    #expect(s.searchExcerpt == SessionExcerpt(kind: .latest, text: "All done cleanly"))
+
+    s.progress.lastMessageExcerpt = "Updated   search\nsheet"
+    #expect(s.searchExcerpt == SessionExcerpt(kind: .latest, text: "Updated search sheet"))
+
+    s.status = .running
+    s.progress.lastMessageExcerpt = ""
+    s.progress.currentTool = "swift test"
+    #expect(s.searchExcerpt == SessionExcerpt(kind: .running, text: "swift test"))
+
+    s.status = .idle
+    s.progress.lastFailure.kind = .providerError
+    s.progress.lastFailure.message = "Rate limit\nexceeded"
+    #expect(s.searchExcerpt == SessionExcerpt(kind: .failed, text: "Rate limit exceeded"))
+
+    s.status = .waitingInput
+    s.progress.pendingQuestion.items = [.with { $0.text = "Which   theme\nshould we ship?" }]
+    #expect(s.searchExcerpt == SessionExcerpt(kind: .waiting, text: "Which theme should we ship?"))
+
+    #expect(highlightSegments("扩展主题配色与主题切换", query: "主题") == [
+        HighlightSegment("扩展", highlighted: false),
+        HighlightSegment("主题", highlighted: true),
+        HighlightSegment("配色与", highlighted: false),
+        HighlightSegment("主题", highlighted: true),
+        HighlightSegment("切换", highlighted: false),
+    ])
+    #expect(highlightSegments("Choose a Greeting", query: "greeting") == [
+        HighlightSegment("Choose a ", highlighted: false),
+        HighlightSegment("Greeting", highlighted: true),
+    ])
+    #expect(highlightSegments("Plain text", query: "   ") == [
+        HighlightSegment("Plain text", highlighted: false),
+    ])
 }
 
 @Test func rangeWorkAddsUpBucketsAgentsAndPairs() {

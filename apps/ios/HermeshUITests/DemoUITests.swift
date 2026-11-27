@@ -196,7 +196,8 @@ final class DemoUITests: XCTestCase {
         let field = app.searchFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         if app.buttons["Continue"].exists { app.buttons["Continue"].tap() }
-        field.typeText("greeting\n")
+        // Live results update on every keystroke without .searchSuggestions occlusion.
+        field.typeText("greeting")
         tap("session-Choose a greeting")
         XCTAssertTrue(app.buttons["answer"].waitForExistence(timeout: 10))
         tap("exit-demo")
@@ -778,18 +779,43 @@ final class DemoUITests: XCTestCase {
 
     func testReviewSearchFilters() {
         enterWorkDemo()
+        let results = app.descendants(matching: .any)["session-search"].firstMatch
         for state in ["failed", "waiting", "done"] {
             tap("menu"); tap("search")
+            XCTAssertTrue(results.waitForExistence(timeout: 10))
+            tap("search-filter-status")
             tap("search-state-\(state)")
             if state == "failed" {
-                XCTAssertTrue(app.descendants(matching: .any)["no-results"].waitForExistence(timeout: 5))
+                XCTAssertTrue(results.descendants(matching: .any)["no-results"].waitForExistence(timeout: 5))
             } else {
                 let title = state == "waiting" ? "Choose a greeting" : "Add a welcome page"
-                XCTAssertTrue(app.descendants(matching: .any)["session-\(title)"].waitForExistence(timeout: 5))
+                XCTAssertTrue(results.descendants(matching: .any)["session-\(title)"].waitForExistence(timeout: 5))
             }
             cancelSearch()
             tap("drawer-dim")
         }
+
+        // Branch match + long-press preview + archived task discovery in search.
+        tap("menu"); tap("search")
+        let field = app.searchFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        if app.buttons["Continue"].exists { app.buttons["Continue"].tap() }
+        field.typeText("hermesh/welcome")
+        let welcome = results.descendants(matching: .any)["session-Add a welcome page"].firstMatch
+        XCTAssertTrue(welcome.waitForExistence(timeout: 5))
+        let searchShot = XCTAttachment(screenshot: app.screenshot())
+        searchShot.name = "iphone-search-live"; searchShot.lifetime = .keepAlways; add(searchShot)
+        welcome.press(forDuration: 1.0)
+        XCTAssertTrue(app.buttons["session-archive"].waitForExistence(timeout: 10))
+        let previewShot = XCTAttachment(screenshot: app.screenshot())
+        previewShot.name = "iphone-search-preview"; previewShot.lifetime = .keepAlways; add(previewShot)
+        tap("session-archive")
+        // Once archived, default search hides it and offers 1-tap reveal of archived matches.
+        XCTAssertTrue(welcome.waitForNonExistence(timeout: 5))
+        tap("show-archived-matches")
+        XCTAssertTrue(welcome.waitForExistence(timeout: 5))
+        cancelSearch()
+        tap("drawer-dim")
         tap("exit-demo")
     }
 

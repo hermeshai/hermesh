@@ -1,0 +1,1704 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hermesh iPhone · 搜索面板重构交互原型 Demo</title>
+<style>
+:root {
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --spring: cubic-bezier(0.28, 1.22, 0.42, 1);
+}
+
+[data-theme="light"] {
+  --page: #e5e8f0;
+  --page-fg: #181920;
+  --page-fg2: #5d606d;
+  --card: #ffffff;
+  --card-bd: rgba(0, 0, 0, .08);
+
+  --bg: #ffffff;
+  --bg2: #f2f2f7;
+  --menu-bg: #f2f2f7;
+  --sheet-bg: #ffffff;
+  --surface: #f5f6fa;
+  --surface-elev: #ffffff;
+  --l1: rgba(0, 0, 0, .90);
+  --l2: rgba(60, 60, 67, .62);
+  --l3: rgba(60, 60, 67, .35);
+  --l4: rgba(60, 60, 67, .14);
+  --sep: rgba(60, 60, 67, .13);
+  --fill: rgba(118, 118, 128, .11);
+  --fill2: rgba(118, 118, 128, .18);
+  --accent: #3d5bff;
+  --accent-t: #2d4ae6;
+  --accent-bg: rgba(61, 91, 255, .11);
+  --accent-bd: rgba(61, 91, 255, .25);
+  --mark-bg: rgba(61, 91, 255, .15);
+  --mark-fg: #2440d4;
+  --green: #17924f;
+  --green-bg: rgba(23, 146, 79, .12);
+  --orange: #c96a06;
+  --orange-bg: rgba(230, 126, 10, .13);
+  --red: #d7333f;
+  --red-bg: rgba(215, 51, 63, .11);
+  --gh-push: #2f7d4a;
+  --gh-push-bg: rgba(47, 125, 74, .085);
+  --gh-merge: #6e59a5;
+  --gh-merge-bg: rgba(110, 89, 165, .085);
+  --gh-ahead: #3b6ea8;
+  --gh-ahead-bg: rgba(59, 110, 168, .085);
+  --gh-dirty: #9e6722;
+  --gh-dirty-bg: rgba(158, 103, 34, .085);
+  --del-fg: #b0232f;
+  --glass: rgba(252, 252, 255, .82);
+  --glass-sh: 0 0 0 .5px rgba(0, 0, 0, .09), 0 8px 24px rgba(20, 24, 40, .10);
+  --pop: rgba(250, 250, 253, .95);
+  --pop-sh: 0 0 0 .5px rgba(0, 0, 0, .10), 0 18px 44px rgba(15, 20, 40, .22);
+  --scrim: rgba(10, 14, 24, .32);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --page: #0c0d12;
+  --page-fg: #ececf2;
+  --page-fg2: #9699a6;
+  --card: #16171e;
+  --card-bd: rgba(255, 255, 255, .08);
+
+  --bg: #000000;
+  --bg2: #141417;
+  --menu-bg: #141417;
+  --sheet-bg: #18181c;
+  --surface: #222227;
+  --surface-elev: #26262c;
+  --l1: rgba(255, 255, 255, .93);
+  --l2: rgba(235, 235, 245, .60);
+  --l3: rgba(235, 235, 245, .34);
+  --l4: rgba(235, 235, 245, .15);
+  --sep: rgba(255, 255, 255, .10);
+  --fill: rgba(120, 120, 128, .22);
+  --fill2: rgba(120, 120, 128, .34);
+  --accent: #4a66ff;
+  --accent-t: #8fa2ff;
+  --accent-bg: rgba(91, 121, 255, .19);
+  --accent-bd: rgba(130, 152, 255, .32);
+  --mark-bg: rgba(91, 121, 255, .28);
+  --mark-fg: #c5d0ff;
+  --green: #3fcf86;
+  --green-bg: rgba(63, 207, 134, .15);
+  --orange: #ffab3d;
+  --orange-bg: rgba(255, 171, 61, .15);
+  --red: #ff6670;
+  --red-bg: rgba(255, 102, 112, .15);
+  --gh-push: #73a968;
+  --gh-push-bg: rgba(115, 169, 104, .11);
+  --gh-merge: #9482c4;
+  --gh-merge-bg: rgba(148, 130, 196, .11);
+  --gh-ahead: #779ed2;
+  --gh-ahead-bg: rgba(119, 158, 210, .11);
+  --gh-dirty: #c49a55;
+  --gh-dirty-bg: rgba(196, 154, 85, .11);
+  --del-fg: #ff8c94;
+  --glass: rgba(38, 38, 44, .78);
+  --glass-sh: 0 0 0 .5px rgba(255, 255, 255, .13), 0 10px 28px rgba(0, 0, 0, .48);
+  --pop: rgba(38, 38, 44, .95);
+  --pop-sh: 0 0 0 .5px rgba(255, 255, 255, .14), 0 20px 48px rgba(0, 0, 0, .64);
+  --scrim: rgba(0, 0, 0, .52);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--page);
+  color: var(--page-fg);
+  font: 13.5px/1.45 var(--font);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  padding-bottom: 104px;
+}
+button, input { font: inherit; color: inherit; }
+button { border: 0; background: none; padding: 0; cursor: pointer; text-align: left; }
+svg { display: block; flex: none; }
+code { font-family: var(--mono); }
+
+.ic {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.55;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ic.sm { width: 14px; height: 14px; }
+.ic.xs { width: 12px; height: 12px; }
+
+/* ---------- Page Header & Presets ---------- */
+.hdr {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 16px 24px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.hdr-t h1 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -.015em; }
+.hdr-t p { margin: 2px 0 0; font-size: 12.5px; color: var(--page-fg2); }
+
+.presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.pbtn {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--page-fg2);
+  background: var(--card);
+  border: 1px solid var(--card-bd);
+  transition: all .14s;
+}
+.pbtn:hover { color: var(--page-fg); }
+.pbtn.on {
+  color: var(--accent-t);
+  background: var(--card);
+  border-color: var(--accent-bd);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .06);
+}
+
+/* ---------- Stage Layout: Phone + Rationale Side-by-Side ---------- */
+.stage {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 8px 24px 16px;
+  display: grid;
+  grid-template-columns: 424px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+.phone-col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+
+/* ---------- iPhone 17 Pro Hardware Shell (402 × 804 pt) ---------- */
+.phone {
+  width: 402px;
+  height: 804px;
+  border-radius: 56px;
+  background: var(--menu-bg);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 0 11px #191a1e, 0 0 0 12.5px #383940, 0 28px 72px rgba(0, 0, 0, .38);
+  color: var(--l1);
+  font: 15.5px/1.36 var(--font);
+  user-select: none;
+}
+.status-bar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 32px 0 42px;
+  font-weight: 600;
+  font-size: 15.5px;
+  z-index: 70;
+  pointer-events: none;
+}
+.sb-icons { display: flex; align-items: center; gap: 6px; }
+.island {
+  position: absolute;
+  top: 11px; left: 50%;
+  transform: translateX(-50%);
+  width: 122px; height: 35px;
+  border-radius: 20px;
+  background: #000;
+  z-index: 71;
+  pointer-events: none;
+}
+.home-bar {
+  position: absolute;
+  bottom: 8px; left: 50%;
+  transform: translateX(-50%);
+  width: 136px; height: 5px;
+  border-radius: 3px;
+  background: var(--l1);
+  opacity: .78;
+  z-index: 75;
+  pointer-events: none;
+}
+
+/* ---------- Underlying Drawer + Sliding Page (Visible when Sheet closes) ---------- */
+.drawer-bg {
+  position: absolute;
+  inset: 0;
+  padding-top: 56px;
+  background: var(--menu-bg);
+  display: flex;
+  flex-direction: column;
+}
+.dr-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 18px 12px 24px;
+  width: 326px;
+}
+.wordmark { font-size: 19px; font-weight: 700; letter-spacing: -.02em; display: flex; align-items: center; gap: 7px; }
+.wordmark i { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+.gcircle {
+  width: 42px; height: 42px; border-radius: 50%;
+  background: var(--glass); box-shadow: var(--glass-sh);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  display: flex; align-items: center; justify-content: center;
+}
+.gcircle:active { transform: scale(.93); }
+.dr-nav { width: 326px; padding: 0 12px; display: flex; flex-direction: column; gap: 4px; }
+.dr-item { height: 44px; padding: 0 14px; border-radius: 13px; display: flex; align-items: center; gap: 12px; font-size: 16px; }
+.dr-item.sel { background: var(--fill); font-weight: 600; }
+.dr-slid {
+  position: absolute;
+  inset: 0;
+  transform: translateX(322px);
+  border-radius: 42px;
+  background: var(--bg);
+  box-shadow: -12px 0 34px rgba(0, 0, 0, .28), 0 0 0 .5px var(--sep);
+}
+
+/* ---------- iOS Sheet Modal Backdrop & Container ---------- */
+.sheet-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, .26);
+  z-index: 20;
+  transition: opacity .26s var(--ease);
+}
+.sheet-dim.closed { opacity: 0; pointer-events: none; }
+
+.search-sheet {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  top: 54px;
+  border-radius: 32px 32px 0 0;
+  background: var(--sheet-bg);
+  box-shadow: 0 -8px 34px rgba(0, 0, 0, .22), 0 0 0 .5px var(--sep);
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: transform .34s var(--ease), opacity .22s ease;
+}
+.search-sheet.closed {
+  transform: translateY(104%);
+  pointer-events: none;
+}
+
+.grabber {
+  width: 36px; height: 5px;
+  border-radius: 3px;
+  background: var(--l4);
+  margin: 7px auto 4px;
+  flex: none;
+}
+
+/* 1. Active iOS Search Bar Row */
+.ish-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 16px 8px;
+  flex: none;
+}
+.ish-field {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--fill);
+  padding: 0 8px 0 11px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.ish-field .ic-s { width: 16px; height: 16px; color: var(--l2); flex: none; }
+.ish-field input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: none;
+  font-size: 16px;
+  color: var(--l1);
+  caret-color: var(--accent);
+}
+.ish-field input::placeholder { color: var(--l2); }
+.ish-clear {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--l3);
+  color: var(--sheet-bg);
+  display: flex; align-items: center; justify-content: center;
+  flex: none;
+}
+.ish-cancel {
+  font-size: 16px;
+  font-weight: 450;
+  color: var(--accent-t);
+  white-space: nowrap;
+  padding: 4px 2px;
+}
+
+/* 2. Single-Row Horizontal Filter Chips Bar */
+.ish-filters {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 14px 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: .5px solid var(--sep);
+  flex: none;
+}
+.ish-filters::-webkit-scrollbar { display: none; }
+
+.mchip {
+  height: 28px;
+  padding: 0 8.5px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--l2);
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+  white-space: nowrap;
+  flex: none;
+  transition: background .12s, color .12s;
+}
+.mchip:active { transform: scale(.96); }
+.mchip.active {
+  background: var(--accent-bg);
+  color: var(--accent-t);
+  box-shadow: inset 0 0 0 .5px var(--accent-bd);
+  font-weight: 600;
+}
+.mchip .chev { width: 11px; height: 11px; opacity: .7; }
+.mchip-x {
+  width: 16px; height: 16px;
+  margin-right: -3px;
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.mchip-reset {
+  height: 29px;
+  padding: 0 8px;
+  font-size: 13px;
+  color: var(--accent-t);
+  white-space: nowrap;
+  flex: none;
+}
+
+/* 3. Scrollable Search Content */
+.ish-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 0 32px;
+  scrollbar-width: none;
+}
+.ish-scroll::-webkit-scrollbar { display: none; }
+
+/* Compact Recent Search Pills (Before typing) */
+.rec-sec { padding: 10px 16px 6px; }
+.sec-bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 16px 6px;
+}
+.rec-sec .sec-bar { padding: 0 0 8px; }
+.sec-bar b { font-size: 13px; font-weight: 600; color: var(--l2); }
+.sec-bar button { font-size: 13px; color: var(--accent-t); }
+.sec-bar .cnt { font-size: 12px; color: var(--l3); font-variant-numeric: tabular-nums; }
+
+.rec-pills { display: flex; flex-wrap: wrap; gap: 7px; }
+.rec-pill {
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  font-size: 13.5px;
+  color: var(--l1);
+  display: inline-flex;
+  align-items: center;
+  gap: 5.5px;
+}
+.rec-pill:active { background: var(--fill2); }
+.rec-pill .ic { color: var(--l3); }
+
+/* Upgraded iOS Search Result Row (Unified with MenuSessionRow + Mac) */
+.mrow {
+  width: 100%;
+  padding: 10px 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  position: relative;
+  border-bottom: .5px solid var(--sep);
+  transition: background .12s;
+}
+.mrow:active { background: var(--fill); }
+.mrow.archived .mrow-title { color: var(--l2); }
+
+/* Leading AgentLogo + Running Orbit Ring (matching SessionsView.swift) */
+.mlogo {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 7.5px;
+  background: var(--surface-elev);
+  box-shadow: 0 0 0 .5px var(--sep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  margin-top: 1px;
+}
+.mlogo.run > .ag-in { transform: scale(.84); }
+.mlogo-orbit {
+  position: absolute;
+  inset: -2px;
+  border-radius: 9px;
+  padding: 1.6px;
+  pointer-events: none;
+  background: var(--l4);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  overflow: hidden;
+}
+.mlogo-orbit::before {
+  content: "";
+  position: absolute;
+  inset: -55%;
+  background: conic-gradient(from 0deg, transparent 0deg, transparent 200deg, var(--accent) 280deg, #93b4ff 330deg, var(--accent) 355deg, transparent 360deg);
+  animation: orbit 1.4s linear infinite;
+}
+@keyframes orbit { to { transform: rotate(360deg); } }
+
+.mdot {
+  position: absolute;
+  right: -2.5px;
+  bottom: -2.5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.6px solid var(--sheet-bg);
+}
+.mdot.waiting { background: var(--orange); }
+.mdot.failed { background: var(--red); }
+.mdot.archived { background: var(--sheet-bg); box-shadow: inset 0 0 0 1.5px var(--l3); }
+
+.mmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ml1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.mrow-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 15.5px;
+  font-weight: 500;
+  line-height: 1.32;
+  color: var(--l1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+mark.hl {
+  background: var(--mark-bg);
+  color: var(--mark-fg);
+  font-weight: 600;
+  border-radius: 3.5px;
+  padding: 0 2px;
+}
+
+.mpill {
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+  flex: none;
+}
+.mpill.waiting { background: var(--orange-bg); color: var(--orange); }
+.mpill.running { background: var(--green-bg); color: var(--green); }
+.mpill.failed { background: var(--red-bg); color: var(--red); }
+.mpill.archived { background: var(--fill); color: var(--l2); font-weight: 500; }
+
+.gmark { display: inline-flex; flex: none; opacity: .85; }
+.gmark.pushed { color: var(--gh-push); }
+.gmark.merged { color: var(--gh-merge); }
+
+.ml2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--l2);
+  min-width: 0;
+}
+.ml2-meta {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ml2-time {
+  font-size: 12.5px;
+  color: var(--l3);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.msnip {
+  margin-top: 2px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--l2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.msnip code { font-size: 11.5px; color: var(--l1); }
+
+/* Subtle Peek Button on Row (for quick mouse testing + discoverability alongside long-press) */
+.mpeek {
+  width: 26px;
+  height: 26px;
+  margin: -2px -6px -2px 2px;
+  border-radius: 50%;
+  color: var(--l3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.mpeek:hover, .mpeek:active { background: var(--fill); color: var(--l1); }
+
+/* Empty State */
+.mempty {
+  padding: 58px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+}
+.mempty-ic {
+  width: 44px; height: 44px; border-radius: 13px;
+  background: var(--surface); color: var(--l3);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 4px;
+}
+.mempty b { font-size: 16px; font-weight: 600; color: var(--l1); }
+.mempty p { margin: 0; font-size: 13.5px; color: var(--l2); line-height: 1.5; }
+.mempty-acts { display: flex; gap: 8px; margin-top: 8px; }
+.mebtn {
+  height: 32px; padding: 0 13px; border-radius: 999px;
+  font-size: 13px; font-weight: 600;
+  background: var(--fill); color: var(--l1);
+}
+.mebtn.primary { background: var(--accent-bg); color: var(--accent-t); }
+
+/* ---------- iOS Pull-Down Filter Menu (UIMenu inside phone) ---------- */
+.ios-menu-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+}
+.ios-menu {
+  position: absolute;
+  z-index: 46;
+  min-width: 196px;
+  background: var(--pop);
+  backdrop-filter: blur(28px) saturate(1.6);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  border-radius: 15px;
+  box-shadow: var(--pop-sh);
+  overflow: hidden;
+  animation: ios-pop .16s var(--spring);
+  transform-origin: top left;
+}
+@keyframes ios-pop { from { opacity: 0; transform: scale(.9); } }
+.ios-mi {
+  width: 100%;
+  height: 41px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  color: var(--l1);
+  border-top: .5px solid var(--sep);
+}
+.ios-mi:first-child { border-top: 0; }
+.ios-mi:active { background: var(--fill); }
+.ios-mi .ck { width: 16px; color: var(--accent-t); display: flex; justify-content: center; }
+.ios-mi .cnt { margin-left: auto; font-size: 13px; color: var(--l3); font-variant-numeric: tabular-nums; }
+
+/* ---------- iOS Long-Press Context Preview (SessionGitPreviewCard + UIMenu) ---------- */
+.ctx-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 55;
+  background: var(--scrim);
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  padding: 72px 18px 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 11px;
+  animation: fade-in .16s ease;
+}
+@keyframes fade-in { from { opacity: 0; } }
+
+.ctx-card {
+  background: var(--pop);
+  border-radius: 20px;
+  box-shadow: var(--pop-sh);
+  padding: 15px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  animation: ctx-spring .24s var(--spring);
+}
+@keyframes ctx-spring { from { opacity: 0; transform: scale(.92) translateY(8px); } }
+
+.ctx-head { display: flex; align-items: flex-start; gap: 10px; }
+.ctx-title { font-size: 16px; font-weight: 650; line-height: 1.35; color: var(--l1); }
+.ctx-sub { margin-top: 3px; font-size: 12.5px; color: var(--l2); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.ctx-ex {
+  border-radius: 12px;
+  padding: 9px 11px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ctx-ex.waiting { background: var(--orange-bg); }
+.ctx-ex.failed { background: var(--red-bg); }
+.ctx-ex-h { font-size: 11px; font-weight: 600; color: var(--l3); }
+.ctx-ex.waiting .ctx-ex-h { color: var(--orange); }
+.ctx-ex.failed .ctx-ex-h { color: var(--red); }
+.ctx-ex-t { font-size: 13px; line-height: 1.45; color: var(--l1); }
+
+.ctx-git {
+  --gc: var(--l2);
+  border-radius: 12px;
+  padding: 10px 11px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ctx-git.pushed { --gc: var(--gh-push); background: var(--gh-push-bg); }
+.ctx-git.merged { --gc: var(--gh-merge); background: var(--gh-merge-bg); }
+.ctx-git.unpushed { --gc: var(--gh-ahead); background: var(--gh-ahead-bg); }
+.ctx-git.dirty { --gc: var(--gh-dirty); background: var(--gh-dirty-bg); }
+.ctx-git-top { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--gc); }
+.ctx-diff { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 11.5px; }
+.ctx-add { color: var(--gh-push); }
+.ctx-del { color: var(--del-fg); }
+.ctx-dbar { display: inline-flex; gap: 1.5px; }
+.ctx-sq { width: 6px; height: 6px; border-radius: 1.3px; background: var(--fill2); }
+.ctx-sq.add { background: var(--gh-push); }
+.ctx-sq.del { background: var(--del-fg); }
+.ctx-grow { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--l2); min-width: 0; }
+.ctx-ref { font-family: var(--mono); font-size: 11px; color: var(--l1); background: var(--fill); padding: 1px 5px; border-radius: 4px; max-width: 135px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-subj { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--l1); }
+
+.ctx-actions {
+  width: 238px;
+  background: var(--pop);
+  border-radius: 15px;
+  box-shadow: var(--pop-sh);
+  overflow: hidden;
+  animation: ctx-spring .24s var(--spring);
+}
+.ctx-act {
+  width: 100%;
+  height: 43px;
+  padding: 0 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 15px;
+  color: var(--l1);
+  border-top: .5px solid var(--sep);
+}
+.ctx-act:first-child { border-top: 0; }
+.ctx-act:active { background: var(--fill); }
+.ctx-act .ic { color: var(--l2); }
+
+/* ---------- Legacy iPhone SearchSheet Comparison ---------- */
+.legacy-body { display: none; flex: 1; overflow-y: auto; padding: 6px 16px 24px; }
+.search-sheet.legacy .ish-filters,
+.search-sheet.legacy .ish-scroll { display: none; }
+.search-sheet.legacy .legacy-body { display: block; }
+.leg-h { font-size: 19px; font-weight: 700; margin: 12px 0 8px; }
+.leg-st-row {
+  display: flex; align-items: center; gap: 12px; padding: 9px 0;
+  border-bottom: .5px solid var(--sep); font-size: 15.5px;
+}
+.leg-st-ic { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 600; }
+.leg-plain-row { padding: 10px 0; border-bottom: .5px solid var(--sep); }
+.leg-note {
+  margin-top: 14px; padding: 11px 12px; border-radius: 12px;
+  background: var(--red-bg); color: var(--red); font-size: 12.5px; line-height: 1.55;
+}
+
+/* Toast inside phone */
+.p-toast {
+  position: absolute;
+  left: 50%; bottom: 26px;
+  transform: translateX(-50%) translateY(10px);
+  z-index: 80;
+  padding: 8px 15px;
+  border-radius: 999px;
+  background: var(--pop);
+  box-shadow: var(--pop-sh);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--l1);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: all .2s var(--ease);
+}
+.p-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---------- Right Column: Design Comparison & Specs ---------- */
+.spec-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 6px;
+}
+.spec-card {
+  background: var(--card);
+  border: 1px solid var(--card-bd);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.spec-card .tag {
+  width: fit-content;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--accent-bg);
+  color: var(--accent-t);
+}
+.spec-card h3 { margin: 2px 0 0; font-size: 14.5px; font-weight: 650; }
+.spec-card p { margin: 0; font-size: 12.5px; color: var(--page-fg2); line-height: 1.58; }
+
+.tip-bar {
+  font-size: 12.5px;
+  color: var(--page-fg2);
+  background: var(--card);
+  border: 1px dashed var(--card-bd);
+  border-radius: 11px;
+  padding: 9px 13px;
+}
+
+/* ---------- Bottom Floating Switcher Dock ---------- */
+.fdock {
+  position: fixed;
+  left: 50%; bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  border-radius: 13px;
+  background: var(--card);
+  border: 1px solid var(--card-bd);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .18);
+}
+.fgrp { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--fill); }
+.fbtn {
+  height: 27px; padding: 0 11px; border-radius: 7px;
+  font-size: 12px; font-weight: 500; color: var(--page-fg2);
+  white-space: nowrap;
+}
+.fbtn.on { background: var(--card); color: var(--page-fg); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+.fbtn.danger.on { color: var(--red); }
+.fsep { width: 1px; height: 18px; background: var(--card-bd); }
+
+@media (max-width: 900px) {
+  .stage { grid-template-columns: 1fr; justify-items: center; }
+  .spec-col { max-width: 440px; }
+}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-t">
+    <h1>Hermesh iPhone · 搜索体验升级交互原型</h1>
+    <p>对齐桌面端设计升级 · 边输边出高亮 + 单排必要筛选 + 已归档检索 + 长按 Git 透视预览卡</p>
+  </div>
+  <div class="presets" id="presets">
+    <button class="pbtn on" data-preset="theme">场景 1：实时搜「主题」</button>
+    <button class="pbtn" data-preset="initial">场景 2：首屏（最近搜索+任务）</button>
+    <button class="pbtn" data-preset="archived">场景 3：搜「已归档」（补齐盲区）</button>
+    <button class="pbtn" data-preset="preview">场景 4：长按透视预览卡</button>
+    <button class="pbtn" data-preset="branch">场景 5：命中分支 / 报错摘要</button>
+  </div>
+</header>
+
+<main class="stage">
+  <div class="phone-col">
+    <div class="phone" id="phone">
+      <!-- Hardware Status Bar & Dynamic Island -->
+      <div class="status-bar">
+        <span>9:41</span>
+        <span class="sb-icons">
+          <svg width="16" height="11" viewBox="0 0 16 11" fill="currentColor"><rect x="0" y="7" width="2.8" height="4" rx=".8"/><rect x="4.2" y="5" width="2.8" height="6" rx=".8"/><rect x="8.4" y="2.5" width="2.8" height="8.5" rx=".8"/><rect x="12.6" y="0" width="2.8" height="11" rx=".8"/></svg>
+          <svg width="23" height="11" viewBox="0 0 23 11" fill="none"><rect x=".6" y=".6" width="19.5" height="9.8" rx="2.6" stroke="currentColor" stroke-width="1.1"/><rect x="2.2" y="2.2" width="15" height="6.6" rx="1.3" fill="currentColor"/><path d="M21.4 3.6v3.8a1.8 1.8 0 0 0 0-3.8z" fill="currentColor"/></svg>
+        </span>
+      </div>
+      <div class="island"></div>
+      <div class="home-bar"></div>
+
+      <!-- Underlying Drawer (Revealed when user taps 取消, tap 🔍 to reopen!) -->
+      <div class="drawer-bg">
+        <div class="dr-top">
+          <span class="wordmark"><i></i>Hermesh</span>
+          <button class="gcircle" id="reopenSearchBtn" title="打开搜索">
+            <svg class="ic" viewBox="0 0 16 16"><circle cx="7.3" cy="7.3" r="5.3"/><path d="M14 14l-2.9-2.9"/></svg>
+          </button>
+        </div>
+        <div class="dr-nav">
+          <div class="dr-item"><span>新建任务</span></div>
+          <div class="dr-item"><span>Her</span></div>
+          <div class="dr-item sel"><span>概览</span></div>
+        </div>
+        <div class="dr-slid"></div>
+      </div>
+
+      <!-- Sheet Scrim -->
+      <div class="sheet-dim" id="sheetDim"></div>
+
+      <!-- SearchSheet Modal -->
+      <section class="search-sheet" id="searchSheet" aria-label="搜索任务">
+        <div class="grabber"></div>
+
+        <!-- 1. Active Search Input + Cancel -->
+        <div class="ish-top">
+          <div class="ish-field">
+            <svg class="ic ic-s" viewBox="0 0 16 16"><circle cx="7.3" cy="7.3" r="5.3"/><path d="M14 14l-2.9-2.9"/></svg>
+            <input id="mSearchInput" type="text" autocomplete="off" placeholder="搜索任务、项目、分支、Agent…" value="主题">
+            <button class="ish-clear" id="mClearBtn" title="清空">
+              <svg width="10" height="10" viewBox="0 0 12 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+            </button>
+          </div>
+          <button class="ish-cancel" id="mCancelBtn">取消</button>
+        </div>
+
+        <!-- 2. Single-Row Horizontal Filter Chips -->
+        <div class="ish-filters" id="mFilterBar"></div>
+
+        <!-- 3. Live Results / Initial Suggestions -->
+        <div class="ish-scroll" id="mScroll"></div>
+
+        <!-- Legacy View (for 1-click Before/After comparison) -->
+        <div class="legacy-body">
+          <div class="leg-h">按状态搜索</div>
+          <div class="leg-st-row"><span class="leg-st-ic" style="background:var(--orange-bg);color:var(--orange)">?</span><span style="flex:1">需要你处理</span><span style="color:var(--l2)">1</span></div>
+          <div class="leg-st-row"><span class="leg-st-ic" style="background:var(--green-bg);color:var(--green)">⚡</span><span style="flex:1">进行中</span><span style="color:var(--l2)">1</span></div>
+          <div class="leg-st-row"><span class="leg-st-ic" style="background:var(--red-bg);color:var(--red)">!</span><span style="flex:1">出错</span><span style="color:var(--l2)">1</span></div>
+          <div class="leg-st-row"><span class="leg-st-ic" style="background:var(--fill);color:var(--l2)">✓</span><span style="flex:1">完成</span><span style="color:var(--l2)">4</span></div>
+          <div class="leg-h" style="margin-top:18px">最近</div>
+          <div class="leg-plain-row">
+            <div>扩展主题配色与侧栏玻璃选项</div>
+            <div style="font-size:12.5px;color:var(--l2);margin-top:2px">你 → Antigravity · hermesh · 12:39</div>
+          </div>
+          <div class="leg-note">
+            <b>旧版 4 个痛点：</b><br>
+            1. 写死 <code>archived = false</code>，已归档任务彻底无法搜出；<br>
+            2. 输入时被 <code>.searchSuggestions</code> 遮挡，必须多按一次回车才出结果；<br>
+            3. 仍用纯文字 <code>SessionRow</code>，无 Agent 图标、无关键词高亮、无长按 Git 透视卡；<br>
+            4. 首屏被 4 行大状态入口占满，却无法按项目 / Agent 筛选。
+          </div>
+        </div>
+
+        <!-- Pull-Down Menu Host -->
+        <div id="mMenuHost"></div>
+
+        <!-- Long-Press Context Preview Overlay (SessionGitPreviewCard + UIMenu) -->
+        <div class="ctx-overlay" id="ctxOverlay" hidden></div>
+      </section>
+
+      <div class="p-toast" id="pToast"></div>
+    </div>
+  </div>
+
+  <!-- Design Breakdown Column -->
+  <aside class="spec-col">
+    <div class="tip-bar">💡 交互提示：可直接打字检索 · 点上方筛选胶囊 · <b>长按任务行（或点右侧 ⋯）</b>弹出 iOS 透视预览卡</div>
+    <div class="spec-card">
+      <span class="tag">改进 1 · 补齐盲区 + 精简必要筛选</span>
+      <h3>单排横向胶囊栏：项目 · Agent · 状态 · 含已归档</h3>
+      <p>去掉占半屏的静态「按状态搜索」分组，浓缩为搜索框下方单排轻量胶囊（多台电脑时自适应出现「环境」）。补齐「含已归档」开关，彻底解决已归档任务在 iPhone 上搜不到的问题。</p>
+    </div>
+    <div class="spec-card">
+      <span class="tag">改进 2 · 零遮挡实时反馈</span>
+      <h3>去掉 .searchSuggestions 遮挡，边输边出高亮结果</h3>
+      <p>不再用系统补全列表盖住页面逼用户多按一次回车；每敲一个字实时过滤任务，并用柔和强调色高亮命中的标题、项目、Agent、分支名或错误/进展摘要。</p>
+    </div>
+    <div class="spec-card">
+      <span class="tag">改进 3 · 与新版侧栏同源</span>
+      <h3>统一 AgentLogo 流光环 + 状态胶囊 + Git 交付印记</h3>
+      <p>替换老旧纯文字 <code>SessionRow</code>，与侧边栏 <code>MenuSessionRow</code> 保持一致：运行中展示品牌蓝流光环，右侧展示语义状态胶囊与已推送/已合并图标。</p>
+    </div>
+    <div class="spec-card">
+      <span class="tag">改进 4 · 桌面端右栏预览的 iOS 原生承接</span>
+      <h3>长按（或点 ⋯）弹出 SessionGitPreviewCard + 快捷操作</h3>
+      <p>手机窄屏不做拥挤双栏，直接复用 iPhone 现成的长按预览机制，展示完整标题、待回答/报错摘要、Git 分支与 <code>+ins/−del</code> 方块条，并附带打开、置顶、拷贝 ID、归档快捷菜单。</p>
+    </div>
+  </aside>
+</main>
+
+<!-- Bottom Mode & Theme Switcher -->
+<div class="fdock">
+  <div class="fgrp" id="modeGrp">
+    <button class="fbtn on" data-mode="modern">新版优化方案（推荐）</button>
+    <button class="fbtn danger" data-mode="legacy">现状对比（旧版）</button>
+  </div>
+  <span class="fsep"></span>
+  <div class="fgrp" id="themeGrp">
+    <button class="fbtn on" data-theme="light">浅色</button>
+    <button class="fbtn" data-theme="dark">深色</button>
+  </div>
+</div>
+
+<script>
+const SESSIONS = [
+  {
+    id: "s1",
+    title: "优化桌面与 iPhone 搜索面板体验",
+    agent: "codex",
+    agentName: "Codex",
+    sender: "Her",
+    project: "hermesh",
+    machine: "MacBook Pro",
+    status: "running",
+    pinned: true,
+    archived: false,
+    time: "02:14",
+    branch: "feat/search-palette-redesign",
+    targetRef: "main",
+    gitState: "unpushed",
+    gitLabel: "1 个本地提交待推送",
+    add: 245,
+    del: 68,
+    headCommit: "a82f19d",
+    headSubject: "Search: unify desktop split preview and iPhone chips",
+    excerpt: "正在同步 iPhone 端单排筛选胶囊与主题关键词高亮…"
+  },
+  {
+    id: "s2",
+    title: "加固 ACP 并行启动与侧栏 Git 状态按需同步",
+    agent: "claude",
+    agentName: "Claude Code",
+    sender: "你",
+    project: "hermesh",
+    machine: "Mac Studio",
+    status: "waiting",
+    pinned: false,
+    archived: false,
+    time: "12:18",
+    branch: "fix/acp-parallel-git-sync",
+    targetRef: "main",
+    gitState: "dirty",
+    gitLabel: "3 个文件改动未提交",
+    add: 96,
+    del: 19,
+    headCommit: "cf4e95c",
+    headSubject: "Sessions: harden ACP parallel startup",
+    excerpt: "是否在窗口重新聚焦时跳过已推送分支的 Git 状态轮询？"
+  },
+  {
+    id: "s3",
+    title: "扩展主题配色与侧栏玻璃选项",
+    agent: "antigravity",
+    agentName: "Antigravity",
+    sender: "你",
+    project: "hermesh",
+    machine: "Mac Studio",
+    status: "idle",
+    pinned: false,
+    archived: false,
+    time: "12:39",
+    branch: "feat/soft-light-theme",
+    targetRef: "main",
+    gitState: "pushed",
+    gitLabel: "已提交并推送",
+    add: 184,
+    del: 42,
+    headCommit: "cf3c2fc",
+    headSubject: "Desktop: add soft-light appearance (柔白)",
+    excerpt: "已完成浅色、柔白、深色、暗黑四套主题变量对齐。"
+  },
+  {
+    id: "s4",
+    title: "每日技术周报汇总与主题趋势整理",
+    agent: "her",
+    agentName: "Her",
+    sender: "你",
+    project: "Her",
+    machine: "Mac Studio",
+    status: "idle",
+    pinned: false,
+    archived: false,
+    time: "昨天",
+    branch: "",
+    targetRef: "",
+    gitState: "clean",
+    gitLabel: "",
+    add: 0,
+    del: 0,
+    headCommit: "",
+    headSubject: "",
+    excerpt: "已整理本周 14 条核心变更，其中「主题系统」占比最高。"
+  },
+  {
+    id: "s5",
+    title: "修复生产环境 Relay 断线重连证书校验失败",
+    agent: "claude",
+    agentName: "Claude Code",
+    sender: "Cursor",
+    project: "relay-core",
+    machine: "Linux Build",
+    status: "failed",
+    pinned: false,
+    archived: false,
+    time: "昨天",
+    branch: "fix/tls-reconnect-pin",
+    targetRef: "main",
+    gitState: "dirty",
+    gitLabel: "2 个文件改动未提交",
+    add: 38,
+    del: 12,
+    headCommit: "9b11e40",
+    headSubject: "relay: add backoff jitter for reconnect",
+    excerpt: "go test 超时退出：TLS handshake deadline exceeded。"
+  },
+  {
+    id: "s6",
+    title: "旧版浅色主题对比度审计（已归档）",
+    agent: "gemini",
+    agentName: "Gemini CLI",
+    sender: "你",
+    project: "design-tokens",
+    machine: "Mac Studio",
+    status: "archived",
+    pinned: false,
+    archived: true,
+    time: "11月18日",
+    branch: "chore/theme-contrast-audit",
+    targetRef: "main",
+    gitState: "merged",
+    gitLabel: "已合并至 main",
+    add: 52,
+    del: 48,
+    headCommit: "7d02a11",
+    headSubject: "docs: record WCAG contrast table for light theme",
+    excerpt: "WCAG AA 对比度检查完成，旧版低对比度灰字方案已归档。"
+  }
+];
+
+const ICONS = {
+  folder: '<path d="M1.8 4.4c0-.7.5-1.2 1.2-1.2h3l1.4 1.5H13c.7 0 1.2.5 1.2 1.2V12c0 .7-.5 1.2-1.2 1.2H3c-.7 0-1.2-.5-1.2-1.2z"/>',
+  laptop: '<rect x="3" y="3.3" width="10" height="7" rx="1.2"/><path d="M1.4 12.7h13.2"/>',
+  archive: '<rect x="2" y="2.8" width="12" height="3.4" rx="1"/><path d="M3.2 6.2v6c0 .7.5 1.2 1.2 1.2h7.2c.7 0 1.2-.5 1.2-1.2v-6M6.4 9h3.2"/>',
+  clock: '<circle cx="8" cy="8" r="5.8"/><path d="M8 4.8V8l2.2 1.5"/>',
+  chevD: '<path d="M4.5 6.3L8 9.8l3.5-3.5"/>',
+  x: '<path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2"/>',
+  check: '<path d="M3.3 8.4l3 3 6.4-6.8"/>',
+  more: '<circle cx="4" cy="8" r="1.15" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.15" fill="currentColor" stroke="none"/><circle cx="12" cy="8" r="1.15" fill="currentColor" stroke="none"/>',
+  search: '<circle cx="7.3" cy="7.3" r="5.3"/><path d="M14 14l-2.9-2.9"/>',
+  gitPushed: '<circle cx="4.5" cy="3.8" r="1.55"/><circle cx="4.5" cy="12.2" r="1.55"/><circle cx="11.5" cy="12.2" r="1.55"/><path d="M4.5 5.4v5.2M11.5 10.6V5.6c0-1.1-.9-1.8-2-1.8H8"/><path d="M9.5 2.2L7.8 3.8l1.7 1.6"/>',
+  gitMerged: '<circle cx="4.5" cy="3.8" r="1.55"/><circle cx="4.5" cy="12.2" r="1.55"/><circle cx="11.8" cy="8.8" r="1.55"/><path d="M4.5 5.4v5.2M4.5 5.4c0 2.5 2.4 3.4 5.7 3.4"/>',
+  gitUnpushed: '<circle cx="8" cy="11.6" r="1.75"/><path d="M3.2 11.6h3M9.8 11.6h3M8 8.2V2.6M5.5 5.1L8 2.6l2.5 2.5"/>',
+  gitDirty: '<rect x="2.4" y="2.4" width="11.2" height="11.2" rx="2.4"/><circle cx="8" cy="8" r="2.1" fill="currentColor" stroke="none"/>',
+  branch: '<circle cx="4.8" cy="3.8" r="1.5"/><circle cx="4.8" cy="12.2" r="1.5"/><circle cx="11.2" cy="5.4" r="1.5"/><path d="M4.8 5.3v5.4M11.2 6.9c0 2.4-2.2 3-6.4 3.7"/>',
+  gitCommit: '<circle cx="8" cy="8" r="2.3"/><path d="M1.8 8h3.9M10.3 8h3.9"/>',
+  open: '<path d="M5.5 3.5h7v7M12.2 3.8L4.2 11.8"/>',
+  pin: '<path d="M6 2.5h4l-.6 3.4 2 2v1H4.6v-1l2-2zM8 8.9v4.6"/>',
+  copy: '<rect x="5.2" y="5.2" width="8" height="8" rx="1.6"/><path d="M10.8 5.2V3.8c0-.6-.5-1.1-1.1-1.1H3.9c-.6 0-1.1.5-1.1 1.1v5.8c0 .6.5 1.1 1.1 1.1h1.3"/>'
+};
+
+function icon(name, cls = "") {
+  return `<svg class="ic ${cls}" viewBox="0 0 16 16" aria-hidden="true">${ICONS[name] || ""}</svg>`;
+}
+
+function agentBadge(agent, size = 18) {
+  if (agent === "her") {
+    return `<svg class="ag-in" width="${size}" height="${size}" viewBox="8 16 104 104" aria-hidden="true">
+      <path d="M30 53L26 25L50 37Z M90 53L94 25L70 37Z" fill="#cbd3fb"/>
+      <path d="M60 30C84 30 100 48 103 72C106 96 92 110 60 110C28 110 14 96 17 72C20 48 36 30 60 30Z" fill="#c3cbf7"/>
+      <path d="M46 47H74C86 47 92 55 92 65.5C92 80 82 88 60 88C38 88 28 80 28 65.5C28 55 34 47 46 47Z" fill="#f1f3ff"/>
+      <circle cx="47.5" cy="64" r="5.4" fill="#3c2f3a"/><circle cx="72.5" cy="64" r="5.4" fill="#3c2f3a"/>
+    </svg>`;
+  }
+  const styles = {
+    antigravity: { bg: "linear-gradient(135deg,#2563eb,#7c3aed)", g: "A" },
+    claude: { bg: "#d97757", g: "C" },
+    codex: { bg: "#18181b", g: "X" },
+    gemini: { bg: "linear-gradient(135deg,#3b82f6,#06b6d4)", g: "✦" }
+  };
+  const s = styles[agent] || { bg: "#64748b", g: agent[0].toUpperCase() };
+  return `<span class="ag-in" style="width:${size}px;height:${size}px;border-radius:${Math.round(size * 0.28)}px;background:${s.bg};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:${Math.round(size * 0.58)}px;font-weight:700;line-height:1">${s.g}</span>`;
+}
+
+const state = {
+  query: "主题",
+  filters: { project: "", agent: "", status: "", machine: "", archived: false },
+  recent: ["主题", "ACP", "TLS", "玻璃"],
+  openMenu: null,
+  previewId: null,
+  closed: false,
+  mode: "modern",
+  theme: "light"
+};
+
+const FILTER_DEFS = [
+  { key: "project", label: "项目", icon: "folder", options: () => [...new Set(SESSIONS.map(s => s.project))].map(v => ({ value: v, label: v })) },
+  { key: "agent", label: "Agent", icon: "", options: () => [
+    { value: "codex", label: "Codex" },
+    { value: "claude", label: "Claude Code" },
+    { value: "antigravity", label: "Antigravity" },
+    { value: "gemini", label: "Gemini CLI" },
+    { value: "her", label: "Her" }
+  ]},
+  { key: "status", label: "状态", icon: "", options: () => [
+    { value: "waiting", label: "等回答" },
+    { value: "running", label: "运行中" },
+    { value: "failed", label: "出错" },
+    { value: "idle", label: "已完成" }
+  ]},
+  { key: "machine", label: "环境", icon: "laptop", options: () => [...new Set(SESSIONS.map(s => s.machine))].map(v => ({ value: v, label: v })) }
+];
+
+function escHtml(str) {
+  return String(str).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+}
+
+function highlight(text, q) {
+  const safe = escHtml(text);
+  const needle = q.trim();
+  if (!needle) return safe;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return safe.replace(new RegExp(`(${escaped})`, "gi"), '<mark class="hl">$1</mark>');
+}
+
+function hasFilter() {
+  const f = state.filters;
+  return Boolean(f.project || f.agent || f.status || f.machine || f.archived);
+}
+
+function filteredSessions() {
+  const q = state.query.trim().toLowerCase();
+  const f = state.filters;
+  const rank = s => (s.status === "waiting" || s.status === "failed") ? 0 : s.status === "running" ? 1 : 2;
+  return SESSIONS.filter(s => {
+    if (!f.archived && s.archived) return false;
+    if (f.project && s.project !== f.project) return false;
+    if (f.agent && s.agent !== f.agent) return false;
+    if (f.status && s.status !== f.status) return false;
+    if (f.machine && s.machine !== f.machine) return false;
+    if (!q) return true;
+    const hay = [s.title, s.project, s.agentName, s.sender, s.machine, s.branch, s.excerpt].join(" ").toLowerCase();
+    return hay.includes(q);
+  }).sort((a, b) => rank(a) - rank(b));
+}
+
+function statusPill(st) {
+  const map = {
+    waiting: { text: "等回答", cls: "waiting" },
+    running: { text: "运行中", cls: "running" },
+    failed: { text: "出错", cls: "failed" },
+    archived: { text: "已归档", cls: "archived" }
+  };
+  return map[st] || null;
+}
+
+function diffBlocks(ins, del) {
+  const total = ins + del;
+  if (!total) return [];
+  const addN = Math.min(5, Math.max(ins > 0 ? 1 : 0, Math.round((ins / total) * 5)));
+  const delN = Math.min(5 - addN, del > 0 ? Math.max(1, 5 - addN) : 0);
+  const res = [];
+  for (let i = 0; i < addN; i++) res.push("add");
+  for (let i = 0; i < delN; i++) res.push("del");
+  while (res.length < 5) res.push("");
+  return res;
+}
+
+function renderFilterBar() {
+  const bar = document.getElementById("mFilterBar");
+  const f = state.filters;
+  let html = "";
+
+  for (const def of FILTER_DEFS) {
+    const val = f[def.key];
+    const opt = def.options().find(o => o.value === val);
+    const ic = def.icon ? icon(def.icon, "xs") : "";
+    if (val && opt) {
+      html += `<button class="mchip active" data-fopen="${def.key}">
+        ${ic}<span>${def.label}：${escHtml(opt.label)}</span>
+        <span class="mchip-x" data-fclear="${def.key}">${icon("x", "xs")}</span>
+      </button>`;
+    } else {
+      html += `<button class="mchip" data-fopen="${def.key}">
+        ${ic}<span>${def.label}</span>${icon("chevD", "chev")}
+      </button>`;
+    }
+  }
+
+  html += `<button class="mchip ${f.archived ? "active" : ""}" id="mArchBtn">
+    ${icon("archive", "xs")}<span>含已归档</span>
+  </button>`;
+
+  if (hasFilter()) {
+    html += `<button class="mchip-reset" id="mResetBtn">重置</button>`;
+  }
+
+  bar.innerHTML = html;
+}
+
+function renderList() {
+  document.getElementById("mClearBtn").hidden = state.query.length === 0;
+  const scroll = document.getElementById("mScroll");
+  const q = state.query.trim();
+  const list = filteredSessions();
+  let html = "";
+
+  // Show compact Recent Searches pills when query is empty & no filter active
+  if (!q && !hasFilter() && state.recent.length > 0) {
+    html += `<div class="rec-sec">
+      <div class="sec-bar">
+        <b>最近搜索</b>
+        <button id="clearRecentBtn">清空</button>
+      </div>
+      <div class="rec-pills">
+        ${state.recent.map(r => `<button class="rec-pill" data-recent="${escHtml(r)}">${icon("clock", "xs")}<span>${escHtml(r)}</span></button>`).join("")}
+      </div>
+    </div>`;
+  }
+
+  if (list.length === 0) {
+    html += `<div class="mempty">
+      <div class="mempty-ic">${icon("search")}</div>
+      <b>没有找到匹配的任务</b>
+      <p>尝试换个关键词${!state.filters.archived ? "，或开启上方「含已归档」检索历史归档任务" : "或清除筛选条件"}。</p>
+      <div class="mempty-acts">
+        ${!state.filters.archived ? `<button class="mebtn primary" id="emptyArchBtn">开启含已归档</button>` : ""}
+        <button class="mebtn" id="emptyResetBtn">清除搜索与筛选</button>
+      </div>
+    </div>`;
+    scroll.innerHTML = html;
+    return;
+  }
+
+  const secTitle = (!q && !hasFilter()) ? "最近与进行中" : `任务 · ${list.length} 个`;
+  html += `<div class="sec-bar"><b>${secTitle}</b><span class="cnt">${!q && !hasFilter() ? "长按预览详情" : ""}</span></div>`;
+
+  for (const s of list) {
+    const pill = statusPill(s.status);
+    const running = s.status === "running";
+    const dot = (!running && s.status !== "idle") ? `<span class="mdot ${s.status}"></span>` : "";
+    const gitMark = s.gitState === "pushed"
+      ? `<span class="gmark pushed">${icon("gitPushed", "sm")}</span>`
+      : s.gitState === "merged"
+        ? `<span class="gmark merged">${icon("gitMerged", "sm")}</span>`
+        : "";
+
+    const ql = q.toLowerCase();
+    const titleHit = ql && s.title.toLowerCase().includes(ql);
+    const branchHit = ql && s.branch && s.branch.toLowerCase().includes(ql);
+    const excerptHit = ql && !titleHit && s.excerpt && s.excerpt.toLowerCase().includes(ql);
+
+    html += `<div class="mrow ${s.archived ? "archived" : ""}" data-sid="${s.id}">
+      <span class="mlogo ${running ? "run" : ""}">
+        ${running ? '<i class="mlogo-orbit"></i>' : ""}
+        ${agentBadge(s.agent, 18)}
+        ${dot}
+      </span>
+      <div class="mmain">
+        <div class="ml1">
+          <span class="mrow-title">${highlight(s.title, q)}</span>
+          ${pill ? `<span class="mpill ${pill.cls}">${pill.text}</span>` : ""}
+          ${gitMark}
+        </div>
+        <div class="ml2">
+          <span class="ml2-meta">${highlight(s.project, q)} · ${highlight(s.sender, q)} → ${highlight(s.agentName, q)}</span>
+          <span class="ml2-time">${escHtml(s.time)}</span>
+        </div>
+        ${branchHit ? `<div class="msnip">分支 <code>${highlight(s.branch, q)}</code></div>` : ""}
+        ${excerptHit ? `<div class="msnip">${highlight(s.excerpt, q)}</div>` : ""}
+      </div>
+      <button class="mpeek" data-peek="${s.id}" title="长按或点击预览透视卡">${icon("more", "sm")}</button>
+    </div>`;
+  }
+
+  scroll.innerHTML = html;
+}
+
+function openPullDown(key, btnEl) {
+  const host = document.getElementById("mMenuHost");
+  if (state.openMenu === key) {
+    state.openMenu = null;
+    host.innerHTML = "";
+    return;
+  }
+  state.openMenu = key;
+  const def = FILTER_DEFS.find(d => d.key === key);
+  const sheetRect = document.getElementById("searchSheet").getBoundingClientRect();
+  const btnRect = btnEl.getBoundingClientRect();
+  const left = Math.max(12, Math.min(btnRect.left - sheetRect.left, sheetRect.width - 210));
+  const top = btnRect.bottom - sheetRect.top + 6;
+  const cur = state.filters[key];
+
+  let itemsHtml = `<button class="ios-mi" data-val="">
+    <span class="ck">${cur === "" ? icon("check", "sm") : ""}</span>
+    <span>全部${def.label}</span>
+  </button>`;
+
+  for (const o of def.options()) {
+    const cnt = SESSIONS.filter(s => (state.filters.archived || !s.archived) && s[key] === o.value).length;
+    itemsHtml += `<button class="ios-mi" data-val="${escHtml(o.value)}">
+      <span class="ck">${cur === o.value ? icon("check", "sm") : ""}</span>
+      <span>${escHtml(o.label)}</span>
+      <span class="cnt">${cnt}</span>
+    </button>`;
+  }
+
+  host.innerHTML = `<div class="ios-menu-scrim" id="menuScrim"></div>
+    <div class="ios-menu" style="left:${left}px;top:${top}px">${itemsHtml}</div>`;
+
+  document.getElementById("menuScrim").addEventListener("click", () => {
+    state.openMenu = null;
+    host.innerHTML = "";
+  });
+  host.querySelector(".ios-menu").addEventListener("click", e => {
+    const mi = e.target.closest("[data-val]");
+    if (!mi) return;
+    state.filters[key] = mi.dataset.val;
+    state.openMenu = null;
+    host.innerHTML = "";
+    renderAll();
+  });
+}
+
+function showContextPreview(id) {
+  const s = SESSIONS.find(x => x.id === id);
+  if (!s) return;
+  state.previewId = id;
+  const q = state.query.trim();
+  const pill = statusPill(s.status);
+  const blocks = diffBlocks(s.add, s.del);
+  const gitIconMap = { pushed: "gitPushed", merged: "gitMerged", unpushed: "gitUnpushed", dirty: "gitDirty" };
+  const exCls = s.status === "waiting" ? "waiting" : s.status === "failed" ? "failed" : "";
+  const exLbl = s.status === "waiting" ? "等待你回答" : s.status === "failed" ? "最近错误" : s.status === "running" ? "当前进展" : "最近摘要";
+
+  const ov = document.getElementById("ctxOverlay");
+  ov.hidden = false;
+  ov.innerHTML = `
+    <div class="ctx-card">
+      <div class="ctx-head">
+        <span class="mlogo" style="width:30px;height:30px;border-radius:8.5px">${agentBadge(s.agent, 20)}</span>
+        <div style="flex:1;min-width:0">
+          <div class="ctx-title">${highlight(s.title, q)}</div>
+          <div class="ctx-sub">
+            ${pill ? `<span class="mpill ${pill.cls}">${pill.text}</span>` : ""}
+            <span>${escHtml(s.sender)} → ${escHtml(s.agentName)} · ${escHtml(s.project)} · ${escHtml(s.time)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ctx-ex ${exCls}">
+        <div class="ctx-ex-h">${exLbl}</div>
+        <div class="ctx-ex-t">${highlight(s.excerpt, q)}</div>
+      </div>
+
+      ${s.gitState && s.gitState !== "clean" ? `
+      <div class="ctx-git ${s.gitState}">
+        <div class="ctx-git-top">
+          ${icon(gitIconMap[s.gitState] || "gitCommit", "sm")}
+          <span>${escHtml(s.gitLabel)}</span>
+          ${blocks.length ? `<span class="ctx-diff">
+            <span class="ctx-add">+${s.add}</span>
+            <span class="ctx-del">−${s.del}</span>
+            <span class="ctx-dbar">${blocks.map(b => `<i class="ctx-sq ${b}"></i>`).join("")}</span>
+          </span>` : ""}
+        </div>
+        ${s.branch ? `<div class="ctx-grow">
+          ${icon("branch", "xs")}
+          <code class="ctx-ref">${highlight(s.branch, q)}</code>
+          <span>→</span>
+          <code class="ctx-ref">${escHtml(s.targetRef)}</code>
+        </div>` : ""}
+        ${s.headCommit ? `<div class="ctx-grow">
+          ${icon("gitCommit", "xs")}
+          <code>${escHtml(s.headCommit)}</code>
+          <span class="ctx-subj">${escHtml(s.headSubject)}</span>
+        </div>` : ""}
+      </div>` : ""}
+    </div>
+
+    <div class="ctx-actions">
+      <button class="ctx-act" data-cact="open"><span>打开任务</span>${icon("open", "sm")}</button>
+      <button class="ctx-act" data-cact="pin"><span>${s.pinned ? "取消置顶" : "置顶任务"}</span>${icon("pin", "sm")}</button>
+      <button class="ctx-act" data-cact="copy"><span>拷贝任务 ID</span>${icon("copy", "sm")}</button>
+      <button class="ctx-act" data-cact="archive"><span>${s.archived ? "取消归档" : "归档"}</span>${icon("archive", "sm")}</button>
+    </div>
+  `;
+}
+
+function closeContextPreview() {
+  state.previewId = null;
+  const ov = document.getElementById("ctxOverlay");
+  ov.hidden = true;
+  ov.innerHTML = "";
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const el = document.getElementById("pToast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 1900);
+}
+
+function setSheetClosed(closed) {
+  state.closed = closed;
+  document.getElementById("sheetDim").classList.toggle("closed", closed);
+  document.getElementById("searchSheet").classList.toggle("closed", closed);
+  if (closed) {
+    closeContextPreview();
+    document.getElementById("mMenuHost").innerHTML = "";
+    toast("已收起搜索（点右上角放大镜重新唤起）");
+  } else {
+    setTimeout(() => document.getElementById("mSearchInput").focus(), 60);
+  }
+}
+
+function renderAll() {
+  renderFilterBar();
+  renderList();
+}
+
+// Event Listeners
+document.getElementById("mSearchInput").addEventListener("input", e => {
+  state.query = e.target.value;
+  renderAll();
+});
+
+document.getElementById("mClearBtn").addEventListener("click", () => {
+  state.query = "";
+  document.getElementById("mSearchInput").value = "";
+  renderAll();
+  document.getElementById("mSearchInput").focus();
+});
+
+document.getElementById("mCancelBtn").addEventListener("click", () => setSheetClosed(true));
+document.getElementById("reopenSearchBtn").addEventListener("click", () => setSheetClosed(false));
+
+document.getElementById("mFilterBar").addEventListener("click", e => {
+  const clr = e.target.closest("[data-fclear]");
+  if (clr) {
+    e.stopPropagation();
+    state.filters[clr.dataset.fclear] = "";
+    renderAll();
+    return;
+  }
+  const fopen = e.target.closest("[data-fopen]");
+  if (fopen) {
+    openPullDown(fopen.dataset.fopen, fopen);
+    return;
+  }
+  if (e.target.closest("#mArchBtn")) {
+    state.filters.archived = !state.filters.archived;
+    renderAll();
+    return;
+  }
+  if (e.target.closest("#mResetBtn")) {
+    state.filters = { project: "", agent: "", status: "", machine: "", archived: false };
+    renderAll();
+  }
+});
+
+// Tap, Peek (⋯), or Long-Press (420ms) on Result Rows
+let pressTimer = null;
+let longPressed = false;
+
+const mScroll = document.getElementById("mScroll");
+mScroll.addEventListener("pointerdown", e => {
+  const row = e.target.closest(".mrow");
+  if (!row || e.target.closest(".mpeek")) return;
+  longPressed = false;
+  pressTimer = setTimeout(() => {
+    longPressed = true;
+    showContextPreview(row.dataset.sid);
+  }, 420);
+});
+["pointerup", "pointercancel", "pointermove"].forEach(ev => {
+  mScroll.addEventListener(ev, () => clearTimeout(pressTimer));
+});
+mScroll.addEventListener("contextmenu", e => {
+  const row = e.target.closest(".mrow");
+  if (row) {
+    e.preventDefault();
+    showContextPreview(row.dataset.sid);
+  }
+});
+
+mScroll.addEventListener("click", e => {
+  if (longPressed) { longPressed = false; return; }
+  const peek = e.target.closest("[data-peek]");
+  if (peek) {
+    e.stopPropagation();
+    showContextPreview(peek.dataset.peek);
+    return;
+  }
+  const rec = e.target.closest("[data-recent]");
+  if (rec) {
+    state.query = rec.dataset.recent;
+    document.getElementById("mSearchInput").value = state.query;
+    renderAll();
+    return;
+  }
+  if (e.target.closest("#clearRecentBtn")) {
+    state.recent = [];
+    renderAll();
+    return;
+  }
+  if (e.target.closest("#emptyArchBtn")) {
+    state.filters.archived = true;
+    renderAll();
+    return;
+  }
+  if (e.target.closest("#emptyResetBtn")) {
+    state.query = "";
+    document.getElementById("mSearchInput").value = "";
+    state.filters = { project: "", agent: "", status: "", machine: "", archived: false };
+    renderAll();
+    return;
+  }
+  const row = e.target.closest(".mrow");
+  if (row) {
+    const s = SESSIONS.find(x => x.id === row.dataset.sid);
+    if (s) {
+      const q = state.query.trim();
+      if (q && !state.recent.includes(q)) state.recent.unshift(q);
+      toast(`已打开「${s.title}」`);
+    }
+  }
+});
+
+document.getElementById("ctxOverlay").addEventListener("click", e => {
+  const act = e.target.closest("[data-cact]");
+  const s = SESSIONS.find(x => x.id === state.previewId);
+  if (act && s) {
+    const k = act.dataset.cact;
+    if (k === "open") toast(`已打开「${s.title}」`);
+    else if (k === "pin") { s.pinned = !s.pinned; toast(s.pinned ? "已置顶" : "已取消置顶"); }
+    else if (k === "copy") toast("已拷贝任务 ID");
+    else if (k === "archive") { s.archived = !s.archived; s.status = s.archived ? "archived" : "idle"; renderAll(); toast(s.archived ? "已归档" : "已取消归档"); }
+  }
+  closeContextPreview();
+});
+
+document.getElementById("modeGrp").addEventListener("click", e => {
+  const btn = e.target.closest("[data-mode]");
+  if (!btn) return;
+  state.mode = btn.dataset.mode;
+  document.querySelectorAll("#modeGrp .fbtn").forEach(b => b.classList.toggle("on", b === btn));
+  document.getElementById("searchSheet").classList.toggle("legacy", state.mode === "legacy");
+  closeContextPreview();
+});
+
+document.getElementById("themeGrp").addEventListener("click", e => {
+  const btn = e.target.closest("[data-theme]");
+  if (!btn) return;
+  state.theme = btn.dataset.theme;
+  document.documentElement.dataset.theme = state.theme;
+  document.querySelectorAll("#themeGrp .fbtn").forEach(b => b.classList.toggle("on", b === btn));
+});
+
+document.getElementById("presets").addEventListener("click", e => {
+  const btn = e.target.closest("[data-preset]");
+  if (!btn) return;
+  document.querySelectorAll("#presets .pbtn").forEach(b => b.classList.toggle("on", b === btn));
+  const p = btn.dataset.preset;
+  if (state.closed) setSheetClosed(false);
+  if (state.mode === "legacy") {
+    state.mode = "modern";
+    document.getElementById("searchSheet").classList.remove("legacy");
+    document.querySelectorAll("#modeGrp .fbtn").forEach(b => b.classList.toggle("on", b.dataset.mode === "modern"));
+  }
+  closeContextPreview();
+  document.getElementById("mMenuHost").innerHTML = "";
+  state.filters = { project: "", agent: "", status: "", machine: "", archived: false };
+
+  if (p === "theme") {
+    state.query = "主题";
+  } else if (p === "initial") {
+    state.query = "";
+    if (!state.recent.length) state.recent = ["主题", "ACP", "TLS", "玻璃"];
+  } else if (p === "archived") {
+    state.query = "对比度";
+    state.filters.archived = true;
+  } else if (p === "preview") {
+    state.query = "主题";
+    document.getElementById("mSearchInput").value = state.query;
+    renderAll();
+    showContextPreview("s1");
+    return;
+  } else if (p === "branch") {
+    state.query = "tls";
+  }
+  document.getElementById("mSearchInput").value = state.query;
+  renderAll();
+});
+
+renderAll();
+</script>
+</body>
+</html>

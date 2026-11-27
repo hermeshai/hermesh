@@ -188,6 +188,7 @@ struct SessionGitPreviewCard: View {
     let session: Session
     let senderLine: String
     let now: Date
+    var showExcerpt = false
 
     private var timeText: String {
         if session.status == .running {
@@ -200,6 +201,7 @@ struct SessionGitPreviewCard: View {
     var body: some View {
         let gs = session.gitStatus
         let gitState = session.hasGitStatus ? gs.state : .unspecified
+        let branch = session.effectiveBranch
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 AgentLogo(id: session.agent, size: 20).padding(.top, 1)
@@ -218,8 +220,19 @@ struct SessionGitPreviewCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            if showExcerpt, let excerpt = session.searchExcerpt {
+                excerptBox(excerpt)
+            }
             if gitState != .unspecified && gitState != .clean {
                 gitBox(gs: gs, state: gitState)
+            } else if showExcerpt && !branch.isEmpty {
+                HStack(spacing: 5) {
+                    GitBranchIcon()
+                        .stroke(.tertiary, style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round))
+                        .frame(width: 12.5, height: 12.5)
+                        .accessibilityHidden(true)
+                    gitRefPill(branch)
+                }
             }
         }
         .padding(.horizontal, 14)
@@ -228,6 +241,36 @@ struct SessionGitPreviewCard: View {
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("session-git-preview")
+    }
+
+    @ViewBuilder private func excerptBox(_ excerpt: SessionExcerpt) -> some View {
+        let dark = colorScheme == .dark
+        let boxShape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+        let (title, tone, bg, border): (String, Color, Color, Color) = switch excerpt.kind {
+        case .waiting:
+            (String(localized: "Needs You"), .orange, Color.orange.opacity(dark ? 0.14 : 0.10), Color.orange.opacity(0.22))
+        case .failed:
+            (String(localized: "Failed"), .red, Color.red.opacity(dark ? 0.14 : 0.09), Color.red.opacity(0.20))
+        case .running:
+            (String(localized: "In Progress"), .secondary, Color.primary.opacity(dark ? 0.06 : 0.045), Color.primary.opacity(0.08))
+        case .latest:
+            (String(localized: "Latest"), .secondary, Color.primary.opacity(dark ? 0.06 : 0.045), Color.primary.opacity(0.08))
+        }
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(tone)
+            Text(excerpt.text)
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(bg, in: boxShape)
+        .overlay { boxShape.strokeBorder(border, lineWidth: 0.5) }
     }
 
     @ViewBuilder private func gitBox(gs: GitStatus, state: GitState) -> some View {
@@ -402,7 +445,7 @@ struct SessionGitPreviewCard: View {
 }
 
 /// Muted semantic Git palette harmonized with Mac's desaturated FinxWork / Onyx tokens (`app.css` `--gh-*`).
-private enum GitPalette {
+enum GitPalette {
     static func pushed(_ scheme: ColorScheme) -> Color {
         scheme == .dark
             ? Color(red: 112 / 255, green: 163 / 255, blue: 101 / 255) // #70a365
@@ -462,7 +505,7 @@ private struct GitStateGlyph: View {
 }
 
 /// Octicon-style repository glyphs drawn on the same 16×16 grid as `apps/desktop/src/renderer/src/icons.tsx`.
-private nonisolated struct GitPushedIcon: Shape {
+nonisolated struct GitPushedIcon: Shape {
     func path(in rect: CGRect) -> Path {
         let k = min(rect.width, rect.height) / 16
         func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * k, y: rect.minY + y * k) }
@@ -486,7 +529,7 @@ private nonisolated struct GitPushedIcon: Shape {
     }
 }
 
-private nonisolated struct GitMergedIcon: Shape {
+nonisolated struct GitMergedIcon: Shape {
     func path(in rect: CGRect) -> Path {
         let k = min(rect.width, rect.height) / 16
         func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * k, y: rect.minY + y * k) }
@@ -531,7 +574,7 @@ private nonisolated struct GitDirtyFrameIcon: Shape {
     }
 }
 
-private nonisolated struct GitBranchIcon: Shape {
+nonisolated struct GitBranchIcon: Shape {
     func path(in rect: CGRect) -> Path {
         let k = min(rect.width, rect.height) / 16
         func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * k, y: rect.minY + y * k) }

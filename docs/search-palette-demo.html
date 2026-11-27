@@ -1,0 +1,2318 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hermesh 桌面端 · 搜索面板 ⌘K 交互原型 Demo</title>
+<style>
+:root {
+  --font: "Google Sans Flex", "Google Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+  --mono: "Google Sans Code", ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --r-ctl: 7px;
+  --r-box: 10px;
+  --r-card: 12px;
+  --r-panel: 14px;
+}
+
+/* ==========================================================================
+   4 Curated Hermesh Themes (aligned 1:1 with apps/desktop styles/app.css)
+   ========================================================================== */
+
+/* 1. 浅色 (Light) */
+.theme-light {
+  --stage-bg: linear-gradient(145deg, #dce5f4 0%, #c8d7ee 52%, #b5c6e4 100%);
+  --win: #ffffff;
+  --win2: #f4f4f7;
+  --win3: #ebebf0;
+  --side: #f4f4f7;
+  --side-head: #f4f4f7;
+  --side-sel: rgba(0, 0, 0, .075);
+  --side-fg: rgba(0, 0, 0, .76);
+  --side-sel-fg: rgba(0, 0, 0, .95);
+  --side-sel-sh: none;
+  --l1: rgba(0, 0, 0, .86);
+  --l2: rgba(0, 0, 0, .54);
+  --l3: rgba(0, 0, 0, .34);
+  --l4: rgba(0, 0, 0, .14);
+  --sep: rgba(0, 0, 0, .075);
+  --fill: rgba(0, 0, 0, .042);
+  --fill2: rgba(0, 0, 0, .075);
+  --fill3: rgba(0, 0, 0, .12);
+  --accent: #3d5bff;
+  --accent-fg: #2d4ae6;
+  --accent-t: #2d4ae6;
+  --accent-bg: rgba(61, 91, 255, .10);
+  --accent-bd: rgba(61, 91, 255, .24);
+  --sel-row: rgba(61, 91, 255, .085);
+  --sel-row-bd: rgba(61, 91, 255, .18);
+  --mark-bg: rgba(61, 91, 255, .14);
+  --mark-fg: #2540d4;
+  --green: #17924f;
+  --green-bg: rgba(23, 146, 79, .11);
+  --orange: #d0700a;
+  --orange-bg: rgba(230, 126, 10, .12);
+  --red: #d7333f;
+  --red-bg: rgba(215, 51, 63, .10);
+  --gh-push: #2f7d4a;
+  --gh-push-bg: rgba(47, 125, 74, .075);
+  --gh-merge: #6e59a5;
+  --gh-merge-bg: rgba(110, 89, 165, .075);
+  --gh-ahead: #3b6ea8;
+  --gh-ahead-bg: rgba(59, 110, 168, .075);
+  --gh-dirty: #9e6722;
+  --gh-dirty-bg: rgba(158, 103, 34, .075);
+  --del-fg: #b0232f;
+  --menu: rgba(252, 252, 254, .92);
+  --menu-solid: #ffffff;
+  --menu-sub: #f6f7fa;
+  --menu-bd: rgba(0, 0, 0, .11);
+  --kbd-bg: #ffffff;
+  --kbd-bd: rgba(0, 0, 0, .12);
+  --kbd-sh: 0 1px 0 rgba(0, 0, 0, .06);
+  --scrim: rgba(15, 20, 34, .22);
+  --bub: #e7ebf2;
+  --bub-fg: #202127;
+  --code: #f5f6fa;
+  --shadow-win: 0 0 0 .5px rgba(0, 0, 0, .18), 0 24px 68px rgba(10, 20, 48, .22), 0 8px 22px rgba(10, 20, 48, .10);
+  --shadow-pal: 0 0 0 .5px rgba(0, 0, 0, .13), 0 26px 76px -12px rgba(12, 20, 46, .34), 0 8px 24px -4px rgba(12, 20, 46, .14);
+  --shadow-pop: 0 0 0 .5px rgba(0, 0, 0, .11), 0 14px 34px rgba(12, 20, 46, .18), 0 3px 10px rgba(12, 20, 46, .08);
+  color-scheme: light;
+}
+
+/* 2. 柔白 (Soft Light — FinxWork low-glare mist paper) */
+.theme-soft {
+  --stage-bg: linear-gradient(145deg, #e0e3eb 0%, #d4d9e5 55%, #c7cede 100%);
+  --win: #f4f5f7;
+  --win2: #ebedf2;
+  --win3: #e3e7ee;
+  --side: #eef0f4;
+  --side-head: #eef0f4;
+  --side-sel: #e7edf7;
+  --side-fg: #202127;
+  --side-sel-fg: #202127;
+  --side-sel-sh: inset 0 0 0 .5px rgba(47, 111, 214, .28);
+  --l1: #202127;
+  --l2: #60636d;
+  --l3: #727580;
+  --l4: rgba(32, 33, 39, .14);
+  --sep: rgba(32, 33, 39, .07);
+  --fill: rgba(32, 33, 39, .04);
+  --fill2: rgba(32, 33, 39, .07);
+  --fill3: rgba(32, 33, 39, .12);
+  --accent: #2f6fd6;
+  --accent-fg: #285fb8;
+  --accent-t: #285fb8;
+  --accent-bg: rgba(47, 111, 214, .10);
+  --accent-bd: rgba(47, 111, 214, .26);
+  --sel-row: #e7edf7;
+  --sel-row-bd: rgba(47, 111, 214, .24);
+  --mark-bg: rgba(47, 111, 214, .15);
+  --mark-fg: #1f53a8;
+  --green: #17924f;
+  --green-bg: rgba(23, 146, 79, .11);
+  --orange: #d0700a;
+  --orange-bg: rgba(230, 126, 10, .12);
+  --red: #d7333f;
+  --red-bg: rgba(215, 51, 63, .10);
+  --gh-push: #2f7d4a;
+  --gh-push-bg: rgba(47, 125, 74, .075);
+  --gh-merge: #6e59a5;
+  --gh-merge-bg: rgba(110, 89, 165, .075);
+  --gh-ahead: #3b6ea8;
+  --gh-ahead-bg: rgba(59, 110, 168, .075);
+  --gh-dirty: #9e6722;
+  --gh-dirty-bg: rgba(158, 103, 34, .075);
+  --del-fg: #b0232f;
+  --menu: rgba(250, 250, 252, .94);
+  --menu-solid: #fafafb;
+  --menu-sub: #f2f4f8;
+  --menu-bd: rgba(32, 33, 39, .10);
+  --kbd-bg: #ffffff;
+  --kbd-bd: rgba(32, 33, 39, .12);
+  --kbd-sh: 0 1px 0 rgba(32, 33, 39, .06);
+  --scrim: rgba(22, 26, 36, .19);
+  --bub: #e7ebf2;
+  --bub-fg: #202127;
+  --code: #ebedf2;
+  --shadow-win: 0 0 0 .5px rgba(20, 24, 34, .20), 0 24px 68px rgba(10, 20, 48, .20), 0 8px 22px rgba(10, 20, 48, .09);
+  --shadow-pal: inset 0 1px 0 rgba(255, 255, 255, .9), 0 0 0 .5px rgba(32, 33, 39, .12), 0 24px 70px -12px rgba(20, 24, 34, .28), 0 8px 22px -4px rgba(20, 24, 34, .12);
+  --shadow-pop: inset 0 1px 0 rgba(255, 255, 255, .85), 0 0 0 .5px rgba(32, 33, 39, .10), 0 14px 34px rgba(20, 24, 34, .16), 0 3px 10px rgba(20, 24, 34, .07);
+  color-scheme: light;
+}
+
+/* 3. 深色 (Dark) */
+.theme-dark {
+  --stage-bg: linear-gradient(145deg, #10131e 0%, #0b0d14 55%, #07080d 100%);
+  --win: #1e1e21;
+  --win2: #29292d;
+  --win3: #323237;
+  --side: #25252a;
+  --side-head: #25252a;
+  --side-sel: rgba(255, 255, 255, .10);
+  --side-fg: rgba(255, 255, 255, .78);
+  --side-sel-fg: #ffffff;
+  --side-sel-sh: none;
+  --l1: rgba(255, 255, 255, .90);
+  --l2: rgba(255, 255, 255, .56);
+  --l3: rgba(255, 255, 255, .34);
+  --l4: rgba(255, 255, 255, .15);
+  --sep: rgba(255, 255, 255, .09);
+  --fill: rgba(255, 255, 255, .05);
+  --fill2: rgba(255, 255, 255, .085);
+  --fill3: rgba(255, 255, 255, .14);
+  --accent: #4a66ff;
+  --accent-fg: #8fa2ff;
+  --accent-t: #8fa2ff;
+  --accent-bg: rgba(91, 121, 255, .18);
+  --accent-bd: rgba(114, 140, 255, .32);
+  --sel-row: rgba(255, 255, 255, .085);
+  --sel-row-bd: rgba(255, 255, 255, .10);
+  --mark-bg: rgba(91, 121, 255, .28);
+  --mark-fg: #c2ceff;
+  --green: #3fcf86;
+  --green-bg: rgba(63, 207, 134, .14);
+  --orange: #ffab3d;
+  --orange-bg: rgba(255, 171, 61, .14);
+  --red: #ff6670;
+  --red-bg: rgba(255, 102, 112, .14);
+  --gh-push: #73a968;
+  --gh-push-bg: rgba(115, 169, 104, .10);
+  --gh-merge: #9482c4;
+  --gh-merge-bg: rgba(148, 130, 196, .10);
+  --gh-ahead: #779ed2;
+  --gh-ahead-bg: rgba(119, 158, 210, .10);
+  --gh-dirty: #c49a55;
+  --gh-dirty-bg: rgba(196, 154, 85, .10);
+  --del-fg: #ff8c94;
+  --menu: rgba(38, 38, 43, .92);
+  --menu-solid: #26262b;
+  --menu-sub: #202025;
+  --menu-bd: rgba(255, 255, 255, .12);
+  --kbd-bg: rgba(255, 255, 255, .07);
+  --kbd-bd: rgba(255, 255, 255, .12);
+  --kbd-sh: 0 1px 0 rgba(0, 0, 0, .35);
+  --scrim: rgba(0, 0, 0, .44);
+  --bub: #303034;
+  --bub-fg: #f0f0ed;
+  --code: #18181b;
+  --shadow-win: 0 0 0 .5px rgba(255, 255, 255, .14), 0 28px 72px rgba(0, 0, 0, .62), 0 8px 24px rgba(0, 0, 0, .36);
+  --shadow-pal: inset 0 1px 0 rgba(255, 255, 255, .08), 0 0 0 .5px rgba(255, 255, 255, .13), 0 28px 80px rgba(0, 0, 0, .68), 0 10px 26px rgba(0, 0, 0, .42);
+  --shadow-pop: inset 0 1px 0 rgba(255, 255, 255, .07), 0 0 0 .5px rgba(255, 255, 255, .13), 0 18px 42px rgba(0, 0, 0, .58);
+  color-scheme: dark;
+}
+
+/* 4. 暗黑 (Onyx Black — FinxWork deep black) */
+.theme-black {
+  --stage-bg: linear-gradient(145deg, #09090d 0%, #050507 58%, #020203 100%);
+  --win: #070709;
+  --win2: #131317;
+  --win3: #1f1f24;
+  --side: #111114;
+  --side-head: #111114;
+  --side-sel: linear-gradient(180deg, #202025, #1c1c21);
+  --side-fg: #bcbdc6;
+  --side-sel-fg: #f5f5f7;
+  --side-sel-sh: inset 0 0 0 .5px rgba(255, 255, 255, .055);
+  --l1: #f5f5f7;
+  --l2: #bcbdc6;
+  --l3: #87888f;
+  --l4: rgba(255, 255, 255, .16);
+  --sep: rgba(255, 255, 255, .068);
+  --fill: rgba(255, 255, 255, .042);
+  --fill2: rgba(255, 255, 255, .078);
+  --fill3: rgba(255, 255, 255, .125);
+  --accent: #2f71e3;
+  --accent-fg: #8ab4f8;
+  --accent-t: #8ab4f8;
+  --accent-bg: rgba(47, 113, 227, .16);
+  --accent-bd: rgba(138, 180, 248, .28);
+  --sel-row: #1d1e24;
+  --sel-row-bd: rgba(255, 255, 255, .085);
+  --mark-bg: rgba(47, 113, 227, .28);
+  --mark-fg: #a8c8ff;
+  --green: #7aae66;
+  --green-bg: rgba(122, 174, 102, .13);
+  --orange: #f3c949;
+  --orange-bg: rgba(243, 201, 73, .13);
+  --red: #de5555;
+  --red-bg: rgba(222, 85, 85, .13);
+  --gh-push: #6d9d61;
+  --gh-push-bg: rgba(109, 157, 97, .09);
+  --gh-merge: #8b7ab8;
+  --gh-merge-bg: rgba(139, 122, 184, .09);
+  --gh-ahead: #7195c6;
+  --gh-ahead-bg: rgba(113, 149, 198, .09);
+  --gh-dirty: #bc9652;
+  --gh-dirty-bg: rgba(188, 150, 82, .09);
+  --del-fg: #f28b8b;
+  --menu: rgba(19, 19, 23, .95);
+  --menu-solid: #131317;
+  --menu-sub: #0f0f13;
+  --menu-bd: rgba(255, 255, 255, .095);
+  --kbd-bg: #1c1c22;
+  --kbd-bd: rgba(255, 255, 255, .11);
+  --kbd-sh: 0 1px 0 rgba(0, 0, 0, .5);
+  --scrim: rgba(0, 0, 0, .62);
+  --bub: #1f1f24;
+  --bub-fg: #f5f5f7;
+  --code: #0d0d11;
+  --shadow-win: 0 0 0 .5px rgba(255, 255, 255, .14), 0 28px 72px rgba(0, 0, 0, .78), 0 8px 24px rgba(0, 0, 0, .50);
+  --shadow-pal: inset 0 1px 0 rgba(255, 255, 255, .07), 0 0 0 .5px rgba(255, 255, 255, .10), 0 32px 84px rgba(0, 0, 0, .82), 0 10px 28px rgba(0, 0, 0, .52);
+  --shadow-pop: inset 0 1px 0 rgba(255, 255, 255, .07), 0 0 0 .5px rgba(255, 255, 255, .10), 0 18px 44px rgba(0, 0, 0, .74);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  background: var(--stage-bg);
+  color: var(--l1);
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background .25s ease;
+}
+button, input { font: inherit; color: inherit; }
+button { border: 0; background: none; padding: 0; cursor: pointer; }
+svg { display: block; flex: none; }
+code { font-family: var(--mono); }
+
+.ic {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ic.sm { width: 13px; height: 13px; }
+.ic.xs { width: 11.5px; height: 11.5px; }
+
+/* ==========================================================================
+   Demo Shell & Control Dock
+   ========================================================================== */
+.page {
+  min-height: 100vh;
+  padding: 18px 24px 104px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.top-bar {
+  width: min(1160px, 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.top-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.top-title h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--l1);
+}
+.top-title span {
+  font-size: 12.5px;
+  color: var(--l2);
+}
+
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.preset-btn {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--l2);
+  background: var(--menu);
+  box-shadow: 0 0 0 .5px var(--menu-bd), 0 1px 3px rgba(0, 0, 0, .06);
+  transition: background .14s, color .14s, box-shadow .14s;
+}
+.preset-btn:hover { color: var(--l1); background: var(--menu-solid); }
+.preset-btn.on {
+  color: var(--accent-t);
+  background: var(--menu-solid);
+  box-shadow: 0 0 0 1px var(--accent-bd), 0 2px 6px rgba(0, 0, 0, .08);
+}
+
+/* ==========================================================================
+   Simulated Hermesh Desktop Window (gives realistic blurred backdrop!)
+   ========================================================================== */
+.app-win {
+  position: relative;
+  width: min(1160px, 100%);
+  height: 676px;
+  border-radius: 16px;
+  background: var(--win);
+  box-shadow: var(--shadow-win);
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 262px minmax(0, 1fr);
+}
+
+/* Traffic lights + Sidebar */
+.side {
+  background: var(--side);
+  border-right: .5px solid var(--sep);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.side-top {
+  height: 44px;
+  padding: 0 10px 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lights { display: flex; gap: 7px; margin-right: 12px; }
+.lights i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+.lights .r { background: #ff5f57; }
+.lights .y { background: #febc2e; }
+.lights .g { background: #28c840; }
+.side-tb {
+  width: 28px; height: 28px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--l2);
+}
+.side-tb:hover { background: var(--fill2); color: var(--l1); }
+.side-tb.search-btn { margin-left: auto; }
+
+.side-nav { padding: 8px 8px 6px; display: flex; flex-direction: column; gap: 3px; }
+.nav-i {
+  height: 31px; padding: 0 9px; border-radius: 8px;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13.5px; color: var(--side-fg);
+}
+.nav-i.sel { background: var(--side-sel); color: var(--side-sel-fg); font-weight: 500; box-shadow: var(--side-sel-sh); }
+.nav-i .kbd-s { margin-left: auto; font-size: 11px; color: var(--l3); }
+
+.side-h {
+  height: 30px; padding: 0 14px;
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; color: var(--l2);
+}
+.side-list { padding: 2px 8px 12px; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+.sgrp { font-size: 11.5px; font-weight: 500; color: var(--l2); padding: 10px 9px 4px; }
+.srow {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 9px; border-radius: 8px; font-size: 13.5px; color: var(--side-fg);
+}
+.srow.sel { background: var(--side-sel); color: var(--side-sel-fg); font-weight: 500; box-shadow: var(--side-sel-sh); }
+.srow-t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srow-tm { font-size: 11.5px; color: var(--l3); font-variant-numeric: tabular-nums; }
+
+/* Simulated Session Conversation behind the scrim */
+.main-pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--win);
+  min-width: 0;
+}
+.main-top {
+  height: 44px; padding: 0 18px;
+  display: flex; align-items: center; gap: 10px;
+  border-bottom: .5px solid var(--sep);
+}
+.main-top b { font-size: 14px; font-weight: 550; }
+.main-top .chip-s {
+  font-size: 11.5px; color: var(--l2); background: var(--fill);
+  padding: 2px 8px; border-radius: 6px;
+}
+.main-body {
+  flex: 1; padding: 26px 56px; display: flex; flex-direction: column; gap: 18px;
+  overflow: hidden;
+}
+.fake-um {
+  align-self: flex-end; max-width: 72%;
+  background: var(--bub); color: var(--bub-fg);
+  padding: 10px 15px; border-radius: 12px; font-size: 13.5px; line-height: 1.6;
+}
+.fake-am {
+  max-width: 86%; font-size: 13.5px; line-height: 1.7; color: var(--l1);
+}
+.fake-code {
+  margin-top: 10px; padding: 11px 14px; border-radius: 9px;
+  background: var(--code); box-shadow: inset 0 0 0 .5px var(--sep);
+  font-family: var(--mono); font-size: 12px; color: var(--l2); line-height: 1.6;
+}
+
+/* ==========================================================================
+   Search Scrim & Palette Modal (THE HERO DESIGN)
+   ========================================================================== */
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: var(--scrim);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  transition: opacity .16s ease;
+}
+.scrim.closed { opacity: 0; pointer-events: none; }
+
+.pal {
+  position: absolute;
+  left: 50%;
+  top: 52px;
+  transform: translateX(-50%);
+  width: 792px;
+  max-width: calc(100% - 32px);
+  z-index: 41;
+  background: var(--menu);
+  backdrop-filter: blur(42px) saturate(1.75);
+  -webkit-backdrop-filter: blur(42px) saturate(1.75);
+  border-radius: 16px;
+  box-shadow: var(--shadow-pal);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: width .22s var(--ease-out), opacity .15s ease, transform .18s var(--ease-out);
+}
+.pal.mode-single { width: 656px; }
+.pal.mode-legacy { width: 660px; }
+.pal.closed {
+  opacity: 0;
+  transform: translateX(-50%) scale(.98);
+  pointer-events: none;
+}
+
+/* 1. Search Input Row */
+.pal-in {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 14px 0 16px;
+  border-bottom: .5px solid var(--sep);
+}
+.pal-in-ic {
+  width: 18px;
+  height: 18px;
+  color: var(--l2);
+  flex: none;
+}
+.pal-in input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: none;
+  outline: none;
+  font-size: 16px;
+  font-weight: 450;
+  color: var(--l1);
+  caret-color: var(--accent);
+}
+.pal-in input::placeholder { color: var(--l3); font-weight: 400; }
+
+.pal-clear {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--l3);
+  transition: background .12s, color .12s;
+}
+.pal-clear:hover { background: var(--fill2); color: var(--l1); }
+.pal-clear[hidden] { display: none; }
+
+.kbd-cap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 21px;
+  min-width: 21px;
+  padding: 0 6px;
+  border-radius: 5.5px;
+  background: var(--kbd-bg);
+  box-shadow: inset 0 0 0 .5px var(--kbd-bd), var(--kbd-sh);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--l2);
+  letter-spacing: .01em;
+  line-height: 1;
+  flex: none;
+}
+button.kbd-cap:hover { color: var(--l1); background: var(--fill2); }
+
+/* 2. Minimal Single-Row Filter Bar (Notion-style essential filters only) */
+.pal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 14px;
+  border-bottom: .5px solid var(--sep);
+  min-height: 37px;
+}
+
+.filter-strip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.filter-strip::-webkit-scrollbar { display: none; }
+
+.pal-bar-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.fchip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+.fchip {
+  height: 25px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 12px;
+  color: var(--l2);
+  background: transparent;
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  display: inline-flex;
+  align-items: center;
+  gap: 4.5px;
+  white-space: nowrap;
+  transition: background .12s, color .12s, box-shadow .12s;
+}
+.fchip:hover, .fchip.open {
+  background: var(--fill);
+  color: var(--l1);
+  box-shadow: inset 0 0 0 .5px var(--l4);
+}
+.fchip.active {
+  background: var(--accent-bg);
+  color: var(--accent-t);
+  box-shadow: inset 0 0 0 .5px var(--accent-bd);
+  font-weight: 500;
+}
+.fchip .chev { width: 11px; height: 11px; opacity: .72; }
+.fchip-x {
+  margin-left: 1px;
+  margin-right: -3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-t);
+  opacity: .75;
+}
+.fchip-x:hover { background: var(--accent-bg); opacity: 1; }
+
+.freset {
+  margin-left: auto;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: var(--l2);
+  flex: none;
+}
+.freset:hover { background: var(--fill); color: var(--l1); }
+.freset[hidden] { display: none; }
+
+/* Popover Filter Menu (matching Hermesh .vmenu) */
+.fmenu {
+  position: fixed;
+  z-index: 90;
+  min-width: 176px;
+  max-width: 240px;
+  background: var(--menu-solid);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-pop);
+  padding: 5px;
+  animation: pop-in .12s var(--ease-out);
+}
+@keyframes pop-in { from { opacity: 0; transform: translateY(-3px) scale(.98); } }
+.fmenu-h {
+  padding: 4px 8px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--l3);
+}
+.fmenu-item {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--r-ctl);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--l1);
+  text-align: left;
+}
+.fmenu-item:hover { background: var(--fill2); }
+.fmenu-item .ck { width: 13px; color: var(--accent-t); display: flex; justify-content: center; }
+.fmenu-item .fmi-cnt { margin-left: auto; font-size: 11px; color: var(--l3); font-variant-numeric: tabular-nums; }
+.fmenu-sep { height: .5px; background: var(--sep); margin: 4px 8px; }
+
+/* 3. Main Body (Split Pane or Single Column) */
+.pal-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 316px;
+  height: 418px;
+  min-height: 0;
+  overflow: hidden;
+}
+.pal.mode-single .pal-body {
+  grid-template-columns: minmax(0, 1fr);
+  height: auto;
+  max-height: 428px;
+}
+
+/* Left Results List */
+.pal-list {
+  overflow-y: auto;
+  padding: 6px 8px 10px;
+  scrollbar-width: thin;
+  min-height: 0;
+}
+.pal-sec-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 9px 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--l3);
+  letter-spacing: .01em;
+}
+.pal-sec-h:first-child { padding-top: 5px; }
+.pal-sec-h .sec-cnt { font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* Search Result Row (Clean, Calm, Scannable — NEVER .pr collision!) */
+.sres {
+  position: relative;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 9px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  transition: background .1s ease;
+  margin-bottom: 1px;
+}
+.sres:hover { background: var(--fill); }
+.sres.on {
+  background: var(--sel-row);
+  box-shadow: inset 0 0 0 .5px var(--sel-row-bd);
+}
+.sres.on::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 10px;
+  bottom: 10px;
+  width: 2.5px;
+  border-radius: 99px;
+  background: var(--accent);
+}
+.sres.action-row { align-items: center; padding: 7px 10px; }
+.sres.archived .sres-title { color: var(--l2); }
+
+/* Leading Agent Logo + Corner Status Badge */
+.sres-av {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--win);
+  box-shadow: 0 0 0 .5px var(--sep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  margin-top: 1px;
+}
+.theme-dark .sres-av, .theme-black .sres-av {
+  background: var(--win2);
+  box-shadow: 0 0 0 .5px rgba(255, 255, 255, .10);
+}
+.sres-av.action-av {
+  background: var(--fill);
+  color: var(--l2);
+  margin-top: 0;
+}
+.sres.on .sres-av.action-av {
+  background: var(--accent-bg);
+  color: var(--accent-t);
+  box-shadow: none;
+}
+
+.sres-dot {
+  position: absolute;
+  right: -2.5px;
+  bottom: -2.5px;
+  width: 8.5px;
+  height: 8.5px;
+  border-radius: 50%;
+  border: 1.5px solid var(--menu-solid);
+}
+.sres-dot.running { background: var(--green); }
+.sres-dot.running::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: var(--green);
+  opacity: .35;
+  animation: ping 1.9s cubic-bezier(0, 0, .2, 1) infinite;
+}
+@keyframes ping { 0% { transform: scale(.8); opacity: .5; } 80%, 100% { transform: scale(2.1); opacity: 0; } }
+.sres-dot.waiting { background: var(--orange); }
+.sres-dot.failed { background: var(--red); }
+.sres-dot.archived { background: var(--menu-solid); box-shadow: inset 0 0 0 1.5px var(--l3); }
+
+/* Row Center Column */
+.sres-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5px;
+}
+.sres-l1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.sres-title {
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--l1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.sres.on .sres-title { font-weight: 560; }
+
+/* Keyword Match Highlight */
+mark.hl {
+  background: var(--mark-bg);
+  color: var(--mark-fg);
+  font-weight: 600;
+  border-radius: 3.5px;
+  padding: 0 2px;
+}
+
+/* Status Pill Badges */
+.st-pill {
+  height: 17px;
+  padding: 0 5.5px;
+  border-radius: 4.5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 17px;
+  white-space: nowrap;
+  flex: none;
+}
+.st-pill.waiting { background: var(--orange-bg); color: var(--orange); }
+.st-pill.running { background: var(--green-bg); color: var(--green); }
+.st-pill.failed { background: var(--red-bg); color: var(--red); }
+.st-pill.archived { background: var(--fill2); color: var(--l2); font-weight: 500; }
+
+.sres-l2 {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--l2);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sres-l2 .proj {
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+  color: var(--l2);
+  font-weight: 500;
+}
+.sres-l2 .sep-dot { color: var(--l3); }
+.sres-snip {
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--l2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--fill);
+  width: fit-content;
+  max-width: 100%;
+}
+
+/* Right Side of Row */
+.sres-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  margin-top: 1px;
+}
+.gmark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: .84;
+}
+.gmark.pushed { color: var(--gh-push); }
+.gmark.merged { color: var(--gh-merge); }
+.gmark .ic { width: 13.5px; height: 13.5px; }
+
+.sres-time {
+  font-size: 11.5px;
+  color: var(--l3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sres-enter {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 4.5px;
+  background: var(--kbd-bg);
+  box-shadow: inset 0 0 0 .5px var(--kbd-bd);
+  font-size: 11px;
+  color: var(--l2);
+}
+.sres.on .sres-enter { display: inline-flex; }
+.pal.mode-split .sres.on .sres-time { display: none; }
+
+/* Empty State */
+.pal-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 46px 24px;
+  gap: 8px;
+}
+.pal-empty-ic {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--fill);
+  color: var(--l3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2px;
+}
+.pal-empty b { font-size: 13.5px; font-weight: 600; color: var(--l1); }
+.pal-empty p { margin: 0; font-size: 12px; color: var(--l2); max-width: 280px; line-height: 1.55; }
+.pal-empty-acts { display: flex; gap: 8px; margin-top: 6px; }
+.empty-btn {
+  height: 27px; padding: 0 11px; border-radius: 7px;
+  font-size: 12px; font-weight: 500;
+  background: var(--fill2); color: var(--l1);
+}
+.empty-btn:hover { background: var(--fill3); }
+.empty-btn.primary { background: var(--accent-bg); color: var(--accent-t); }
+
+/* 4. Right Preview Pane (Spotlight / Raycast / Feishu style, aligned with .shover-card) */
+.pal-preview {
+  border-left: .5px solid var(--sep);
+  background: var(--menu-sub);
+  padding: 14px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.pal.mode-single .pal-preview { display: none; }
+
+.pv-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.pv-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.38;
+  color: var(--l1);
+  word-break: break-word;
+}
+.pv-sub {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--l2);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.pv-excerpt {
+  border-radius: 10px;
+  padding: 9px 11px;
+  background: var(--menu-solid);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pv-excerpt.waiting {
+  background: var(--orange-bg);
+  box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--orange) 22%, transparent);
+}
+.pv-excerpt.failed {
+  background: var(--red-bg);
+  box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--red) 22%, transparent);
+}
+.pv-ex-lbl {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--l3);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.pv-excerpt.waiting .pv-ex-lbl { color: var(--orange); }
+.pv-excerpt.failed .pv-ex-lbl { color: var(--red); }
+.pv-ex-txt {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--l1);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Git Delivery Box (direct sibling of Sidebar's SessionHoverCard) */
+.pv-git {
+  --git-c: var(--l2);
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: var(--fill);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pv-git.pushed { --git-c: var(--gh-push); background: var(--gh-push-bg); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--gh-push) 18%, transparent); }
+.pv-git.merged { --git-c: var(--gh-merge); background: var(--gh-merge-bg); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--gh-merge) 18%, transparent); }
+.pv-git.unpushed { --git-c: var(--gh-ahead); background: var(--gh-ahead-bg); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--gh-ahead) 18%, transparent); }
+.pv-git.dirty { --git-c: var(--gh-dirty); background: var(--gh-dirty-bg); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--gh-dirty) 18%, transparent); }
+.pv-git-top { display: flex; align-items: center; gap: 6px; }
+.pv-git-top .ic { width: 13.5px; height: 13.5px; color: var(--git-c); }
+.pv-git-st { font-size: 12px; font-weight: 600; color: var(--git-c); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-diff { display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+.pv-add { color: var(--gh-push); }
+.pv-del { color: var(--del-fg); }
+.pv-dbar { display: inline-flex; gap: 1.5px; margin-left: 1px; }
+.pv-sq { width: 5.5px; height: 5.5px; border-radius: 1.2px; background: var(--fill3); }
+.pv-sq.add { background: var(--gh-push); }
+.pv-sq.del { background: var(--del-fg); }
+.pv-grow { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--l2); min-width: 0; }
+.pv-grow .ic { width: 12px; height: 12px; color: var(--l3); }
+.pv-ref { font-family: var(--mono); font-size: 11px; color: var(--l1); background: var(--fill2); padding: 1px 5px; border-radius: 4px; max-width: 128px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-sha { font-family: var(--mono); font-size: 11px; color: var(--l2); flex: none; }
+.pv-subj { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--l1); }
+
+/* Metadata Key-Value Grid */
+.pv-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: 10px;
+  background: var(--menu-solid);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  padding: 2px 11px;
+}
+.pv-kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  height: 30px;
+  font-size: 12px;
+  border-top: .5px solid var(--sep);
+}
+.pv-kv:first-child { border-top: 0; }
+.pv-kv span { color: var(--l2); display: inline-flex; align-items: center; gap: 5px; }
+.pv-kv span .ic { width: 13px; height: 13px; color: var(--l3); }
+.pv-kv b { font-weight: 500; color: var(--l1); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.pv-acts {
+  margin-top: auto;
+  display: flex;
+  gap: 7px;
+  padding-top: 2px;
+}
+.pv-btn {
+  flex: 1;
+  height: 30px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 550;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: var(--menu-solid);
+  color: var(--l1);
+  box-shadow: inset 0 0 0 .5px var(--menu-bd), 0 1px 2px rgba(0, 0, 0, .05);
+}
+.pv-btn:hover { background: var(--fill2); }
+.pv-btn.primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(30, 50, 160, .25);
+}
+.pv-btn.primary:hover { filter: brightness(1.06); }
+
+/* Action Preview Card */
+.pv-action-card {
+  margin: auto 0;
+  padding: 22px 16px;
+  border-radius: 12px;
+  background: var(--menu-solid);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 9px;
+}
+.pv-action-ic {
+  width: 40px; height: 40px; border-radius: 11px;
+  background: var(--accent-bg); color: var(--accent-t);
+  display: flex; align-items: center; justify-content: center;
+}
+.pv-action-card b { font-size: 14px; font-weight: 600; color: var(--l1); }
+.pv-action-card p { margin: 0; font-size: 12px; color: var(--l2); line-height: 1.55; }
+
+/* 5. Footer Keyboard Bar */
+.pal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 36px;
+  padding: 0 14px;
+  border-top: .5px solid var(--sep);
+  font-size: 11.5px;
+  color: var(--l3);
+}
+.foot-keys { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.foot-k { display: inline-flex; align-items: center; gap: 4.5px; }
+.foot-k .kbd-cap { height: 18px; min-width: 18px; padding: 0 4.5px; font-size: 10.5px; border-radius: 4.5px; }
+.foot-stat { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Legacy "Before" Comparison Box (reproduces the screenshot bug faithfully) */
+.legacy-wrap { display: none; flex-direction: column; }
+.pal.mode-legacy .pal-bar,
+.pal.mode-legacy .pal-body,
+.pal.mode-legacy .pal-foot { display: none; }
+.pal.mode-legacy .legacy-wrap { display: flex; }
+
+.legacy-f {
+  display: flex; gap: 6px; padding: 8px 12px; border-bottom: .5px solid var(--sep);
+  flex-wrap: wrap; align-items: center;
+}
+.legacy-sel {
+  border: 0; background: var(--fill2); color: var(--l1);
+  height: 24px; border-radius: 999px; padding: 0 10px; font-size: 12px;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.legacy-cb {
+  display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--l1);
+  width: 100%; margin-top: 2px; padding-left: 4px;
+}
+.legacy-cb i {
+  width: 14px; height: 14px; border-radius: 4px; background: var(--win);
+  box-shadow: inset 0 0 0 1px var(--l4); display: inline-block;
+}
+.legacy-bug-row {
+  margin: 6px;
+  padding: 12px 10px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.legacy-bug-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(0, 0, 0, .2); }
+.legacy-bug-note {
+  margin: 10px 12px 12px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--red-bg);
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* Toast Notification inside the desktop window */
+.win-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%) translateY(10px);
+  z-index: 60;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--menu-solid);
+  box-shadow: var(--shadow-pop);
+  font-size: 12.5px;
+  color: var(--l1);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease, transform .2s var(--ease-out);
+}
+.win-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.win-toast .ic { color: var(--green); }
+
+/* ==========================================================================
+   Floating Bottom Switcher Dock (Theme + Layout Mode)
+   ========================================================================== */
+.dock {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  border-radius: 13px;
+  background: var(--menu);
+  backdrop-filter: blur(28px) saturate(1.7);
+  -webkit-backdrop-filter: blur(28px) saturate(1.7);
+  box-shadow: var(--shadow-pop);
+  max-width: calc(100vw - 24px);
+  flex-wrap: nowrap;
+  justify-content: center;
+}
+.dock-grp {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--fill);
+}
+.dock-btn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--l2);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.dock-btn:hover { color: var(--l1); }
+.dock-btn.on {
+  background: var(--menu-solid);
+  color: var(--l1);
+  box-shadow: 0 0 0 .5px var(--sep), 0 1px 3px rgba(0, 0, 0, .09);
+}
+.dock-btn.danger.on { color: var(--red); }
+.dock-sep { width: 1px; height: 18px; background: var(--sep); }
+.sw-dot { width: 9px; height: 9px; border-radius: 50%; border: .5px solid rgba(128,128,128,.35); }
+.sw-dot.light { background: #ffffff; }
+.sw-dot.soft { background: #eef0f4; }
+.sw-dot.dark { background: #26262b; }
+.sw-dot.black { background: #070709; }
+
+/* Design Research Notes Strip */
+.notes {
+  width: min(1160px, 100%);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.note-card {
+  background: var(--menu);
+  box-shadow: 0 0 0 .5px var(--menu-bd), 0 4px 14px rgba(0, 0, 0, .05);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.note-card b { font-size: 12.5px; font-weight: 600; color: var(--l1); }
+.note-card p { margin: 0; font-size: 11.5px; line-height: 1.55; color: var(--l2); }
+
+@media (max-width: 860px) {
+  .app-win { grid-template-columns: 1fr; height: 640px; }
+  .side { display: none; }
+  .pal-body { grid-template-columns: 1fr; }
+  .pal-preview { display: none; }
+  .notes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style>
+</head>
+<body class="theme-soft">
+
+<div class="page">
+  <div class="top-bar">
+    <div class="top-title">
+      <h1>Hermesh 桌面端 · 搜索面板 ⌘K 交互原型</h1>
+      <span>对齐全站设计语言 · 融合 Notion 极简筛选与飞书 / Spotlight 实时预览</span>
+    </div>
+    <div class="preset-row" id="presets">
+      <button class="preset-btn on" data-preset="theme">场景 1：搜「主题」（复现截图）</button>
+      <button class="preset-btn" data-preset="empty">场景 2：空输入（最近 &amp; 操作）</button>
+      <button class="preset-btn" data-preset="multi">场景 3：多结果 + 筛选态</button>
+      <button class="preset-btn" data-preset="snippet">场景 4：命中分支 / 摘要</button>
+      <button class="preset-btn" data-preset="none">场景 5：无匹配空态</button>
+    </div>
+  </div>
+
+  <!-- Authentic Hermesh Desktop Window Stage -->
+  <div class="app-win" id="appWin">
+    <!-- Sidebar Backdrop -->
+    <aside class="side">
+      <div class="side-top">
+        <div class="lights"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+        <button class="side-tb" title="隐藏边栏">
+          <svg class="ic" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.6" stroke-width="1.1"/><path d="M5.5 2.5v11" stroke-width="1.1"/></svg>
+        </button>
+        <button class="side-tb search-btn" id="reopenBtn" title="打开搜索 (⌘K)">
+          <svg class="ic" viewBox="0 0 16 16"><circle cx="7.3" cy="7.3" r="5.3"/><path d="M14 14l-2.9-2.9"/></svg>
+        </button>
+      </div>
+      <div class="side-nav">
+        <div class="nav-i"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg><span>新建任务</span><span class="kbd-s">⌘N</span></div>
+        <div class="nav-i"><svg class="ic" viewBox="0 0 16 16"><path d="M8 2v2.6"/><rect x="2.9" y="4.6" width="10.2" height="8.2" rx="2.3"/><path d="M6.1 7.8v1.7M9.9 7.8v1.7"/></svg><span>Her</span></div>
+        <div class="nav-i"><svg class="ic" viewBox="0 0 16 16"><rect x="2.8" y="2.8" width="3.9" height="3.9" rx="1.1"/><rect x="9.3" y="2.8" width="3.9" height="3.9" rx="1.1"/><rect x="2.8" y="9.3" width="3.9" height="3.9" rx="1.1"/><rect x="9.3" y="9.3" width="3.9" height="3.9" rx="1.1"/></svg><span>概览</span><span class="kbd-s">⌘1</span></div>
+      </div>
+      <div class="side-h"><span>任务</span></div>
+      <div class="side-list">
+        <div class="sgrp">进行中</div>
+        <div class="srow"><span class="srow-t">优化桌面端搜索面板交互与样式</span><span class="srow-tm">02:14</span></div>
+        <div class="srow"><span class="srow-t">加固 ACP 并行启动与 Git 状态同步</span><span class="srow-tm">等回答</span></div>
+        <div class="sgrp">今天</div>
+        <div class="srow sel"><span class="srow-t">扩展主题配色与侧栏玻璃选项</span><span class="srow-tm">12:39</span></div>
+        <div class="srow"><span class="srow-t">会话文件面板改用 HTML 标题页签</span><span class="srow-tm">11:05</span></div>
+        <div class="srow"><span class="srow-t">实时步骤清单 3 行折叠中轴流式展示</span><span class="srow-tm">09:42</span></div>
+        <div class="sgrp">更早</div>
+        <div class="srow"><span class="srow-t">LinkMap 增加本机节点与同路由合并</span><span class="srow-tm">昨天</span></div>
+        <div class="srow"><span class="srow-t">修复审批规则与签名器超时提示</span><span class="srow-tm">周二</span></div>
+      </div>
+    </aside>
+
+    <!-- Conversation Backdrop -->
+    <main class="main-pane">
+      <div class="main-top">
+        <b>扩展主题配色与侧栏玻璃选项</b>
+        <span class="chip-s">hermesh · Antigravity</span>
+      </div>
+      <div class="main-body">
+        <div class="fake-um">请把「柔白」低眩光浅色和「暗黑」深邃黑色对齐到全局外观设置，并保留毛玻璃侧栏切换选项。</div>
+        <div class="fake-am">
+          已完成四套主题（浅色、柔白、深色、暗黑）的 CSS 变量对齐与实时预览卡片更新，并在 <code>appearance.ts</code> 中解耦了系统跟随与材质判断。
+          <div class="fake-code">:root[data-light-style="soft"] {
+  --win: #f4f5f7;
+  --side: #eef0f4;
+  --side-sel: #e7edf7;
+  --accent: #2f6fd6;
+}</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Blur Scrim -->
+    <div class="scrim" id="scrim"></div>
+
+    <!-- Search Palette Dialog -->
+    <section class="pal mode-split" id="pal" role="dialog" aria-label="搜索任务">
+      <!-- 1. Input Bar -->
+      <div class="pal-in">
+        <svg class="pal-in-ic ic" viewBox="0 0 16 16"><circle cx="7.3" cy="7.3" r="5.3"/><path d="M14 14l-2.9-2.9"/></svg>
+        <input id="searchInput" type="text" autocomplete="off" placeholder="搜索任务标题、项目、分支、Agent 或操作…" value="主题">
+        <button class="pal-clear" id="clearInputBtn" title="清空关键词">
+          <svg class="ic sm" viewBox="0 0 16 16"><path d="M4.3 4.3l7.4 7.4M11.7 4.3l-7.4 7.4"/></svg>
+        </button>
+        <button class="kbd-cap" id="escBtn" title="关闭 (Esc)">esc</button>
+      </div>
+
+      <!-- 2. Minimal Single-Row Essential Filter Bar -->
+      <div class="pal-bar">
+        <div class="filter-strip" id="filterStrip"></div>
+        <div class="pal-bar-right">
+          <button class="freset" id="resetFiltersBtn" hidden>重置</button>
+          <button class="fchip" id="toggleArchivedBtn" title="包含已归档任务"></button>
+        </div>
+      </div>
+
+      <!-- 3. Results + Preview Body -->
+      <div class="pal-body">
+        <div class="pal-list" id="resultList" role="listbox" aria-label="搜索结果"></div>
+        <aside class="pal-preview" id="previewPane" aria-label="结果预览"></aside>
+      </div>
+
+      <!-- 4. Keyboard Footer -->
+      <div class="pal-foot">
+        <div class="foot-keys">
+          <span class="foot-k"><kbd class="kbd-cap">↑</kbd><kbd class="kbd-cap">↓</kbd> 选择</span>
+          <span class="foot-k"><kbd class="kbd-cap">↩</kbd> 打开</span>
+          <span class="foot-k"><kbd class="kbd-cap">esc</kbd> 关闭</span>
+        </div>
+        <span class="foot-stat" id="footStat"></span>
+      </div>
+
+      <!-- Legacy Comparison View (Only shown when user toggles "现状对比") -->
+      <div class="legacy-wrap">
+        <div class="legacy-f">
+          <span class="legacy-sel">授权：全部 ▾</span>
+          <span class="legacy-sel">Agent 提供方：全部 ▾</span>
+          <span class="legacy-sel">项目：全部 ▾</span>
+          <span class="legacy-sel">环境：全部 ▾</span>
+          <div class="legacy-cb"><i></i> 包含已归档</div>
+        </div>
+        <div style="padding: 10px 14px 2px; font-size: 11.5px; font-weight: 600; color: var(--l2);">任务 · 1 个</div>
+        <div class="legacy-bug-row">
+          <span class="legacy-bug-dot"></span>
+          <span style="font-size: 13.5px;">扩展主题配色与侧栏玻璃选项</span>
+          <span style="font-size: 12px; opacity: .82;">你 → Antigravity · hermesh · 12:39</span>
+        </div>
+        <div class="legacy-bug-note">
+          <b>根因定位：</b><code>session/presence.css</code> 中的 <code>.pr { flex-direction: column; align-items: center }</code> 与 <code>styles/app.css</code> 搜索结果行 <code>.pr</code> 发生类名冲突，叠加高饱和纯蓝 <code>.pr.on</code> 与双行原生 <code>&lt;select&gt;</code> 筛选栏，导致视觉完全错乱。
+        </div>
+        <div class="pal-foot"><span>↑↓ 选择 &nbsp;&nbsp; ↩ 打开</span></div>
+      </div>
+    </section>
+
+    <div class="win-toast" id="winToast">
+      <svg class="ic sm" viewBox="0 0 16 16"><path d="M3.4 8.4l3 3 6.2-6.8"/></svg>
+      <span id="winToastText"></span>
+    </div>
+  </div>
+
+  <!-- Design Rationale Cards -->
+  <div class="notes">
+    <div class="note-card">
+      <b>1. 修复类名冲突 + 克制选中态</b>
+      <p>搜索行改用独立前缀，告别刺眼大蓝块；选中态复用侧边栏柔和底色 + 左侧 2.5px 强调细条，保证图标、状态点与高亮字清晰可读。</p>
+    </div>
+    <div class="note-card">
+      <b>2. 极简必要筛选（去冗余 Tab 与低频项）</b>
+      <p>去掉多余的「全部/任务/操作」Tab 与低频「授权」下拉，默认仅保留高频的 <code>项目</code>、<code>Agent</code>、<code>环境</code>（单机时自动隐藏），右侧对齐 <code>含已归档</code>。</p>
+    </div>
+    <div class="note-card">
+      <b>3. 高信噪比列表 + 关键词高亮</b>
+      <p>左侧复用 Agent 品牌图标 + 状态角标，标题、分支与摘要支持实时 <code>&lt;mark&gt;</code> 高亮；激活任务筛选时自动收起无关快捷操作。</p>
+    </div>
+    <div class="note-card">
+      <b>4. 借鉴 Spotlight 的实时透视预览</b>
+      <p>右栏复用侧边栏悬停卡语言，上下键移动即可预看完整标题、等待回答/最新摘要、Git 分支与 diff 状态、环境在线态，确认无误再回车。</p>
+    </div>
+  </div>
+</div>
+
+<!-- Popover Menu Host -->
+<div id="menuHost"></div>
+
+<!-- Bottom Floating Dock -->
+<div class="dock" aria-label="Demo 控制器">
+  <div class="dock-grp" id="modeSwitch">
+    <button class="dock-btn on" data-mode="split">分栏预览（推荐）</button>
+    <button class="dock-btn" data-mode="single">单栏极简（Notion 风）</button>
+    <button class="dock-btn danger" data-mode="legacy">现状对比</button>
+  </div>
+  <span class="dock-sep"></span>
+  <div class="dock-grp" id="themeSwitch">
+    <button class="dock-btn" data-theme="light"><i class="sw-dot light"></i>浅色</button>
+    <button class="dock-btn on" data-theme="soft"><i class="sw-dot soft"></i>柔白</button>
+    <button class="dock-btn" data-theme="dark"><i class="sw-dot dark"></i>深色</button>
+    <button class="dock-btn" data-theme="black"><i class="sw-dot black"></i>暗黑</button>
+  </div>
+</div>
+
+<script>
+const SESSIONS = [
+  {
+    id: "s1",
+    title: "扩展主题配色与侧栏玻璃选项",
+    agent: "antigravity",
+    agentName: "Antigravity",
+    sender: "你",
+    grantId: "owner",
+    project: "hermesh",
+    machine: "Mac Studio",
+    machineOnline: true,
+    status: "idle",
+    time: "12:39",
+    turns: 8,
+    branch: "feat/soft-light-theme",
+    targetRef: "main",
+    gitState: "pushed",
+    gitLabel: "已提交并推送",
+    add: 184,
+    del: 42,
+    headCommit: "cf3c2fc",
+    headSubject: "Desktop: add soft-light appearance (柔白) and refine previews",
+    excerpt: "已完成浅色、柔白、深色、暗黑四套主题变量对齐，侧栏毛玻璃仅在浅色/深色启用。",
+    archived: false
+  },
+  {
+    id: "s2",
+    title: "加固 ACP 并行启动与侧栏 Git 状态按需同步",
+    agent: "claude",
+    agentName: "Claude Code",
+    sender: "你",
+    grantId: "owner",
+    project: "hermesh",
+    machine: "Mac Studio",
+    machineOnline: true,
+    status: "waiting",
+    time: "12:18",
+    turns: 5,
+    branch: "fix/acp-parallel-git-sync",
+    targetRef: "main",
+    gitState: "dirty",
+    gitLabel: "3 个文件改动未提交",
+    add: 96,
+    del: 19,
+    headCommit: "cf4e95c",
+    headSubject: "Sessions: harden ACP parallel startup",
+    excerpt: "是否在窗口重新聚焦时跳过已推送分支的 Git 状态轮询？（推荐：跳过以降低磁盘 IO）",
+    archived: false
+  },
+  {
+    id: "s3",
+    title: "优化桌面端搜索结果弹窗主题与交互体验",
+    agent: "codex",
+    agentName: "Codex",
+    sender: "Her",
+    grantId: "her",
+    project: "hermesh",
+    machine: "MacBook Pro",
+    machineOnline: true,
+    status: "running",
+    time: "02:14",
+    turns: 3,
+    branch: "feat/search-palette-redesign",
+    targetRef: "main",
+    gitState: "unpushed",
+    gitLabel: "1 个本地提交待推送",
+    add: 245,
+    del: 68,
+    headCommit: "a82f19d",
+    headSubject: "Desktop: resolve .pr collision and redesign search palette",
+    excerpt: "正在重构 Search.tsx 筛选栏为单行自定义弹层，并验证暗黑与柔白主题下的高亮对比度…",
+    archived: false
+  },
+  {
+    id: "s4",
+    title: "会话文件面板改用 HTML 标题页签并移除冗余路径条",
+    agent: "gemini",
+    agentName: "Gemini CLI",
+    sender: "你",
+    grantId: "owner",
+    project: "hermesh",
+    machine: "Mac Studio",
+    machineOnline: true,
+    status: "idle",
+    time: "11:05",
+    turns: 6,
+    branch: "feat/html-tab-titles",
+    targetRef: "main",
+    gitState: "merged",
+    gitLabel: "已合并至 main",
+    add: 74,
+    del: 31,
+    headCommit: "5e12106",
+    headSubject: "Session files: use HTML title on page tabs",
+    excerpt: "已为预览 HTML 产物提取 <title> 显示到页签栏，并清理 iOS 重复路径条。",
+    archived: false
+  },
+  {
+    id: "s5",
+    title: "每日技术周报汇总与主题趋势整理",
+    agent: "her",
+    agentName: "Her",
+    sender: "你",
+    grantId: "her",
+    project: "Her",
+    machine: "Mac Studio",
+    machineOnline: true,
+    status: "idle",
+    time: "昨天",
+    turns: 11,
+    branch: "",
+    targetRef: "",
+    gitState: "clean",
+    gitLabel: "",
+    add: 0,
+    del: 0,
+    headCommit: "",
+    headSubject: "",
+    excerpt: "已整理本周 14 条核心变更，其中「主题系统」与「工作流性能」占比最高，已生成 Markdown 交付物。",
+    archived: false
+  },
+  {
+    id: "s6",
+    title: "修复生产环境 Relay 断线重连证书校验失败",
+    agent: "claude",
+    agentName: "Claude Code",
+    sender: "Cursor",
+    grantId: "cursor",
+    project: "relay-core",
+    machine: "Linux Build",
+    machineOnline: false,
+    status: "failed",
+    time: "昨天",
+    turns: 4,
+    branch: "fix/tls-reconnect-pin",
+    targetRef: "main",
+    gitState: "dirty",
+    gitLabel: "2 个文件改动未提交",
+    add: 38,
+    del: 12,
+    headCommit: "9b11e40",
+    headSubject: "relay: add backoff jitter for reconnect",
+    excerpt: "执行 go test ./pkg/relay/... 超时退出：TLS handshake deadline exceeded。",
+    archived: false
+  },
+  {
+    id: "s7",
+    title: "LinkMap 增加本机节点与同路由连线权重合并",
+    agent: "codex",
+    agentName: "Codex",
+    sender: "你",
+    grantId: "owner",
+    project: "hermesh",
+    machine: "MacBook Pro",
+    machineOnline: true,
+    status: "idle",
+    time: "周二",
+    turns: 7,
+    branch: "feat/linkmap-owner-node",
+    targetRef: "main",
+    gitState: "merged",
+    gitLabel: "已合并至 main",
+    add: 312,
+    del: 94,
+    headCommit: "f320f50",
+    headSubject: "Desktop: show owner node and merge same-route lines",
+    excerpt: "已完成概览拓扑图路由合并算法与动态权重线宽渲染。",
+    archived: false
+  },
+  {
+    id: "s8",
+    title: "旧版浅色主题对比度审计（已归档）",
+    agent: "gemini",
+    agentName: "Gemini CLI",
+    sender: "你",
+    grantId: "owner",
+    project: "design-tokens",
+    machine: "Mac Studio",
+    machineOnline: true,
+    status: "archived",
+    time: "11月18日",
+    turns: 9,
+    branch: "chore/theme-contrast-audit",
+    targetRef: "main",
+    gitState: "merged",
+    gitLabel: "已合并至 main",
+    add: 52,
+    del: 48,
+    headCommit: "7d02a11",
+    headSubject: "docs: record WCAG contrast table for light theme",
+    excerpt: "WCAG AA 对比度检查完成，旧版低对比度灰字方案已归档。",
+    archived: true
+  }
+];
+
+const ACTIONS = [
+  { id: "newTask", label: "新建任务", shortcut: "⌘N", icon: "plus", desc: "在当前默认项目与环境中开启新会话，或直接交给 Her 处理。" },
+  { id: "newGrant", label: "连接 Agent…", shortcut: "⇧⌘N", icon: "key", desc: "生成授权配对码，让 Cursor、Claude Desktop 或其他 Agent 接入本机。" },
+  { id: "addMachine", label: "添加执行环境…", shortcut: "", icon: "laptop", desc: "把另一台 Mac、Windows 或 Linux 服务器加入你的 Hermesh 网络。" },
+  { id: "addProject", label: "添加项目…", shortcut: "", icon: "folder", desc: "选择本地 Git 仓库目录并配置 worktree 隔离策略。" },
+  { id: "enterCode", label: "输入配对码…", shortcut: "⇧⌘P", icon: "link", desc: "输入其他设备或 Agent 展示的 6 位核对码完成可信连接。" },
+  { id: "settings", label: "打开设置", shortcut: "⌘,", icon: "gear", desc: "调整外观主题（浅色/柔白/深色/暗黑）、通知、环境与账号设置。" }
+];
+
+const ICONS = {
+  plus: '<path d="M8 3v10M3 8h10"/>',
+  key: '<circle cx="5.6" cy="10.4" r="2.8"/><path d="M7.6 8.4L13 3M11 5l1.6 1.6M9.4 6.6l1.3 1.3"/>',
+  laptop: '<rect x="3" y="3.3" width="10" height="7" rx="1.2"/><path d="M1.4 12.7h13.2"/>',
+  folder: '<path d="M1.8 4.4c0-.7.5-1.2 1.2-1.2h3l1.4 1.5H13c.7 0 1.2.5 1.2 1.2V12c0 .7-.5 1.2-1.2 1.2H3c-.7 0-1.2-.5-1.2-1.2z"/>',
+  link: '<path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2.2-2.2a2.6 2.6 0 0 0-3.7-3.7l-.8.8M9.2 6.8a2.6 2.6 0 0 0-3.7 0L3.3 9a2.6 2.6 0 0 0 3.7 3.7l.8-.8"/>',
+  gear: '<circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.7M8 12.5v1.7M1.8 8h1.7M12.5 8h1.7M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M12.4 3.6l-1.2 1.2M4.8 11.2l-1.2 1.2"/>',
+  chevD: '<path d="M4.5 6.3L8 9.8l3.5-3.5"/>',
+  x: '<path d="M4.3 4.3l7.4 7.4M11.7 4.3l-7.4 7.4"/>',
+  check: '<path d="M3.4 8.4l3 3 6.2-6.8"/>',
+  archive: '<rect x="2" y="2.8" width="12" height="3.4" rx="1"/><path d="M3.2 6.2v6c0 .7.5 1.2 1.2 1.2h7.2c.7 0 1.2-.5 1.2-1.2v-6M6.4 9h3.2"/>',
+  branch: '<circle cx="4.8" cy="3.8" r="1.5"/><circle cx="4.8" cy="12.2" r="1.5"/><circle cx="11.2" cy="5.4" r="1.5"/><path d="M4.8 5.3v5.4M11.2 6.9c0 2.4-2.2 3-6.4 3.7"/>',
+  gitCommit: '<circle cx="8" cy="8" r="2.3"/><path d="M1.8 8h3.9M10.3 8h3.9"/>',
+  gitPushed: '<circle cx="4.5" cy="3.8" r="1.55"/><circle cx="4.5" cy="12.2" r="1.55"/><circle cx="11.5" cy="12.2" r="1.55"/><path d="M4.5 5.4v5.2M11.5 10.6V5.6c0-1.1-.9-1.8-2-1.8H8"/><path d="M9.5 2.2L7.8 3.8l1.7 1.6"/>',
+  gitMerged: '<circle cx="4.5" cy="3.8" r="1.55"/><circle cx="4.5" cy="12.2" r="1.55"/><circle cx="11.8" cy="8.8" r="1.55"/><path d="M4.5 5.4v5.2M4.5 5.4c0 2.5 2.4 3.4 5.7 3.4"/>',
+  gitUnpushed: '<circle cx="8" cy="11.6" r="1.75"/><path d="M3.2 11.6h3M9.8 11.6h3M8 8.2V2.6M5.5 5.1L8 2.6l2.5 2.5"/>',
+  gitDirty: '<rect x="2.4" y="2.4" width="11.2" height="11.2" rx="2.4"/><circle cx="8" cy="8" r="2.1" fill="currentColor" stroke="none"/>',
+  clock: '<circle cx="8" cy="8" r="6"/><path d="M8 4.6V8l2.3 1.5"/>',
+  person: '<circle cx="8" cy="5.5" r="2.5"/><path d="M3.2 13.5c.6-2.4 2.4-3.6 4.8-3.6s4.2 1.2 4.8 3.6"/>',
+  search: '<circle cx="7.3" cy="7.3" r="5.3"/><path d="M14 14l-2.9-2.9"/>',
+  copy: '<rect x="5.2" y="5.2" width="8" height="8" rx="1.6"/><path d="M10.8 5.2V3.8c0-.6-.5-1.1-1.1-1.1H3.9c-.6 0-1.1.5-1.1 1.1v5.8c0 .6.5 1.1 1.1 1.1h1.3"/>'
+};
+
+function icon(name, cls = "") {
+  return `<svg class="ic ${cls}" viewBox="0 0 16 16" aria-hidden="true">${ICONS[name] || ""}</svg>`;
+}
+
+function agentBadgeSvg(agent, size = 16) {
+  if (agent === "her") {
+    return `<svg width="${size}" height="${size}" viewBox="8 16 104 104" aria-hidden="true">
+      <path d="M30 53L26 25L50 37Z M90 53L94 25L70 37Z" fill="#cbd3fb"/>
+      <path d="M60 30C84 30 100 48 103 72C106 96 92 110 60 110C28 110 14 96 17 72C20 48 36 30 60 30Z" fill="#c3cbf7"/>
+      <path d="M46 47H74C86 47 92 55 92 65.5C92 80 82 88 60 88C38 88 28 80 28 65.5C28 55 34 47 46 47Z" fill="#f1f3ff"/>
+      <circle cx="47.5" cy="64" r="5.4" fill="#3c2f3a"/><circle cx="72.5" cy="64" r="5.4" fill="#3c2f3a"/>
+    </svg>`;
+  }
+  const styles = {
+    antigravity: { bg: "linear-gradient(135deg,#2563eb,#7c3aed)", glyph: "A" },
+    claude: { bg: "#d97757", glyph: "C" },
+    codex: { bg: "#18181b", glyph: "X" },
+    gemini: { bg: "linear-gradient(135deg,#3b82f6,#06b6d4)", glyph: "✦" }
+  };
+  const s = styles[agent] || { bg: "#64748b", glyph: agent[0].toUpperCase() };
+  return `<span style="width:${size}px;height:${size}px;border-radius:${Math.round(size * 0.27)}px;background:${s.bg};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:${Math.round(size * 0.6)}px;font-weight:700;line-height:1">${s.glyph}</span>`;
+}
+
+// App State
+const state = {
+  query: "主题",
+  filters: { project: "", agent: "", machine: "", grant: "", archived: false },
+  index: 0,
+  mode: "split", // split | single | legacy
+  theme: "soft",
+  openMenu: null,
+  closed: false
+};
+
+// Essential filters only: Project, Agent, Environment (when >1 machine).
+// "grant" (授权) stays hidden by default and only shows as a removable chip if deep-linked from Settings.
+const FILTER_DEFS = [
+  { key: "project", label: "项目", icon: "folder", options: () => [...new Set(SESSIONS.map(s => s.project))].map(v => ({ value: v, label: v })) },
+  { key: "agent", label: "Agent", icon: "", options: () => [
+    { value: "antigravity", label: "Antigravity" },
+    { value: "claude", label: "Claude Code" },
+    { value: "codex", label: "Codex" },
+    { value: "gemini", label: "Gemini CLI" },
+    { value: "her", label: "Her" }
+  ]},
+  { key: "machine", label: "环境", icon: "laptop", adaptiveMultiOnly: true, options: () => [...new Set(SESSIONS.map(s => s.machine))].map(v => ({ value: v, label: v })) },
+  { key: "grant", label: "授权", icon: "key", onlyWhenActive: true, options: () => [
+    { value: "owner", label: "你" },
+    { value: "her", label: "Her" },
+    { value: "cursor", label: "Cursor" }
+  ]}
+];
+
+function escHtml(str) {
+  return String(str).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+}
+
+function highlight(text, q) {
+  const safe = escHtml(text);
+  const needle = q.trim();
+  if (!needle) return safe;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return safe.replace(new RegExp(`(${escaped})`, "gi"), '<mark class="hl">$1</mark>');
+}
+
+function hasTaskFilter() {
+  const f = state.filters;
+  return Boolean(f.project || f.agent || f.machine || f.grant || f.archived);
+}
+
+function getFilteredData() {
+  const q = state.query.trim().toLowerCase();
+  const f = state.filters;
+  const rank = s => (s.status === "waiting" || s.status === "failed") ? 0 : s.status === "running" ? 1 : 2;
+
+  const shownSessions = SESSIONS.filter(s => {
+    if (!f.archived && s.archived) return false;
+    if (f.project && s.project !== f.project) return false;
+    if (f.agent && s.agent !== f.agent) return false;
+    if (f.machine && s.machine !== f.machine) return false;
+    if (f.grant && s.grantId !== f.grant) return false;
+    if (!q) return true;
+    const hay = [s.title, s.project, s.agentName, s.sender, s.machine, s.branch, s.excerpt].join(" ").toLowerCase();
+    return hay.includes(q);
+  }).sort((a, b) => rank(a) - rank(b));
+
+  // When a task-specific filter is active and query is empty, hide generic actions so results stay focused on tasks.
+  const shownActions = (!q && hasTaskFilter()) ? [] : ACTIONS.filter(a => {
+    if (!q) return true;
+    return (a.label + " " + a.desc).toLowerCase().includes(q);
+  });
+
+  const flat = [
+    ...shownSessions.map(item => ({ kind: "session", item })),
+    ...shownActions.map(item => ({ kind: "action", item }))
+  ];
+  return { shownSessions, shownActions, flat };
+}
+
+function statusMeta(status) {
+  const map = {
+    waiting: { text: "等回答", cls: "waiting" },
+    running: { text: "运行中", cls: "running" },
+    failed: { text: "出错", cls: "failed" },
+    archived: { text: "已归档", cls: "archived" }
+  };
+  return map[status] || null;
+}
+
+function diffBlocks(ins, del) {
+  const total = ins + del;
+  if (!total) return [];
+  const addN = Math.min(5, Math.max(ins > 0 ? 1 : 0, Math.round((ins / total) * 5)));
+  const delN = Math.min(5 - addN, del > 0 ? Math.max(1, 5 - addN) : 0);
+  const res = [];
+  for (let i = 0; i < addN; i++) res.push("add");
+  for (let i = 0; i < delN; i++) res.push("del");
+  while (res.length < 5) res.push("");
+  return res;
+}
+
+function renderFilterStrip() {
+  const strip = document.getElementById("filterStrip");
+  const f = state.filters;
+  let html = "";
+
+  for (const def of FILTER_DEFS) {
+    const opts = def.options();
+    const val = f[def.key];
+    if (def.onlyWhenActive && !val) continue;
+    if (def.adaptiveMultiOnly && opts.length <= 1 && !val) continue;
+    const opt = opts.find(o => o.value === val);
+    const isOpen = state.openMenu === def.key;
+    const leadIc = def.icon ? icon(def.icon, "xs") : "";
+    if (val && opt) {
+      html += `<span class="fchip-wrap">
+        <button class="fchip active ${isOpen ? "open" : ""}" data-filter-open="${def.key}">
+          ${leadIc}<span>${def.label}：${escHtml(opt.label)}</span>
+          <span class="fchip-x" data-filter-clear="${def.key}" title="清除">${icon("x", "xs")}</span>
+        </button>
+      </span>`;
+    } else {
+      html += `<span class="fchip-wrap">
+        <button class="fchip ${isOpen ? "open" : ""}" data-filter-open="${def.key}">
+          ${leadIc}<span>${def.label}</span>${icon("chevD", "chev")}
+        </button>
+      </span>`;
+    }
+  }
+
+  strip.innerHTML = html;
+
+  const archBtn = document.getElementById("toggleArchivedBtn");
+  archBtn.className = `fchip ${f.archived ? "active" : ""}`;
+  archBtn.innerHTML = `${icon("archive", "xs")}<span>含已归档</span>`;
+
+  document.getElementById("resetFiltersBtn").hidden = !hasTaskFilter();
+}
+
+function renderResults() {
+  const { shownSessions, shownActions, flat } = getFilteredData();
+  if (state.index >= flat.length) state.index = Math.max(0, flat.length - 1);
+
+  document.getElementById("clearInputBtn").hidden = state.query.length === 0;
+
+  const listEl = document.getElementById("resultList");
+  const q = state.query.trim();
+
+  if (flat.length === 0) {
+    listEl.innerHTML = `
+      <div class="pal-empty">
+        <div class="pal-empty-ic">${icon("search")}</div>
+        <b>没有找到匹配的任务</b>
+        <p>尝试换一个关键词、清除筛选条件${!state.filters.archived ? "，或开启右上角「含已归档」查找历史任务" : ""}。</p>
+        <div class="pal-empty-acts">
+          ${!state.filters.archived ? `<button class="empty-btn primary" id="emptyIncludeArch">包含已归档</button>` : ""}
+          <button class="empty-btn" id="emptyClearAll">清除关键词与筛选</button>
+        </div>
+      </div>`;
+    renderPreview(null);
+    document.getElementById("footStat").textContent = "0 个结果";
+    return;
+  }
+
+  let html = "";
+  let idx = 0;
+
+  if (shownSessions.length > 0) {
+    const heading = q ? "匹配的任务" : "最近与进行中";
+    html += `<div class="pal-sec-h"><span>${heading}</span><span class="sec-cnt">${shownSessions.length}</span></div>`;
+    for (const s of shownSessions) {
+      const active = idx === state.index;
+      const st = statusMeta(s.status);
+      const titleHit = q && s.title.toLowerCase().includes(q.toLowerCase());
+      const branchHit = q && s.branch && s.branch.toLowerCase().includes(q.toLowerCase());
+      const excerptHit = q && !titleHit && s.excerpt && s.excerpt.toLowerCase().includes(q.toLowerCase());
+      const dotCls = s.status !== "idle" ? `<span class="sres-dot ${s.status}"></span>` : "";
+      const gitMark = s.gitState === "pushed"
+        ? `<span class="gmark pushed" title="已推送">${icon("gitPushed")}</span>`
+        : s.gitState === "merged"
+          ? `<span class="gmark merged" title="已合并">${icon("gitMerged")}</span>`
+          : "";
+
+      html += `<button class="sres ${active ? "on" : ""} ${s.archived ? "archived" : ""}" role="option" aria-selected="${active}" data-idx="${idx}">
+        <span class="sres-av">${agentBadgeSvg(s.agent, 16)}${dotCls}</span>
+        <span class="sres-main">
+          <span class="sres-l1">
+            <span class="sres-title">${highlight(s.title, q)}</span>
+            ${st ? `<span class="st-pill ${st.cls}">${st.text}</span>` : ""}
+          </span>
+          <span class="sres-l2">
+            <span class="proj">${icon("folder", "xs")}${highlight(s.project, q)}</span>
+            <span class="sep-dot">·</span>
+            <span>${highlight(s.sender, q)} → ${highlight(s.agentName, q)}</span>
+            <span class="sep-dot">·</span>
+            <span>${highlight(s.machine, q)}</span>
+          </span>
+          ${branchHit ? `<span class="sres-snip">分支 <code>${highlight(s.branch, q)}</code></span>` : ""}
+          ${excerptHit ? `<span class="sres-snip">${highlight(s.excerpt, q)}</span>` : ""}
+        </span>
+        <span class="sres-right">
+          ${gitMark}
+          <span class="sres-time">${escHtml(s.time)}</span>
+          <span class="sres-enter">↩</span>
+        </span>
+      </button>`;
+      idx++;
+    }
+  }
+
+  if (shownActions.length > 0) {
+    html += `<div class="pal-sec-h"><span>${q ? "匹配的操作" : "快捷操作"}</span><span class="sec-cnt">${shownActions.length}</span></div>`;
+    for (const a of shownActions) {
+      const active = idx === state.index;
+      html += `<button class="sres action-row ${active ? "on" : ""}" role="option" aria-selected="${active}" data-idx="${idx}">
+        <span class="sres-av action-av">${icon(a.icon, "sm")}</span>
+        <span class="sres-main">
+          <span class="sres-l1"><span class="sres-title">${highlight(a.label, q)}</span></span>
+        </span>
+        <span class="sres-right">
+          ${a.shortcut ? `<kbd class="kbd-cap">${escHtml(a.shortcut)}</kbd>` : `<span class="sres-enter">↩</span>`}
+        </span>
+      </button>`;
+      idx++;
+    }
+  }
+
+  listEl.innerHTML = html;
+  renderPreview(flat[state.index] || null);
+  document.getElementById("footStat").textContent = `共 ${flat.length} 个结果`;
+
+  const onRow = listEl.querySelector(".sres.on");
+  if (onRow) onRow.scrollIntoView({ block: "nearest" });
+}
+
+function renderPreview(entry) {
+  const pane = document.getElementById("previewPane");
+  const q = state.query.trim();
+  if (!entry) {
+    pane.innerHTML = `<div class="pv-action-card">
+      <div class="pv-action-ic">${icon("search")}</div>
+      <b>未选中任何项目</b>
+      <p>输入关键词或调整筛选条件以快速定位任务、分支与操作。</p>
+    </div>`;
+    return;
+  }
+
+  if (entry.kind === "action") {
+    const a = entry.item;
+    pane.innerHTML = `<div class="pv-action-card">
+      <div class="pv-action-ic">${icon(a.icon)}</div>
+      <b>${highlight(a.label, q)}</b>
+      <p>${escHtml(a.desc)}</p>
+      ${a.shortcut ? `<kbd class="kbd-cap" style="margin-top:4px">${escHtml(a.shortcut)}</kbd>` : ""}
+    </div>`;
+    return;
+  }
+
+  const s = entry.item;
+  const st = statusMeta(s.status);
+  const gitIconMap = { pushed: "gitPushed", merged: "gitMerged", unpushed: "gitUnpushed", dirty: "gitDirty" };
+  const blocks = diffBlocks(s.add, s.del);
+  const exCls = s.status === "waiting" ? "waiting" : s.status === "failed" ? "failed" : "";
+  const exLbl = s.status === "waiting" ? "等待你回答" : s.status === "failed" ? "最近错误" : s.status === "running" ? "当前进展" : "最近摘要";
+
+  pane.innerHTML = `
+    <div class="pv-head">
+      <span class="sres-av" style="width:28px;height:28px;border-radius:8px">${agentBadgeSvg(s.agent, 18)}</span>
+      <div style="min-width:0;flex:1">
+        <div class="pv-title">${highlight(s.title, q)}</div>
+        <div class="pv-sub">
+          ${st ? `<span class="st-pill ${st.cls}">${st.text}</span>` : ""}
+          <span>${escHtml(s.sender)} → ${escHtml(s.agentName)}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pv-excerpt ${exCls}">
+      <div class="pv-ex-lbl">${exLbl}</div>
+      <div class="pv-ex-txt">${highlight(s.excerpt, q)}</div>
+    </div>
+
+    ${s.gitState && s.gitState !== "clean" ? `
+    <div class="pv-git ${s.gitState}">
+      <div class="pv-git-top">
+        ${icon(gitIconMap[s.gitState] || "gitCommit")}
+        <span class="pv-git-st">${escHtml(s.gitLabel)}</span>
+        ${blocks.length ? `<span class="pv-diff">
+          <span class="pv-add">+${s.add}</span>
+          <span class="pv-del">−${s.del}</span>
+          <span class="pv-dbar">${blocks.map(b => `<i class="pv-sq ${b}"></i>`).join("")}</span>
+        </span>` : ""}
+      </div>
+      ${s.branch ? `<div class="pv-grow">
+        ${icon("branch", "xs")}
+        <code class="pv-ref">${highlight(s.branch, q)}</code>
+        <span style="color:var(--l3)">→</span>
+        <code class="pv-ref">${escHtml(s.targetRef)}</code>
+      </div>` : ""}
+      ${s.headCommit ? `<div class="pv-grow">
+        ${icon("gitCommit", "xs")}
+        <code class="pv-sha">${escHtml(s.headCommit)}</code>
+        <span class="pv-subj">${escHtml(s.headSubject)}</span>
+      </div>` : ""}
+    </div>` : ""}
+
+    <div class="pv-meta">
+      <div class="pv-kv"><span>${icon("folder", "xs")}项目</span><b>${escHtml(s.project)}</b></div>
+      <div class="pv-kv"><span>${icon("laptop", "xs")}环境</span><b>${escHtml(s.machine)}${s.machineOnline ? "" : "（离线）"}</b></div>
+      <div class="pv-kv"><span>${icon("clock", "xs")}活跃</span><b>${escHtml(s.time)} · ${s.turns} 轮</b></div>
+    </div>
+
+    <div class="pv-acts">
+      <button class="pv-btn primary" id="pvOpenBtn">打开任务 <span style="opacity:.75">↩</span></button>
+      <button class="pv-btn" id="pvCopyBtn" style="flex:0 0 auto;padding:0 10px" title="拷贝任务 ID">${icon("copy", "xs")}</button>
+    </div>
+  `;
+}
+
+function closeMenu() {
+  state.openMenu = null;
+  document.getElementById("menuHost").innerHTML = "";
+  renderFilterStrip();
+}
+
+function openFilterMenu(key, anchorEl) {
+  if (state.openMenu === key) {
+    closeMenu();
+    return;
+  }
+  state.openMenu = key;
+  renderFilterStrip();
+
+  const def = FILTER_DEFS.find(d => d.key === key);
+  const rect = anchorEl.getBoundingClientRect();
+  const curVal = state.filters[key];
+
+  const menu = document.createElement("div");
+  menu.className = "fmenu";
+  menu.style.left = `${Math.min(rect.left, window.innerWidth - 200)}px`;
+  menu.style.top = `${rect.bottom + 5}px`;
+
+  let html = `<div class="fmenu-h">按${def.label}筛选</div>
+    <button class="fmenu-item" data-pick="">
+      <span class="ck">${curVal === "" ? icon("check", "xs") : ""}</span>
+      <span>全部${def.label}</span>
+    </button>
+    <div class="fmenu-sep"></div>`;
+
+  for (const o of def.options()) {
+    const count = SESSIONS.filter(s => (state.filters.archived || !s.archived) && s[key === "grant" ? "grantId" : key] === o.value).length;
+    html += `<button class="fmenu-item" data-pick="${escHtml(o.value)}">
+      <span class="ck">${curVal === o.value ? icon("check", "xs") : ""}</span>
+      <span>${escHtml(o.label)}</span>
+      <span class="fmi-cnt">${count}</span>
+    </button>`;
+  }
+
+  menu.innerHTML = html;
+  const host = document.getElementById("menuHost");
+  host.innerHTML = "";
+  host.appendChild(menu);
+
+  menu.addEventListener("click", e => {
+    const btn = e.target.closest("[data-pick]");
+    if (!btn) return;
+    state.filters[key] = btn.dataset.pick;
+    state.index = 0;
+    closeMenu();
+    renderAll();
+  });
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById("winToast");
+  document.getElementById("winToastText").textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2000);
+}
+
+function triggerOpen(idx) {
+  const { flat } = getFilteredData();
+  const entry = flat[idx];
+  if (!entry) return;
+  if (entry.kind === "session") {
+    showToast(`已跳转到任务「${entry.item.title}」`);
+  } else {
+    showToast(`已触发操作「${entry.item.label}」`);
+  }
+}
+
+function setPaletteClosed(closed) {
+  state.closed = closed;
+  document.getElementById("scrim").classList.toggle("closed", closed);
+  document.getElementById("pal").classList.toggle("closed", closed);
+  if (closed) {
+    closeMenu();
+    showToast("已关闭搜索（按 ⌘K 或点左上角放大镜重新打开）");
+  } else {
+    setTimeout(() => document.getElementById("searchInput").focus(), 30);
+  }
+}
+
+function applyMode(mode) {
+  state.mode = mode;
+  const pal = document.getElementById("pal");
+  pal.classList.remove("mode-split", "mode-single", "mode-legacy");
+  pal.classList.add(`mode-${mode}`);
+  document.querySelectorAll("#modeSwitch .dock-btn").forEach(b => b.classList.toggle("on", b.dataset.mode === mode));
+  closeMenu();
+  renderAll();
+}
+
+function applyTheme(theme) {
+  state.theme = theme;
+  document.body.className = `theme-${theme}`;
+  document.querySelectorAll("#themeSwitch .dock-btn").forEach(b => b.classList.toggle("on", b.dataset.theme === theme));
+}
+
+function applyPreset(name) {
+  document.querySelectorAll("#presets .preset-btn").forEach(b => b.classList.toggle("on", b.dataset.preset === name));
+  state.filters = { project: "", agent: "", machine: "", grant: "", archived: false };
+  state.index = 0;
+  if (state.closed) setPaletteClosed(false);
+  if (state.mode === "legacy") applyMode("split");
+
+  if (name === "theme") {
+    state.query = "主题";
+  } else if (name === "empty") {
+    state.query = "";
+  } else if (name === "multi") {
+    state.query = "";
+    state.filters.project = "hermesh";
+    state.filters.archived = true;
+  } else if (name === "snippet") {
+    state.query = "tls";
+  } else if (name === "none") {
+    state.query = "kubernetes";
+  }
+  document.getElementById("searchInput").value = state.query;
+  closeMenu();
+  renderAll();
+  document.getElementById("searchInput").focus();
+}
+
+function renderAll() {
+  renderFilterStrip();
+  renderResults();
+}
+
+// Event Wiring
+document.getElementById("searchInput").addEventListener("input", e => {
+  state.query = e.target.value;
+  state.index = 0;
+  renderAll();
+});
+
+document.getElementById("clearInputBtn").addEventListener("click", () => {
+  state.query = "";
+  document.getElementById("searchInput").value = "";
+  state.index = 0;
+  renderAll();
+  document.getElementById("searchInput").focus();
+});
+
+document.getElementById("escBtn").addEventListener("click", () => setPaletteClosed(true));
+document.getElementById("scrim").addEventListener("click", () => setPaletteClosed(true));
+document.getElementById("reopenBtn").addEventListener("click", () => setPaletteClosed(false));
+
+document.getElementById("filterStrip").addEventListener("click", e => {
+  const clearBtn = e.target.closest("[data-filter-clear]");
+  if (clearBtn) {
+    e.stopPropagation();
+    state.filters[clearBtn.dataset.filterClear] = "";
+    state.index = 0;
+    closeMenu();
+    renderAll();
+    return;
+  }
+  const openBtn = e.target.closest("[data-filter-open]");
+  if (openBtn) {
+    e.stopPropagation();
+    openFilterMenu(openBtn.dataset.filterOpen, openBtn);
+  }
+});
+
+document.getElementById("toggleArchivedBtn").addEventListener("click", () => {
+  state.filters.archived = !state.filters.archived;
+  state.index = 0;
+  closeMenu();
+  renderAll();
+});
+
+document.getElementById("resetFiltersBtn").addEventListener("click", () => {
+  state.filters = { project: "", agent: "", machine: "", grant: "", archived: false };
+  state.index = 0;
+  closeMenu();
+  renderAll();
+});
+
+document.getElementById("resultList").addEventListener("click", e => {
+  if (e.target.closest("#emptyIncludeArch")) {
+    state.filters.archived = true;
+    renderAll();
+    return;
+  }
+  if (e.target.closest("#emptyClearAll")) {
+    state.query = "";
+    document.getElementById("searchInput").value = "";
+    state.filters = { project: "", agent: "", machine: "", grant: "", archived: false };
+    renderAll();
+    return;
+  }
+  const row = e.target.closest(".sres");
+  if (!row) return;
+  const idx = Number(row.dataset.idx);
+  state.index = idx;
+  renderResults();
+  triggerOpen(idx);
+});
+
+document.getElementById("resultList").addEventListener("mousemove", e => {
+  const row = e.target.closest(".sres");
+  if (!row) return;
+  const idx = Number(row.dataset.idx);
+  if (idx !== state.index) {
+    state.index = idx;
+    renderResults();
+  }
+});
+
+document.getElementById("previewPane").addEventListener("click", e => {
+  if (e.target.closest("#pvOpenBtn")) triggerOpen(state.index);
+  if (e.target.closest("#pvCopyBtn")) showToast("已拷贝任务 ID");
+});
+
+document.getElementById("modeSwitch").addEventListener("click", e => {
+  const btn = e.target.closest("[data-mode]");
+  if (btn) applyMode(btn.dataset.mode);
+});
+
+document.getElementById("themeSwitch").addEventListener("click", e => {
+  const btn = e.target.closest("[data-theme]");
+  if (btn) applyTheme(btn.dataset.theme);
+});
+
+document.getElementById("presets").addEventListener("click", e => {
+  const btn = e.target.closest("[data-preset]");
+  if (btn) applyPreset(btn.dataset.preset);
+});
+
+document.addEventListener("mousedown", e => {
+  if (state.openMenu && !e.target.closest(".fmenu") && !e.target.closest("[data-filter-open]")) {
+    closeMenu();
+  }
+});
+
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    setPaletteClosed(!state.closed);
+    return;
+  }
+  if (state.closed) return;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    if (state.openMenu) closeMenu();
+    else setPaletteClosed(true);
+  } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const { flat } = getFilteredData();
+    if (!flat.length) return;
+    state.index = Math.max(0, Math.min(flat.length - 1, state.index + (e.key === "ArrowDown" ? 1 : -1)));
+    renderResults();
+  } else if (e.key === "Enter") {
+    if (state.openMenu) return;
+    e.preventDefault();
+    triggerOpen(state.index);
+  }
+});
+
+renderAll();
+</script>
+</body>
+</html>
