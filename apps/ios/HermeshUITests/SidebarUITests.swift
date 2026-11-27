@@ -83,7 +83,7 @@ final class SidebarUITests: XCTestCase {
         let menuShot2 = XCUIScreen.main.screenshot()
         attach(menuShot, name: "sidebar-running-row")
         // Leading logo: a brand-blue squircle orbit is visible and moves over time.
-        let leading = CGRect(x: row.frame.minX + 10, y: row.frame.midY - 15, width: 36, height: 30)
+        let leading = CGRect(x: row.frame.minX + 14, y: row.frame.midY - 15, width: 44, height: 30)
         let orbit = blueOrbitStats(first: menuShot.image, second: menuShot2.image, rectInPoints: leading)
         XCTAssertGreaterThan(orbit.bluePixels, 8, "expected brand-blue orbit pixels around running provider icon (got \(orbit.bluePixels))")
         XCTAssertGreaterThan(orbit.changedPixels, 6, "expected running provider icon orbit to animate over time (got \(orbit.changedPixels))")

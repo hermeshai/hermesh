@@ -1,6 +1,7 @@
 import { useMemo, type CSSProperties } from "react";
+import { pointOnRoundedSquare } from "./orbitPath";
 
-const ORBIT_FRAMES = 36;
+const ORBIT_FRAMES = 60;
 const ORBIT_SIZE = 20;
 
 let lastOrbitKey = "";
@@ -17,9 +18,21 @@ function parseHexOrRgb(color: string): [number, number, number] {
   return [d[0], d[1], d[2]];
 }
 
+function lerpRgb(a: [number, number, number], b: [number, number, number], t: number): [number, number, number] {
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * t),
+    Math.round(a[1] + (b[1] - a[1]) * t),
+    Math.round(a[2] + (b[2] - a[2]) * t),
+  ];
+}
+
+function rgbaStr(rgb: [number, number, number], alpha: number): string {
+  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha.toFixed(4)})`;
+}
+
 /**
- * Renders the 20×20 squircle comet ring once into a 36-frame sprite strip on
- * `--slogo-orbit-strip` whenever the theme or display scale changes, so every
+ * Renders the 20×20 zero-gap bezel comet ring once into a 60-frame sprite strip
+ * on `--slogo-orbit-strip` whenever the theme or display scale changes, so every
  * running sidebar row animates with an axis-aligned `translate3d` (`CALayer`
  * direct composition on macOS) instead of per-frame `-webkit-mask-composite`.
  */
@@ -28,9 +41,9 @@ export function syncOrbitStrip(): void {
   const root = document.documentElement;
   const cs = getComputedStyle(root);
   const accent = cs.getPropertyValue("--accent").trim() || "#3d5bff";
-  const track = cs.getPropertyValue("--l4").trim() || "rgba(128,128,128,0.16)";
+  const dark = cs.getPropertyValue("color-scheme").trim() === "dark";
   const dpr = Math.min(3, Math.max(1, Math.ceil(window.devicePixelRatio || 2)));
-  const key = `${accent}|${track}|${dpr}`;
+  const key = `${accent}|${dark ? 1 : 0}|${dpr}`;
   if (key === lastOrbitKey) return;
   lastOrbitKey = key;
 
@@ -41,30 +54,86 @@ export function syncOrbitStrip(): void {
   if (!ctx) return;
   ctx.scale(dpr, dpr);
 
-  const [ar, ag, ab] = parseHexOrRgb(accent);
-  const crest = `rgb(${Math.round(ar * 0.62 + 255 * 0.38)}, ${Math.round(ag * 0.62 + 255 * 0.38)}, ${Math.round(ab * 0.62 + 255 * 0.38)})`;
+  const scratch = document.createElement("canvas");
+  scratch.width = ORBIT_SIZE * dpr;
+  scratch.height = ORBIT_SIZE * dpr;
+  const sctx = scratch.getContext("2d");
+  if (!sctx) return;
+
+  const accentRgb = parseHexOrRgb(accent);
+  const crestRgb: [number, number, number] = dark
+    ? lerpRgb(accentRgb, [255, 255, 255], 0.46)
+    : [2, 132, 199];
+  const track = dark ? "rgba(255, 255, 255, 0.065)" : "rgba(0, 0, 0, 0.05)";
+
+  // V2 zero-gap concentric bezel around the unscaled 16×16 provider tile
+  const cx = ORBIT_SIZE / 2;
+  const cy = ORBIT_SIZE / 2;
+  const iconSize = 16;
+  const iconR = iconSize * 0.255;
+  const gap = -0.08;
+  const sw = 1.15;
+  const centerSpan = iconSize + 2 * gap + sw;
+  const rCenter = iconR + gap + sw / 2;
+  const arcFrac = 0.36;
+  const steps = 64;
+
+  const colorAt = (t: number): [number, number, number] => {
+    if (t < 0.68) return accentRgb;
+    if (t < 0.90) return lerpRgb(accentRgb, crestRgb, (t - 0.68) / 0.22);
+    return lerpRgb(crestRgb, accentRgb, ((t - 0.90) / 0.10) * 0.4);
+  };
 
   for (let f = 0; f < ORBIT_FRAMES; f++) {
+    const uHead = f / ORBIT_FRAMES;
+
+    sctx.setTransform(1, 0, 0, 1, 0, 0);
+    sctx.clearRect(0, 0, scratch.width, scratch.height);
+    sctx.scale(dpr, dpr);
+
+    sctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const p = pointOnRoundedSquare(cx, cy, centerSpan, rCenter, uHead - arcFrac + (i / steps) * arcFrac);
+      if (i === 0) sctx.moveTo(p.x, p.y);
+      else sctx.lineTo(p.x, p.y);
+    }
+    sctx.strokeStyle = "#ffffff";
+    sctx.lineWidth = sw;
+    sctx.lineCap = "round";
+    sctx.lineJoin = "round";
+    sctx.stroke();
+
+    sctx.globalCompositeOperation = "source-in";
+    const pT = pointOnRoundedSquare(cx, cy, centerSpan, rCenter, uHead - arcFrac);
+    const pH = pointOnRoundedSquare(cx, cy, centerSpan, rCenter, uHead);
+    const aT = Math.atan2(pT.y - cy, pT.x - cx);
+    const aH = Math.atan2(pH.y - cy, pH.x - cx);
+    const span = ((((aH - aT) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2);
+
+    const cg = sctx.createConicGradient(aT, cx, cy);
+    cg.addColorStop(0, rgbaStr(colorAt(0), 0));
+    const samples = 10;
+    for (let s = 1; s <= samples; s++) {
+      const t = s / samples;
+      const pos = span * t;
+      if (pos <= 1) cg.addColorStop(pos, rgbaStr(colorAt(t), Math.pow(t, 1.55)));
+    }
+    const capPad = Math.min(0.032, (1 - span) * 0.45);
+    if (span + capPad <= 1) cg.addColorStop(span + capPad, rgbaStr(colorAt(0.94), 1));
+    if (span + capPad + 0.015 <= 1) cg.addColorStop(span + capPad + 0.015, rgbaStr(colorAt(1), 0));
+
+    sctx.fillStyle = cg;
+    sctx.fillRect(0, 0, ORBIT_SIZE, ORBIT_SIZE);
+    sctx.globalCompositeOperation = "source-over";
+
     ctx.save();
     ctx.translate(f * ORBIT_SIZE, 0);
     ctx.beginPath();
-    ctx.roundRect(0, 0, ORBIT_SIZE, ORBIT_SIZE, 6);
-    ctx.roundRect(1.5, 1.5, ORBIT_SIZE - 3, ORBIT_SIZE - 3, 4.5);
-    ctx.clip("evenodd");
-
-    ctx.fillStyle = track;
-    ctx.fillRect(0, 0, ORBIT_SIZE, ORBIT_SIZE);
-
-    const angle = (f / ORBIT_FRAMES) * Math.PI * 2 - Math.PI / 2;
-    const g = ctx.createConicGradient(angle, ORBIT_SIZE / 2, ORBIT_SIZE / 2);
-    g.addColorStop(0, "transparent");
-    g.addColorStop(205 / 360, "transparent");
-    g.addColorStop(275 / 360, accent);
-    g.addColorStop(325 / 360, crest);
-    g.addColorStop(355 / 360, accent);
-    g.addColorStop(1, "transparent");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, ORBIT_SIZE, ORBIT_SIZE);
+    ctx.roundRect(cx - centerSpan / 2, cy - centerSpan / 2, centerSpan, centerSpan, rCenter);
+    ctx.strokeStyle = track;
+    ctx.lineWidth = sw;
+    ctx.stroke();
+    ctx.drawImage(scratch, 0, 0, ORBIT_SIZE, ORBIT_SIZE);
     ctx.restore();
   }
 
@@ -77,6 +146,12 @@ export function initRunningMotion(): void {
   refresh();
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", refresh);
   window.addEventListener("resize", refresh, { passive: true });
+  if (typeof MutationObserver !== "undefined") {
+    new MutationObserver(refresh).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "data-dark-style", "data-light-style"],
+    });
+  }
 }
 
 const graphemeSegmenter =
