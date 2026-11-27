@@ -20,10 +20,9 @@ export function themeSourceOf(appearance: Appearance): "system" | "light" | "dar
   return isLightPalette(appearance) ? "light" : "dark";
 }
 
-/** Resolves the active 4-way palette given preferences (and optional hover preview) and whether dark mode is active. */
-export function resolvePalette(prefs: AppearancePrefs, dark: boolean, preview?: Appearance | null): Palette {
-  const effective = preview && isAppearance(preview) ? preview : prefs.appearance;
-  if (effective !== "system") return effective;
+/** Resolves the active 4-way palette given preferences and whether dark mode is active. */
+export function resolvePalette(prefs: AppearancePrefs, dark: boolean): Palette {
+  if (prefs.appearance !== "system") return prefs.appearance;
   return dark ? (prefs.preferredDark ?? "dark") : (prefs.preferredLight ?? "light");
 }
 

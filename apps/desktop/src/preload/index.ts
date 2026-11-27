@@ -97,8 +97,6 @@ const bridge: Bridge = {
   getPreferences: () => ipcRenderer.invoke("preferences"),
   setPreferences: (p: Partial<Preferences>) => ipcRenderer.invoke("set-preferences", p),
   onPreferences: (cb: (p: Preferences) => void) => listen("preferences", cb),
-  previewAppearance: (a: Appearance | null) => ipcRenderer.send("preview-appearance", a),
-  onAppearancePreview: (cb: (a: Appearance | null) => void) => listen("appearance-preview", cb),
   relaunch: () => ipcRenderer.send("relaunch"),
   loginItem: () => ipcRenderer.invoke("login-item"),
   setLoginItem: (on: boolean) => ipcRenderer.invoke("set-login-item", on),

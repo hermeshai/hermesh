@@ -7,7 +7,7 @@ import type { Session } from "@hermesh/proto/session";
 import { app, BrowserWindow, nativeTheme, Notification } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import { isAppearance, isDarkPalette, isLightPalette, resolvePalette, themeSourceOf, type Appearance, type Palette } from "../shared/appearance";
+import { isAppearance, isDarkPalette, isLightPalette, resolvePalette, themeSourceOf, type Palette } from "../shared/appearance";
 import type { Command, Preferences } from "../shared/bridge";
 import { i18n, languages, type Language } from "../shared/i18n";
 import { command } from "./ipc";
@@ -43,7 +43,6 @@ const changed = () => {
 
 const defaults: Preferences = { appearance: "system", preferredLight: "light", preferredDark: "dark", notifyStarted: true, notifyQuestion: true, notifyFailed: true, notifyTurnDone: false, menuBadge: true, language: "system", stayOnline: true };
 let prefs: Preferences | undefined;
-let preview: Appearance | null = null;
 let legacy: { keepDaemonOnQuit?: boolean; stayOnline?: boolean } = {};
 const prefsFile = () => path.join(app.getPath("userData"), "preferences.json");
 
@@ -65,7 +64,7 @@ export function preferences(): Preferences {
 }
 
 export function activePalette(): Palette {
-  return resolvePalette(preferences(), nativeTheme.shouldUseDarkColors, preview);
+  return resolvePalette(preferences(), nativeTheme.shouldUseDarkColors);
 }
 
 export async function migrateStayOnline(loginItem: () => Promise<{ on: boolean }> | { on: boolean }, setLoginItem: (on: boolean) => unknown) {
@@ -81,22 +80,9 @@ export async function migrateStayOnline(loginItem: () => Promise<{ on: boolean }
 }
 
 export function applyAppearance() {
-  const effective = preview ?? preferences().appearance;
-  const src = themeSourceOf(effective);
+  const src = themeSourceOf(preferences().appearance);
   if (nativeTheme.themeSource !== src) nativeTheme.themeSource = src;
   syncWindowsAppearance();
-}
-
-export function setAppearancePreview(a: unknown) {
-  const next = isAppearance(a) ? a : null;
-  if (preview === next) return;
-  preview = next;
-  applyAppearance();
-  for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send("appearance-preview", preview);
-}
-
-export function clearAppearancePreview() {
-  setAppearancePreview(null);
 }
 
 export function setPreferences(p: Partial<Preferences>): Preferences {
@@ -112,17 +98,11 @@ export function setPreferences(p: Partial<Preferences>): Preferences {
     if (isDarkPalette(p.appearance)) next.preferredDark = p.appearance;
   }
   prefs = next;
-  const hadPreview = preview !== null;
-  preview = null;
   legacy.stayOnline = next.stayOnline;
   applyAppearance();
   fs.mkdirSync(path.dirname(prefsFile()), { recursive: true });
   fs.writeFileSync(prefsFile(), JSON.stringify(next));
-  for (const w of BrowserWindow.getAllWindows()) {
-    if (w.isDestroyed()) continue;
-    if (hadPreview) w.webContents.send("appearance-preview", null);
-    w.webContents.send("preferences", next);
-  }
+  for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send("preferences", next);
   if (next.stayOnline !== before.stayOnline) stayOnlineListeners.forEach((f) => f(next.stayOnline));
   changed();
   return next;

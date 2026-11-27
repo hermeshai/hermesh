@@ -174,9 +174,6 @@ export type Bridge = {
   getPreferences(): Promise<Preferences>;
   setPreferences(p: Partial<Preferences>): Promise<Preferences>;
   onPreferences(cb: (p: Preferences) => void): () => void;
-  /** Transient live preview while hovering an appearance card in Settings (null restores the saved preference). */
-  previewAppearance?(a: Appearance | null): void;
-  onAppearancePreview?(cb: (a: Appearance | null) => void): () => void;
   /** Quits and opens the app again (a new language takes effect). */
   relaunch(): void;
   /** Whether the app opens at login (Open Hermesh at login). */

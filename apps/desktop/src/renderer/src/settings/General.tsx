@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { pickLanguage } from "@hermesh/core";
-import { isDarkPalette, isLightPalette, type Palette } from "../../../shared/appearance";
 import type { Appearance, Preferences } from "../../../shared/bridge";
 import { languages, resolveLanguage, type LanguageChoice } from "../../../shared/i18n";
 import { useIsDark } from "../appearance";
@@ -38,45 +37,14 @@ export function General() {
   const isDark = useIsDark();
   // Kept by the main process, which acts on them while no window is open.
   const [prefs, setPrefs] = useState<Preferences>();
-  const [peek, setPeek] = useState<Appearance | null>(null);
-  const peekTimer = useRef<number>(0);
 
   useEffect(() => {
     window.hermesh?.getPreferences().then(setPrefs);
     return window.hermesh?.onPreferences(setPrefs);
   }, []);
 
-  useEffect(() => {
-    return () => {
-      window.clearTimeout(peekTimer.current);
-      window.hermesh?.previewAppearance?.(null);
-    };
-  }, []);
-
-  const startPeek = (a: Appearance) => {
-    window.clearTimeout(peekTimer.current);
-    peekTimer.current = window.setTimeout(() => {
-      setPeek(a);
-      window.hermesh?.previewAppearance?.(a);
-    }, 110);
-  };
-
-  const endPeek = () => {
-    window.clearTimeout(peekTimer.current);
-    setPeek(null);
-    window.hermesh?.previewAppearance?.(null);
-  };
-
-  const choose = (a: Appearance) => {
-    window.clearTimeout(peekTimer.current);
-    setPeek(null);
-    window.hermesh?.setPreferences({ appearance: a }).then(setPrefs);
-  };
-
   const prefLight = prefs?.preferredLight ?? "light";
   const prefDark = prefs?.preferredDark ?? "dark";
-  const dayPair: Palette = peek && isLightPalette(peek) ? peek : prefLight;
-  const nightPair: Palette = peek && isDarkPalette(peek) ? peek : prefDark;
 
   const look = (a: Appearance) => {
     const active = prefs?.appearance === a;
@@ -88,13 +56,12 @@ export function General() {
         className={`look-card ${active ? "on" : ""} ${paired ? "paired" : ""}`}
         aria-pressed={active}
         disabled={!prefs}
-        onPointerEnter={() => prefs && startPeek(a)}
-        onClick={() => choose(a)}
+        onClick={() => window.hermesh?.setPreferences({ appearance: a }).then(setPrefs)}
       >
         {a === "system" ? (
           <span className={`look-stage sys-stage ${isDark ? "night-now" : ""}`} aria-hidden="true">
-            <span className={`sys-win day m-${dayPair}`}><MiniAnatomy /></span>
-            <span className={`sys-win night m-${nightPair}`}><MiniAnatomy /></span>
+            <span className={`sys-win day m-${prefLight}`}><MiniAnatomy /></span>
+            <span className={`sys-win night m-${prefDark}`}><MiniAnatomy /></span>
           </span>
         ) : (
           <span className="look-stage" aria-hidden="true">
@@ -114,7 +81,7 @@ export function General() {
       <div className="fgroup">
         <div className="look-block">
           <div className="look-head">{t("appearance.title")}</div>
-          <div className="set-look" role="group" aria-label={t("appearance.title")} onPointerLeave={endPeek}>
+          <div className="set-look" role="group" aria-label={t("appearance.title")}>
             {appearances.map(look)}
           </div>
         </div>

@@ -30,7 +30,7 @@ test("appearance guards and themeSource mapping cover all 5 modes", () => {
   assert.equal(themeSourceOf("black"), "dark");
 });
 
-test("resolvePalette honors explicit modes, system day/night preferences, and transient hover preview", () => {
+test("resolvePalette honors explicit modes and system day/night preferences", () => {
   const base = { appearance: "system" as const };
   assert.equal(resolvePalette(base, false), "light");
   assert.equal(resolvePalette(base, true), "dark");
@@ -41,11 +41,6 @@ test("resolvePalette honors explicit modes, system day/night preferences, and tr
 
   assert.equal(resolvePalette({ appearance: "soft", preferredLight: "light" }, true), "soft");
   assert.equal(resolvePalette({ appearance: "black", preferredDark: "dark" }, false), "black");
-
-  // Hover preview temporarily overrides without mutating saved preferences.
-  assert.equal(resolvePalette(customPair, false, "black"), "black");
-  assert.equal(resolvePalette({ appearance: "black", preferredLight: "soft", preferredDark: "black" }, false, "system"), "soft");
-  assert.equal(resolvePalette(customPair, false, null), "soft");
 });
 
 test("sidebar material and initial window backgrounds match each curated palette", () => {
