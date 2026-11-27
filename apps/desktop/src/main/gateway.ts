@@ -72,8 +72,10 @@ export async function forward(req: Request, apiPath: string, socket: string, cor
       down?.destroy(new Error("hermeshd stopped"));
       up?.destroy();
     };
+    const onAbort = () => up?.destroy();
     const finish = () => {
       active.delete(drop);
+      req.signal?.removeEventListener("abort", onAbort);
       if (!done) {
         done = true;
         open--;
@@ -104,7 +106,7 @@ export async function forward(req: Request, apiPath: string, socket: string, cor
       }));
     });
     up.on("close", finish);
-    req.signal?.addEventListener("abort", () => up?.destroy());
+    req.signal?.addEventListener("abort", onAbort, { once: true });
     up.end(body);
   });
 }

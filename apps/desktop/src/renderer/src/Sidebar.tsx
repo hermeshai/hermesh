@@ -922,6 +922,50 @@ type RowHoverController = {
   dismiss: () => void;
 };
 
+type SideListRunTracker = {
+  add: (el: HTMLElement) => void;
+  remove: (el: HTMLElement) => void;
+};
+
+const sideListTrackers = new WeakMap<Element, SideListRunTracker>();
+
+function sideListTrackerFor(scroller: Element): SideListRunTracker {
+  let tracker = sideListTrackers.get(scroller);
+  if (!tracker) {
+    const rows = new Set<HTMLElement>();
+    const syncRow = (el: HTMLElement, sr: DOMRect) => {
+      if (sr.height <= 0) return;
+      const r = el.getBoundingClientRect();
+      const off = r.height > 0 && (r.bottom < sr.top - 120 || r.top > sr.bottom + 120);
+      if (off !== el.hasAttribute("data-offscreen")) {
+        if (off) el.setAttribute("data-offscreen", "1");
+        else el.removeAttribute("data-offscreen");
+      }
+    };
+    const syncAll = () => {
+      if (rows.size === 0) return;
+      const sr = scroller.getBoundingClientRect();
+      for (const el of rows) syncRow(el, sr);
+    };
+    scroller.addEventListener("scroll", syncAll, { passive: true });
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(syncAll).observe(scroller);
+    }
+    tracker = {
+      add(el) {
+        rows.add(el);
+        syncRow(el, scroller.getBoundingClientRect());
+      },
+      remove(el) {
+        rows.delete(el);
+        if (el.hasAttribute("data-offscreen")) el.removeAttribute("data-offscreen");
+      },
+    };
+    sideListTrackers.set(scroller, tracker);
+  }
+  return tracker;
+}
+
 /**
  * A session in the sidebar (docs/her-team.md §16): the coding agent's logo (with a brand-blue orbit while it runs),
  * the title (shimmering while it runs), and one mark (an orange dot while it waits for the owner, a red one when it
@@ -942,12 +986,23 @@ export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renam
   const archived = s.status === SessionStatus.ARCHIVED;
   const running = (treeRunning ?? (isActive(s) && !needsAttention(s))) && !treeMark;
   const runLabel = running ? t(s.status === SessionStatus.QUEUED ? "status.queued" : s.status === SessionStatus.PREPARING ? "status.preparing" : "status.running") : undefined;
+  const rowElRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = rowElRef.current;
+    if (!running || !el) return;
+    const scroller = el.closest(".side-list");
+    if (!scroller) return;
+    const tracker = sideListTrackerFor(scroller);
+    tracker.add(el);
+    return () => tracker.remove(el);
+  }, [running]);
   // Where the ⋯ menu opens (under its button), while it is open.
   const [menu, setMenu] = useState<{ x: number; y: number; key: boolean } | null>(null);
   const [pendingTitle, setPendingTitle] = useState<string | null>(null);
   const shownTitle = pendingTitle ?? displayTitle(s);
   return (
     <div
+      ref={rowElRef}
       className={`srow ${renaming ? "renaming" : "has-act"} ${sel ? "sel" : ""} ${menu ? "menu-open" : ""} ${archived ? "arch" : ""} ${twist ? "tree" : ""}`}
       role="listitem"
       data-session-id={s.sessionId}

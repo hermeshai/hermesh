@@ -164,6 +164,10 @@ func (l *localService) watchRound(ctx context.Context, send func(*localv1.WatchR
 			if !ok {
 				return connect.NewError(connect.CodeResourceExhausted, errors.New("fell behind; watch again"))
 			}
+			m, ok = drainSessionChanges(m, changes)
+			if !ok {
+				return connect.NewError(connect.CodeResourceExhausted, errors.New("fell behind; watch again"))
+			}
 			mWatchWakeSession.Inc()
 			if m.MachinesChanged {
 				t0 := time.Now()
@@ -186,7 +190,7 @@ func (l *localService) watchRound(ctx context.Context, send func(*localv1.WatchR
 			out = w.diff(ctx, l, o, mode)
 			mWatchDiff.Since(t0)
 		}
-		if !proto.Equal(out, &localv1.WatchResponse{}) {
+		if !watchResponseEmpty(out) {
 			mWatchSent.Inc()
 			if err := send(out); err != nil {
 				return err
@@ -195,6 +199,114 @@ func (l *localService) watchRound(ctx context.Context, send func(*localv1.WatchR
 			mWatchNoop.Inc()
 		}
 	}
+}
+
+// drainSessionChanges coalesces any additional session updates already queued
+// in ch without blocking, preserving latest-state-wins ordering across updates
+// and deletions while adding zero latency when ch has no backlog.
+func drainSessionChanges(first *localv1.WatchSessionsResponse, ch <-chan *localv1.WatchSessionsResponse) (*localv1.WatchSessionsResponse, bool) {
+	var next *localv1.WatchSessionsResponse
+	var ok bool
+	select {
+	case next, ok = <-ch:
+		if !ok {
+			return nil, false
+		}
+	default:
+		return first, true
+	}
+
+	merged := &localv1.WatchSessionsResponse{
+		MachinesChanged: first.GetMachinesChanged(),
+	}
+	sessIdx := make(map[string]int, len(first.GetSessions())+len(next.GetSessions()))
+	deleted := make(map[string]int, len(first.GetDeletedSessionIds())+len(next.GetDeletedSessionIds()))
+
+	applyBatch := func(b *localv1.WatchSessionsResponse) {
+		if b.GetMachinesChanged() {
+			merged.MachinesChanged = true
+		}
+		for _, id := range b.GetDeletedSessionIds() {
+			if id == "" {
+				continue
+			}
+			if idx, exists := sessIdx[id]; exists {
+				merged.Sessions[idx] = nil
+				delete(sessIdx, id)
+			}
+			if _, exists := deleted[id]; !exists {
+				deleted[id] = len(merged.DeletedSessionIds)
+				merged.DeletedSessionIds = append(merged.DeletedSessionIds, id)
+			}
+		}
+		for _, s := range b.GetSessions() {
+			if s == nil || s.SessionId == "" {
+				continue
+			}
+			if dIdx, wasDel := deleted[s.SessionId]; wasDel {
+				merged.DeletedSessionIds[dIdx] = ""
+				delete(deleted, s.SessionId)
+			}
+			if idx, exists := sessIdx[s.SessionId]; exists {
+				merged.Sessions[idx] = s
+			} else {
+				sessIdx[s.SessionId] = len(merged.Sessions)
+				merged.Sessions = append(merged.Sessions, s)
+			}
+		}
+	}
+
+	applyBatch(first)
+	applyBatch(next)
+	for {
+		select {
+		case more, open := <-ch:
+			if !open {
+				return nil, false
+			}
+			applyBatch(more)
+		default:
+			if len(merged.Sessions) > len(sessIdx) {
+				compact := merged.Sessions[:0]
+				for _, s := range merged.Sessions {
+					if s != nil {
+						compact = append(compact, s)
+					}
+				}
+				merged.Sessions = compact
+			}
+			if len(merged.DeletedSessionIds) > len(deleted) {
+				compact := merged.DeletedSessionIds[:0]
+				for _, id := range merged.DeletedSessionIds {
+					if id != "" {
+						compact = append(compact, id)
+					}
+				}
+				merged.DeletedSessionIds = compact
+			}
+			return merged, true
+		}
+	}
+}
+
+func watchResponseEmpty(r *localv1.WatchResponse) bool {
+	return r == nil || (!r.Reset_ &&
+		r.Status == nil &&
+		r.WorkVersion == 0 &&
+		r.HerKeptVersion == 0 &&
+		r.Next == nil &&
+		len(r.Sessions) == 0 &&
+		len(r.DeletedSessionIds) == 0 &&
+		len(r.Machines) == 0 &&
+		len(r.RemovedMachineIds) == 0 &&
+		len(r.Clients) == 0 &&
+		len(r.RemovedGrantIds) == 0 &&
+		len(r.Devices) == 0 &&
+		len(r.RemovedDeviceKeyIds) == 0 &&
+		len(r.Projects) == 0 &&
+		len(r.RemovedProjects) == 0 &&
+		len(r.Pairings) == 0 &&
+		len(r.RemovedPairingCodes) == 0)
 }
 
 // shown is what a screen was last sent, but its sessions.

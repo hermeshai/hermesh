@@ -235,8 +235,8 @@
 .bgc-stop-ring{position:relative;width:25px;height:25px;border:0;border-radius:50%;background:none;color:var(--l1);display:grid;place-items:center;padding:0;transition:color .14s,background .14s,transform .12s}
 .bgc-stop-ring:hover{color:var(--red);background:color-mix(in srgb,var(--red) 14%,transparent)}
 .bgc-stop-ring:active{transform:scale(.9)}
-.bgc-stop-ring .ring-svg{position:absolute;inset:0;width:25px;height:25px}
-.bgc-stop-ring .spin-arc{transform-origin:13px 13px;animation:bgcSpinArc 2.5s linear infinite}
+.bgc-stop-ring .ring-svg{position:absolute;inset:0;width:25px;height:25px;transform-origin:50% 50%;will-change:transform;animation:bgcSpinArc 2.5s linear infinite}
+@media (prefers-reduced-motion:reduce){.bgc-stop-ring .ring-svg{animation:none}}
 .bgc-stop-ring .stop-sq{width:6.8px;height:6.8px;border-radius:1.7px;background:currentColor}
 .bgc-chev{width:18px;height:18px;display:grid;place-items:center;color:var(--l3);transition:transform .18s cubic-bezier(.22,1,.36,1)}
 .bgc-chev .ic{width:13px;height:13px}

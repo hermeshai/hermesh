@@ -185,3 +185,56 @@ test("what comes in goes the way it came, quicker, and takes no input meanwhile:
   await expect(page.locator(".scrim")).toHaveCount(0);
   await app.close();
 });
+
+test("offscreen sidebar rows pause running animations and same-project session switches reuse providers", async () => {
+  const { app, page } = await launch();
+  try {
+    const list = await sessionList(page);
+    await expect(list).toBeVisible();
+    const scroller = page.locator(".side-list");
+    const runningRow = list.locator(".srow").filter({ hasText: "跑很久" }).first();
+    await expect(runningRow.locator(".slogo-orbit")).toBeVisible();
+    await expect(runningRow).not.toHaveAttribute("data-offscreen");
+
+    // Scroll the running row well past the 120px lookahead margin of .side-list: its infinite animations pause,
+    // and resume immediately once scrolled back into view.
+    await scroller.evaluate((el) => {
+      const spacer = document.createElement("div");
+      spacer.dataset.testSpacer = "1";
+      spacer.style.height = "2400px";
+      el.appendChild(spacer);
+      el.scrollTop = 1800;
+      el.dispatchEvent(new Event("scroll"));
+    });
+    await expect(runningRow).toHaveAttribute("data-offscreen", "1");
+    expect(await runningRow.locator(".slogo-orbit").evaluate((el) => getComputedStyle(el, "::before").animationPlayState)).toBe("paused");
+
+    await scroller.evaluate((el) => {
+      el.scrollTop = 0;
+      el.querySelector("[data-test-spacer]")?.remove();
+      el.dispatchEvent(new Event("scroll"));
+    });
+    await expect(runningRow).not.toHaveAttribute("data-offscreen");
+    expect(await runningRow.locator(".slogo-orbit").evaluate((el) => getComputedStyle(el, "::before").animationPlayState)).toBe("running");
+
+    // Switching between two sessions in the same project reuses loaded providers without redundant ListProviders RPCs,
+    // while opening New Session refreshes providers immediately.
+    const providerCalls = () =>
+      (app as ElectronApplication).evaluate(() => ((globalThis as unknown as { hermeshTest: { forwardedCalls(): Record<string, number> } }).hermeshTest.forwardedCalls().ListProviders ?? 0));
+
+    await runningRow.click();
+    await expect.poll(providerCalls).toBeGreaterThan(0);
+    await page.waitForTimeout(200);
+    const afterFirst = await providerCalls();
+
+    const otherSameProjectRow = list.locator(".srow[data-session-id]").filter({ hasText: "写 hello" }).first();
+    await otherSameProjectRow.click();
+    await page.waitForTimeout(350);
+    expect(await providerCalls()).toBe(afterFirst);
+
+    await page.getByTestId("nav-new-thread").click();
+    await expect.poll(providerCalls).toBeGreaterThan(afterFirst);
+  } finally {
+    await app.close();
+  }
+});

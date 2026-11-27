@@ -162,7 +162,7 @@ func (m *Manager) InspectGitStatus(ctx context.Context, in GitStatusInput) *sess
 		}
 	}
 
-	targetDisplay, targetCandidates := resolveTargetBranch(ctx, gitDir, in.RepoPath, in.BaseRef)
+	targetDisplay, targetCandidates, targetOIDs := resolveTargetBranchWithOIDs(ctx, gitDir, in.RepoPath, in.BaseRef)
 
 	if headOID == "" {
 		if dirtyFiles > 0 {
@@ -180,12 +180,26 @@ func (m *Manager) InspectGitStatus(ctx context.Context, in GitStatusInput) *sess
 		}
 	}
 
+	candidateOID := func(cand string) string {
+		if oid := targetOIDs[cand]; oid != "" {
+			return oid
+		}
+		oid := resolveCommitOID(ctx, gitDir, cand)
+		if oid != "" {
+			if targetOIDs == nil {
+				targetOIDs = map[string]string{}
+			}
+			targetOIDs[cand] = oid
+		}
+		return oid
+	}
+
 	hasSessionCommits := true
 	if in.InitialHeadOID != "" && headOID == in.InitialHeadOID {
 		hasSessionCommits = false
 	} else if in.InitialHeadOID == "" && !in.HasChangesHint && len(targetCandidates) > 0 {
 		for _, cand := range targetCandidates {
-			if resolveCommitOID(ctx, gitDir, cand) == headOID {
+			if candidateOID(cand) == headOID {
 				hasSessionCommits = false
 				break
 			}
@@ -221,7 +235,14 @@ func (m *Manager) InspectGitStatus(ctx context.Context, in GitStatusInput) *sess
 	if targetDisplay != "" && branch != targetDisplay {
 		notRewound := in.InitialHeadOID == "" || isAncestorCommit(ctx, gitDir, in.InitialHeadOID, headOID)
 		if notRewound {
+			checkedOIDs := make(map[string]bool, len(targetCandidates))
 			for _, cand := range targetCandidates {
+				if oid := candidateOID(cand); oid != "" {
+					if checkedOIDs[oid] {
+						continue
+					}
+					checkedOIDs[oid] = true
+				}
 				if isAncestorCommit(ctx, gitDir, headOID, cand) ||
 					isPatchMerged(ctx, gitDir, cand, headOID, in.InitialHeadOID) ||
 					isSquashMerged(ctx, gitDir, cand, headOID, in.InitialHeadOID) {
@@ -398,21 +419,24 @@ func unchangedFileFromBaseline(ctx context.Context, workdir, initialTreeOID, rel
 }
 
 func isSquashMerged(ctx context.Context, dir, targetRef, headOID, initialHeadOID string) bool {
-	headTree := resolveTreeOID(ctx, dir, headOID)
-	candTree := resolveTreeOID(ctx, dir, targetRef)
-	if headTree == "" || candTree == "" {
-		return false
-	}
+	var headTree, candTree, baseTree string
 	baseCommit := initialHeadOID
-	if baseCommit == "" {
+	if baseCommit != "" {
+		headTree, candTree, baseTree = resolveThreeTreeOIDs(ctx, dir, headOID, targetRef, baseCommit)
+	} else {
+		headTree = resolveTreeOID(ctx, dir, headOID)
+		candTree = resolveTreeOID(ctx, dir, targetRef)
+		if headTree == "" || candTree == "" {
+			return false
+		}
 		mb, err := runGit(ctx, dir, nil, "merge-base", targetRef, headOID)
 		if err != nil {
 			return false
 		}
 		baseCommit = strings.TrimSpace(mb)
+		baseTree = resolveTreeOID(ctx, dir, baseCommit)
 	}
-	baseTree := resolveTreeOID(ctx, dir, baseCommit)
-	if baseTree == "" || headTree == baseTree {
+	if headTree == "" || candTree == "" || baseTree == "" || headTree == baseTree {
 		return false
 	}
 	out, err := runGit(ctx, dir, nil, "merge-tree", "--write-tree", targetRef, headOID)
@@ -421,6 +445,20 @@ func isSquashMerged(ctx context.Context, dir, targetRef, headOID, initialHeadOID
 	}
 	mergedTree, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
 	return strings.TrimSpace(mergedTree) == candTree
+}
+
+func resolveThreeTreeOIDs(ctx context.Context, dir, a, b, c string) (string, string, string) {
+	if a == "" || b == "" || c == "" {
+		return "", "", ""
+	}
+	out, err := runGit(ctx, dir, nil, "rev-parse", "--end-of-options", a+"^{tree}", b+"^{tree}", c+"^{tree}")
+	if err == nil {
+		lines := strings.Fields(out)
+		if len(lines) == 3 && commitIDRE.MatchString(lines[0]) && commitIDRE.MatchString(lines[1]) && commitIDRE.MatchString(lines[2]) {
+			return lines[0], lines[1], lines[2]
+		}
+	}
+	return resolveTreeOID(ctx, dir, a), resolveTreeOID(ctx, dir, b), resolveTreeOID(ctx, dir, c)
 }
 
 func isAncestorCommit(ctx context.Context, dir, ancestor, descendant string) bool {
@@ -514,15 +552,46 @@ func truncateRunes(s string, maxRunes int) string {
 }
 
 func resolveTargetBranch(ctx context.Context, gitDir, repoPath, baseRef string) (display string, candidates []string) {
-	addCandidate := func(ref string) {
-		if ref != "" && isCommit(ctx, gitDir, ref) {
-			for _, existing := range candidates {
-				if existing == ref {
-					return
-				}
-			}
-			candidates = append(candidates, ref)
+	d, c, _ := resolveTargetBranchWithOIDs(ctx, gitDir, repoPath, baseRef)
+	return d, c
+}
+
+func resolveTargetBranchWithOIDs(ctx context.Context, gitDir, repoPath, baseRef string) (display string, candidates []string, oids map[string]string) {
+	oids = map[string]string{}
+	addResolved := func(ref, oid string) {
+		if ref == "" || oid == "" {
+			return
 		}
+		for _, existing := range candidates {
+			if existing == ref {
+				return
+			}
+		}
+		candidates = append(candidates, ref)
+		oids[ref] = oid
+	}
+	addCandidate := func(ref string) {
+		if ref == "" {
+			return
+		}
+		if oid := resolveCommitOID(ctx, gitDir, ref); oid != "" {
+			addResolved(ref, oid)
+		}
+	}
+	lookupFullRefs := func(refs ...string) map[string]string {
+		found := make(map[string]string, len(refs))
+		args := append([]string{"for-each-ref", "--format=%(refname)\t%(objectname)"}, refs...)
+		out, err := runGit(ctx, gitDir, nil, args...)
+		if err != nil {
+			return found
+		}
+		for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+			ref, oid, ok := strings.Cut(strings.TrimSpace(line), "\t")
+			if ok && ref != "" && commitIDRE.MatchString(oid) {
+				found[ref] = oid
+			}
+		}
+		return found
 	}
 
 	clean := strings.TrimSpace(baseRef)
@@ -536,11 +605,19 @@ func resolveTargetBranch(ctx context.Context, gitDir, repoPath, baseRef string) 
 			name = afterOrigin
 		}
 		display = name
-		addCandidate("refs/heads/" + name)
-		addCandidate("refs/remotes/origin/" + name)
-		addCandidate(clean)
+		headRef := "refs/heads/" + name
+		remoteRef := "refs/remotes/origin/" + name
+		found := lookupFullRefs(headRef, remoteRef)
+		addResolved(headRef, found[headRef])
+		addResolved(remoteRef, found[remoteRef])
+		if clean != name && clean != headRef && clean != remoteRef && clean != "origin/"+name {
+			addCandidate(clean)
+		} else if len(candidates) == 0 {
+			// Fallback for tags or unusual ref layouts not under refs/heads or refs/remotes/origin.
+			addCandidate(clean)
+		}
 		if len(candidates) > 0 {
-			return display, candidates
+			return display, candidates, oids
 		}
 	}
 
@@ -548,31 +625,43 @@ func resolveTargetBranch(ctx context.Context, gitDir, repoPath, baseRef string) 
 		sym = strings.TrimSpace(sym)
 		if _, b, ok := strings.Cut(sym, "/"); ok && b != "" {
 			display = b
-			addCandidate("refs/heads/" + b)
-			addCandidate("refs/remotes/" + sym)
+			headRef := "refs/heads/" + b
+			remoteRef := "refs/remotes/" + sym
+			found := lookupFullRefs(headRef, remoteRef)
+			addResolved(headRef, found[headRef])
+			addResolved(remoteRef, found[remoteRef])
 			if len(candidates) > 0 {
-				return display, candidates
+				return display, candidates, oids
 			}
 		}
 	}
 
+	foundDefaults := lookupFullRefs(
+		"refs/heads/main", "refs/remotes/origin/main",
+		"refs/heads/master", "refs/remotes/origin/master",
+	)
 	for _, b := range []string{"main", "master"} {
-		addCandidate("refs/heads/" + b)
-		addCandidate("refs/remotes/origin/" + b)
+		headRef := "refs/heads/" + b
+		remoteRef := "refs/remotes/origin/" + b
+		addResolved(headRef, foundDefaults[headRef])
+		addResolved(remoteRef, foundDefaults[remoteRef])
 		if len(candidates) > 0 {
-			return b, candidates
+			return b, candidates, oids
 		}
 	}
 
 	if repoPath != "" && repoPath != gitDir && dirExists(repoPath) {
 		if cur := CurrentBranch(ctx, repoPath); cur != "" && !commitIDRE.MatchString(cur) {
-			addCandidate("refs/heads/" + cur)
-			addCandidate("refs/remotes/origin/" + cur)
+			headRef := "refs/heads/" + cur
+			remoteRef := "refs/remotes/origin/" + cur
+			found := lookupFullRefs(headRef, remoteRef)
+			addResolved(headRef, found[headRef])
+			addResolved(remoteRef, found[remoteRef])
 			if len(candidates) > 0 {
-				return cur, candidates
+				return cur, candidates, oids
 			}
 		}
 	}
 
-	return "", nil
+	return "", nil, nil
 }

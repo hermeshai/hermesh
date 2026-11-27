@@ -1198,6 +1198,10 @@ mod tests {
         assert_eq!(own.items.len(), 2);
         let before = own.before.clone().unwrap();
         assert_eq!(before, "a1/i3", "the cursor names the agent");
+        let zero = m.snapshot(Some(0));
+        assert!(zero.transcript.items.is_empty());
+        assert!(zero.agents[0].transcript.items.is_empty());
+        assert_eq!(zero.agents[0].transcript.before.as_deref(), Some("a1/i5"));
         let page = m.history(&before, 2).unwrap();
         assert_eq!(page.items.len(), 2);
         let page = m.history(page.before.as_deref().unwrap(), 2).unwrap();

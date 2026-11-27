@@ -143,7 +143,7 @@ function workspaceFor(place: Place | undefined, branches: Branches | undefined) 
  * at once (also while its machine cannot be reached).
  */
 const keptProjections = new Map<string, SessionProjection>();
-const keepAtMost = 10;
+const keepAtMost = 6;
 
 /** A new session's first message, from Send until its machine answers: what was asked, when, and why it was refused. */
 type Starting = { req: MessageInitShape<typeof StartSessionRequestSchema>; files: AttachmentRef[]; at: Date; refused?: string };
@@ -378,18 +378,27 @@ export function SessionPage() {
   }, [effectiveMachineId, projectPath, machineOnline, sel.kind]);
 
   // Load providers for target machine & project
+  const isNewSession = !activeSessionId;
+  const providerFetchRef = useRef<{ key: string; at: number }>({ key: "", at: 0 });
   useEffect(() => {
     if (!effectiveMachineId) return;
+    const proj = effectiveProjectId === SCRATCH_PROJECT ? "" : effectiveProjectId;
+    const key = `${effectiveMachineId}\0${proj}`;
+    if (!isNewSession && providers.length > 0 && !providersStale && providerFetchRef.current.key === key && Date.now() - providerFetchRef.current.at < 30_000) {
+      return;
+    }
     let cancelled = false;
     sessionApi
-      .listProviders({ machineId: effectiveMachineId, projectId: effectiveProjectId === SCRATCH_PROJECT ? "" : effectiveProjectId })
+      .listProviders({ machineId: effectiveMachineId, projectId: proj })
       .then((res) => {
         if (cancelled) return;
+        providerFetchRef.current = { key, at: Date.now() };
         keepProviders(effectiveMachineId, res);
         setProvidersStale(false);
         return res;
       })
       .catch(() => {
+        providerFetchRef.current = { key: "", at: 0 };
         const last = cancelled ? undefined : lastProviders(effectiveMachineId);
         if (last) setProvidersStale(true);
         return last;
@@ -407,7 +416,7 @@ export function SessionPage() {
     return () => {
       cancelled = true;
     };
-  }, [effectiveMachineId, effectiveProjectId, activeSessionId]);
+  }, [effectiveMachineId, effectiveProjectId, activeSessionId, isNewSession]);
 
   // The page's machine can be reached now: this Mac reaches the relay, and the machine is online and answers.
   const reachable = !targetMachine || targetMachine.local || (st.status?.relayConnected === true && targetMachine.online && !targetMachine.unreachable);

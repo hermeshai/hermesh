@@ -42,7 +42,7 @@
 .bav.busy>svg{will-change:transform;animation:glance 3.6s var(--ease-in-out) infinite}
 @keyframes glance{0%,16%{transform:none}24%,42%{transform:translateX(-5.556%)}50%,68%{transform:translateX(5.556%)}76%,84%{transform:none}88%{transform:scaleY(.15)}92%,100%{transform:none}}
 .bav .ch{font-weight:inherit}
-.bav.busy .ch{animation:live-breathe 2.4s ease-in-out infinite}
+.bav.busy .ch{will-change:opacity;animation:live-breathe 2.4s ease-in-out infinite}
 @media (prefers-reduced-motion:reduce){.bav.busy>svg,.bav.busy .ch{animation:none}}
 
 /* The page's top, as on the iPhone: Her's avatar in the middle, larger than a bar's, and its name on a glass capsule

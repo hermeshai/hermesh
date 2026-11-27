@@ -304,7 +304,7 @@ impl NativeProtocol {
         AttachRequest {
             conn: conn.clone(),
             filter: events,
-            history_limit: Some(limit.map_or(100, |n| n.clamp(1, 1000)) as usize),
+            history_limit: Some(limit.map_or(100, |n| n.clamp(0, 1000)) as usize),
             resume,
             respond,
         }

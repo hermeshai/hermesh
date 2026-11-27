@@ -276,6 +276,10 @@ test("tracks post-turn background tasks without premature completion, streams au
     await expect(page.getByRole("complementary", { name: "任务信息" })).toHaveCount(0);
     await expect(bgPanel).toContainText("1 个执行中");
     await expect(bgPanel).toContainText("pytest -q");
+    const stopAnimTargets = await bgPanel.locator(".bgc-stop-ring").evaluate((btn) =>
+      btn.getAnimations({ subtree: true }).map((a) => ((a.effect as KeyframeEffect).target as Element)?.tagName?.toLowerCase()),
+    );
+    expect(stopAnimTargets).toEqual(["svg"]);
 
     // 2. When the 3s background task finishes, the system Continuation Run streams the final report
     //    seamlessly without any special wake divider, clears the active badge and end-of-conversation line,

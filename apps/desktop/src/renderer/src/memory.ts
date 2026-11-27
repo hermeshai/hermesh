@@ -10,7 +10,7 @@ const SETTLE = 3000;
 /** Hidden this long (minimized, on another desktop): the window is not being looked at. */
 const HIDDEN = 30_000;
 /** Rows a conversation held for it to count as heavy: a long one, not a few turns. */
-export const HEAVY_ROWS = 200;
+export const HEAVY_ROWS = 80;
 
 let settle: ReturnType<typeof setTimeout> | undefined;
 let hidden: ReturnType<typeof setTimeout> | undefined;
