@@ -155,6 +155,12 @@ private struct SideMenu: UIViewControllerRepresentable {
     }
 }
 
+/// A horizontal pan recognizer inside a page that claims right-swipes at a window point
+/// (for instance swiping Her back to Agent on New Session) so the side menu yields to it.
+@MainActor protocol HorizontalSwipeBackRecognizer: UIGestureRecognizer {
+    func claimsRightSwipe(at pointInWindow: CGPoint) -> Bool
+}
+
 final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     /// How the menu and the page share the screen. An iPhone: the page
     /// slides aside by the menu's width and stays in view, a card beside it
@@ -632,13 +638,15 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         return isOpen ? v.x < 0 : panAnywhere && v.x > 0
     }
 
-    /// A sideways scroller under the finger that is not at its start (the
-    /// overview's deck on a later card): a swipe to the right is its own, to
-    /// go back in it, before it is the menu's.
+    /// A sideways scroller or horizontal swipe control under the finger that is not at its start
+    /// (the overview's deck on a later card, or New Session on Her): a swipe to the right is its own,
+    /// to go back in it, before it is the menu's.
     private func scrollsBack(at point: CGPoint) -> Bool {
+        let inWindow = view.convert(point, to: nil)
         var v = view.hitTest(point, with: nil)
         while let cur = v {
             if let s = cur as? UIScrollView, s.isScrollEnabled, s.contentSize.width > s.bounds.width + 1, s.contentOffset.x > 1 - s.adjustedContentInset.left { return true }
+            if cur.gestureRecognizers?.contains(where: { ($0 as? HorizontalSwipeBackRecognizer)?.claimsRightSwipe(at: inWindow) == true }) == true { return true }
             v = cur.superview
         }
         return false
@@ -648,7 +656,17 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     /// the finger, so it lifts on the row it went down on, which would open.
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
         if [menuTap, railTap, menuPan, railPan].contains(where: { $0 === g || $0 === other }) { return true }
+        if g is HorizontalSwipeBackRecognizer || other is HorizontalSwipeBackRecognizer { return false }
         return other is UIPanGestureRecognizer
+    }
+
+    func gestureRecognizer(_ g: UIGestureRecognizer, shouldRequireFailureOf other: UIGestureRecognizer) -> Bool {
+        guard !isOpen, g is UIPanGestureRecognizer, g !== menuPan, g !== railPan else { return false }
+        if let back = other as? HorizontalSwipeBackRecognizer,
+           back.claimsRightSwipe(at: view.convert(g.location(in: view), to: nil)) {
+            return true
+        }
+        return false
     }
 }
 

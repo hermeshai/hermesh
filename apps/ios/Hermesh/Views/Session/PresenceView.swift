@@ -2,11 +2,14 @@ import HermeshHer
 import HermeshProto
 import HermeshSessions
 import SwiftUI
+import UIKit
 
 // Who a new session goes to (docs/her-conversations.md §3.1, §3.10): a coding agent, or Her.
 // The one chosen stands in the middle with its name under it; the other waits small beside it,
-// Agent on the left and Her on the right. Tapping the smaller one swaps them with a gentle spring,
-// while the background light shifts between Agent's cyan/violet and Her's lavender/pink.
+// Agent on the left and Her on the right. Swiping horizontally tracks the finger 1:1 with soft
+// rubber-banding at either end and settles on a velocity-preserving spring; tapping the smaller
+// one swaps them with a gentle spring, while the background light shifts smoothly between Agent's
+// cyan/violet and Her's lavender/pink.
 
 enum NewSessionWho: String {
     case agent, her
@@ -66,19 +69,58 @@ func agentSelection(providers: [Hermesh_Session_V1_ProviderInstance], machineID:
     return nil
 }
 
-/// Soft ambient aurora behind the new-session prompt, tinted by who is chosen (presence.css .pr-aura).
+/// Soft ambient aurora behind the new-session prompt, continuously tinted by role progress (0 = Agent, 1 = Her).
 struct NewSessionAurora: View {
-    let who: NewSessionWho
+    let progress: CGFloat
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var still
     @State private var drift = false
 
     var body: some View {
         let opacity = scheme == .dark ? 0.20 : 0.16
-        let c1 = who == .her ? Color(hex: "b3bcf2") : Color(hex: "0891b2")
-        let c2 = who == .her ? Color(hex: "ffa3be") : Color(hex: "6d3cf0")
-        let o1 = who == .her ? CGSize(width: -65, height: -95) : CGSize(width: -110, height: -55)
-        let o2 = who == .her ? CGSize(width: 80, height: -75) : CGSize(width: 105, height: -80)
+        AuroraLayer(progress: progress, opacity: opacity)
+            .offset(x: still ? 0 : (drift ? 12 : -12), y: still ? 0 : (drift ? -6 : 6))
+            .onAppear {
+                guard !still else { return }
+                withAnimation(.easeInOut(duration: 12).repeatForever(autoreverses: true)) {
+                    drift = true
+                }
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+private struct AuroraLayer: View, Animatable {
+    var progress: CGFloat
+    let opacity: Double
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        let t = Double(min(max(progress, 0), 1))
+        let overshoot = progress - CGFloat(t)
+        let c1 = Color(
+            red: (8 + (179 - 8) * t) / 255,
+            green: (145 + (188 - 145) * t) / 255,
+            blue: (178 + (242 - 178) * t) / 255
+        )
+        let c2 = Color(
+            red: (109 + (255 - 109) * t) / 255,
+            green: (60 + (163 - 60) * t) / 255,
+            blue: (240 + (190 - 240) * t) / 255
+        )
+        let o1 = CGSize(
+            width: -110 + 45 * CGFloat(t) - overshoot * 28,
+            height: -55 - 40 * CGFloat(t)
+        )
+        let o2 = CGSize(
+            width: 105 - 25 * CGFloat(t) - overshoot * 28,
+            height: -80 + 5 * CGFloat(t)
+        )
 
         ZStack {
             Circle()
@@ -90,22 +132,13 @@ struct NewSessionAurora: View {
                 .frame(width: 440, height: 440)
                 .offset(o2)
         }
-        .offset(x: still ? 0 : (drift ? 12 : -12), y: still ? 0 : (drift ? -6 : 6))
-        .animation(still ? .easeInOut(duration: 0.35) : .easeInOut(duration: 1.2), value: who)
-        .onAppear {
-            guard !still else { return }
-            withAnimation(.easeInOut(duration: 12).repeatForever(autoreverses: true)) {
-                drift = true
-            }
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 }
 
 /// Role switcher at the top of a new session: Agent (Claude + Codex tilted tiles) on the left, Her (her cat) on the right.
 struct NewSessionPresence: View {
     let who: NewSessionWho
+    let progress: CGFloat
     let onWho: (NewSessionWho) -> Void
     @Environment(\.accessibilityReduceMotion) private var still
 
@@ -129,10 +162,7 @@ struct NewSessionPresence: View {
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .scaleEffect(who == .agent ? 1 : 0.46)
-                .opacity(who == .agent ? 1 : 0.5)
-                .saturation(who == .agent ? 1 : 0.4)
-                .offset(x: who == .agent ? 0 : -88)
+                .modifier(RoleIconEffect(progress: progress, isHer: false))
                 .accessibilityLabel(Text("Agent"))
                 .accessibilityAddTraits(who == .agent ? .isSelected : [])
                 .accessibilityIdentifier("presence-agent")
@@ -146,25 +176,203 @@ struct NewSessionPresence: View {
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .scaleEffect(who == .her ? 1 : 0.46)
-                .opacity(who == .her ? 1 : 0.5)
-                .saturation(who == .her ? 1 : 0.4)
-                .offset(x: who == .her ? 0 : 88)
+                .modifier(RoleIconEffect(progress: progress, isHer: true))
                 .accessibilityLabel(Text("Her"))
                 .accessibilityAddTraits(who == .her ? .isSelected : [])
                 .accessibilityIdentifier("presence-her")
             }
             .frame(width: 240, height: 84)
-            .animation(still ? .easeOut(duration: 0.2) : .spring(response: 0.55, dampingFraction: 0.72), value: who)
 
-            Text(who == .her ? String(localized: "Her") : String(localized: "Agent"))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("presence-name")
+            ZStack {
+                Text("Agent")
+                    .modifier(RoleLabelEffect(progress: progress, isHer: false, reduceMotion: still))
+                Text("Her")
+                    .modifier(RoleLabelEffect(progress: progress, isHer: true, reduceMotion: still))
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(who == .her ? Text("Her") : Text("Agent"))
+            .accessibilityIdentifier("presence-name")
         }
-        .sensoryFeedback(.selection, trigger: who)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("presence")
+    }
+}
+
+private struct RoleIconEffect: ViewModifier, Animatable {
+    var progress: CGFloat
+    let isHer: Bool
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let clamped = min(max(progress, 0), 1)
+        let active = isHer ? clamped : (1 - clamped)
+        let spacing = CGFloat(RoleSwipeMath.spacing)
+        let offsetX = isHer ? spacing * (1 - progress) : -spacing * progress
+        content
+            .scaleEffect(0.46 + 0.54 * active)
+            .opacity(0.50 + 0.50 * active)
+            .saturation(0.40 + 0.60 * active)
+            .offset(x: offsetX)
+            .zIndex(active >= 0.5 ? 1 : 0)
+    }
+}
+
+private struct RoleLabelEffect: ViewModifier, Animatable {
+    var progress: CGFloat
+    let isHer: Bool
+    let reduceMotion: Bool
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let clamped = min(max(progress, 0), 1)
+        let opacity = isHer ? max(0, 1 - (1 - clamped) * 2.2) : max(0, 1 - clamped * 2.2)
+        let offsetX: CGFloat = reduceMotion ? 0 : (isHer ? 16 * (1 - progress) : -16 * progress)
+        content
+            .opacity(opacity)
+            .offset(x: offsetX)
+    }
+}
+
+/// Continuously crossfades and slides the Agent / Her prompt below the switcher as role progress moves 0 <-> 1.
+struct RolePromptEffect: ViewModifier, Animatable {
+    var progress: CGFloat
+    let isHer: Bool
+    let reduceMotion: Bool
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let clamped = min(max(progress, 0), 1)
+        let opacity = isHer ? max(0, (clamped - 0.45) / 0.55) : max(0, 1 - clamped / 0.55)
+        let offsetX: CGFloat = reduceMotion ? 0 : (isHer ? 56 * (1 - progress) : -56 * progress)
+        let scale: CGFloat = reduceMotion ? 1 : (isHer ? 0.97 + 0.03 * clamped : 1 - 0.03 * clamped)
+        content
+            .opacity(opacity)
+            .scaleEffect(scale)
+            .offset(x: offsetX)
+    }
+}
+
+final class RoleSwipePanRecognizer: UIPanGestureRecognizer, HorizontalSwipeBackRecognizer {
+    var canSwipeRight = false
+    var activeWindowFrame: CGRect = .zero
+
+    func claimsRightSwipe(at pointInWindow: CGPoint) -> Bool {
+        isEnabled && canSwipeRight && activeWindowFrame.contains(pointInWindow)
+    }
+}
+
+/// Interactive horizontal swipe recognizer for New Session's Agent <-> Her switcher.
+/// Cooperates with both the enclosing vertical ScrollView (keyboard dismissal) and SideMenuController (drawer swipe).
+struct RoleSwipeGesture: UIGestureRecognizerRepresentable {
+    let enabled: Bool
+    let canSwipeRight: Bool
+    let rubberBandRightOnAgent: Bool
+    let activeWindowFrame: CGRect
+    let onBegan: () -> Void
+    let onChanged: (CGFloat) -> Void
+    let onEnded: (CGFloat, CGFloat, Bool) -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> RoleSwipePanRecognizer {
+        let pan = RoleSwipePanRecognizer()
+        pan.maximumNumberOfTouches = 1
+        pan.cancelsTouchesInView = true
+        pan.delaysTouchesBegan = false
+        pan.delaysTouchesEnded = false
+        pan.delegate = context.coordinator
+        sync(pan, coordinator: context.coordinator)
+        return pan
+    }
+
+    func updateUIGestureRecognizer(_ recognizer: RoleSwipePanRecognizer, context: Context) {
+        sync(recognizer, coordinator: context.coordinator)
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: RoleSwipePanRecognizer, context: Context) {
+        let tx = recognizer.translation(in: recognizer.view).x
+        switch recognizer.state {
+        case .began:
+            onBegan()
+            onChanged(tx)
+        case .changed:
+            onChanged(tx)
+        case .ended:
+            onEnded(tx, recognizer.velocity(in: recognizer.view).x, true)
+        case .cancelled, .failed:
+            onEnded(tx, 0, false)
+        default:
+            break
+        }
+    }
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    private func sync(_ recognizer: RoleSwipePanRecognizer, coordinator: Coordinator) {
+        recognizer.isEnabled = enabled
+        recognizer.canSwipeRight = enabled && canSwipeRight
+        recognizer.activeWindowFrame = activeWindowFrame
+        coordinator.enabled = enabled
+        coordinator.canSwipeRight = canSwipeRight
+        coordinator.rubberBandRightOnAgent = rubberBandRightOnAgent
+        coordinator.activeWindowFrame = activeWindowFrame
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var enabled = false
+        var canSwipeRight = false
+        var rubberBandRightOnAgent = false
+        var activeWindowFrame: CGRect = .zero
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            guard enabled else { return false }
+            var v: UIView? = touch.view
+            while let cur = v {
+                if cur is UITextField || cur is UITextView { return false }
+                v = cur.superview
+            }
+            if !activeWindowFrame.isEmpty, let window = touch.window, !activeWindowFrame.contains(touch.location(in: window)) {
+                return false
+            }
+            return true
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard enabled, let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
+            let v = pan.velocity(in: pan.view)
+            guard abs(v.x) > abs(v.y) * 1.25 else { return false }
+            // On Agent in drawer mode, a right-swipe opens the side menu instead of fighting it.
+            if !canSwipeRight && !rubberBandRightOnAgent && v.x > 0 { return false }
+            return true
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            if let scrollView = otherGestureRecognizer.view as? UIScrollView,
+               otherGestureRecognizer === scrollView.panGestureRecognizer {
+                return true
+            }
+            // When swiping Her back to Agent, beat SideMenuController's pan recognizer so the drawer stays closed.
+            if canSwipeRight, otherGestureRecognizer is UIPanGestureRecognizer, otherGestureRecognizer !== gestureRecognizer {
+                return true
+            }
+            return false
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            false
+        }
     }
 }
 
@@ -173,6 +381,7 @@ struct HerNewSessionAsk: View {
     let machine: HerMachine
     let envs: [HerMachine]
     let reachable: Bool
+    var isActive = true
     let onMachine: (String) -> Void
 
     var body: some View {
@@ -180,7 +389,7 @@ struct HerNewSessionAsk: View {
             Text("What should Her do?")
                 .font(.title.weight(.semibold))
                 .multilineTextAlignment(.center)
-                .accessibilityIdentifier("new-session-title")
+                .accessibilityIdentifier(isActive ? "new-session-title" : "")
 
             VStack(spacing: 8) {
                 if envs.count > 1 {
@@ -204,11 +413,11 @@ struct HerNewSessionAsk: View {
                         whereLabel(showChevron: true)
                     }
                     .tint(.secondary)
-                    .accessibilityIdentifier("launch-her-where")
+                    .accessibilityIdentifier(isActive ? "launch-her-where" : "")
                 } else {
                     whereLabel(showChevron: false)
                         .accessibilityElement(children: .combine)
-                        .accessibilityIdentifier("launch-her-where")
+                        .accessibilityIdentifier(isActive ? "launch-her-where" : "")
                 }
                 ConnectionLine(machine: machine, linkUp: reachable, centered: true)
                     .frame(minHeight: 24)

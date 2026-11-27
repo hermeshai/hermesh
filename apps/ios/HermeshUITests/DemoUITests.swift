@@ -1095,6 +1095,60 @@ final class DemoUITests: XCTestCase {
     }
 
     /// Back: a session's page has its own button (it draws its bar), the others the system's.
+    func testNewSessionRoleSwipe() {
+        tap("try-demo")
+        tap("menu")
+        tap("new-session-place")
+
+        let any = app.descendants(matching: .any)
+        let presence = any["presence"].firstMatch
+        XCTAssertTrue(presence.waitForExistence(timeout: 15), "role switcher on New Session")
+        let agentRole = app.buttons["presence-agent"]
+        let herRole = app.buttons["presence-her"]
+        let roleName = any["presence-name"].firstMatch
+        let drawerDim = any["drawer-dim"].firstMatch
+
+        XCTAssertTrue(agentRole.waitForExistence(timeout: 10) && herRole.exists)
+        XCTAssertTrue(agentRole.isSelected, "starts on Agent")
+        XCTAssertEqual(roleName.label, "Agent")
+
+        // 1. Swipe left on the switcher: Agent -> Her.
+        presence.swipeLeft()
+        XCTAssertTrue(herRole.wait(for: \.isSelected, toEqual: true, timeout: 5), "swipe left switches to Her")
+        XCTAssertEqual(roleName.label, "Her")
+        XCTAssertEqual(any["new-session-title"].firstMatch.label, "What should Her do?")
+        XCTAssertFalse(drawerDim.isHittable, "drawer stays closed")
+
+        // 2. Swipe right on the switcher while on Her: Her -> Agent without opening the side menu.
+        presence.swipeRight()
+        XCTAssertTrue(agentRole.wait(for: \.isSelected, toEqual: true, timeout: 5), "swipe right switches back to Agent")
+        XCTAssertEqual(roleName.label, "Agent")
+        XCTAssertFalse(drawerDim.isHittable, "swiping Her back to Agent does not open the drawer")
+
+        // 3. Swipe left & right on the empty canvas area above the composer.
+        let canvasLeft = app.coordinate(withNormalizedOffset: CGVector(dx: 0.72, dy: 0.30))
+        let canvasRight = app.coordinate(withNormalizedOffset: CGVector(dx: 0.28, dy: 0.30))
+        canvasLeft.press(forDuration: 0.02, thenDragTo: canvasRight, withVelocity: 600, thenHoldForDuration: 0)
+        XCTAssertTrue(herRole.wait(for: \.isSelected, toEqual: true, timeout: 5), "canvas swipe left switches to Her")
+
+        canvasRight.press(forDuration: 0.02, thenDragTo: canvasLeft, withVelocity: 600, thenHoldForDuration: 0)
+        XCTAssertTrue(agentRole.wait(for: \.isSelected, toEqual: true, timeout: 5), "canvas swipe right switches back to Agent")
+        XCTAssertFalse(drawerDim.isHittable, "canvas swipe right on Her does not open the drawer")
+
+        // 4. Already on Agent: swiping right still opens the side menu drawer.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.20, dy: 0.30))
+            .press(forDuration: 0.02, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.30)), withVelocity: 650, thenHoldForDuration: 0)
+        XCTAssertTrue(drawerDim.wait(for: \.isHittable, toEqual: true, timeout: 5), "swipe right on Agent opens drawer")
+        tap("drawer-dim")
+        XCTAssertTrue(drawerDim.wait(for: \.isHittable, toEqual: false, timeout: 5))
+
+        // 5. Tapping the smaller icon still switches roles cleanly.
+        herRole.tap()
+        XCTAssertTrue(herRole.wait(for: \.isSelected, toEqual: true, timeout: 5), "tap switches to Her")
+        agentRole.tap()
+        XCTAssertTrue(agentRole.wait(for: \.isSelected, toEqual: true, timeout: 5), "tap switches back to Agent")
+    }
+
     private func back() {
         let own = app.buttons["BackButton"]
         (own.exists && own.isHittable ? own : app.navigationBars.buttons.element(boundBy: 0)).tap()

@@ -185,6 +185,16 @@ struct SessionPage: View {
     @State private var aiConsentPrompt: HerAIConsentPrompt?
     /// Moves when the owner switches between Agent and Her on a new session, animating the prompt in.
     @State private var rise = false
+    /// Continuous visual position between Agent (0) and Her (1), driven directly by horizontal swipe and spring release.
+    @State private var roleProgress: CGFloat = 0
+    @State private var isDraggingRole = false
+    @State private var roleDragStart: CGFloat = 0
+    @State private var roleDragLastHaptic: NewSessionWho = .agent
+    @State private var roleDragEndedAt: CFTimeInterval = 0
+    @State private var roleSwipeFrame: CGRect = .zero
+    @State private var roleHaptic = UISelectionFeedbackGenerator()
+    @State private var savedAgentMachineID = ""
+    @State private var savedAgentProjectID = ""
     @Environment(\.accessibilityReduceMotion) private var still
     /// Horizontal drag offset when swiping the side panel's leading edge right to put it away.
     @GestureState private var panelDrag: CGFloat = 0
@@ -405,9 +415,35 @@ struct SessionPage: View {
                 .clipped()
                 .contentShape(Rectangle())
                 .onTapGesture { focused = false }
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { roleSwipeFrame = $0 }
+                .gesture(
+                    RoleSwipeGesture(
+                        enabled: herAt != nil && askFits,
+                        canSwipeRight: who == .her,
+                        rubberBandRightOnAgent: model.menuBeside,
+                        activeWindowFrame: roleSwipeFrame,
+                        onBegan: beginRoleDrag,
+                        onChanged: updateRoleDrag,
+                        onEnded: endRoleDrag
+                    )
+                )
         }
         .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height } action: { _, h in
             askSpace = h
+        }
+        .onChange(of: who, initial: true) { _, next in
+            guard !isDraggingRole else { return }
+            let target: CGFloat = next == .her ? 1 : 0
+            guard roleProgress != target else { return }
+            if rise {
+                withAnimation(still ? .easeOut(duration: 0.2) : .spring(response: 0.55, dampingFraction: 0.72)) {
+                    roleProgress = target
+                }
+            } else {
+                var t = Transaction()
+                t.disablesAnimations = true
+                withTransaction(t) { roleProgress = target }
+            }
         }
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.always)
@@ -415,104 +451,190 @@ struct SessionPage: View {
         .keyboardAwayOnTap()
         .background {
             if herAt != nil {
-                NewSessionAurora(who: who).ignoresSafeArea()
+                NewSessionAurora(progress: roleProgress).ignoresSafeArea()
             }
         }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 6) {
-                if who == .agent { placeRow }
+                if who == .agent {
+                    placeRow
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
                 box
             }
+            .animation(still ? .easeOut(duration: 0.2) : .smooth(duration: 0.26), value: who)
             .padding(.bottom, 4)
         }
     }
 
+    private var agentPreviewTarget: (machineID: String, projectID: String) {
+        if who == .agent { return (machineID, projectID) }
+        let known = { (id: String) in !id.isEmpty && model.machines.contains { $0.machineID == id } }
+        let mid = [savedAgentMachineID, SessionChoices.lastMachine ?? ""].first(where: known)
+            ?? model.machines.first(where: \.local)?.machineID
+            ?? model.machines.first?.machineID ?? ""
+        let list = projects(on: mid).list
+        let preferred = (!savedAgentProjectID.isEmpty && (savedAgentProjectID == scratchProject || list.contains { $0.projectID == savedAgentProjectID }))
+            ? savedAgentProjectID
+            : SessionChoices.mine(mid)?.projectID
+        let pid = projectOnMachine(list, machineID: mid, current: "", lastUsed: preferred)
+        return (mid, pid)
+    }
+
     private var ask: some View {
-        let (here, stale) = projects(on: machineID)
-        let projectTitle = projectID == scratchProject ? String(localized: "Temporary Workspace") : projectID
+        let preview = agentPreviewTarget
         return VStack(spacing: 14) {
             if herAt != nil {
-                NewSessionPresence(who: who, onWho: chooseWho)
-            }
-            Group {
-                if who == .her, let herTarget = machine ?? herAt {
-                    HerNewSessionAsk(machine: herTarget, envs: herEnvs, reachable: reachable) { nextMachine in
-                        machineID = nextMachine
-                        model.her.machine = nextMachine
-                    }
-                } else {
-                    VStack(spacing: 18) {
-                        VStack(spacing: 2) {
-                            Text("What should we build in")
-                            HStack(spacing: 0) {
-                                Menu {
-                                    Section(stale ? String(localized: "Projects on \(machine?.machineName ?? "") · last known") : String(localized: "Projects on \(machine?.machineName ?? "")")) {
-                                        ForEach(here, id: \.projectID) { p in
-                                            Button { pick(project: p.projectID, in: here) } label: {
-                                                Label { Text(p.projectID); Text(p.path) } icon: { if p.projectID == projectID { Image(systemName: "checkmark") } }
-                                            }
-                                            .accessibilityIdentifier("project-\(p.projectID)")
-                                        }
-                                        Button { pick(project: scratchProject, in: here) } label: {
-                                            Label { Text("Temporary Workspace") } icon: { if projectID == scratchProject { Image(systemName: "checkmark") } }
-                                        }
-                                    }
-                                    Button("Add Project…", systemImage: "plus") { model.sheet = .addProject(machineID, forSession: true) }
-                                        .disabled(!online)
-                                        .accessibilityIdentifier("thread-add-project")
-                                } label: {
-                                    Text(verbatim: projectTitle).lineLimit(1).underline(color: .secondary)
-                                }
-                                .tint(.primary)
-                                .accessibilityIdentifier("thread-project")
-                                Text("What should we build in · end")
-                            }
-                            .accessibilityIdentifier("project-scratch")
+                NewSessionPresence(who: who, progress: roleProgress, onWho: tapWho)
+                ZStack(alignment: .top) {
+                    agentAsk(machineID: preview.machineID, projectID: preview.projectID, isActive: who == .agent)
+                        .modifier(RolePromptEffect(progress: roleProgress, isHer: false, reduceMotion: still))
+                        .allowsHitTesting(!isDraggingRole && who == .agent)
+                        .accessibilityHidden(who != .agent)
+
+                    if let herTarget = (who == .her ? machine : nil) ?? herAt {
+                        HerNewSessionAsk(machine: herTarget, envs: herEnvs, reachable: reachable, isActive: who == .her) { nextMachine in
+                            machineID = nextMachine
+                            model.her.machine = nextMachine
                         }
-                        .font(.title.weight(.semibold))
-                        .multilineTextAlignment(.center)
-                        .accessibilityElement(children: .contain)
-                        .accessibilityIdentifier("new-session-title")
-                        VStack(spacing: 8) {
-                            Menu {
-                                Section("Environment") {
-                                    ForEach(model.machines, id: \.machineID) { m in
-                                        let note: String? = !m.online && !m.local ? String(localized: "Offline · messages wait until it’s back") : nil
-                                        Button { pick(machine: m.machineID) } label: {
-                                            if let note {
-                                                Label { Text(m.machineName); Text(note) } icon: { if m.machineID == machineID { Image(systemName: "checkmark") } }
-                                            } else {
-                                                Label { Text(m.machineName) } icon: { if m.machineID == machineID { Image(systemName: "checkmark") } }
-                                            }
-                                        }
-                                        .accessibilityIdentifier("machine-\(m.machineName)")
-                                    }
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: m_icon)
-                                    Text(verbatim: machine?.machineName ?? "").lineLimit(1)
-                                    if !online { Circle().fill(.tertiary).frame(width: 6, height: 6) }
-                                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                                }
-                                .font(.subheadline).foregroundStyle(.secondary)
-                            }
-                            .tint(.secondary)
-                            .accessibilityIdentifier("thread-machine")
-                            ConnectionLine(machine: machine, linkUp: reachable, centered: true)
-                                .frame(minHeight: 24)
-                        }
+                        .modifier(RolePromptEffect(progress: roleProgress, isHer: true, reduceMotion: still))
+                        .allowsHitTesting(!isDraggingRole && who == .her)
+                        .accessibilityHidden(who != .her)
                     }
                 }
+            } else {
+                agentAsk(machineID: machineID, projectID: projectID, isActive: true)
             }
-            .id(who)
-            .transition(still || !rise ? .identity : .asymmetric(
-                insertion: .opacity.combined(with: .offset(y: 10)),
-                removal: .opacity
-            ))
         }
-        .animation(still || !rise ? nil : .easeOut(duration: 0.35), value: who)
         .padding(.horizontal, 28)
+    }
+
+    private func agentAsk(machineID targetMachineID: String, projectID targetProjectID: String, isActive: Bool) -> some View {
+        let (here, stale) = projects(on: targetMachineID)
+        let targetMachine = model.machines.first { $0.machineID == targetMachineID }
+        let targetOnline = targetMachine.map { $0.online || $0.local } ?? true
+        let projectTitle = targetProjectID == scratchProject ? String(localized: "Temporary Workspace") : targetProjectID
+        return VStack(spacing: 18) {
+            VStack(spacing: 2) {
+                Text("What should we build in")
+                HStack(spacing: 0) {
+                    Menu {
+                        Section(stale ? String(localized: "Projects on \(targetMachine?.machineName ?? "") · last known") : String(localized: "Projects on \(targetMachine?.machineName ?? "")")) {
+                            ForEach(here, id: \.projectID) { p in
+                                Button { pick(project: p.projectID, in: here) } label: {
+                                    Label { Text(p.projectID); Text(p.path) } icon: { if p.projectID == targetProjectID { Image(systemName: "checkmark") } }
+                                }
+                                .accessibilityIdentifier("project-\(p.projectID)")
+                            }
+                            Button { pick(project: scratchProject, in: here) } label: {
+                                Label { Text("Temporary Workspace") } icon: { if targetProjectID == scratchProject { Image(systemName: "checkmark") } }
+                            }
+                        }
+                        Button("Add Project…", systemImage: "plus") { model.sheet = .addProject(targetMachineID, forSession: true) }
+                            .disabled(!targetOnline)
+                            .accessibilityIdentifier("thread-add-project")
+                    } label: {
+                        Text(verbatim: projectTitle).lineLimit(1).underline(color: .secondary)
+                    }
+                    .tint(.primary)
+                    .accessibilityIdentifier(isActive ? "thread-project" : "")
+                    Text("What should we build in · end")
+                }
+                .accessibilityIdentifier(isActive ? "project-scratch" : "")
+            }
+            .font(.title.weight(.semibold))
+            .multilineTextAlignment(.center)
+            .accessibilityElement(children: isActive ? .contain : .ignore)
+            .accessibilityIdentifier(isActive ? "new-session-title" : "")
+            VStack(spacing: 8) {
+                Menu {
+                    Section("Environment") {
+                        ForEach(model.machines, id: \.machineID) { m in
+                            let note: String? = !m.online && !m.local ? String(localized: "Offline · messages wait until it’s back") : nil
+                            Button { pick(machine: m.machineID) } label: {
+                                if let note {
+                                    Label { Text(m.machineName); Text(note) } icon: { if m.machineID == targetMachineID { Image(systemName: "checkmark") } }
+                                } else {
+                                    Label { Text(m.machineName) } icon: { if m.machineID == targetMachineID { Image(systemName: "checkmark") } }
+                                }
+                            }
+                            .accessibilityIdentifier("machine-\(m.machineName)")
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: m_icon)
+                        Text(verbatim: targetMachine?.machineName ?? "").lineLimit(1)
+                        if !targetOnline { Circle().fill(.tertiary).frame(width: 6, height: 6) }
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                    }
+                    .font(.subheadline).foregroundStyle(.secondary)
+                }
+                .tint(.secondary)
+                .accessibilityIdentifier(isActive ? "thread-machine" : "")
+                ConnectionLine(machine: targetMachine, linkUp: reachable, centered: true)
+                    .frame(minHeight: 24)
+            }
+        }
+    }
+
+    private func tapWho(_ next: NewSessionWho) {
+        guard !isDraggingRole, CACurrentMediaTime() - roleDragEndedAt > 0.08 else { return }
+        guard isNew, next != who, next != .her || herAt != nil else { return }
+        roleHaptic.selectionChanged()
+        chooseWho(next)
+        withAnimation(still ? .easeOut(duration: 0.2) : .spring(response: 0.55, dampingFraction: 0.72)) {
+            roleProgress = next == .her ? 1 : 0
+        }
+    }
+
+    private func beginRoleDrag() {
+        isDraggingRole = true
+        roleDragStart = who == .her ? 1 : 0
+        roleDragLastHaptic = who
+        roleHaptic.prepare()
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) { roleProgress = roleDragStart }
+    }
+
+    private func updateRoleDrag(_ translationX: CGFloat) {
+        let next = CGFloat(RoleSwipeMath.dragProgress(start: Double(roleDragStart), translationX: Double(translationX)))
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) { roleProgress = next }
+        let detent: NewSessionWho = RoleSwipeMath.hapticDetent(progress: Double(next), currentIsHer: roleDragLastHaptic == .her) ? .her : .agent
+        if detent != roleDragLastHaptic {
+            roleDragLastHaptic = detent
+            roleHaptic.selectionChanged()
+            roleHaptic.prepare()
+        }
+    }
+
+    private func endRoleDrag(_ translationX: CGFloat, _ velocityX: CGFloat, _ completed: Bool) {
+        isDraggingRole = false
+        roleDragEndedAt = CACurrentMediaTime()
+        let target: NewSessionWho = if completed {
+            RoleSwipeMath.landsOnHer(start: Double(roleDragStart), translationX: Double(translationX), velocityX: Double(velocityX)) ? .her : .agent
+        } else {
+            who
+        }
+        let targetProgress: CGFloat = target == .her ? 1 : 0
+        let initialVelocity = RoleSwipeMath.initialSpringVelocity(
+            current: Double(roleProgress),
+            target: Double(targetProgress),
+            velocityX: completed ? Double(velocityX) : 0
+        )
+        if target != who {
+            if roleDragLastHaptic != target { roleHaptic.selectionChanged() }
+            chooseWho(target)
+        }
+        let anim: Animation = still
+            ? .easeOut(duration: 0.2)
+            : .interpolatingSpring(duration: 0.42, bounce: 0.16, initialVelocity: initialVelocity)
+        withAnimation(anim) {
+            roleProgress = targetProgress
+        }
     }
 
     private func chooseWho(_ next: NewSessionWho) {
@@ -520,17 +642,18 @@ struct SessionPage: View {
         NewSessionWho.remember(next, persistent: !model.isDemo)
         rise = true
         if next == .her, let herAt {
+            savedAgentMachineID = machineID
+            savedAgentProjectID = projectID
             machineID = herAt.machineID
             projectID = scratchProject
             selection = herSelection(providers: herAt.machineID == effectiveMachineID ? providers : [], machineID: herAt.machineID)
             return
         }
-        let known = { (id: String) in !id.isEmpty && model.machines.contains { $0.machineID == id } }
-        let mid = [SessionChoices.lastMachine ?? ""].first(where: known) ?? model.machines.first(where: \.local)?.machineID ?? model.machines.first?.machineID ?? ""
-        machineID = mid
-        let list = projects(on: mid).list
-        pick(project: projectOnMachine(list, machineID: mid, current: "", lastUsed: SessionChoices.mine(mid)?.projectID), in: list)
-        selection = (mid == effectiveMachineID ? agentSelection(providers: providers, machineID: mid) : nil) ?? Hermesh_Session_V1_ModelSelection()
+        let target = agentPreviewTarget
+        machineID = target.machineID
+        let list = projects(on: target.machineID).list
+        pick(project: target.projectID, in: list)
+        selection = (target.machineID == effectiveMachineID ? agentSelection(providers: providers, machineID: target.machineID) : nil) ?? Hermesh_Session_V1_ModelSelection()
     }
 
     // MARK: A session starting
@@ -1310,6 +1433,12 @@ struct SessionPage: View {
             } else if selection.instanceID == herAgent {
                 selection = Hermesh_Session_V1_ModelSelection()
             }
+            isDraggingRole = false
+            savedAgentMachineID = ""
+            savedAgentProjectID = ""
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) { roleProgress = her != nil ? 1 : 0 }
             if let m = SessionChoices.mine(mid)?.mode, let saved = Hermesh_Identity_V1_RuntimeMode(rawValue: m) { mode = saved }
             SessionChoices.keepProjects(model.projects, machines: model.machines)
             initialized = true
