@@ -644,7 +644,19 @@ test("a multi-question decision presents one item at a time, auto-advances, and 
     await expect.poll(async () => JSON.parse(await cli("session", "get", id, "-o", "json")).session.status).toBe("idle");
     const log = page.getByRole("log", { name: "对话" });
     const settled = log.getByTestId("settled-question");
+    await expect(settled.locator(".tq-choice")).toHaveCount(3);
     await expect(settled.locator(".tq-rec")).toHaveText(["推荐", "推荐"]);
+    const alignment = await settled.locator(".tq-choice").evaluateAll((rows) =>
+      rows.map((row) => {
+        const val = row.querySelector(".tq-val")!.getBoundingClientRect();
+        const rec = row.querySelector(".tq-rec")?.getBoundingClientRect() ?? null;
+        return { valLeft: val.left, valRight: val.right, recLeft: rec?.left ?? null };
+      }),
+    );
+    for (const row of alignment) {
+      expect(Math.abs(row.valLeft - alignment[0]!.valLeft)).toBeLessThanOrEqual(1);
+      if (row.recLeft !== null) expect(row.recLeft).toBeGreaterThanOrEqual(row.valRight);
+    }
     await expect(settled).toContainText("一步到位");
     await expect(settled).not.toContainText("(Recommended)");
     await expect(settled).not.toContainText("（推荐）");
