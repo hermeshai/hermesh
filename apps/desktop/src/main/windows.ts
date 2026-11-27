@@ -96,11 +96,15 @@ function webPreferences() {
   };
 }
 
-export function syncWindowsAppearance() {
+function applyWindowMaterial(w: BrowserWindow) {
   const palette = activePalette();
   const glass = platform.material && usesSidebarMaterial(palette);
-  const bg = windowBackgroundOf(palette);
-  for (const w of [main, settings]) if (w && !w.isDestroyed()) platform.applyMaterial(w, glass, bg);
+  platform.applyMaterial(w, glass, windowBackgroundOf(palette));
+}
+
+export function syncWindowsAppearance() {
+  const bg = windowBackgroundOf(activePalette());
+  for (const w of [main, settings]) if (w && !w.isDestroyed()) applyWindowMaterial(w);
   for (const w of auxiliary.values()) if (!w.isDestroyed()) w.setBackgroundColor(bg);
 }
 
@@ -131,6 +135,7 @@ export function showMain(): BrowserWindow {
     ...platform.frame(mode),
     webPreferences: webPreferences(),
   });
+  applyWindowMaterial(main);
   secure(main);
   main.once("ready-to-show", () => {
     if (known || reported) return void main?.show();
@@ -225,6 +230,7 @@ export function showSettings(tab?: string) {
     fullscreenable: false,
     webPreferences: webPreferences(),
   });
+  applyWindowMaterial(settings);
   secure(settings);
   settings.once("ready-to-show", () => settings?.show());
   settings.on("closed", () => (settings = undefined));

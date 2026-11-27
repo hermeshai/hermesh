@@ -612,14 +612,29 @@ test("通用's 外观 follows the system (remembering the chosen light and dark 
   await expect(page.locator(".side")).toHaveCSS("background-color", "rgb(17, 17, 20)");
 
   // Kept for next time, from the very first frame (including 暗黑 with solid sidebar).
+  // Even when starting in a solid palette, platform.frame() must seed the transparent
+  // material pipeline (#00000000 + vibrancy/mica) before applyMaterial sets the solid
+  // background, so switching to a glass theme later never leaves NSWindow/HWND opaque
+  // and accumulating alpha on partial sidebar repaints.
+  const winBg = (p: Page) => app.evaluate(({ BrowserWindow }, url) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === url)?.getBackgroundColor().toLowerCase(), p.url());
+  const initFrame = (kind: "main" | "settings") =>
+    app.evaluate((_, k) => (globalThis as unknown as { hermeshTest: { frame: (x: string) => Record<string, unknown> } }).hermeshTest.frame(k), kind);
   await app.close();
   ({ app, page } = await launch(undefined, { profile, systemColors: true }));
   expect(await source()).toBe("dark");
   expect(await dark(page)).toBe(true);
   expect(await darkStyle(page)).toBe("black");
   expect(await vibrant(page)).toBe(false);
+  expect(await winBg(page)).toBe("#070709");
+  if (hasMaterial) {
+    expect(await initFrame("main")).toMatchObject({
+      backgroundColor: "#00000000",
+      ...(process.platform === "darwin" ? { vibrancy: "sidebar" } : { backgroundMaterial: "mica" }),
+    });
+  }
   await expect(page.locator(".side")).toHaveCSS("background-color", "rgb(17, 17, 20)");
   settings = await openSettings(app, page, "general");
+  expect(await winBg(settings)).toBe("#070709");
   await expect(appearance().getByRole("button", { name: "暗黑" })).toHaveAttribute("aria-pressed", "true");
   await expect(settings.locator(".set-main")).toHaveCSS("background-color", "rgb(7, 7, 9)");
 
@@ -630,6 +645,8 @@ test("通用's 外观 follows the system (remembering the chosen light and dark 
   await expect.poll(() => lightStyle(page)).toBe("soft");
   await expect.poll(() => vibrant(page)).toBe(false);
   await expect.poll(() => vibrant(settings)).toBe(false);
+  expect(await winBg(page)).toBe("#f4f5f7");
+  expect(await winBg(settings)).toBe("#f4f5f7");
   await expect(settings.locator(".set-main")).toHaveCSS("background-color", "rgb(244, 245, 247)");
   await expect(page.locator(".side")).toHaveCSS("background-color", "rgb(238, 240, 244)");
 
@@ -639,8 +656,16 @@ test("通用's 外观 follows the system (remembering the chosen light and dark 
   expect(await dark(page)).toBe(false);
   expect(await lightStyle(page)).toBe("soft");
   expect(await vibrant(page)).toBe(false);
+  expect(await winBg(page)).toBe("#f4f5f7");
+  if (hasMaterial) {
+    expect(await initFrame("settings")).toMatchObject({
+      backgroundColor: "#00000000",
+      ...(process.platform === "darwin" ? { vibrancy: "sidebar" } : { backgroundMaterial: "mica" }),
+    });
+  }
   await expect(page.locator(".side")).toHaveCSS("background-color", "rgb(238, 240, 244)");
   settings = await openSettings(app, page, "general");
+  expect(await winBg(settings)).toBe("#f4f5f7");
   await expect(appearance().getByRole("button", { name: "柔白" })).toHaveAttribute("aria-pressed", "true");
   await expect(settings.locator(".set-main")).toHaveCSS("background-color", "rgb(244, 245, 247)");
 
@@ -648,6 +673,10 @@ test("通用's 外观 follows the system (remembering the chosen light and dark 
   await appearance().getByRole("button", { name: "浅色" }).click();
   await expect.poll(() => lightStyle(page)).toBe("light");
   await expect.poll(() => vibrant(page)).toBe(hasMaterial);
+  if (hasMaterial) {
+    expect(await winBg(page)).toMatch(/^#0{6}(00)?$/);
+    expect(await winBg(settings)).toMatch(/^#0{6}(00)?$/);
+  }
   await expect(settings.locator(".set-main")).toHaveCSS("background-color", "rgb(255, 255, 255)");
 
   await appearance().getByRole("button", { name: "柔白" }).click();

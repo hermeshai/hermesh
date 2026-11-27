@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { LoginItem } from "../../shared/bridge";
-import { usesSidebarMaterial, windowBackgroundOf } from "../../shared/appearance";
+import { windowBackgroundOf } from "../../shared/appearance";
 import { i18n } from "../../shared/i18n";
 import { newer } from "../../shared/update";
 import { activePalette } from "../notify";
@@ -400,9 +400,9 @@ export const win: Platform = {
     const backgroundColor = windowBackgroundOf(palette);
     if (kind === "panel") return { backgroundColor };
     // Windows draws the caption buttons over the page's top band, whose toolbar rows are the drag area;
-    // Mica shows where the page is clear (the sidebar) for glass themes, as on the Mac.
-    const glass = mica && kind !== "auxiliary" && usesSidebarMaterial(palette);
-    const material = glass ? { backgroundMaterial: "mica" as const, backgroundColor: "#00000000" } : { backgroundColor };
+    // initialize with Mica and a transparent backing store when available so switching back from solid
+    // palettes later never leaves the compositor locked in opaque mode (applyMaterial sets solid state before show).
+    const material = mica && kind !== "auxiliary" ? { backgroundMaterial: "mica" as const, backgroundColor: "#00000000" } : { backgroundColor };
     return { titleBarStyle: "hidden", titleBarOverlay: { color: "#00000000", symbolColor: symbols(), height: buttonsHeight(kind) }, ...material };
   },
 

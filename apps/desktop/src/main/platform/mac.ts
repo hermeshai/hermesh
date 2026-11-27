@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { TerminalCommand } from "../../shared/bridge";
-import { usesSidebarMaterial, windowBackgroundOf } from "../../shared/appearance";
+import { windowBackgroundOf } from "../../shared/appearance";
 import { chooseMacTerminal, parseRunningBundleIds } from "../../shared/terminal";
 import { settleInApplications } from "../install";
 import { activePalette } from "../notify";
@@ -217,16 +217,17 @@ export const mac: Platform = {
         return { type: "panel", vibrancy: "popover", visualEffectState: "active", backgroundColor: "#00000000" };
       case "auxiliary":
         return { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 12, y: 15 }, backgroundColor };
-      default: {
-        // The lights on the 44 px top band; glass themes show the sidebar's material, solid themes stay opaque.
-        const glass = usesSidebarMaterial(palette);
+      default:
+        // Always initialize with sidebar vibrancy and a transparent backing store so Electron
+        // marks NSWindow non-opaque and clears damaged tiles per frame; applyMaterial immediately
+        // turns vibrancy off and sets the solid background before show() for matte palettes.
         return {
           titleBarStyle: "hiddenInset",
           trafficLightPosition: kind === "onboarding" ? { x: 24, y: 24 } : { x: 12, y: 15 },
+          vibrancy: "sidebar",
           visualEffectState: "followWindow",
-          ...(glass ? { vibrancy: "sidebar", backgroundColor: "#00000000" } : { backgroundColor }),
+          backgroundColor: "#00000000",
         };
-      }
     }
   },
 

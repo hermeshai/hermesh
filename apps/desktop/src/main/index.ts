@@ -123,5 +123,6 @@ Object.assign(globalThis, {
     tray: trayState,
     daemon: () => ({ info: daemonInfo(), start: startBackgroundService, stop: stopBackgroundService }),
     perfSnapshot: collectDesktopSnapshot,
+    frame: (kind: "main" | "onboarding" | "settings" | "auxiliary" | "panel") => platform.frame(kind),
   },
 });
