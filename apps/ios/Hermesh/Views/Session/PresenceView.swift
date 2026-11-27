@@ -25,11 +25,15 @@ enum NewSessionWho: String {
     }
 }
 
-/// A new conversation with Her: the model chosen when it is one of hers, else her default; none known yet, hers to pick.
-func herSelection(providers: [Hermesh_Session_V1_ProviderInstance] = [], prev: Hermesh_Session_V1_ModelSelection? = nil) -> Hermesh_Session_V1_ModelSelection {
+/// A new conversation with Her: the model chosen on this page, else the last Her model chosen on this machine, else Her's configured default; none known yet, hers to pick.
+func herSelection(providers: [Hermesh_Session_V1_ProviderInstance] = [], machineID: String = "", prev: Hermesh_Session_V1_ModelSelection? = nil) -> Hermesh_Session_V1_ModelSelection {
     let her = providers.first { $0.instanceID == herAgent && providerUnusable($0, projectAgents: []) == nil }
-    if let prev, prev.instanceID == herAgent, her?.models.contains(where: { $0.slug == prev.model }) == true {
+    if let prev, prev.instanceID == herAgent, !prev.model.isEmpty, her?.models.contains(where: { $0.slug == prev.model }) == true {
         return prev
+    }
+    if !machineID.isEmpty, let last = SessionChoices.lastHerSelection(machineID), !last.model.isEmpty,
+       her?.models.contains(where: { $0.slug == last.model }) == true {
+        return last
     }
     if let her {
         return defaultSelection(her)
@@ -37,6 +41,11 @@ func herSelection(providers: [Hermesh_Session_V1_ProviderInstance] = [], prev: H
     var sel = Hermesh_Session_V1_ModelSelection()
     sel.instanceID = herAgent
     return sel
+}
+
+func isDefaultHerSelection(_ her: Hermesh_Session_V1_ProviderInstance, _ sel: Hermesh_Session_V1_ModelSelection) -> Bool {
+    let def = defaultSelection(her)
+    return sel.model == def.model && (reasoningOf([her], sel)?.value ?? "") == (reasoningOf([her], def)?.value ?? "")
 }
 
 /// An agent for a new session on the machine: as last time there, else the one already chosen, else Claude, Codex, Gemini, or the first that works.

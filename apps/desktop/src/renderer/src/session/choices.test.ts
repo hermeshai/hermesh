@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { RuntimeMode } from "@hermesh/proto/identity";
-import { forgetWorktree, remember, remembered, rememberedWorktree, rememberWorktree, type ChoiceStore } from "./choiceMemory.ts";
+import { forgetHer, forgetWorktree, remember, remembered, rememberedHer, rememberedWorktree, rememberHer, rememberWorktree, type ChoiceStore } from "./choiceMemory.ts";
 
 function memStore(): ChoiceStore {
   const map = new Map<string, string>();
@@ -49,4 +49,18 @@ test("remembering a started session preserves other projects' working copy choic
   forgetWorktree("mac-1", "hermesh", s);
   assert.equal(rememberedWorktree("mac-1", "hermesh", s), undefined);
   assert.equal(rememberedWorktree("mac-1", "website", s), true);
+});
+
+test("Her model choice is remembered per machine independently of coding agent choices", () => {
+  const s = memStore();
+  remember("mac-1", { projectId: "website", sel: { instanceId: "claude", model: "opus", options: {} }, mode: 3 as RuntimeMode }, s);
+
+  rememberHer("mac-1", { instanceId: "her", model: "deepseek/v4", options: {} }, s);
+  assert.deepEqual(rememberedHer("mac-1", s), { instanceId: "her", model: "deepseek/v4", options: {} });
+  assert.equal(rememberedHer("mac-2", s), undefined);
+  assert.equal(remembered(s).byMachine["mac-1"]?.sel?.instanceId, "claude");
+
+  forgetHer("mac-1", s);
+  assert.equal(rememberedHer("mac-1", s), undefined);
+  assert.equal(remembered(s).byMachine["mac-1"]?.sel?.model, "opus");
 });

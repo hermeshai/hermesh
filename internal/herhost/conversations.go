@@ -78,16 +78,49 @@ func callOn(ctx context.Context, conn *conn, method string, params any) (json.Ra
 }
 
 // Models are those Her can use now, her default first, with her thinking levels as the effort
-// option.
+// option. Her's default is her main conversation's model and thinking (matching bots/conversation_new),
+// falling back to models/list's defaults when she has no configured main conversation yet.
 func (c conversations) Models(ctx context.Context) ([]*sessionv1.ModelCatalogEntry, error) {
-	raw, err := c.call(ctx, "models/list", map[string]any{})
+	conn, err := c.h.dial(ctx, false)
 	if err != nil {
 		return nil, err
 	}
-	return herModels(raw), nil
+	defer conn.Close()
+	raw, err := callOn(ctx, conn, "models/list", map[string]any{})
+	if err != nil {
+		return nil, err
+	}
+	var botModel, botThinking string
+	if len(herModels(raw, "", "")) > 0 {
+		if botID, err := c.bot(); err == nil {
+			if opened, err := callOn(ctx, conn, "bots/open", map[string]any{
+				"bot_id":        botID,
+				"events":        convEvents,
+				"history_limit": 0,
+			}); err == nil {
+				botModel, botThinking = mainSessionSettings(opened)
+			}
+		}
+	}
+	return herModels(raw, botModel, botThinking), nil
 }
 
-func herModels(raw json.RawMessage) []*sessionv1.ModelCatalogEntry {
+func mainSessionSettings(raw json.RawMessage) (model, thinking string) {
+	var r struct {
+		Snapshot struct {
+			Session struct {
+				Model    string `json:"model"`
+				Thinking string `json:"thinking"`
+			} `json:"session"`
+		} `json:"snapshot"`
+	}
+	if json.Unmarshal(raw, &r) != nil {
+		return "", ""
+	}
+	return r.Snapshot.Session.Model, r.Snapshot.Session.Thinking
+}
+
+func herModels(raw json.RawMessage, botModel, botThinking string) []*sessionv1.ModelCatalogEntry {
 	var r struct {
 		Models []struct {
 			ID              string   `json:"id"`
@@ -103,15 +136,28 @@ func herModels(raw json.RawMessage) []*sessionv1.ModelCatalogEntry {
 		} `json:"defaults"`
 	}
 	json.Unmarshal(raw, &r)
+	defModel := r.Defaults.Model
+	if botModel != "" {
+		for _, m := range r.Models {
+			if m.ID == botModel && m.Available && !m.Deprecated {
+				defModel = botModel
+				break
+			}
+		}
+	}
 	var out []*sessionv1.ModelCatalogEntry
 	for _, m := range r.Models {
-		if !m.Available || !m.Shown || m.Deprecated {
+		if !m.Available || m.Deprecated || (!m.Shown && m.ID != defModel) {
 			continue
 		}
 		name := cmp.Or(m.Name, m.ID)
-		e := &sessionv1.ModelCatalogEntry{Slug: m.ID, Name: name, ShortName: name, IsDefault: m.ID == r.Defaults.Model}
+		isDef := m.ID == defModel
+		e := &sessionv1.ModelCatalogEntry{Slug: m.ID, Name: name, ShortName: name, IsDefault: isDef}
 		if levels := slices.DeleteFunc(slices.Clone(m.ThinkingLevels), func(l string) bool { return l == "off" }); len(levels) > 0 {
 			cur := m.DefaultThinking
+			if isDef && botThinking != "" && slices.Contains(levels, botThinking) {
+				cur = botThinking
+			}
 			if !slices.Contains(levels, cur) {
 				cur = levels[len(levels)/2]
 			}
