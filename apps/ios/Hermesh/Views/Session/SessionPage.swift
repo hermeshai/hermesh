@@ -71,6 +71,8 @@ enum SessionChoices {
 struct SessionPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.barsOnTheSide) private var sideBars
+    @Environment(\.screenWidth) private var screenWidth
     /// The session shown; empty on a new one.
     let sessionID: String
     private let askedMachine: String
@@ -114,6 +116,8 @@ struct SessionPage: View {
     @State private var lastSend: Task<Void, Never>?
     /// A new session's first message, from Send until its machine answers.
     @State private var starting: Starting?
+    /// Horizontal drag offset when swiping the side panel's leading edge right to put it away.
+    @GestureState private var panelDrag: CGFloat = 0
     @FocusState private var focused: Bool
 
     init(machineID: String, projectID: String) {
@@ -414,9 +418,10 @@ struct SessionPage: View {
         let codeActions = codeActions(for: s)
         // A wide screen: the side panel beside the conversation (docs/session-files.md §15), or taking the page.
         let panel = model.wide != nil && files.panelOpen
-        // Enlarged, the panel covers the conversation, which keeps its width and place underneath.
+        // Enlarged, the panel covers the conversation, which keeps its width and place underneath. On iPhone Duo
+        // (`sideBars`), the split aligns with the physical center fold (`screenWidth / 2`).
         return GeometryReader { geo in
-        let panelWidth = min(470, geo.size.width * 0.56)
+        let panelWidth = sidePanelWidth(geo)
         ZStack(alignment: .trailing) {
         ScrollView {
             VStack(alignment: .leading, spacing: 13) {
@@ -484,18 +489,59 @@ struct SessionPage: View {
         .sessionDialogs(s, renaming: $renaming, deleting: $deleting)
         .padding(.trailing, panel ? panelWidth : 0)
         if panel {
-            HStack(spacing: 0) {
-                Divider().ignoresSafeArea()
-                SessionSidePanel(files: files)
-            }
-            .frame(width: files.panelMax ? geo.size.width : panelWidth)
-            .transition(.move(edge: .trailing))
+            sidePanelColumn(files: files, width: files.panelMax ? geo.size.width : panelWidth)
         }
         }
+        }
+        .sheet(item: Binding(get: { files.sharing }, set: { files.sharing = $0 })) {
+            HerShareSheet(url: $0).presentationDetents([.medium, .large])
         }
         .fullScreenCover(item: Binding(get: { files.lightbox }, set: { files.lightbox = $0 })) {
             SessionImageLightbox(presentation: $0)
         }
+    }
+
+    private func sidePanelWidth(_ geo: GeometryProxy) -> CGFloat {
+        if sideBars, screenWidth > 0 {
+            let fromFold = round(geo.frame(in: .global).maxX - screenWidth / 2)
+            return min(max(320, fromFold), max(320, geo.size.width - 260))
+        }
+        return min(470, round(geo.size.width * 0.54))
+    }
+
+    private func sidePanelColumn(files: SessionFilesModel, width: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            Divider().ignoresSafeArea()
+            SessionSidePanel(files: files)
+        }
+        .frame(width: width)
+        .overlay(alignment: .leading) {
+            if !files.panelMax {
+                Capsule()
+                    .fill(.quaternary)
+                    .frame(width: 3.5, height: 36)
+                    .frame(width: 18)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(.rect)
+                    .gesture(
+                        DragGesture(minimumDistance: 8, coordinateSpace: .global)
+                            .updating($panelDrag) { v, s, _ in s = max(0, v.translation.width) }
+                            .onEnded { v in
+                                if v.translation.width > 72 || v.predictedEndTranslation.width > 140 {
+                                    withAnimation(.snappy(duration: 0.28)) {
+                                        files.panelOpen = false
+                                        files.panelMax = false
+                                        files.panelDrawer = false
+                                    }
+                                }
+                            }
+                    )
+                    .accessibilityIdentifier("side-panel-edge-grip")
+            }
+        }
+        .offset(x: panelDrag)
+        .opacity(panelDrag > 0 ? max(0.38, 1 - Double(panelDrag) / 340) : 1)
+        .transition(.move(edge: .trailing))
     }
 
     @ViewBuilder private func requestPanel(_ req: Hermesh_Session_V1_RuntimeRequest, _ s: Session) -> some View {

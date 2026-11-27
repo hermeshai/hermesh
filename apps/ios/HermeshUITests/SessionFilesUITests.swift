@@ -11,6 +11,7 @@ import XCTest
 ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testSessionFiles go test ./e2e -run TestIPhone -v -timeout 40m
 extension HermeshUITests {
     @objc func testSessionFiles() throws {
+        XCUIDevice.shared.orientation = .portrait
         try join()
         openSession("文件预览")
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "原型")).firstMatch.waitForExistence(timeout: 60), "the reply")
@@ -119,6 +120,7 @@ extension HermeshUITests {
         // On its side, where the screen is wide (a Pro Max, iPhone Duo open), the menu stands beside the page: the
         // page's button widens it over the menu, which shrinks to its rail, as a session's page does. Elsewhere, none.
         app.terminate()
+        XCUIDevice.shared.orientation = .portrait
         app.launchArguments += ["-HermeshTestTurns", "YES"]
         app.launch()
         openSession("文件预览")
@@ -156,26 +158,52 @@ extension HermeshUITests {
             XCTAssertEqual(tabs.count, 2)
             XCTAssertTrue(tag("docs/demo.html").isHittable, "the conversation beside it")
             shot("files-panel-page")
-            // Code at its line, in a tab of its own, the tree hidden; shown, a file picked there opens in this tab.
+            // Code at its line, in a tab of its own across the panel's full width; at its foot the unified bottom
+            // drawer bar pulls up the tree over the panel, and a file picked there opens in this tab and closes it.
             tag("src/lines.txt", line: 30).tap()
             XCTAssertTrue(app.staticTexts["line 30"].firstMatch.waitForExistence(timeout: 20), "code at its line")
             XCTAssertEqual(tabs.count, 3)
-            XCTAssertFalse(app.buttons["tree-src/lines.txt"].exists, "the tree hidden at first")
-            tap("file-tree-toggle")
-            XCTAssertTrue(app.buttons["tree-src/lines.txt"].waitForExistence(timeout: 10), "the tree beside the file")
+            let panelSheet = panel.descendants(matching: .any)["file-tree-sheet"].firstMatch
+            XCTAssertFalse(panelSheet.exists, "the bottom tree drawer closed at first")
+            let panelDrawerBar = panel.buttons["file-drawer"].firstMatch
+            XCTAssertTrue(panelDrawerBar.waitForExistence(timeout: 5), "the tree's drawer bar at the panel's foot")
+            panelDrawerBar.tap()
+            XCTAssertTrue(panelSheet.waitForExistence(timeout: 10), "the bottom tree drawer over the panel")
+            XCTAssertTrue(app.buttons["tree-src/lines.txt"].waitForExistence(timeout: 10), "opened to the file")
+            XCTAssertTrue(app.buttons["tree-src/lines.txt"].isSelected, "the file marked")
             shot("files-panel-code-tree")
             tap("tree-README.md")
-            XCTAssertTrue(app.descendants(matching: .any)["side-panel-path"].firstMatch.waitForExistence(timeout: 10))
-            XCTAssertTrue(waitUntil(timeout: 10) { app.descendants(matching: .any)["side-panel-path"].firstMatch.label == "README.md" }, "README.md in the same tab")
+            XCTAssertTrue(panelSheet.waitForNonExistence(timeout: 10), "picking a file puts the drawer back down")
+            XCTAssertTrue(panel.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "site")).firstMatch.waitForExistence(timeout: 20), "README.md in the same tab")
             XCTAssertEqual(tabs.count, 3)
-            // Enlarged, it takes the page; shrunk, the conversation is back.
+            XCTAssertTrue(app.buttons["file-source"].exists, "Markdown source toggle on the tab")
+            // Enlarged, it takes the page; Hide on the panel's own strip puts it away in one tap while keeping tabs.
+            XCTAssertTrue(app.buttons["session-info"].isHittable, "conversation beside the panel")
             tap("side-panel-max")
-            XCTAssertTrue(waitUntil(timeout: 5) { !tag("docs/demo.html").isHittable }, "the panel takes the page")
+            XCTAssertTrue(waitUntil(timeout: 5) { !app.buttons["session-info"].isHittable }, "the panel takes the page")
             shot("files-panel-max")
-            tap("side-panel-max")
-            XCTAssertTrue(waitUntil(timeout: 5) { tag("docs/demo.html").isHittable }, "beside the conversation again")
-            tap("session-side-panel")
-            XCTAssertTrue(panel.waitForNonExistence(timeout: 5), "put away")
+            if app.buttons["side-panel-hide"].exists {
+                tap("side-panel-hide")
+                XCTAssertTrue(panel.waitForNonExistence(timeout: 5), "one-tap hide from enlarged panel")
+                XCTAssertTrue(waitUntil(timeout: 5) { app.buttons["session-info"].isHittable }, "conversation back")
+                tap("session-side-panel")
+                XCTAssertTrue(panel.waitForExistence(timeout: 5), "reopened with all tabs preserved")
+                XCTAssertEqual(tabs.count, 3)
+                XCTAssertTrue(waitUntil(timeout: 5) { app.buttons["session-info"].isHittable }, "split view restored")
+            } else {
+                tap("side-panel-max")
+                XCTAssertTrue(waitUntil(timeout: 5) { app.buttons["session-info"].isHittable }, "beside the conversation again")
+            }
+            // Swiping right from the panel's leading edge puts it away too.
+            let grip = app.descendants(matching: .any)["side-panel-edge-grip"].firstMatch
+            if grip.waitForExistence(timeout: 5) {
+                let start = grip.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 160, dy: 0)), withVelocity: 400, thenHoldForDuration: 0.05)
+                XCTAssertTrue(panel.waitForNonExistence(timeout: 5), "put away by edge swipe")
+            } else {
+                tap("session-side-panel")
+                XCTAssertTrue(panel.waitForNonExistence(timeout: 5), "put away")
+            }
         } else {
             XCTAssertFalse(widen.exists, "no wide screen here: nothing to widen")
         }

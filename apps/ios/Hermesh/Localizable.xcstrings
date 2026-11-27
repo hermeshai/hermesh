@@ -19506,12 +19506,12 @@
         }
       }
     },
-    "Show or Hide the Tree": {
+    "Current Session": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "显示或隐藏目录树"
+            "value": "当前会话"
           }
         }
       }
