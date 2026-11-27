@@ -247,7 +247,7 @@ struct GuideView: View {
         let name = m?.machineName ?? model.machineName(machineID)
         let sorted = sortedAgents(m?.status.agents ?? [])
         let found = sorted.installed
-        let rest = codingAgentIDs.filter { id in !found.contains { $0.name == id } }
+        let rest = codingAgentIDs.filter { id in id != "gemini" && !found.contains { $0.name == id } }
         let looking = scanning || !sorted.checking.isEmpty
         return GuidePage(part: .codingAgent, back: { go(.computer, back: true) }, title: Text("Coding agents")) {
             GuideCaption(text: Text("Found \(found.count) on \(name)"))

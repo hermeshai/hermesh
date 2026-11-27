@@ -215,24 +215,27 @@ final class HermeshUITests: XCTestCase {
         reach("machine-provider-mac")
         tap("machine-provider-mac")
         tap("env-providers")
-        tap("provider-maintenance")
-        tap("maintain-opencode")
+        reach("install-opencode")
+        tap("install-opencode")
         tap("maintenance-install")
-        XCTAssertTrue(app.buttons["maintenance-enable_auto"].waitForExistence(timeout: 180))
+        XCTAssertTrue(app.buttons["agent-opencode"].waitForExistence(timeout: 180))
+        tap("agent-opencode")
+        let auto = app.switches["maintenance-auto"]
+        XCTAssertTrue(auto.waitForExistence(timeout: 30))
         _ = try control("provider-release", method: "POST")
         XCTAssertTrue(app.buttons["maintenance-update"].waitForExistence(timeout: 90))
         tap("maintenance-update")
         XCTAssertTrue(app.descendants(matching: .any)["installed-version-2.4.2"].firstMatch.waitForExistence(timeout: 120))
-        // Wait for the persisted terminal receipt before the next write.
-        let auto = app.buttons["maintenance-enable_auto"]
         let enabled = NSPredicate(format: "enabled == true")
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: enabled, object: auto)], timeout: 120), .completed)
-        tap("maintenance-enable_auto")
-        tap("maintenance-disable_auto", timeout: 30)
-        XCTAssertTrue(auto.waitForExistence(timeout: 30))
-        tap("maintenance-verify")
+        auto.switches.firstMatch.tap()
+        XCTAssertEqual(auto.value as? String, "1")
+        auto.switches.firstMatch.tap()
+        XCTAssertEqual(auto.value as? String, "0")
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        for action in ["install", "update", "enable_auto", "disable_auto", "verify"] {
+        reach("provider-history")
+        tap("provider-history")
+        for action in ["install", "update", "enable_auto", "disable_auto"] {
             reach("history-opencode-\(action)-succeeded")
         }
     }

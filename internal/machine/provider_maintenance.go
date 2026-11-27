@@ -26,17 +26,151 @@ import (
 )
 
 // These are release-tested targets, deliberately independent of npm's latest tag.
-type providerRecipe struct{ pkg, version string }
+type providerRecipe struct{ pkg, version, bin string }
+
+func (r providerRecipe) command(id string) string {
+	if r.bin != "" {
+		return r.bin
+	}
+	return id
+}
 
 var providerRecipes = map[string]providerRecipe{
-	"claude":   {"@anthropic-ai/claude-code", "2.1.332"},
-	"codex":    {"@openai/codex", "0.172.0"},
-	"copilot":  {"@github/copilot", "1.0.117"},
-	"opencode": {"@opencode/cli", "2.4.2"},
+	"claude":    {pkg: "@anthropic-ai/claude-code", version: "2.1.332"},
+	"codex":     {pkg: "@openai/codex", version: "0.172.0"},
+	"copilot":   {pkg: "@github/copilot", version: "1.0.117"},
+	"opencode":  {pkg: "@opencode/cli", version: "2.4.2"},
+	"qwen":      {pkg: "@qwen-code/qwen-code", version: "0.28.7"},
+	"auggie":    {pkg: "@augmentcode/auggie", version: "1.2.3"},
+	"kimi":      {pkg: "@moonshot-ai/kimi-code", version: "2.8.1"},
+	"qoder":     {pkg: "@qoder-ai/qodercli", version: "1.1.100", bin: "qodercli"},
+	"codebuddy": {pkg: "@tencent-ai/codebuddy-code", version: "2.187.0"},
+	"grok":      {pkg: "@xai-official/grok", version: "1.0.92"},
 }
 
 func providerPath(data string) string {
-	return filepath.Join(data, "providers", "bin") + string(os.PathListSeparator) + shellenv.Path()
+	parts := []string{shellenv.Path()}
+	if custom := strings.TrimSpace(os.Getenv("NPM_CONFIG_PREFIX")); custom != "" {
+		parts = append([]string{filepath.Join(custom, "bin")}, parts...)
+	}
+	// Preserve legacy Hermesh-isolated binaries at lowest precedence if still present.
+	legacy := filepath.Join(data, "providers", "bin")
+	if st, err := os.Stat(legacy); err == nil && st.IsDir() {
+		parts = append(parts, legacy)
+	}
+	return strings.Join(parts, string(os.PathListSeparator))
+}
+
+func sameExecutable(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+	sa, ea := os.Stat(a)
+	sb, eb := os.Stat(b)
+	return ea == nil && eb == nil && os.SameFile(sa, sb)
+}
+
+// prefixAccessWritable checks without touching the filesystem whether both bin/
+// and lib/node_modules/ under prefix live on a local disk writable by this user.
+func prefixAccessWritable(prefix string) bool {
+	if prefix == "" || !filepath.IsAbs(prefix) {
+		return false
+	}
+	for _, sub := range []string{filepath.Join(prefix, "bin"), filepath.Join(prefix, "lib", "node_modules")} {
+		d := sub
+		for {
+			st, err := os.Stat(d)
+			if err == nil {
+				if !st.IsDir() || !providerLocalDisk(d) || !dirWritable(d) {
+					return false
+				}
+				break
+			}
+			parent := filepath.Dir(d)
+			if parent == d {
+				return false
+			}
+			d = parent
+		}
+	}
+	return true
+}
+
+// prefixProbeWritable actively verifies write permission (catching macOS Seatbelt
+// sandboxes, read-only mounts and ACLs) before running npm install.
+func prefixProbeWritable(prefix string) bool {
+	if !prefixAccessWritable(prefix) {
+		return false
+	}
+	for _, sub := range []string{filepath.Join(prefix, "bin"), filepath.Join(prefix, "lib", "node_modules")} {
+		d := sub
+		for {
+			if st, err := os.Stat(d); err == nil && st.IsDir() {
+				f, err := os.CreateTemp(d, ".hermesh-probe-*")
+				if err != nil {
+					return false
+				}
+				name := f.Name()
+				_ = f.Close()
+				_ = os.Remove(name)
+				break
+			}
+			parent := filepath.Dir(d)
+			if parent == d {
+				return false
+			}
+			d = parent
+		}
+	}
+	return true
+}
+
+// npmPackagePrefix returns the writable npm prefix owning binPath when binPath
+// resolves into <prefix>/lib/node_modules/<pkg>/..., or "" for Homebrew/native installs.
+func npmPackagePrefix(binPath, pkg string) string {
+	if binPath == "" || pkg == "" {
+		return ""
+	}
+	real, err := filepath.EvalSymlinks(binPath)
+	if err != nil {
+		return ""
+	}
+	marker := "/lib/node_modules/" + pkg + "/"
+	slash := filepath.ToSlash(real)
+	idx := strings.Index(slash, marker)
+	if idx <= 0 {
+		return ""
+	}
+	prefix := filepath.FromSlash(slash[:idx])
+	if !prefixAccessWritable(prefix) {
+		return ""
+	}
+	return filepath.Clean(prefix)
+}
+
+func resolveInstallPrefix(ctx context.Context, npm string, env []string) (string, error) {
+	if out, _, err := rt.RunCommand(ctx, npm, []string{"prefix", "-g"}, os.TempDir(), env); err == nil {
+		if def := strings.TrimSpace(string(out)); prefixProbeWritable(def) {
+			return filepath.Clean(def), nil
+		}
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", errors.New("cannot determine user home directory for CLI installation")
+	}
+	fallback := filepath.Join(home, ".local")
+	for _, sub := range []string{filepath.Join(fallback, "bin"), filepath.Join(fallback, "lib", "node_modules")} {
+		if err := os.MkdirAll(sub, 0755); err != nil {
+			return "", errors.New("default npm global directory is not writable and ~/.local could not be created")
+		}
+	}
+	if !prefixProbeWritable(fallback) {
+		return "", errors.New("neither default npm global directory nor ~/.local is writable")
+	}
+	return fallback, nil
 }
 
 type providerState struct {
@@ -105,11 +239,11 @@ func (n *Machine) openProviderManager() error {
 			j.Phase = "interrupted"
 			j.Detail = "Check the installed version before retrying."
 			id := j.Request.Provider
-			// Activation and SQLite cannot commit together. Only recover a link to
-			// the exact staged executable that passed the handshake before shutdown.
 			if pending := m.state.Pending[id]; pending != "" {
-				target, err := os.Readlink(filepath.Join(n.cfg.DataDir, "providers", "bin", id))
-				if err == nil && target == pending {
+				pctx, cancel := context.WithTimeout(m.ctx, 5*time.Second)
+				out, _, runErr := rt.RunCommand(pctx, pending, []string{"--version"}, os.TempDir(), providerInstallEnv())
+				cancel()
+				if runErr == nil && providerVersion.FindString(string(out)) == j.Request.TargetVersion {
 					m.state.Managed[id] = j.Request.TargetVersion
 					m.state.Paths[id] = pending
 				}
@@ -159,7 +293,51 @@ func (n *Machine) saveProviders() error {
 	return n.st.Set("provider_maintenance", b)
 }
 
+// managedInstall resolves the active npm-managed version and prefix for id,
+// recognizing both Hermesh-installed packages and user-writable npm global installs.
+func (n *Machine) managedInstall(id string, infos map[string]rt.Info) (version, prefix string) {
+	r, ok := providerRecipes[id]
+	if !ok {
+		return "", ""
+	}
+	m := &n.maintenance
+	info, hasInfo := infos[id]
+	if hasInfo && info.Available && info.Version != "" {
+		if p := npmPackagePrefix(info.Binary, r.pkg); p != "" {
+			return info.Version, p
+		}
+		if prior := m.state.Paths[id]; prior != "" && sameExecutable(info.Binary, prior) {
+			p := filepath.Dir(filepath.Dir(prior))
+			if prefixAccessWritable(p) {
+				return info.Version, p
+			}
+		}
+		return "", ""
+	}
+	if !hasInfo {
+		if v := m.state.Managed[id]; v != "" {
+			var p string
+			if prior := m.state.Paths[id]; prior != "" {
+				p = filepath.Dir(filepath.Dir(prior))
+			}
+			return v, p
+		}
+	}
+	return "", ""
+}
+
+func (n *Machine) snapshotInfos() map[string]rt.Info {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	out := make(map[string]rt.Info, len(n.infos))
+	for k, v := range n.infos {
+		out[k] = v
+	}
+	return out
+}
+
 func (n *Machine) providerStatus(st *mv.MachineStatus) {
+	infos := n.snapshotInfos()
 	m := &n.maintenance
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -171,8 +349,8 @@ func (n *Machine) providerStatus(st *mv.MachineStatus) {
 		if r, ok := providerRecipes[id]; ok && m.writable && os.Getenv("HERMESH_"+strings.ToUpper(id)+"_BIN") == "" {
 			item.Package = r.pkg
 			item.TargetVersion = r.version
+			item.ManagedVersion, _ = n.managedInstall(id, infos)
 		}
-		item.ManagedVersion = m.state.Managed[id]
 		item.AutoUpdate = m.state.Auto[id]
 		st.ProviderMaintenance = append(st.ProviderMaintenance, item)
 	}
@@ -188,6 +366,7 @@ func (n *Machine) startProviderOperation(op *iv.MaintainProvider) error {
 	if op == nil || !providerRequestID.MatchString(op.RequestId) || !slices.Contains(AgentNames(), op.Provider) {
 		return cerr(connect.CodeInvalidArgument, "invalid provider or request id")
 	}
+	infos := n.snapshotInfos()
 	m := &n.maintenance
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -242,7 +421,7 @@ func (n *Machine) startProviderOperation(op *iv.MaintainProvider) error {
 		if !ok || !m.writable || r.version != op.TargetVersion || os.Getenv("HERMESH_"+strings.ToUpper(op.Provider)+"_BIN") != "" {
 			return cerr(connect.CodeFailedPrecondition, "unsupported target or explicit binary override")
 		}
-		managed := m.state.Managed[op.Provider]
+		managed, _ := n.managedInstall(op.Provider, infos)
 		if op.Action == "update" && !newerProviderVersion(managed, r.version) {
 			return cerr(connect.CodeFailedPrecondition, "no approved upgrade on this release line")
 		}
@@ -314,12 +493,13 @@ func newerProviderVersion(current, target string) bool {
 }
 
 func (n *Machine) scheduleProviderUpdates() {
+	infos := n.snapshotInfos()
 	m := &n.maintenance
 	m.mu.Lock()
 	var pending []*iv.MaintainProvider
 	for id, on := range m.state.Auto {
 		r := providerRecipes[id]
-		v := m.state.Managed[id]
+		v, _ := n.managedInstall(id, infos)
 		if on && v != "" && r.version != "" && newerProviderVersion(v, r.version) {
 			pending = append(pending, &iv.MaintainProvider{RequestId: "auto-" + id + "-" + strings.ReplaceAll(r.version, ".", "_"), Provider: id, Action: "update", ExpectedVersion: v, TargetVersion: r.version})
 		}
@@ -391,30 +571,6 @@ func (n *Machine) runProviderOperation(parent context.Context, job *mv.ProviderO
 		n.kickStatus()
 		return nil
 	}
-	root := filepath.Join(n.cfg.DataDir, "providers")
-	link := filepath.Join(root, "bin", id)
-	checkSource := func(info rt.Info) error {
-		if op.Action == "install" {
-			if info.Available || info.Binary != "" || (info.Problem != rt.ProblemNotFound && info.Problem != rt.ProblemAppWithoutCLI) {
-				return errors.New("existing installation or unresolved discovery error")
-			}
-			if _, err := os.Lstat(link); !os.IsNotExist(err) {
-				return errors.New("managed entry already exists; verify installation")
-			}
-		} else {
-			m.mu.Lock()
-			prior := m.state.Paths[id]
-			m.mu.Unlock()
-			dest, readErr := os.Readlink(link)
-			if readErr != nil || dest != prior || !info.Available || info.Version != op.ExpectedVersion || info.Binary != link {
-				return errors.New("current executable or version differs from the managed installation")
-			}
-		}
-		return nil
-	}
-	if err := checkSource(info); err != nil {
-		return err
-	}
 	npm := rt.LookPath("npm", shellenv.Path())
 	if npm == "" {
 		return errors.New("install Node.js and npm on the target machine")
@@ -422,32 +578,56 @@ func (n *Machine) runProviderOperation(parent context.Context, job *mv.ProviderO
 	if free, _, ok := diskSpace(n.cfg.DataDir); ok && free == 0 {
 		return errors.New("target disk is full")
 	}
-	if err := os.MkdirAll(filepath.Dir(link), 0700); err != nil {
-		return err
-	}
-	for _, dir := range []string{root, filepath.Dir(link)} {
-		st, err := os.Lstat(dir)
-		if err != nil || !st.IsDir() || !providerLocalDisk(dir) {
-			return errors.New("managed prefix requires a machine-local directory")
-		}
-	}
-	stage, err := os.MkdirTemp(root, id+"-")
-	if err != nil {
-		return errors.New("cannot create user installation directory")
-	}
-	activated := false
-	defer func() {
-		if !activated {
-			os.RemoveAll(stage)
-		}
-	}()
+	env := providerInstallEnv()
 	r := providerRecipes[id]
+	cmdName := r.command(id)
+	var prefix string
+	if op.Action == "install" {
+		if info.Available || info.Binary != "" || (info.Problem != rt.ProblemNotFound && info.Problem != rt.ProblemAppWithoutCLI) {
+			return errors.New("existing installation or unresolved discovery error")
+		}
+		var err error
+		prefix, err = resolveInstallPrefix(ctx, npm, env)
+		if err != nil {
+			return err
+		}
+		if _, err := os.Lstat(filepath.Join(prefix, "bin", cmdName)); !os.IsNotExist(err) {
+			return errors.New("executable already exists in target prefix; recheck installation")
+		}
+	} else {
+		if !info.Available || info.Version != op.ExpectedVersion {
+			return errors.New("current executable or version differs from the expected installation")
+		}
+		prefix = npmPackagePrefix(info.Binary, r.pkg)
+		if prefix == "" {
+			m.mu.Lock()
+			prior := m.state.Paths[id]
+			m.mu.Unlock()
+			if prior != "" && sameExecutable(info.Binary, prior) {
+				prefix = filepath.Dir(filepath.Dir(prior))
+			}
+		}
+		if prefix == "" || !prefixProbeWritable(prefix) {
+			return errors.New("current executable is not in a writable npm prefix")
+		}
+	}
+	bin := filepath.Join(prefix, "bin", cmdName)
 	if err := n.providerPhase(job, "installing", ""); err != nil {
 		return err
 	}
-	env := providerInstallEnv()
-	_, diagnostic, err := rt.RunCommand(ctx, npm, []string{"install", "--global", "--prefix", stage, "--registry=https://registry.npmjs.org", "--" + strings.SplitN(r.pkg, "/", 2)[0] + ":registry=https://registry.npmjs.org", "--no-audit", "--no-fund", "--engine-strict", r.pkg + "@" + r.version}, stage, env)
+	m.mu.Lock()
+	m.state.Pending[id] = bin
+	err := n.saveProviders()
+	m.mu.Unlock()
 	if err != nil {
+		return err
+	}
+	_, diagnostic, err := rt.RunCommand(ctx, npm, []string{"install", "--global", "--prefix", prefix, "--registry=https://registry.npmjs.org", "--" + strings.SplitN(r.pkg, "/", 2)[0] + ":registry=https://registry.npmjs.org", "--no-audit", "--no-fund", "--engine-strict", r.pkg + "@" + r.version}, os.TempDir(), env)
+	if err != nil {
+		m.mu.Lock()
+		delete(m.state.Pending, id)
+		_ = n.saveProviders()
+		m.mu.Unlock()
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -458,54 +638,19 @@ func (n *Machine) runProviderOperation(parent context.Context, job *mv.ProviderO
 		}
 		return fmt.Errorf("npm install failed (%v); check Node version, disk space and registry connectivity", err)
 	}
-	bin := filepath.Join(stage, "bin", id)
-	// Keep vendor updaters from changing a version owned by this machine.
-	if setting := map[string]string{"copilot": "COPILOT_AUTO_UPDATE=false", "claude": "DISABLE_AUTOUPDATER=1"}[id]; setting != "" {
-		launcher := filepath.Join(stage, "launch")
-		quoted := "'" + strings.ReplaceAll(bin, "'", "'\"'\"'") + "'"
-		if err = os.WriteFile(launcher, []byte("#!/bin/sh\nexport "+setting+"\nexec "+quoted+" \"$@\"\n"), 0700); err != nil {
-			return err
-		}
-		bin = launcher
-	}
-	b, _, err := rt.RunCommand(ctx, bin, []string{"--version"}, stage, env)
+	b, _, err := rt.RunCommand(ctx, bin, []string{"--version"}, os.TempDir(), env)
 	if err != nil || providerVersion.FindString(string(b)) != r.version {
 		return errors.New("installed binary did not report the requested version")
 	}
 	if err := n.providerPhase(job, "verifying", ""); err != nil {
 		return err
 	}
-	if err := verifyProvider(ctx, id, bin, shellenv.Path(), true); err != nil {
-		return err
-	}
-	// The user may have installed or replaced a CLI while npm was downloading.
-	if err := checkSource(probe.Discover(ctx)); err != nil {
+	if err := verifyProvider(ctx, id, bin, providerPath(n.cfg.DataDir), true); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	// The symlink changes atomically. Existing sessions keep their old version directory.
-	m.mu.Lock()
-	m.state.Pending[id] = bin
-	err = n.saveProviders()
-	m.mu.Unlock()
-	if err != nil {
-		return err
-	}
-	if op.Action == "install" {
-		// Fail atomically if another process created the entry after preflight.
-		err = os.Symlink(bin, link)
-	} else {
-		next := filepath.Join(stage, "activate")
-		if err = os.Symlink(bin, next); err == nil {
-			err = os.Rename(next, link)
-		}
-	}
-	if err != nil {
-		return err
-	}
-	activated = true
 	m.mu.Lock()
 	m.state.Managed[id] = r.version
 	m.state.Paths[id] = bin
@@ -531,7 +676,7 @@ func (n *Machine) runProviderOperation(parent context.Context, job *mv.ProviderO
 	n.infos[id] = info
 	n.mu.Unlock()
 	n.kickStatus()
-	if !info.Available || info.Version != r.version || info.Binary != link {
+	if !info.Available || info.Version != r.version || !sameExecutable(info.Binary, bin) {
 		return errors.New("activated; target driver did not confirm the expected binary and version")
 	}
 	return nil
@@ -539,7 +684,7 @@ func (n *Machine) runProviderOperation(parent context.Context, job *mv.ProviderO
 
 func providerInstallEnv() []string {
 	env := []string{"PATH=" + shellenv.Path(), "CI=1", "COPILOT_AUTO_UPDATE=false"}
-	for _, k := range []string{"HOME", "TMPDIR", "LANG", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS"} {
+	for _, k := range []string{"HOME", "TMPDIR", "LANG", "NPM_CONFIG_PREFIX", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS"} {
 		if v := os.Getenv(k); v != "" {
 			env = append(env, k+"="+v)
 		}

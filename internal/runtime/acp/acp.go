@@ -109,6 +109,9 @@ func (p *Provider) binary() string {
 	if b := p.effectiveBinary(); b != "" {
 		return b
 	}
+	if p.Name() == "gemini" {
+		return ""
+	}
 	home, _ := os.UserHomeDir()
 	var extra []string
 	for _, dir := range systemBinDirs {

@@ -47,6 +47,7 @@ export type Sheet =
   | { kind: "scope"; clientId: string; renew: boolean }
   | { kind: "wake"; clientId: string; agent: string; wake?: Wake; code?: string; name?: string }
   | { kind: "confirm"; title: string; message: string; button: string; run: (eraseHer: boolean) => Promise<unknown>; done?: string; herData?: { name: string; offline: boolean }; safe?: boolean }
+  | { kind: "installProvider"; machineId: string; agent: string }
   | { kind: "erase" }
   | { kind: "herOff"; machineId: string; machineName: string }
   // Without an account (docs/cold-start-prd.md §6.2): what needs one says so first; then signing in.

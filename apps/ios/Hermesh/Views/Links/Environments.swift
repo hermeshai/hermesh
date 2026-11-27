@@ -319,38 +319,62 @@ struct EnvironmentNameView: View {
 }
 
 /// An environment's agent providers: each installed one opening its page, those being checked, Check
-/// Again; the ones not installed, each with how to install it.
+/// Again; the ones not installed, with one-tap Hermesh installation or how to install externally.
 struct ProvidersView: View {
     @Environment(AppModel.self) private var model
     let id: String
     @State private var checking = false
+    @State private var installTarget: String?
+    @State private var cancelling = false
 
     var body: some View {
         let m = model.machines.first { $0.machineID == id }.map(model.providerMachine)
         let agents = sortedAgents(m?.status.agents ?? [])
+        let capOf = { (name: String) in m?.status.providerMaintenance.first { $0.provider == name } }
+        let latestOf = { (name: String) in m?.status.providerOperations.last { $0.request.provider == name } }
+        let orderedMissing = agents.missing.sorted { (capOf($0)?.package.isEmpty == false ? 0 : 1) < (capOf($1)?.package.isEmpty == false ? 0 : 1) }
         List {
-            if let m, !m.status.providerMaintenance.isEmpty || !m.status.providerOperations.isEmpty {
-                Section {
-                    NavigationLink {
-                        ProviderMaintenanceView(machineID: id)
-                    } label: {
-                        Label("Installation and Updates", systemImage: "arrow.down.circle")
-                    }
-                    .accessibilityIdentifier("provider-maintenance")
-                }
-            }
             Section {
                 ForEach(agents.installed, id: \.name) { a in
+                    let cap = capOf(a.name)
+                    let latest = latestOf(a.name)
+                    let active = providerOperationActive(latest?.phase ?? "")
+                    let hasUpdate = !(cap?.managedVersion.isEmpty ?? true) && !(cap?.targetVersion.isEmpty ?? true) && cap?.managedVersion != cap?.targetVersion
                     NavigationLink(value: Route.machineAgent(id, a.name)) {
                         LabeledContent {
-                            Text(a.loggedIn ? String(localized: "Signed in") : String(localized: "Not signed in")).foregroundStyle(a.loggedIn ? Color.secondary : .orange)
+                            if active && m?.online == true {
+                                HStack(spacing: 6) {
+                                    ProgressView()
+                                    Text(providerPhaseTitle(latest?.phase ?? ""))
+                                }
+                                .font(.subheadline)
+                            } else {
+                                Text(a.loggedIn ? String(localized: "Signed in") : String(localized: "Not signed in")).foregroundStyle(a.loggedIn ? Color.secondary : .orange)
+                            }
                         } label: {
                             HStack(spacing: 12) {
                                 AgentLogo(id: a.name, size: 30)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(agentTitle(a.name))
-                                    Text(a.version).font(.caption.monospaced()).foregroundStyle(.secondary)
+                                    if hasUpdate, let target = cap?.targetVersion {
+                                        Text("\(a.version) · \(String(localized: "Update \(target) available"))").font(.caption.monospaced()).foregroundStyle(.secondary)
+                                    } else {
+                                        Text(a.version).font(.caption.monospaced()).foregroundStyle(.secondary)
+                                    }
                                 }
+                            }
+                        }
+                    }
+                    .accessibilityIdentifier("agent-\(a.name)")
+                }
+                ForEach(agents.troubled, id: \.name) { a in
+                    NavigationLink(value: Route.machineAgent(id, a.name)) {
+                        LabeledContent {
+                            Text(a.problem == .appWithoutCli ? String(localized: "Needs CLI") : String(localized: "Cannot run")).foregroundStyle(.orange)
+                        } label: {
+                            HStack(spacing: 12) {
+                                AgentLogo(id: a.name, size: 30)
+                                Text(agentTitle(a.name))
                             }
                         }
                     }
@@ -364,7 +388,7 @@ struct ProvidersView: View {
                         ProgressView()
                     }
                 }
-                if agents.installed.isEmpty && agents.checking.isEmpty {
+                if agents.installed.isEmpty && agents.troubled.isEmpty && agents.checking.isEmpty {
                     Text("No agent provider found here.").foregroundStyle(.secondary)
                 }
                 Button {
@@ -384,21 +408,57 @@ struct ProvidersView: View {
             } footer: {
                 Text("Hermesh runs them on the command line as you do, never reading API keys or tokens.")
             }
-            if !agents.missing.isEmpty {
+            if !orderedMissing.isEmpty {
                 Section {
-                    ForEach(agents.missing, id: \.self) { a in
+                    ForEach(orderedMissing, id: \.self) { a in
+                        let cap = capOf(a)
+                        let canManage = cap?.package.isEmpty == false
+                        let job = latestOf(a)
+                        let active = providerOperationActive(job?.phase ?? "")
+                        let failed = job?.phase == "failed" || job?.phase == "interrupted"
                         LabeledContent {
-                            if m?.status.providerMaintenance.contains(where: { $0.provider == a && !$0.package.isEmpty }) == true {
-                                NavigationLink("Installation and Updates") { ProviderActions(machineID: id, provider: a) }
+                            if active {
+                                HStack(spacing: 8) {
+                                    if m?.online == true { ProgressView() }
+                                    Text(m?.online == true ? providerPhaseTitle(job?.phase ?? "") : "Offline").font(.subheadline)
+                                    if m?.online == true, let job, ["preflight", "waiting"].contains(job.phase) {
+                                        Button("Cancel") {
+                                            cancelling = true
+                                            var op = Hermesh_Identity_V1_MaintainProvider()
+                                            op.provider = a
+                                            op.action = "cancel"
+                                            op.requestID = job.request.requestID
+                                            Task {
+                                                defer { cancelling = false }
+                                                await model.maintainProvider(machine: id, operation: op)
+                                            }
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .disabled(cancelling)
+                                    }
+                                }
+                            } else if canManage {
+                                Button(failed ? String(localized: "Retry") : String(localized: "Install…")) { installTarget = a }
+                                    .buttonStyle(.bordered)
+                                    .disabled(m?.online != true)
+                                    .accessibilityIdentifier("install-\(a)")
                             } else if let url = installPage[a] {
                                 Link("How to Install", destination: url).font(.subheadline)
                             }
                         } label: {
                             HStack(spacing: 12) {
-                                AgentLogo(id: a, size: 30).grayscale(1).opacity(0.5)
+                                AgentLogo(id: a, size: 30).grayscale(canManage || active ? 0 : 1).opacity(canManage || active ? 1 : 0.5)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(agentTitle(a))
-                                    Text("Not installed").font(.subheadline).foregroundStyle(.secondary)
+                                    if active {
+                                        Text(job?.detail.isEmpty == false ? job!.detail : String(localized: "Running installer")).font(.caption).foregroundStyle(.secondary)
+                                    } else if failed, let detail = job?.detail, !detail.isEmpty {
+                                        Text(detail).font(.caption).foregroundStyle(.orange)
+                                    } else if let cap, canManage {
+                                        Text("npm · \(cap.package)@\(cap.targetVersion)").font(.caption.monospaced()).foregroundStyle(.secondary)
+                                    } else {
+                                        Text("Not installed").font(.subheadline).foregroundStyle(.secondary)
+                                    }
                                 }
                             }
                         }
@@ -409,14 +469,27 @@ struct ProvidersView: View {
                     if m?.status.providerMaintenance.contains(where: { $0.account == "root" }) == true,
                        m?.status.providerMaintenance.allSatisfy({ $0.package.isEmpty }) == true {
                         Text("Hermesh runs as root in this environment, so remote tool installation is off. Install one in a terminal or reinstall Hermesh for a non-root user (--user), then Check Again.")
-                    } else if m?.status.providerMaintenance.contains(where: { !$0.package.isEmpty }) != true {
-                        Text("Install one on \(m?.machineName ?? ""), then Check Again.")
                     }
+                }
+            }
+            if let m, !m.status.providerOperations.isEmpty {
+                Section {
+                    NavigationLink {
+                        ProviderHistoryView(machineID: id)
+                    } label: {
+                        Label("Installation and Update Activity", systemImage: "clock.arrow.circlepath")
+                    }
+                    .accessibilityIdentifier("provider-history")
                 }
             }
         }
         .navigationTitle("Agent Providers")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: Binding(get: { installTarget != nil }, set: { if !$0 { installTarget = nil } })) {
+            if let target = installTarget {
+                ProviderInstallSheet(machineID: id, provider: target)
+            }
+        }
     }
 }
 

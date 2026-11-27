@@ -45,7 +45,18 @@ export type TrayView = {
 export type TrayAction = "attention" | "running" | "open" | "settings" | "quit" | "install" | "stopControl" | "startDaemon" | "stopDaemon";
 
 /** Fixed commands the page may ask to run in Terminal (by key, never by text). */
-export type TerminalCommand = "codexLogin" | "claudeLogin" | "antigravityLogin";
+export type TerminalCommand =
+  | "codexLogin"
+  | "claudeLogin"
+  | "antigravityLogin"
+  | "copilotLogin"
+  | "opencodeLogin"
+  | "qoderLogin"
+  | "qwenLogin"
+  | "kimiLogin"
+  | "codebuddyLogin"
+  | "grokLogin"
+  | "auggieLogin";
 
 /** A macOS permission Her's computer use needs on this Mac (docs/her-server.md §4.4). */
 export type ComputerPermission = "accessibility" | "screen";

@@ -62,3 +62,10 @@ func workspaceBytes(ctx context.Context, path string) (uint64, error) {
 	kib, err := strconv.ParseUint(fields[0], 10, 64)
 	return kib * 1024, err
 }
+
+func dirWritable(dir string) bool {
+	if runtime.GOOS == "ios" {
+		return false
+	}
+	return unix.Access(dir, unix.W_OK) == nil
+}

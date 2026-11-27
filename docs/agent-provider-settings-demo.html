@@ -1,0 +1,1586 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent 提供方设置重设计 Demo · Mac &amp; iPhone</title>
+<style>
+:root {
+  --font: "Google Sans Flex", "Google Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  --mono: "Google Sans Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+[data-theme=light] {
+  --page: #e8eaf0; --page-fg: #1b1c22; --page-fg2: #5d606c; --page-bd: rgba(0,0,0,.09);
+  --win: #ffffff; --side: #ecebef; --grp: #f5f5f7; --grp-bd: rgba(0,0,0,.06);
+  --l1: rgba(0,0,0,.88); --l2: rgba(0,0,0,.55); --l3: rgba(0,0,0,.34); --l4: rgba(0,0,0,.14);
+  --sep: rgba(0,0,0,.08); --fill: rgba(0,0,0,.045); --fill2: rgba(0,0,0,.075); --fill3: rgba(0,0,0,.13);
+  --side-sel: rgba(0,0,0,.09); --accent: #3d5bff; --accent-t: #2d4ae6; --accent-bg: rgba(61,91,255,.10);
+  --green: #17924f; --green-bg: rgba(23,146,79,.10);
+  --orange: #c46a0a; --orange-bg: rgba(230,126,10,.10);
+  --red: #d7333f; --red-bg: rgba(215,51,63,.10);
+  --btn: #ffffff; --btn-sh: 0 0 0 .5px rgba(0,0,0,.16), 0 1px 1.5px rgba(0,0,0,.06);
+  --menu: #f8f8fa; --menu-bd: rgba(0,0,0,.10); --scrim: rgba(0,0,0,.22);
+  --shadow-win: 0 0 0 .5px rgba(0,0,0,.18), 0 24px 70px rgba(10,20,50,.24), 0 8px 22px rgba(10,20,50,.12);
+  --ios-bg: #f2f2f7; --ios-card: #ffffff; --ios-behind: #cfd2dc; --bezel: #18191e;
+  --glass: rgba(255,255,255,.78); --glass-bd: rgba(0,0,0,.08);
+  --t-blue: #6f7f9e; --t-slate: #7d8794; --t-sage: #7b9384; --t-sand: #a08e74; --t-plum: #8c7a96; --t-rose: #a07b7b;
+}
+[data-theme=dark] {
+  --page: #0d0e12; --page-fg: #ececf1; --page-fg2: #9a9ca8; --page-bd: rgba(255,255,255,.09);
+  --win: #1e1e21; --side: #252529; --grp: #2a2a2e; --grp-bd: rgba(255,255,255,.055);
+  --l1: rgba(255,255,255,.90); --l2: rgba(255,255,255,.56); --l3: rgba(255,255,255,.34); --l4: rgba(255,255,255,.14);
+  --sep: rgba(255,255,255,.08); --fill: rgba(255,255,255,.05); --fill2: rgba(255,255,255,.085); --fill3: rgba(255,255,255,.15);
+  --side-sel: rgba(255,255,255,.10); --accent: #4a66ff; --accent-t: #8fa2ff; --accent-bg: rgba(91,121,255,.18);
+  --green: #3fcf86; --green-bg: rgba(63,207,134,.12);
+  --orange: #f0a64a; --orange-bg: rgba(255,171,61,.11);
+  --red: #ff6670; --red-bg: rgba(255,102,112,.12);
+  --btn: rgba(255,255,255,.13); --btn-sh: 0 0 0 .5px rgba(255,255,255,.07);
+  --menu: #2c2c30; --menu-bd: rgba(255,255,255,.12); --scrim: rgba(0,0,0,.44);
+  --shadow-win: 0 0 0 .5px rgba(255,255,255,.14), 0 24px 70px rgba(0,0,0,.62), 0 8px 22px rgba(0,0,0,.35);
+  --ios-bg: #000000; --ios-card: #1c1c1e; --ios-behind: #16171b; --bezel: #2a2b31;
+  --glass: rgba(52,52,58,.78); --glass-bd: rgba(255,255,255,.11);
+  --t-blue: #56627c; --t-slate: #5c6470; --t-sage: #5a6e62; --t-sand: #786b58; --t-plum: #6a5c72; --t-rose: #785c5c;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--page);
+  color: var(--page-fg);
+  font: 13px/1.45 var(--font);
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: 72px;
+}
+button, select, input { font: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; cursor: pointer; }
+button:disabled { cursor: default; }
+svg { display: block; }
+p, h1, h2, h3, ul { margin: 0; padding: 0; }
+code, .mono { font-family: var(--mono); font-size: 11.5px; }
+
+/* Page Header & Demo Controls */
+.top {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 22px 24px 0;
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.top h1 { font-size: 20px; font-weight: 650; letter-spacing: -.01em; }
+.top p { color: var(--page-fg2); font-size: 13px; margin-top: 4px; max-width: 650px; line-height: 1.55; }
+.ctl { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.seg { display: inline-flex; background: var(--fill2); border-radius: 999px; padding: 2px; gap: 1px; }
+.seg button { height: 26px; padding: 0 13px; border-radius: 999px; font-size: 12.5px; color: var(--page-fg2); }
+.seg button.on { background: var(--win); color: var(--page-fg); box-shadow: 0 1px 2.5px rgba(0,0,0,.18); font-weight: 550; }
+
+/* Quick Jump & Simulation Strip */
+.simbar {
+  max-width: 1080px;
+  margin: 14px auto 0;
+  padding: 10px 14px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--win) 65%, transparent);
+  border: .5px solid var(--page-bd);
+  display: flex;
+  gap: 10px 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--page-fg2);
+}
+@media (max-width: 1120px) { .simbar { margin-left: 24px; margin-right: 24px; } }
+.sim-jumps { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.sim-jumps span { font-weight: 600; color: var(--page-fg); margin-right: 2px; }
+.chip-btn {
+  height: 24px; padding: 0 10px; border-radius: 999px;
+  background: var(--fill); border: .5px solid var(--page-bd);
+  font-size: 12px; color: var(--page-fg2); display: inline-flex; align-items: center; gap: 5px;
+}
+.chip-btn:hover { background: var(--fill2); color: var(--page-fg); }
+.chip-btn.active { background: var(--accent-bg); color: var(--accent-t); border-color: color-mix(in srgb, var(--accent) 32%, transparent); font-weight: 550; }
+.sim-right { margin-left: auto; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.sim-right label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.sim-sel {
+  height: 24px; border-radius: 6px; border: .5px solid var(--page-bd);
+  background: var(--win); color: var(--page-fg); padding: 0 7px; font-size: 12px;
+}
+
+.stage { display: flex; justify-content: center; padding: 20px 24px 12px; }
+
+/* ==================== MAC SYSTEM SETTINGS WINDOW ==================== */
+.win {
+  width: 880px;
+  height: 684px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-win);
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  background: var(--win);
+  position: relative;
+  color: var(--l1);
+}
+.side {
+  background: var(--side);
+  border-right: .5px solid var(--sep);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.lights { height: 44px; display: flex; gap: 8px; align-items: center; padding: 0 16px; flex: none; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; }
+.lights i:nth-child(1) { background: #ff5f57; }
+.lights i:nth-child(2) { background: #febc2e; }
+.lights i:nth-child(3) { background: #28c840; }
+.nav { padding: 0 10px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.nav-gap { height: 10px; flex: none; }
+.me { display: flex; gap: 10px; align-items: center; padding: 8px 7px; border-radius: 9px; width: 100%; text-align: left; }
+.me:hover { background: var(--fill); }
+.avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: linear-gradient(135deg, #5d6eff, #8a64d6);
+  color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; flex: none;
+}
+.me b { display: block; font-size: 13px; font-weight: 600; }
+.me small { display: block; font-size: 11px; color: var(--l2); }
+.ni {
+  display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 7px;
+  border-radius: 7px; width: 100%; text-align: left; color: var(--l1); font-size: 13px;
+}
+.ni:hover { background: var(--fill); }
+.ni.sel { background: var(--side-sel); font-weight: 500; }
+.ni .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ni .st { font-size: 11px; color: var(--l3); }
+.ni .st.warn { color: var(--orange); }
+.nav-h { font-size: 11px; font-weight: 600; color: var(--l3); padding: 12px 7px 3px; display: flex; align-items: center; }
+.nav-h span { margin-left: auto; color: var(--l2); font-size: 14px; line-height: 1; }
+.tile { width: 22px; height: 22px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: #fff; flex: none; }
+.tile svg { width: 14px; height: 14px; }
+
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--win); position: relative; }
+.bar-top { height: 44px; flex: none; display: flex; align-items: center; gap: 2px; padding: 0 14px; border-bottom: .5px solid transparent; }
+.bar-top .nb { width: 26px; height: 26px; border-radius: 6px; color: var(--l2); display: flex; align-items: center; justify-content: center; }
+.bar-top .nb:hover:not(:disabled) { background: var(--fill2); color: var(--l1); }
+.bar-top .nb:disabled { opacity: .32; }
+.bar-top .nb svg { width: 15px; height: 15px; }
+.bar-top h1 { font-size: 13.5px; font-weight: 600; margin-left: 6px; }
+.bar-crumb { margin-left: auto; font-size: 11.5px; color: var(--l3); }
+.body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 28px 28px; }
+.pane { display: flex; flex-direction: column; gap: 18px; max-width: 560px; margin: 0 auto; }
+
+/* Agent Tiles & Logos */
+.ag-tile {
+  border-radius: 28%;
+  background: #ffffff;
+  color: #141519;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.12), 0 1px 2.5px rgba(0,0,0,.10);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  overflow: hidden;
+}
+.ag-tile.gray { filter: grayscale(1); opacity: .52; }
+.ag-mark-plain { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; flex: none; }
+.ag-mark-plain.gray { filter: grayscale(1); opacity: .48; }
+
+/* Grouped Cards & Rows (System Settings v3) */
+.sec-block { display: flex; flex-direction: column; gap: 6px; }
+.ghead { font-size: 12px; font-weight: 500; color: var(--l2); margin: 0 0 0 4px; display: flex; align-items: baseline; gap: 6px; }
+.ghead small { font-size: 11.5px; color: var(--l3); font-weight: 400; }
+.grp { background: var(--grp); border-radius: 10px; border: .5px solid var(--grp-bd); overflow: hidden; }
+.row { display: flex; align-items: center; gap: 11px; min-height: 44px; padding: 8px 13px; position: relative; }
+.row + .row::before { content: ""; position: absolute; top: 0; left: 13px; right: 13px; border-top: .5px solid var(--sep); }
+.row.ic + .row.ic::before { left: 50px; }
+.row .t { flex: 1; min-width: 0; }
+.row .t .n { font-size: 13px; color: var(--l1); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.row .t .d { font-size: 11.5px; color: var(--l2); margin-top: 2px; line-height: 1.45; }
+.row.muted .t .n { color: var(--l2); }
+.row .v { color: var(--l2); font-size: 12.5px; white-space: nowrap; flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.row .v.ok { color: var(--green); }
+.row .v.warn { color: var(--orange); }
+.row .v.bad { color: var(--red); }
+.row .v.acc { color: var(--accent-t); }
+.row.go { width: 100%; text-align: left; }
+.row.go:hover:not(:disabled) { background: var(--fill); }
+.row.go:disabled { opacity: .5; }
+.chev { width: 13px; height: 13px; color: var(--l3); flex: none; }
+.foot { font-size: 11.5px; color: var(--l2); margin: 0 10px; line-height: 1.5; }
+
+/* Controls */
+.btn {
+  height: 25px; padding: 0 11px; border-radius: 6px;
+  background: var(--btn); box-shadow: var(--btn-sh);
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  white-space: nowrap; flex: none; font-size: 12.5px; color: var(--l1);
+}
+.btn:hover:not(:disabled) { filter: brightness(1.08); }
+.btn:disabled { opacity: .40; }
+.btn.primary { background: var(--accent); color: #fff; box-shadow: none; font-weight: 500; }
+.btn.quiet { background: transparent; box-shadow: none; color: var(--l2); padding: 0 6px; font-size: 12px; }
+.btn.quiet:hover:not(:disabled) { background: var(--fill); color: var(--l1); }
+.ext-link {
+  font-size: 12px; color: var(--l2); display: inline-flex; align-items: center; gap: 3px;
+  padding: 3px 7px; border-radius: 6px; white-space: nowrap;
+}
+.ext-link:hover { background: var(--fill); color: var(--l1); }
+.sw {
+  width: 34px; height: 20px; border-radius: 999px; background: var(--fill3);
+  position: relative; flex: none; transition: background .18s;
+}
+.sw::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .18s;
+}
+.sw.on { background: var(--accent); }
+.sw.on::after { transform: translateX(14px); }
+.sw:disabled { opacity: .4; }
+.pop {
+  height: 24px; border-radius: 6px; border: 0; box-shadow: var(--btn-sh);
+  background: var(--btn); color: var(--l1); font-size: 12px; padding: 0 8px; max-width: 300px;
+}
+.more-toggle {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; color: var(--l2); padding: 3px 4px; border-radius: 5px;
+}
+.more-toggle:hover { color: var(--l1); background: var(--fill); }
+.more-toggle svg { width: 12px; height: 12px; }
+
+/* Bottom Actions Bar — single clean flex row! */
+.acts { display: flex; gap: 8px; align-items: center; padding-top: 2px; }
+.acts .push { margin-left: auto; }
+.dot-badge { width: 6.5px; height: 6.5px; border-radius: 50%; background: var(--accent); display: inline-block; }
+.dot-badge.warn { background: var(--orange); }
+
+/* Hero & Banners */
+.hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 10px 0 2px; }
+.hero .ag-tile { margin-bottom: 10px; }
+.hero b { font-size: 19px; font-weight: 650; }
+.hero .sub { font-size: 12px; color: var(--l2); margin-top: 2px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+  height: 22px; padding: 0 10px; border-radius: 11px; background: var(--fill2); font-size: 12px; color: var(--l2);
+}
+.pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--l3); }
+.pill.on i { background: var(--green); }
+.pill.warn { color: var(--orange); }
+.pill.warn i { background: var(--orange); }
+.pill.bad { color: var(--red); }
+.pill.bad i { background: var(--red); }
+
+.banner {
+  display: flex; gap: 11px; align-items: center; padding: 10px 13px;
+  border-radius: 10px; background: var(--orange-bg); font-size: 12.5px;
+}
+.banner.info { background: var(--fill); }
+.banner .ic-wrap { color: var(--orange); flex: none; }
+.banner .t { flex: 1; min-width: 0; }
+.banner .t .d { font-size: 11.5px; color: var(--l2); margin-top: 2px; }
+.cmd-chip {
+  display: inline-block; padding: 1px 6px; border-radius: 4px;
+  background: var(--fill2); font-family: var(--mono); font-size: 11px; color: var(--l1);
+}
+
+/* Spinner & Inline Status */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 1.6px solid var(--l3); border-top-color: var(--accent-t);
+  animation: spin .75s linear infinite; display: inline-block; flex: none;
+}
+.tag-upd {
+  display: inline-flex; align-items: center; height: 17px; padding: 0 6px;
+  border-radius: 999px; font-size: 10.5px; font-weight: 550;
+  background: var(--accent-bg); color: var(--accent-t);
+}
+.res-ok { color: var(--green); }
+.res-warn { color: var(--orange); }
+.res-bad { color: var(--red); }
+
+/* Mac Confirmation Sheet */
+.scrim {
+  position: absolute; inset: 0; background: var(--scrim);
+  backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+  display: flex; align-items: flex-start; justify-content: center; z-index: 20;
+}
+.sheet {
+  margin-top: 56px; width: 440px; max-width: calc(100% - 40px);
+  background: var(--win); border-radius: 12px; box-shadow: var(--shadow-win);
+  border: .5px solid var(--menu-bd); overflow: hidden; display: flex; flex-direction: column;
+}
+.sheet-h { display: flex; gap: 12px; align-items: center; padding: 18px 18px 12px; }
+.sheet-h b { font-size: 14.5px; font-weight: 650; display: block; }
+.sheet-h > div > span { font-size: 12px; color: var(--l2); display: block; margin-top: 2px; }
+.sheet-b { padding: 0 18px; display: flex; flex-direction: column; gap: 10px; }
+.sheet-kv .row { min-height: 36px; padding: 6px 12px; font-size: 12.5px; }
+.sheet-kv .k { color: var(--l2); width: 76px; flex: none; }
+.sheet-kv .val { flex: 1; text-align: right; color: var(--l1); overflow-wrap: anywhere; }
+.sheet-f { display: flex; gap: 8px; justify-content: flex-end; padding: 14px 18px 16px; align-items: center; }
+
+.toast {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  background: var(--menu); border: .5px solid var(--menu-bd); border-radius: 10px;
+  padding: 8px 14px; box-shadow: 0 8px 28px rgba(0,0,0,.3); font-size: 12.5px; z-index: 30; white-space: nowrap;
+}
+
+/* ==================== IPHONE SETTINGS VIEW ==================== */
+.phone-wrap { display: flex; gap: 36px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+.phone {
+  width: 393px; height: 780px; border-radius: 54px; padding: 12px;
+  background: var(--bezel); box-shadow: 0 28px 75px rgba(0,0,0,.42); flex: none;
+}
+.p-screen {
+  width: 100%; height: 100%; border-radius: 43px; overflow: hidden;
+  position: relative; background: var(--ios-behind); color: var(--l1);
+}
+.p-island { position: absolute; top: 11px; left: 50%; transform: translateX(-50%); width: 118px; height: 34px; border-radius: 20px; background: #000; z-index: 5; }
+.p-status { position: absolute; top: 0; left: 0; right: 0; height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 6px 32px 0; font-size: 14.5px; font-weight: 600; z-index: 4; }
+.p-sheet {
+  position: absolute; inset: 54px 0 0 0; background: var(--ios-bg);
+  border-radius: 36px 36px 0 0; display: flex; flex-direction: column; overflow: hidden;
+}
+.p-grab { width: 36px; height: 5px; border-radius: 3px; background: var(--l3); margin: 6px auto 0; flex: none; }
+.p-nav { height: 50px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; flex: none; position: relative; }
+.p-gb {
+  width: 38px; height: 38px; border-radius: 50%; background: var(--glass);
+  border: .5px solid var(--glass-bd); display: flex; align-items: center; justify-content: center;
+}
+.p-gb svg { width: 18px; height: 18px; }
+.p-mid { font-weight: 600; font-size: 16px; }
+.p-scroll { flex: 1; overflow-y: auto; padding: 4px 16px 36px; display: flex; flex-direction: column; gap: 20px; }
+.p-scroll::-webkit-scrollbar { display: none; }
+.p-sec { display: flex; flex-direction: column; gap: 6px; }
+.p-sh { font-size: 12.5px; color: var(--l2); margin: 0 14px; }
+.p-sf { font-size: 12px; color: var(--l2); margin: 0 14px; line-height: 1.45; }
+.p-card { background: var(--ios-card); border-radius: 20px; overflow: hidden; }
+.p-card .row { min-height: 50px; padding: 9px 15px; font-size: 15px; }
+.p-card .row .t .n { font-size: 15px; }
+.p-card .row .t .d { font-size: 12.5px; }
+.p-card .row + .row::before { left: 15px; right: 0; }
+.p-card .row.ic + .row.ic::before { left: 54px; }
+.p-pill-btn {
+  height: 30px; padding: 0 13px; border-radius: 15px;
+  background: var(--fill2); color: var(--accent-t); font-weight: 600; font-size: 13.5px;
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+}
+.p-pill-btn:disabled { opacity: .4; }
+.p-modal {
+  position: absolute; left: 10px; right: 10px; bottom: 12px; z-index: 25;
+  background: var(--ios-card); border-radius: 26px; padding: 18px;
+  border: .5px solid var(--glass-bd); box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.p-modal-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.p-modal-btns button { height: 44px; border-radius: 14px; font-size: 15px; font-weight: 600; text-align: center; background: var(--fill2); }
+.p-modal-btns button.primary { background: var(--accent); color: #fff; }
+
+/* Redesign Notes & Before/After Audit Section */
+.notes { max-width: 960px; margin: 24px auto 0; padding: 0 24px; }
+.notes h2 { font-size: 16px; font-weight: 650; margin: 26px 0 10px; }
+.compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.c-card {
+  background: color-mix(in srgb, var(--win) 82%, transparent);
+  border: .5px solid var(--page-bd); border-radius: 11px; padding: 14px 16px;
+}
+.c-card h3 { font-size: 13.5px; font-weight: 650; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.c-card p { font-size: 12.5px; color: var(--page-fg2); line-height: 1.6; }
+.c-card p + p { margin-top: 6px; }
+.badge-old { font-size: 10.5px; padding: 1px 6px; border-radius: 4px; background: var(--red-bg); color: var(--red); font-weight: 600; }
+.badge-new { font-size: 10.5px; padding: 1px 6px; border-radius: 4px; background: var(--green-bg); color: var(--green); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div>
+    <h1>Agent 提供方管理与验证 · 重新设计 Demo</h1>
+    <p>重新梳理 <code>4c779cc8</code> 与系统设置 <code>v3</code> 的交互冲突：合并令人困惑的双验证按钮、将维护与来源信息收进标准分组卡片、把未安装的「安装详情…」空壳页改为<b>原位确认表单 + 行内实时进度</b>，并统一 Mac 与 iPhone 双端体验。</p>
+  </div>
+  <div class="ctl">
+    <div class="seg" id="plat-seg" role="group" aria-label="设备形态">
+      <button type="button" data-plat="mac" class="on">Mac 系统设置</button>
+      <button type="button" data-plat="iphone">iPhone 设置</button>
+    </div>
+    <div class="seg" id="theme-seg" role="group" aria-label="主题">
+      <button type="button" data-theme-set="light">浅色</button>
+      <button type="button" data-theme-set="dark" class="on">深色</button>
+    </div>
+  </div>
+</header>
+
+<section class="simbar" aria-label="演示快捷切换与故障模拟">
+  <div class="sim-jumps">
+    <span>快捷定位：</span>
+    <button type="button" class="chip-btn" data-jump="list">提供方列表（含 Qoder / 未安装直装）</button>
+    <button type="button" class="chip-btn" data-jump="deepseek">DeepSeek Harness（外部安装 · 对比图 1）</button>
+    <button type="button" class="chip-btn" data-jump="codex">Codex（托管更新 · 自动更新开关）</button>
+    <button type="button" class="chip-btn" data-jump="qoder">Qoder（已装桌面端 · 一键补装 CLI）</button>
+  </div>
+  <div class="sim-right">
+    <label>模拟异常
+      <select class="sim-sel" id="sim-fault">
+        <option value="">正常执行（全部通过）</option>
+        <option value="auth">测试返回：账号凭据失效 / 缺 API Key</option>
+        <option value="cli">测试返回：CLI 协议握手超时</option>
+        <option value="npm">安装/更新失败：缺少 Node.js 或网络错误</option>
+        <option value="verify">安装后 CLI 复检失败（演示单独重新检测）</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="sim-busy"> 当前环境有运行中任务</label>
+    <label><input type="checkbox" id="sim-offline"> 模拟机器离线</label>
+    <button type="button" class="chip-btn" id="sim-reset">重置状态</button>
+  </div>
+</section>
+
+<div class="stage" id="stage"></div>
+
+<section class="notes">
+  <h2>为什么之前的界面奇怪，以及新版改了什么</h2>
+  <div class="compare-grid">
+    <div class="c-card">
+      <h3>1. 消灭「验证命令行工具」+「用此机账号测试模型」双按钮</h3>
+      <p><span class="badge-old">旧版问题</span> <code>4c779cc8</code> 把内部工程验收表的两列（CLI 协议握手 vs 真实会话发 <code>ready</code>）直接暴露成了两个按钮；其中「验证命令行工具」甚至走 <code>MaintainProvider</code> 写接口，点一次还要签名并写一条安装任务记录。且 <code>.set-acts</code> 的 <code>margin-top:-8px</code> 直接导致说明文字压在按钮上。</p>
+      <p><span class="badge-new">新版方案</span> 安装与发现阶段本就自动完成协议握手，日常不再暴露「验证命令行工具」。已安装工具统一在「命令行工具 / 安装与更新」卡片内提供单一右对齐按钮 <b>「测试」</b>：跑一轮无工具短对话同时验证 CLI 与账号，失败时在结果文案中自动区分是「CLI 握手异常」还是「账号未授权」。</p>
+    </div>
+    <div class="c-card">
+      <h3>2. 消灭「安装详情…」与空壳详情页</h3>
+      <p><span class="badge-old">旧版问题</span> 未安装列表一边写着「安装后会自动出现在这里」，右边又放「安装详情…」，且不解释为什么只有 Copilot CLI / OpenCode 有按钮、Cursor 没有；点进去复用已安装详情页，只剩大图标和左下角重叠的「安装」按钮。</p>
+      <p><span class="badge-new">新版方案</span> 支持托管安装的项排在「未安装」前部，副标题明确写明 <code>可由 Hermesh 安装 · npm</code>，右侧直接给 <b>「安装…」</b>；外部安装项写明自动发现并附 <b>「安装说明 ↗」</b>。点击「安装…」弹出确认 Sheet（直接装入默认全局命令行目录，无写权限时回退 <code>~/.local/bin</code>，终端立即可用），确认后在列表行内原位展示阶段进度，完成后自动升入已安装分组。</p>
+    </div>
+    <div class="c-card">
+      <h3>3. 视觉层级归位 &amp; 双端统一</h3>
+      <p><span class="badge-old">旧版问题</span> 维护按钮插在 Hero 与「默认模型」之间喧宾夺主；「开启自动更新」做成了普通动作按钮；列表页底部「提供方任务记录」与「重新检测」拆成两行且空记录也常驻；iPhone 更是拆出了重复的 <code>Installation and Updates</code> 平行列表。</p>
+      <p><span class="badge-new">新版方案</span> 详情页优先展示高频的「默认模型」，其下是规整的「安装与更新 / 命令行工具」卡片；「空闲时自动更新」回归原生 Switch 开关；任务记录仅在产生过安装/更新操作时与「重新检测」同行显示；Mac 与 iPhone 共享完全一致的单页结构。</p>
+    </div>
+  </div>
+</section>
+
+<script>
+const ICONS = {
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  bell: '<path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/>',
+  key: '<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M17 6l3 3M15 8l2 2"/>',
+  laptop: '<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>',
+  mini: '<rect x="3" y="8" width="18" height="8" rx="2"/><path d="M7 12h.01"/>',
+  server: '<rect x="4" y="4" width="16" height="7" rx="1.5"/><rect x="4" y="13" width="16" height="7" rx="1.5"/><path d="M8 7.5h.01M8 16.5h.01"/>',
+  chevR: '<path d="m9 6 6 6-6 6"/>',
+  chevD: '<path d="m6 9 6 6 6-6"/>',
+  back: '<path d="m15 6-6 6 6 6"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  term: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/>',
+  warn: '<path d="M12 4 3 20h18L12 4z"/><path d="M12 10v4M12 17h.01"/>',
+  ext: '<path d="M14 5h5v5M10 14 19 5M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/>',
+  code: '<path d="m8 8-4 4 4 4M16 8l4 4-4 4"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  her: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+  disk: '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>'
+};
+
+function ic(name, cls = '') {
+  return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+}
+
+function agentMark(id, size) {
+  const s = Math.round(size * 0.62);
+  const marks = {
+    deepseek: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="#1e6bff"><path d="M4.5 13.2c0-4.3 3.4-7.4 8-7.4 3.2 0 5.6 1.6 6.8 3.9.9-.2 1.8-.8 2.4-1.7.1 1.8-.6 3.3-2 4.1-.5 3.9-3.8 6.6-8.1 6.6-4.2 0-7.1-2.4-7.1-5.5Zm5.2-1.8a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Zm-2.1 3.7c1.4 1.1 3.6 1.3 5.5.4-.5 1.4-2 2.2-3.7 2-1-.1-1.6-.9-1.8-2.4Z"/></svg>`,
+    copilot: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="#18191e"><path d="M12 3.2c3.5 0 6.1 1.2 7.6 3 .7.8 1 1.9 1 3.2 0 .5-.1 1-.2 1.4 1.1.5 1.9 1.6 2.2 2.5v2.9c-.8 1.4-5.2 4.6-10.6 4.6S2.2 17.6 1.4 16.2v-2.9c.3-.9 1.1-2 2.2-2.5-.1-.4-.2-.9-.2-1.4 0-1.3.3-2.4 1-3.2 1.5-1.8 4.1-3 7.6-3Zm-3.6 4.5c-1.8 0-2.7.8-2.7 2.2s.8 2.1 2.5 2.1c1.4 0 2.3-.7 2.6-2.1.2-1.4-.6-2.2-2.4-2.2Zm7.2 0c-1.8 0-2.6.8-2.4 2.2.3 1.4 1.2 2.1 2.6 2.1 1.7 0 2.5-.7 2.5-2.1s-.9-2.2-2.7-2.2Zm-6.1 6.5a1 1 0 0 0-1 1v1.8a1 1 0 0 0 2 0v-1.8a1 1 0 0 0-1-1Zm5 0a1 1 0 0 0-1 1v1.8a1 1 0 0 0 2 0v-1.8a1 1 0 0 0-1-1Z"/></svg>`,
+    claude: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" stroke="#d97757" stroke-width="2.3" stroke-linecap="round"><path d="M12 3.5v17M3.5 12h17M6 6l12 12M18 6 6 18M8.7 4.2l6.6 15.6M15.3 4.2 8.7 19.8"/></svg>`,
+    codex: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="#18191e" stroke-width="2"><circle cx="12" cy="12" r="4.2"/><path d="M12 3.5a8.5 8.5 0 0 1 7.4 4.2M19.4 7.7a8.5 8.5 0 0 1 0 8.6M19.4 16.3A8.5 8.5 0 0 1 12 20.5M12 20.5a8.5 8.5 0 0 1-7.4-4.2M4.6 16.3a8.5 8.5 0 0 1 0-8.6M4.6 7.7A8.5 8.5 0 0 1 12 3.5"/></svg>`,
+    opencode: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="#18191e" stroke-width="2.2"><rect x="5" y="4" width="14" height="16" rx="2.5"/><rect x="9" y="8" width="6" height="8" rx="1"/></svg>`,
+    cursor: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="#18191e"><path d="M12 2.8 20 7.4v9.2l-8 4.6-8-4.6V7.4l8-4.6Zm0 2.4L6.5 8.4 12 11.6l5.5-3.2L12 5.2Zm-1 13.4v-5.2L6 10.5v5.2l5 2.9Z"/></svg>`,
+    gemini: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="#3b78ff"><path d="M12 2.5c.7 5.1 4.4 8.8 9.5 9.5-5.1.7-8.8 4.4-9.5 9.5-.7-5.1-4.4-8.8-9.5-9.5 5.1-.7 8.8-4.4 9.5-9.5Z"/></svg>`,
+    qwen: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="#3d47ff" stroke-width="2.2" stroke-linejoin="round"><polygon points="12,3 20,7.5 20,16.5 12,21 4,16.5 4,7.5"/><circle cx="12" cy="12" r="3"/></svg>`,
+    qoder: `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="#0f9d7a" stroke-width="2.3" stroke-linecap="round"><circle cx="11.5" cy="11.5" r="6.5"/><path d="m15.5 15.5 4 4"/></svg>`
+  };
+  if (marks[id]) return marks[id];
+  return `<span style="font-weight:700;font-size:${Math.round(size * 0.45)}px;color:#333">${id[0].toUpperCase()}</span>`;
+}
+
+function agentTile(id, size = 28, gray = false) {
+  return `<span class="ag-tile ${gray ? 'gray' : ''}" style="width:${size}px;height:${size}px">${agentMark(id, size)}</span>`;
+}
+
+const CATALOG = {
+  claude:      { title: 'Claude Code', pkg: '@anthropic-ai/claude-code', target: '2.1.332', bin: 'claude', loginCmd: 'claude', models: ['claude-opus-4-6', 'claude-sonnet-4-6'], ownModel: 'claude-sonnet-4-6', ownEffort: '高', efforts: ['低', '中', '高', '最高'], url: 'https://code.claude.com/docs/en/setup' },
+  codex:       { title: 'Codex', pkg: '@openai/codex', target: '0.172.0', bin: 'codex', loginCmd: 'codex login', models: ['gpt-5.3-codex', 'o4-mini'], ownModel: 'gpt-5.3-codex', ownEffort: '高', efforts: ['低', '中', '高', '超高'], hasSpeed: true, url: 'https://github.com/openai/codex' },
+  antigravity: { title: 'Antigravity', pkg: '', target: '', bin: 'agy', loginCmd: 'hermesh agent login antigravity', models: ['gemini-3.8-pro', 'gemini-3.8-flash'], ownModel: 'gemini-3.8-pro', ownEffort: '高', efforts: ['低', '中', '高'], url: 'https://github.com/google-antigravity/antigravity-cli' },
+  cursor:      { title: 'Cursor', pkg: '', target: '', bin: 'cursor-agent', loginCmd: 'cursor-agent login', models: [], ownModel: '', ownEffort: '', efforts: [], url: 'https://cursor.com/docs/cli/installation' },
+  copilot:     { title: 'Copilot CLI', pkg: '@github/copilot', target: '1.0.117', bin: 'copilot', loginCmd: 'copilot auth login', models: ['claude-sonnet-4.6', 'gpt-5.2'], ownModel: 'claude-sonnet-4.6', ownEffort: '中', efforts: ['低', '中', '高'], url: 'https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli' },
+  opencode:    { title: 'OpenCode', pkg: '@opencode/cli', target: '2.4.2', bin: 'opencode', loginCmd: 'opencode auth', models: ['claude-sonnet-4-6', 'deepseek-r1'], ownModel: 'claude-sonnet-4-6', ownEffort: '', efforts: [], url: 'https://opencode.ai/docs/cli/commands' },
+  qwen:        { title: 'Qwen Code', pkg: '@qwen-code/qwen-code', target: '0.28.7', bin: 'qwen', loginCmd: 'qwen', models: ['qwen3-coder-plus'], ownModel: 'qwen3-coder-plus', ownEffort: '', efforts: [], url: 'https://github.com/QwenLM/qwen-code' },
+  goose:       { title: 'Goose', pkg: '', target: '', bin: 'goose', loginCmd: 'goose configure', models: [], ownModel: '', ownEffort: '', efforts: [], url: 'https://github.com/aaif-goose/goose' },
+  auggie:      { title: 'Augment', pkg: '@augmentcode/auggie', target: '1.2.3', bin: 'auggie', loginCmd: 'auggie login', models: [], ownModel: '', ownEffort: '', efforts: [], folded: true, url: 'https://github.com/augmentcode/auggie' },
+  kimi:        { title: 'Kimi', pkg: '@moonshot-ai/kimi-code', target: '2.8.1', bin: 'kimi', loginCmd: 'kimi login', models: ['kimi-k2.5'], ownModel: 'kimi-k2.5', ownEffort: '', efforts: [], url: 'https://github.com/MoonshotAI/kimi-code' },
+  kiro:        { title: 'Kiro', pkg: '', target: '', bin: 'kiro-cli', loginCmd: 'kiro-cli login', models: [], ownModel: '', ownEffort: '', efforts: [], url: 'https://kiro.dev/docs/getting-started/installation/' },
+  qoder:       { title: 'Qoder', pkg: '@qoder-ai/qodercli', target: '1.1.100', bin: 'qodercli', loginCmd: 'qodercli login', models: ['qoder-pro'], ownModel: 'qoder-pro', ownEffort: '', efforts: [], url: 'https://docs.qoder.com/cli/installation' },
+  deepseek:    { title: 'DeepSeek Harness', pkg: '', target: '', bin: 'dsh', loginCmd: 'dsh login', models: ['DeepSeek-V4-Flash', 'DeepSeek-V4-Reasoner'], ownModel: 'DeepSeek-V4-Flash', ownEffort: '高', efforts: ['低', '中', '高'], folded: true, url: 'https://github.com/deepseek-ai/deepseek-harness' },
+  codebuddy:   { title: 'CodeBuddy Code', pkg: '@tencent-ai/codebuddy-code', target: '2.187.0', bin: 'codebuddy', loginCmd: 'codebuddy login', models: [], ownModel: '', ownEffort: '', efforts: [], url: 'https://www.codebuddy.ai/docs/cli/quickstart' },
+  grok:        { title: 'Grok', pkg: '@xai-official/grok', target: '1.0.92', bin: 'grok', loginCmd: 'grok auth', models: [], ownModel: '', ownEffort: '', efforts: [], url: 'https://github.com/xai-org/grok-build' }
+};
+
+const ORDER = ['claude', 'codex', 'antigravity', 'cursor', 'copilot', 'opencode', 'qwen', 'goose', 'auggie', 'kimi', 'kiro', 'qoder', 'deepseek', 'codebuddy', 'grok'];
+const PHASES = [
+  { key: 'preflight', label: '正在预检环境与全局目录权限…' },
+  { key: 'installing', label: '正在安装到默认全局目录…' },
+  { key: 'verifying', label: '正在验证 CLI 协议握手…' }
+];
+
+function createInitialState() {
+  return {
+    plat: 'mac',
+    envId: 'mac',
+    route: 'providers', // 'env' | 'providers' | 'prov:<id>' | 'history'
+    backStack: ['env'],
+    fwdStack: [],
+    moreOpen: false,
+    fault: '',
+    sheet: null, // { kind: 'install', envId, agent, auto: false }
+    toast: '',
+    envs: {
+      mac: {
+        id: 'mac', name: 'yee-homebook', sideLabel: '这台 Mac', local: true, online: true, busy: false,
+        platform: 'macOS · arm64', hermeshVer: '0.1.9', account: 'yipengfei', icon: 'laptop', projects: 3,
+        providers: {
+          claude:      { installed: true, version: '2.1.332', managed: true, auto: true, loggedIn: true, binary: '/opt/homebrew/bin/claude', model: '', effort: '' },
+          codex:       { installed: true, version: '0.171.0', managed: true, auto: false, loggedIn: true, binary: '/opt/homebrew/bin/codex', model: '', effort: '', speed: '标准' },
+          deepseek:    { installed: true, version: '0.1.2-alpha.1', managed: false, auto: false, loggedIn: true, binary: '~/.local/bin/dsh', model: '', effort: '' },
+          antigravity: { installed: true, version: '1.5.18', managed: false, auto: false, loggedIn: false, binary: '~/.local/bin/agy', model: '', effort: '' },
+          qoder:       { installed: false, broken: 'appWithoutCli', appName: 'Qoder', binary: '', version: '', managed: false, auto: false, loggedIn: false }
+        },
+        tests: {}, // agent -> { state: 'running'|'ok'|'warn'|'bad', step: '', text: '' }
+        waitingLogin: {},
+        jobs: [] // { id, agent, op: 'install'|'update', fromVer, targetVer, phase, stageIdx, detail, updatedAt, needsVerify }
+      },
+      mini: {
+        id: 'mini', name: 'yi-mac-mini', sideLabel: 'yi-mac-mini', local: false, online: true, busy: true,
+        platform: 'macOS · arm64', hermeshVer: '0.1.9', account: 'yi', icon: 'mini', projects: 2,
+        providers: {
+          claude: { installed: true, version: '2.1.331', managed: true, auto: false, loggedIn: true, binary: '/opt/homebrew/bin/claude', model: '', effort: '' },
+          codex:  { installed: true, version: '0.172.0', managed: true, auto: true, loggedIn: true, binary: '/opt/homebrew/bin/codex', model: '', effort: '', speed: '标准' }
+        },
+        tests: {},
+        waitingLogin: {},
+        jobs: []
+      },
+      linux: {
+        id: 'linux', name: 'dev-linux', sideLabel: 'dev-linux', local: false, online: true, busy: false,
+        platform: 'Ubuntu 24.04 · x86_64', hermeshVer: '0.1.9', account: 'deploy', icon: 'server', projects: 4,
+        providers: {
+          opencode: { installed: true, version: '2.4.1', managed: true, auto: false, loggedIn: true, binary: '~/.local/bin/opencode', model: '', effort: '' }
+        },
+        tests: {},
+        waitingLogin: {},
+        jobs: []
+      }
+    }
+  };
+}
+
+let S = createInitialState();
+
+function curEnv() { return S.envs[S.envId]; }
+function activeJob(env, agent) {
+  return env.jobs.find(j => j.agent === agent && ['waiting', 'preflight', 'installing', 'verifying'].includes(j.phase));
+}
+function latestJob(env, agent) {
+  return env.jobs.find(j => j.agent === agent);
+}
+function hasUpdate(id, p) {
+  if (!p?.installed || !p.managed || !CATALOG[id].target) return false;
+  return p.version !== CATALOG[id].target;
+}
+function timeStr(ms) {
+  return new Date(ms).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function navigate(nextRoute) {
+  if (S.route === nextRoute) return;
+  S.backStack.push(S.route);
+  S.fwdStack = [];
+  S.route = nextRoute;
+  render();
+}
+function goBack() {
+  if (!S.backStack.length) return;
+  S.fwdStack.push(S.route);
+  S.route = S.backStack.pop();
+  render();
+}
+function goFwd() {
+  if (!S.fwdStack.length) return;
+  S.backStack.push(S.route);
+  S.route = S.fwdStack.pop();
+  render();
+}
+
+function showToast(msg) {
+  S.toast = msg;
+  render();
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => { S.toast = ''; render(); }, 2200);
+}
+
+/* ---------- Operations Simulation ---------- */
+function startJob(envId, agent, op, autoOnAfterInstall = false, verifyOnly = false) {
+  const env = S.envs[envId];
+  if (!env.online || activeJob(env, agent)) return;
+  const cat = CATALOG[agent];
+  const prev = env.providers[agent];
+  const job = {
+    id: Math.random().toString(36).slice(2, 8),
+    agent,
+    op,
+    fromVer: prev?.version || '',
+    targetVer: cat.target,
+    phase: (op === 'update' && env.busy && !verifyOnly) ? 'waiting' : (verifyOnly ? 'verifying' : 'preflight'),
+    stageIdx: verifyOnly ? 2 : 0,
+    since: Date.now(),
+    fault: S.fault,
+    autoAfter: autoOnAfterInstall,
+    detail: (op === 'update' && env.busy && !verifyOnly) ? '等待当前环境运行中的任务结束' : (verifyOnly ? '正在重新检测已写入的 CLI' : PHASES[0].label),
+    updatedAt: Date.now(),
+    needsVerify: false
+  };
+  env.jobs.unshift(job);
+  render();
+}
+
+function cancelJob(envId, jobId) {
+  const env = S.envs[envId];
+  const j = env.jobs.find(x => x.id === jobId);
+  if (!j || !['waiting', 'preflight'].includes(j.phase)) return;
+  j.phase = 'cancelled';
+  j.detail = '已取消，未改动安装目录';
+  j.updatedAt = Date.now();
+  render();
+}
+
+function runTest(envId, agent) {
+  const env = S.envs[envId];
+  const p = env.providers[agent];
+  if (!env.online || !p?.installed || !p.loggedIn) return;
+  if (env.tests[agent]?.state === 'running') return;
+  const fault = S.fault;
+  const runId = Math.random();
+  env.tests[agent] = { state: 'running', runId, text: '正在检查 CLI 协议握手…' };
+  render();
+  setTimeout(() => {
+    if (env.tests[agent]?.runId !== runId) return;
+    if (fault === 'cli') {
+      env.tests[agent] = { state: 'bad', text: '命令行工具启动超时：协议握手在 20 秒内未响应，请检查终端运行状态。' };
+      render();
+      return;
+    }
+    env.tests[agent] = { state: 'running', runId, text: 'CLI 协议正常 · 正在用当前登录账号试运行…' };
+    render();
+  }, 450);
+  setTimeout(() => {
+    if (env.tests[agent]?.runId !== runId) return;
+    if (fault === 'auth') {
+      env.tests[agent] = { state: 'warn', text: 'CLI 协议正常，但会话未通过：当前账号登录已过期或缺少有效 API Key（HTTP 401）。' };
+    } else {
+      const sec = (0.9 + Math.random() * 0.8).toFixed(1);
+      env.tests[agent] = { state: 'ok', text: `✓ 可正常使用 · ${sec} 秒内收到模型回复「ready」` };
+    }
+    render();
+  }, 1050);
+}
+
+setInterval(() => {
+  let dirty = false;
+  const now = Date.now();
+  for (const env of Object.values(S.envs)) {
+    if (!env.online) continue;
+    for (const j of env.jobs) {
+      if (j.phase === 'waiting') {
+        if (!env.busy) {
+          j.phase = 'preflight';
+          j.stageIdx = 0;
+          j.since = now;
+          j.detail = PHASES[0].label;
+          j.updatedAt = now;
+          dirty = true;
+        }
+        continue;
+      }
+      if (!['preflight', 'installing', 'verifying'].includes(j.phase)) continue;
+      if (now - j.since < 850) continue;
+      dirty = true;
+      j.since = now;
+      j.updatedAt = now;
+      if (j.phase === 'preflight') {
+        if (j.fault === 'npm') {
+          j.phase = 'failed';
+          j.detail = '未找到可用的 Node.js / npm，或无法连接 registry.npmjs.org';
+          continue;
+        }
+        j.phase = 'installing';
+        j.stageIdx = 1;
+        j.detail = `正在安装 ${CATALOG[j.agent].pkg}@${j.targetVer}…`;
+      } else if (j.phase === 'installing') {
+        j.phase = 'verifying';
+        j.stageIdx = 2;
+        j.detail = PHASES[2].label;
+      } else if (j.phase === 'verifying') {
+        if (j.fault === 'verify') {
+          j.phase = 'failed';
+          j.needsVerify = true;
+          j.fault = '';
+          j.detail = '文件已写入，但 CLI 启动协议握手未通过';
+          continue;
+        }
+        j.phase = 'succeeded';
+        j.needsVerify = false;
+        j.detail = `${j.op === 'install' ? '已安装' : '已更新至'} ${j.targetVer}`;
+        const existing = env.providers[j.agent];
+        env.providers[j.agent] = {
+          installed: true,
+          version: j.targetVer,
+          managed: true,
+          auto: existing ? existing.auto : !!j.autoAfter,
+          loggedIn: existing ? existing.loggedIn : false,
+          binary: `${env.id === 'linux' ? '~/.local/bin' : '/opt/homebrew/bin'}/${CATALOG[j.agent].bin || j.agent}`,
+          model: existing?.model || '',
+          effort: existing?.effort || '',
+          ...(CATALOG[j.agent].hasSpeed ? { speed: existing?.speed || '标准' } : {})
+        };
+      }
+    }
+  }
+  if (dirty) render();
+}, 220);
+
+/* ---------- Shared Data Sorting ---------- */
+function partitionProviders(env) {
+  const installed = [], troubled = [], installable = [], externalMissing = [], foldedMissing = [];
+  for (const id of ORDER) {
+    const p = env.providers[id];
+    const cat = CATALOG[id];
+    if (p?.installed) {
+      installed.push({ id, p, cat });
+    } else if (p?.broken) {
+      troubled.push({ id, p, cat });
+    } else if (cat.pkg) {
+      installable.push({ id, cat });
+    } else if (cat.folded) {
+      foldedMissing.push({ id, cat });
+    } else {
+      externalMissing.push({ id, cat });
+    }
+  }
+  installed.sort((a, b) => Number(b.p.loggedIn) - Number(a.p.loggedIn));
+  return { installed, troubled, installable, externalMissing, foldedMissing };
+}
+
+function phaseBadgeText(env, j) {
+  if (!env.online && ['waiting', 'preflight', 'installing', 'verifying'].includes(j.phase)) return '等待重连';
+  return {
+    waiting: '等待机器空闲',
+    preflight: '正在预检',
+    installing: '正在安装',
+    verifying: '正在验证 CLI',
+    succeeded: '已完成',
+    failed: '需要处理',
+    cancelled: '已取消'
+  }[j.phase] || j.phase;
+}
+
+/* ---------- Render: Environment Overview ---------- */
+function renderEnvPane(env, isPhone) {
+  const parts = partitionProviders(env);
+  const readyCount = parts.installed.filter(x => x.p.loggedIn).length;
+  const unsignedCount = parts.installed.length - readyCount;
+  const pill = !env.online
+    ? `<span class="pill"><i></i>离线 · 显示上次同步结果</span>`
+    : `<span class="pill on"><i></i>在线${env.busy ? ' · 1 个任务运行中' : ''}</span>`;
+
+  const entryCls = isPhone ? 'p-card' : 'grp';
+  return `
+    <div class="hero">
+      <span class="tile" style="width:64px;height:64px;border-radius:16px;background:var(--t-blue);margin-bottom:10px">${ic(env.icon)}</span>
+      <b>${env.name}</b>
+      <span class="sub">${[env.local ? '这台 Mac' : '远程环境', env.platform, 'Hermesh ' + env.hermeshVer].join(' · ')}</span>
+      ${pill}
+    </div>
+    <div class="${isPhone ? 'p-sec' : 'sec-block'}">
+      <div class="${entryCls}">
+        <button type="button" class="row go ic" data-nav="providers">
+          <span class="tile" style="background:var(--t-slate)">${ic('code')}</span>
+          <div class="t"><div class="n">Agent 提供方</div></div>
+          <span class="v">${readyCount} 个可用${unsignedCount ? ` · <span style="color:var(--orange)">${unsignedCount} 个未登录</span>` : ''}</span>
+          ${ic('chevR', 'chev')}
+        </button>
+        <button type="button" class="row go ic" data-toast="示例：打开项目列表">
+          <span class="tile" style="background:var(--t-sage)">${ic('folder')}</span>
+          <div class="t"><div class="n">项目</div></div>
+          <span class="v">${env.projects}</span>
+          ${ic('chevR', 'chev')}
+        </button>
+        <button type="button" class="row go ic" data-toast="示例：打开 Her 设置">
+          <span class="tile" style="background:var(--t-plum)">${ic('her')}</span>
+          <div class="t"><div class="n">Her</div></div>
+          <span class="v">${env.local ? '开启' : '关闭'}</span>
+          ${ic('chevR', 'chev')}
+        </button>
+        <button type="button" class="row go ic" data-toast="示例：打开储存空间">
+          <span class="tile" style="background:var(--t-sand)">${ic('disk')}</span>
+          <div class="t"><div class="n">储存空间</div></div>
+          <span class="v">4.2 GB</span>
+          ${ic('chevR', 'chev')}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+/* ---------- Render: Providers List ---------- */
+function renderProvidersList(env, isPhone) {
+  const { installed, troubled, installable, externalMissing, foldedMissing } = partitionProviders(env);
+  const cardCls = isPhone ? 'p-card' : 'grp';
+  const secCls = isPhone ? 'p-sec' : 'sec-block';
+  const headCls = isPhone ? 'p-sh' : 'ghead';
+  const footCls = isPhone ? 'p-sf' : 'foot';
+  const btnCls = isPhone ? 'p-pill-btn' : 'btn';
+
+  const installedRows = installed.map(({ id, p, cat }) => {
+    const job = activeJob(env, id);
+    const upd = hasUpdate(id, p);
+    let sub = `<span class="mono">${p.version}</span>`;
+    if (job) sub = `<span class="mono">${p.version}</span> · ${env.online ? jPhaseInline(job) : '机器离线，等待重连'}`;
+    else if (upd) sub = `<span class="mono">${p.version}</span> · <span style="color:var(--accent-t)">可更新至 ${cat.target}</span>`;
+    else if (p.managed && p.auto) sub = `<span class="mono">${p.version}</span> · 自动更新已开启`;
+
+    let right = `<span class="v ${p.loggedIn ? '' : 'warn'}">${p.loggedIn ? '已登录' : '还没登录'}</span>`;
+    if (job) right = `<span class="v acc"><span class="spin"></span>${job.phase === 'waiting' ? '等待空闲' : '更新中'}</span>`;
+
+    return `
+      <button type="button" class="row go ic" data-nav="prov:${id}">
+        ${agentTile(id, isPhone ? 30 : 26)}
+        <div class="t">
+          <div class="n">${cat.title}</div>
+          <div class="d">${sub}</div>
+        </div>
+        ${right}
+        ${ic('chevR', 'chev')}
+      </button>
+    `;
+  }).join('');
+
+  const troubledRows = troubled.map(({ id, p, cat }) => {
+    const job = activeJob(env, id);
+    const sub = job
+      ? (env.online ? job.detail : `离线 · 上次状态：${job.detail}`)
+      : `已装 ${p.appName}.app，还差命令行工具${cat.pkg ? ` · 可直接安装 ${cat.bin}` : ''}`;
+    const right = job
+      ? `<span class="v acc"><span class="spin"></span>${phaseBadgeText(env, job)}</span>`
+      : `<span class="v warn">还差命令行工具</span>`;
+    return `
+      <button type="button" class="row go ic" data-nav="prov:${id}">
+        ${agentTile(id, isPhone ? 30 : 26)}
+        <div class="t">
+          <div class="n">${cat.title}</div>
+          <div class="d">${sub}</div>
+        </div>
+        ${right}
+        ${ic('chevR', 'chev')}
+      </button>
+    `;
+  }).join('');
+
+  const missingVisible = [
+    ...installable.map(x => ({ ...x, canManage: true })),
+    ...externalMissing.map(x => ({ ...x, canManage: false })),
+    ...(S.moreOpen ? foldedMissing.map(x => ({ ...x, canManage: false })) : [])
+  ];
+
+  const missingRows = missingVisible.map(({ id, cat, canManage }) => {
+    const job = latestJob(env, id);
+    const running = job && ['waiting', 'preflight', 'installing', 'verifying'].includes(job.phase);
+    const failed = job && job.phase === 'failed';
+
+    let sub = canManage
+      ? `可由 Hermesh 安装 · npm (<span class="mono">${cat.pkg}@${cat.target}</span>)`
+      : `在 ${env.name} 上安装后会自动发现`;
+    let right = '';
+
+    if (running) {
+      sub = env.online ? job.detail : `离线 · 上次状态：${job.detail}`;
+      const canCancel = env.online && ['waiting', 'preflight'].includes(job.phase);
+      right = `
+        <span class="v acc"><span class="spin"></span>${phaseBadgeText(env, job)}</span>
+        ${canCancel ? `<button type="button" class="${btnCls}" data-cancel-job="${job.id}">取消</button>` : ''}
+      `;
+    } else if (failed) {
+      sub = `<span class="res-warn">${job.detail}</span>`;
+      right = job.needsVerify
+        ? `<button type="button" class="${btnCls}" ${!env.online ? 'disabled' : ''} data-verify-staged="${id}">重新检测</button>`
+        : `<button type="button" class="${btnCls}" ${!env.online ? 'disabled' : ''} data-open-install="${id}">重试…</button>`;
+    } else if (canManage) {
+      right = `<button type="button" class="${btnCls}" ${!env.online ? 'disabled' : ''} data-open-install="${id}">安装…</button>`;
+    } else {
+      right = `<button type="button" class="ext-link" data-toast="将在浏览器打开 ${cat.title} 官方安装说明（${cat.url}）">安装说明 ${ic('ext', 'chev')}</button>`;
+    }
+
+    return `
+      <div class="row ic ${canManage || running || failed ? '' : 'muted'}" data-missing-row="${id}">
+        ${agentTile(id, isPhone ? 30 : 26, !canManage && !running)}
+        <div class="t">
+          <div class="n">${cat.title}</div>
+          <div class="d">${sub}</div>
+        </div>
+        ${right}
+      </div>
+    `;
+  }).join('');
+
+  const activeOrFailedCount = env.jobs.filter(j => ['waiting', 'preflight', 'installing', 'verifying', 'failed'].includes(j.phase)).length;
+  const hasFailed = env.jobs.some(j => j.phase === 'failed');
+
+  return `
+    ${!env.online ? `<div class="banner"><span class="ic-wrap">${ic('warn', 'chev')}</span><div class="t"><div>${env.name} 当前离线</div><div class="d">以下为最近一次检测结果，恢复在线后可安装、更新或重新检测。</div></div></div>` : ''}
+    <div class="${secCls}">
+      <div class="${cardCls}">
+        ${installedRows + troubledRows || `<div class="row muted"><div class="t"><div class="n">还没有已安装的 Agent 提供方</div></div></div>`}
+      </div>
+      <p class="${footCls}">Hermesh 像你一样在命令行调用它们，不读取 API Key 和 Token。</p>
+    </div>
+
+    ${missingRows ? `
+      <div class="${secCls}">
+        <div class="${headCls}">未安装</div>
+        <div class="${cardCls}">${missingRows}</div>
+        ${foldedMissing.length ? `
+          <button type="button" class="more-toggle" data-toggle-more="1" aria-expanded="${S.moreOpen}">
+            ${ic(S.moreOpen ? 'chevD' : 'chevR')}
+            其他提供方（${foldedMissing.length}）
+          </button>
+        ` : ''}
+      </div>
+    ` : ''}
+
+    <div class="acts">
+      ${env.jobs.length > 0 ? `
+        <button type="button" class="${btnCls}" data-nav="history">
+          ${activeOrFailedCount > 0 ? `<i class="dot-badge ${hasFailed ? 'warn' : ''}"></i>` : ''}
+          安装与更新记录（${env.jobs.length}）
+        </button>
+      ` : ''}
+      <button type="button" class="${btnCls} push" ${!env.online ? 'disabled' : ''} data-recheck="1">重新检测</button>
+    </div>
+  `;
+}
+
+function jPhaseInline(j) {
+  return j.detail || phaseBadgeText({ online: true }, j);
+}
+
+/* ---------- Render: Single Installed/Broken Provider Page ---------- */
+function renderProviderDetail(env, agentId, isPhone) {
+  const cat = CATALOG[agentId];
+  const p = env.providers[agentId];
+  const cardCls = isPhone ? 'p-card' : 'grp';
+  const secCls = isPhone ? 'p-sec' : 'sec-block';
+  const headCls = isPhone ? 'p-sh' : 'ghead';
+  const footCls = isPhone ? 'p-sf' : 'foot';
+  const btnCls = isPhone ? 'p-pill-btn' : 'btn';
+
+  if (!p) {
+    return `<div class="${secCls}"><p class="${footCls}">此提供方尚未安装。</p></div>`;
+  }
+
+  const isBroken = !!p.broken;
+  const pill = isBroken
+    ? `<span class="pill warn"><i></i>还差命令行工具</span>`
+    : `<span class="pill ${p.loggedIn ? 'on' : 'warn'}"><i></i>${p.loggedIn ? '已登录' : '还没登录'}</span>`;
+
+  // 1. Precondition Banner (Broken or Unsigned)
+  let banner = '';
+  if (isBroken) {
+    const job = activeJob(env, agentId);
+    banner = `
+      <div class="banner">
+        <span class="ic-wrap">${ic('warn', 'chev')}</span>
+        <div class="t">
+          <div>已发现 ${p.appName}.app，但缺少命令行工具</div>
+          <div class="d">${job
+            ? (env.online ? job.detail : `离线 · 上次状态：${job.detail}`)
+            : cat.pkg
+              ? `Hermesh 通过命令行协议调用 ${cat.title}。可直接在此安装 <span class="cmd-chip">${cat.pkg}@${cat.target}</span>，或在终端装好后重新检测。`
+              : `Hermesh 通过命令行协议调用 ${cat.title}。在 ${env.name} 上按官方说明开启 CLI 后，点重新检测即可使用。`}</div>
+        </div>
+        ${job
+          ? `<span class="v acc"><span class="spin"></span>${phaseBadgeText(env, job)}</span>`
+          : cat.pkg
+            ? `<button type="button" class="${btnCls} primary" ${!env.online ? 'disabled' : ''} data-open-install="${agentId}">安装 CLI…</button>`
+            : `<button type="button" class="${btnCls}" data-toast="将在浏览器打开 ${cat.title} CLI 配置文档">安装说明</button>`}
+        ${!job ? `<button type="button" class="${btnCls}" ${!env.online ? 'disabled' : ''} data-fix-broken="${agentId}">重新检测</button>` : ''}
+      </div>
+    `;
+  } else if (!p.loggedIn) {
+    const waiting = env.waitingLogin[agentId];
+    banner = `
+      <div class="banner" role="status">
+        <div class="t">
+          <div>${waiting ? `正在等待你在终端完成 ${cat.title} 登录…` : `先登录 ${cat.title}，Hermesh 才能调用它。`}</div>
+          <div class="d">${env.local && !isPhone
+            ? `将在终端运行 <span class="cmd-chip">${cat.loginCmd}</span>`
+            : `在 ${env.name} 的终端运行 <span class="cmd-chip">${cat.loginCmd}</span>；若服务器没有浏览器，可在当前设备打开它输出的授权链接。`}</div>
+        </div>
+        ${env.local && !isPhone
+          ? `<button type="button" class="btn" data-sim-login="${agentId}">${ic('term', 'chev')}${waiting ? '模拟已完成登录' : '在终端运行'}</button>`
+          : `<button type="button" class="${btnCls}" data-sim-login="${agentId}">模拟已登录</button>`}
+      </div>
+    `;
+  }
+
+  // 2. Default Model Section (Primary everyday configuration comes FIRST!)
+  let defaultsSec = '';
+  if (p.installed && cat.models.length > 0) {
+    const sameModel = `跟随 ${cat.title}（${cat.ownModel}）`;
+    const sameEffort = `跟随 ${cat.title}（${cat.ownEffort}）`;
+    defaultsSec = `
+      <div class="${secCls}">
+        <div class="${headCls}">默认模型</div>
+        <div class="${cardCls}">
+          <div class="row">
+            <div class="t"><div class="n">模型</div></div>
+            <select class="pop" data-set-model="${agentId}" ${!env.online ? 'disabled' : ''}>
+              <option value="" ${!p.model ? 'selected' : ''}>${sameModel}</option>
+              ${cat.models.map(m => `<option value="${m}" ${p.model === m ? 'selected' : ''}>${m}</option>`).join('')}
+            </select>
+          </div>
+          ${cat.efforts.length ? `
+            <div class="row">
+              <div class="t"><div class="n">推理强度</div></div>
+              <select class="pop" data-set-effort="${agentId}" ${!env.online ? 'disabled' : ''}>
+                <option value="" ${!p.effort ? 'selected' : ''}>${sameEffort}</option>
+                ${cat.efforts.map(e => `<option value="${e}" ${p.effort === e ? 'selected' : ''}>${e}</option>`).join('')}
+              </select>
+            </div>
+          ` : ''}
+          ${cat.hasSpeed ? `
+            <div class="row">
+              <div class="t"><div class="n">速度</div></div>
+              <select class="pop" data-set-speed="${agentId}" ${!env.online ? 'disabled' : ''}>
+                <option value="标准" ${p.speed === '标准' ? 'selected' : ''}>标准</option>
+                <option value="快速" ${p.speed === '快速' ? 'selected' : ''}>快速</option>
+              </select>
+            </div>
+          ` : ''}
+        </div>
+        <p class="${footCls}">Agent 在这里开任务、没指定模型时用这些；不改 ${cat.title} 自己的配置。</p>
+      </div>
+    `;
+  }
+
+  // 3. CLI & Maintenance Card (Cleanly grouped rows — ZERO overlapping text, unified Test!)
+  let cliSec = '';
+  if (p.installed) {
+    const job = latestJob(env, agentId);
+    const running = job && ['waiting', 'preflight', 'installing', 'verifying'].includes(job.phase);
+    const failed = job && job.phase === 'failed';
+    const upd = hasUpdate(agentId, p);
+    const tState = env.tests[agentId];
+
+    let sourceRows = '';
+    if (p.managed) {
+      let verSub = isPhone
+        ? `Hermesh 托管 (npm) · 账户 <span class="mono">${env.account}</span>`
+        : `Hermesh 托管 · npm (<span class="mono">${cat.pkg}</span>) · 执行账户 <span class="mono">${env.account}</span>`;
+      let verRight = `<span class="v">已是最新</span>`;
+      if (running) {
+        verSub = env.online ? job.detail : `机器离线 · 最后回报：${job.detail}`;
+        const canCancel = env.online && ['waiting', 'preflight'].includes(job.phase);
+        verRight = `
+          <span class="v acc"><span class="spin"></span>${phaseBadgeText(env, job)}</span>
+          ${canCancel ? `<button type="button" class="${btnCls}" data-cancel-job="${job.id}">取消</button>` : ''}
+        `;
+      } else if (failed) {
+        verSub = `<span class="res-warn">${job.detail}</span>`;
+        verRight = job.needsVerify
+          ? `<button type="button" class="${btnCls}" ${!env.online ? 'disabled' : ''} data-verify-staged="${agentId}">重新检测</button>`
+          : `<button type="button" class="${btnCls}" ${!env.online ? 'disabled' : ''} data-run-update="${agentId}">重试更新</button>`;
+      } else if (upd) {
+        if (isPhone) verSub += ` · <span style="color:var(--accent-t)">可更新至 ${cat.target}</span>`;
+        verRight = `
+          ${isPhone ? '' : `<span class="tag-upd">新版本 ${cat.target}</span>`}
+          <button type="button" class="${btnCls}" ${!env.online ? 'disabled' : ''} data-run-update="${agentId}">${env.busy ? '空闲时更新' : '更新'}</button>
+        `;
+      }
+      sourceRows = `
+        <div class="row">
+          <div class="t">
+            <div class="n">当前版本 <span class="mono" style="color:var(--l2)">${p.version}</span></div>
+            <div class="d">${verSub}</div>
+          </div>
+          ${verRight}
+        </div>
+        <div class="row">
+          <div class="t">
+            <div class="n">空闲时自动更新</div>
+            <div class="d">这台机器没有运行中的任务时，自动升级到经验证的稳定版本</div>
+          </div>
+          <button type="button" class="sw ${p.auto ? 'on' : ''}" role="switch" aria-checked="${p.auto}" aria-label="空闲时自动更新" ${!env.online || running ? 'disabled' : ''} data-toggle-auto="${agentId}"></button>
+        </div>
+      `;
+    } else {
+      sourceRows = `
+        <div class="row">
+          <div class="t">
+            <div class="n">安装来源</div>
+            <div class="d"><span class="mono">${p.binary}</span> · 由原安装渠道维护更新</div>
+          </div>
+          <span class="v">外部安装</span>
+        </div>
+      `;
+    }
+
+    let testDesc = !p.loggedIn
+      ? '完成上方登录后，可在此运行一轮简短无工具对话验证调用'
+      : '在临时目录运行一轮无工具短对话，确认命令行协议与当前账号可用（不保留会话）';
+    if (tState) {
+      const cls = tState.state === 'ok' ? 'res-ok' : tState.state === 'warn' ? 'res-warn' : tState.state === 'bad' ? 'res-bad' : '';
+      testDesc = `<span class="${cls}">${tState.text}</span>`;
+    }
+
+    cliSec = `
+      <div class="${secCls}">
+        <div class="${headCls}">${p.managed ? '安装与更新' : '命令行工具'}</div>
+        <div class="${cardCls}">
+          ${sourceRows}
+          <div class="row">
+            <div class="t">
+              <div class="n">可用性测试</div>
+              <div class="d" role="status">${testDesc}</div>
+            </div>
+            <button type="button" class="${btnCls}" ${!env.online || !p.loggedIn || running || tState?.state === 'running' ? 'disabled' : ''} data-run-test="${agentId}">
+              ${tState?.state === 'running' ? '<span class="spin"></span>测试中…' : '测试'}
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="hero">
+      ${agentTile(agentId, isPhone ? 68 : 64)}
+      <b>${cat.title}</b>
+      <span class="sub">${env.name}${p.version ? ` · <span class="mono">${p.version}</span>` : ''}</span>
+      ${pill}
+    </div>
+    ${banner}
+    ${defaultsSec}
+    ${cliSec}
+  `;
+}
+
+/* ---------- Render: History Ledger ---------- */
+function renderHistory(env, isPhone) {
+  const cardCls = isPhone ? 'p-card' : 'grp';
+  const secCls = isPhone ? 'p-sec' : 'sec-block';
+  const footCls = isPhone ? 'p-sf' : 'foot';
+  const btnCls = isPhone ? 'p-pill-btn' : 'btn';
+
+  if (!env.jobs.length) {
+    return `<div class="${secCls}"><p class="${footCls}">「${env.name}」还没有安装或更新记录。</p></div>`;
+  }
+
+  const rows = env.jobs.map(j => {
+    const cat = CATALOG[j.agent];
+    const running = ['waiting', 'preflight', 'installing', 'verifying'].includes(j.phase);
+    const failed = j.phase === 'failed';
+    const canCancel = env.online && ['waiting', 'preflight'].includes(j.phase);
+    const opName = j.op === 'install' ? '安装' : '更新';
+    const verSpan = j.fromVer ? `${j.fromVer} → ${j.targetVer}` : j.targetVer;
+    const badgeCls = failed ? 'warn' : j.phase === 'succeeded' ? 'ok' : running ? 'acc' : '';
+
+    return `
+      <div class="row ic">
+        ${agentTile(j.agent, 28)}
+        <div class="t">
+          <div class="n">${cat.title} · ${opName} <span class="mono" style="color:var(--l2)">${verSpan}</span></div>
+          <div class="d">${timeStr(j.updatedAt)} · ${j.detail}</div>
+        </div>
+        <span class="v ${badgeCls}">${running ? '<span class="spin"></span>' : ''}${phaseBadgeText(env, j)}</span>
+        ${canCancel ? `<button type="button" class="${btnCls}" data-cancel-job="${j.id}">取消</button>` : ''}
+        ${failed && env.online ? (j.needsVerify
+          ? `<button type="button" class="${btnCls}" data-verify-staged="${j.agent}">重新检测</button>`
+          : `<button type="button" class="${btnCls}" data-retry-job="${j.id}">重试</button>`) : ''}
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="${secCls}">
+      <div class="${cardCls}">${rows}</div>
+      <p class="${footCls}">仅记录 ${env.name} 上的托管安装与版本更新操作；日常发现与可用性测试不写入任务历史。</p>
+    </div>
+  `;
+}
+
+/* ---------- Render: Install Confirmation Sheet ---------- */
+function renderInstallSheet(isPhone) {
+  if (!S.sheet || S.sheet.kind !== 'install') return '';
+  const env = S.envs[S.sheet.envId];
+  const cat = CATALOG[S.sheet.agent];
+
+  if (isPhone) {
+    return `
+      <div class="scrim" data-close-sheet="1"></div>
+      <div class="p-modal" role="dialog" aria-modal="true" aria-labelledby="p-dlg-title">
+        <div style="display:flex;gap:12px;align-items:center">
+          ${agentTile(S.sheet.agent, 44)}
+          <div>
+            <b id="p-dlg-title" style="font-size:16.5px">在「${env.name}」安装 ${cat.title}？</b>
+            <div style="font-size:12.5px;color:var(--l2);margin-top:2px">直接安装到默认命令行目录，终端也可直接使用</div>
+          </div>
+        </div>
+        <div class="grp sheet-kv" style="background:var(--fill)">
+          <div class="row"><span class="k">目标环境</span><span class="val">${env.name}（${env.platform}）</span></div>
+          <div class="row"><span class="k">执行账户</span><span class="val mono">${env.account}</span></div>
+          <div class="row"><span class="k">安装包</span><span class="val mono">npm · ${cat.pkg}@${cat.target}</span></div>
+          <div class="row"><span class="k">安装位置</span><span class="val mono">${env.id === 'linux' ? '~/.local/bin' : '/opt/homebrew/bin'}</span></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:2px 4px;font-size:14px">
+          <span>空闲时自动更新稳定版</span>
+          <button type="button" class="sw ${S.sheet.auto ? 'on' : ''}" data-sheet-auto="1" role="switch" aria-checked="${S.sheet.auto}" aria-label="空闲时自动更新稳定版"></button>
+        </div>
+        <div style="font-size:12px;color:var(--l2);line-height:1.45">确认后需面容 ID 签名授权；安装完成后仍需登录 ${cat.title} 账号。</div>
+        <div class="p-modal-btns">
+          <button type="button" data-close-sheet="1">取消</button>
+          <button type="button" class="primary" data-confirm-install="1">安装</button>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="scrim" data-close-sheet="1">
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mac-dlg-title">
+        <div class="sheet-h">
+          ${agentTile(S.sheet.agent, 42)}
+          <div>
+            <b id="mac-dlg-title">在「${env.name}」上安装 ${cat.title}？</b>
+            <span>直接安装到目标环境的默认命令行目录，安装后在终端也可直接使用</span>
+          </div>
+        </div>
+        <div class="sheet-b">
+          <div class="grp sheet-kv">
+            <div class="row"><span class="k">目标环境</span><span class="val">${env.name}（${env.local ? '这台 Mac' : '远程环境'} · ${env.platform}）</span></div>
+            <div class="row"><span class="k">执行账户</span><span class="val mono">${env.account}</span></div>
+            <div class="row"><span class="k">安装来源</span><span class="val mono">npm · ${cat.pkg}@${cat.target}</span></div>
+            <div class="row"><span class="k">安装位置</span><span class="val">默认全局目录（${env.id === 'linux' ? '~/.local/bin' : '/opt/homebrew/bin'}，无权限时回退 ~/.local/bin）</span></div>
+            <div class="row">
+              <span class="k" style="width:auto">空闲时自动更新稳定版</span>
+              <span class="val" style="display:flex;justify-content:flex-end">
+                <button type="button" class="sw ${S.sheet.auto ? 'on' : ''}" data-sheet-auto="1" role="switch" aria-checked="${S.sheet.auto}" aria-label="空闲时自动更新稳定版"></button>
+              </span>
+            </div>
+          </div>
+          <p class="foot" style="margin:0 2px">确认后需 ${env.local ? 'Touch ID' : '本机可信密钥'} 授权。安装并自动完成协议校验后，登录 ${cat.title} 账号即可开始任务。</p>
+        </div>
+        <div class="sheet-f">
+          <button type="button" class="btn" data-close-sheet="1">取消</button>
+          <button type="button" class="btn primary" data-confirm-install="1">安装</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ---------- Page Title & Shell Assembly ---------- */
+function routeMeta(env) {
+  if (S.route === 'env') return { title: env.local ? '这台 Mac' : env.name, crumb: '环境' };
+  if (S.route === 'providers') return { title: 'Agent 提供方', crumb: `${env.name} › Agent 提供方` };
+  if (S.route === 'history') return { title: '安装与更新记录', crumb: `${env.name} › Agent 提供方 › 记录` };
+  if (S.route.startsWith('prov:')) {
+    const id = S.route.slice(5);
+    return { title: CATALOG[id]?.title || id, crumb: `${env.name} › Agent 提供方 › ${CATALOG[id]?.title || id}` };
+  }
+  return { title: '设置', crumb: '' };
+}
+
+function renderInner(env, isPhone) {
+  if (S.route === 'env') return renderEnvPane(env, isPhone);
+  if (S.route === 'providers') return renderProvidersList(env, isPhone);
+  if (S.route === 'history') return renderHistory(env, isPhone);
+  if (S.route.startsWith('prov:')) return renderProviderDetail(env, S.route.slice(5), isPhone);
+  return '';
+}
+
+function renderMac(env) {
+  const meta = routeMeta(env);
+  const sideItem = (e) => {
+    const st = !e.online ? '<span class="st">离线</span>' : e.busy ? '<span class="st">1 运行中</span>' : '';
+    return `<button type="button" class="ni ${S.envId === e.id ? 'sel' : ''}" data-env="${e.id}">
+      <span class="tile" style="background:var(--t-blue)">${ic(e.icon)}</span>
+      <span class="nm">${e.sideLabel}</span>${st}
+    </button>`;
+  };
+
+  return `
+    <div class="win">
+      <aside class="side">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <nav class="nav" aria-label="设置侧栏">
+          <button type="button" class="me" data-toast="示例：账号与设备">
+            <span class="avatar">Y</span>
+            <span><b>yipengfei</b><small>账号与设备</small></span>
+          </button>
+          <div class="nav-gap"></div>
+          <button type="button" class="ni" data-toast="示例：通用设置"><span class="tile" style="background:var(--t-slate)">${ic('gear')}</span><span class="nm">通用</span></button>
+          <button type="button" class="ni" data-toast="示例：通知设置"><span class="tile" style="background:var(--t-rose)">${ic('bell')}</span><span class="nm">通知</span></button>
+          <button type="button" class="ni" data-toast="示例：授权管理"><span class="tile" style="background:var(--t-sand)">${ic('key')}</span><span class="nm">授权</span></button>
+          <div class="nav-h">环境<span>+</span></div>
+          ${Object.values(S.envs).map(sideItem).join('')}
+        </nav>
+      </aside>
+      <div class="main">
+        <div class="bar-top">
+          <button type="button" class="nb" aria-label="返回" ${!S.backStack.length ? 'disabled' : ''} data-back="1">${ic('back')}</button>
+          <button type="button" class="nb" aria-label="前进" ${!S.fwdStack.length ? 'disabled' : ''} data-fwd="1">${ic('chevR')}</button>
+          <h1>${meta.title}</h1>
+          <span class="bar-crumb">${meta.crumb}</span>
+        </div>
+        <div class="body">
+          <div class="pane">${renderInner(env, false)}</div>
+        </div>
+        ${renderInstallSheet(false)}
+        ${S.toast ? `<div class="toast" role="status">${S.toast}</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderIPhone(env) {
+  const meta = routeMeta(env);
+  return `
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="p-screen">
+          <div class="p-island"></div>
+          <div class="p-status"><span>9:41</span><span>100%</span></div>
+          <div class="p-sheet">
+            <div class="p-grab"></div>
+            <div class="p-nav">
+              <button type="button" class="p-gb" aria-label="返回" ${!S.backStack.length ? 'disabled' : ''} data-back="1">${ic('back')}</button>
+              <div class="p-mid">${meta.title}</div>
+              <button type="button" class="p-gb" aria-label="切换环境" title="切换环境" data-cycle-env="1">${ic(env.icon)}</button>
+            </div>
+            <div class="p-scroll">
+              ${renderInner(env, true)}
+            </div>
+          </div>
+          ${renderInstallSheet(true)}
+          ${S.toast ? `<div class="toast" role="status">${S.toast}</div>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function syncToolbarControls() {
+  const env = curEnv();
+  document.getElementById('sim-busy').checked = env.busy;
+  document.getElementById('sim-offline').checked = !env.online;
+  document.getElementById('sim-fault').value = S.fault;
+
+  document.querySelectorAll('#plat-seg button').forEach(b => b.classList.toggle('on', b.dataset.plat === S.plat));
+  const jumpMap = {
+    list: S.envId === 'mac' && S.route === 'providers',
+    deepseek: S.envId === 'mac' && S.route === 'prov:deepseek',
+    codex: S.envId === 'mac' && S.route === 'prov:codex',
+    qoder: S.envId === 'mac' && S.route === 'prov:qoder'
+  };
+  document.querySelectorAll('[data-jump]').forEach(b => b.classList.toggle('active', !!jumpMap[b.dataset.jump]));
+}
+
+function render() {
+  const env = curEnv();
+  const stage = document.getElementById('stage');
+  const prevScroll = stage.querySelector('.body, .p-scroll')?.scrollTop || 0;
+  stage.innerHTML = S.plat === 'mac' ? renderMac(env) : renderIPhone(env);
+  const nextScrollEl = stage.querySelector('.body, .p-scroll');
+  if (nextScrollEl) nextScrollEl.scrollTop = prevScroll;
+  syncToolbarControls();
+}
+
+/* ---------- Event Delegation ---------- */
+document.addEventListener('click', e => {
+  const platBtn = e.target.closest('[data-plat]');
+  if (platBtn) { S.plat = platBtn.dataset.plat; render(); return; }
+
+  const themeBtn = e.target.closest('[data-theme-set]');
+  if (themeBtn) {
+    document.documentElement.dataset.theme = themeBtn.dataset.themeSet;
+    document.querySelectorAll('#theme-seg button').forEach(b => b.classList.toggle('on', b === themeBtn));
+    return;
+  }
+
+  const jumpBtn = e.target.closest('[data-jump]');
+  if (jumpBtn) {
+    S.envId = 'mac';
+    S.sheet = null;
+    S.fwdStack = [];
+    const j = jumpBtn.dataset.jump;
+    if (j === 'list') { S.backStack = ['env']; S.route = 'providers'; }
+    else { S.backStack = ['env', 'providers']; S.route = `prov:${j}`; }
+    render();
+    return;
+  }
+
+  const envBtn = e.target.closest('[data-env]');
+  if (envBtn) {
+    S.envId = envBtn.dataset.env;
+    S.sheet = null;
+    S.backStack = ['env'];
+    S.fwdStack = [];
+    S.route = 'providers';
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-cycle-env]')) {
+    const ids = Object.keys(S.envs);
+    S.envId = ids[(ids.indexOf(S.envId) + 1) % ids.length];
+    S.backStack = ['env'];
+    S.fwdStack = [];
+    S.route = 'providers';
+    showToast(`已切换环境：${curEnv().name}`);
+    return;
+  }
+
+  if (e.target.closest('[data-back]')) { goBack(); return; }
+  if (e.target.closest('[data-fwd]')) { goFwd(); return; }
+
+  const navBtn = e.target.closest('[data-nav]');
+  if (navBtn) { navigate(navBtn.dataset.nav); return; }
+
+  const toastBtn = e.target.closest('[data-toast]');
+  if (toastBtn) { showToast(toastBtn.dataset.toast); return; }
+
+  if (e.target.closest('[data-toggle-more]')) { S.moreOpen = !S.moreOpen; render(); return; }
+
+  const installBtn = e.target.closest('[data-open-install]');
+  if (installBtn) {
+    S.sheet = { kind: 'install', envId: S.envId, agent: installBtn.dataset.openInstall, auto: false };
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-sheet-auto]')) {
+    if (S.sheet) { S.sheet.auto = !S.sheet.auto; render(); }
+    return;
+  }
+
+  if (e.target.classList.contains('scrim') || e.target.closest('button[data-close-sheet]')) {
+    S.sheet = null;
+    render();
+    return;
+  }
+
+  if (e.target.closest('[data-confirm-install]')) {
+    if (S.sheet) {
+      const { envId, agent, auto } = S.sheet;
+      S.sheet = null;
+      startJob(envId, agent, 'install', auto, false);
+    }
+    return;
+  }
+
+  const updBtn = e.target.closest('[data-run-update]');
+  if (updBtn) { startJob(S.envId, updBtn.dataset.runUpdate, 'update'); return; }
+
+  const verifyStagedBtn = e.target.closest('[data-verify-staged]');
+  if (verifyStagedBtn) { startJob(S.envId, verifyStagedBtn.dataset.verifyStaged, 'install', false, true); return; }
+
+  const retryBtn = e.target.closest('[data-retry-job]');
+  if (retryBtn) {
+    const env = curEnv();
+    const old = env.jobs.find(x => x.id === retryBtn.dataset.retryJob);
+    if (old) startJob(S.envId, old.agent, old.op, old.autoAfter, false);
+    return;
+  }
+
+  const cancelBtn = e.target.closest('[data-cancel-job]');
+  if (cancelBtn) { cancelJob(S.envId, cancelBtn.dataset.cancelJob); return; }
+
+  const autoSw = e.target.closest('[data-toggle-auto]');
+  if (autoSw) {
+    const id = autoSw.dataset.toggleAuto;
+    const p = curEnv().providers[id];
+    if (p) {
+      p.auto = !p.auto;
+      showToast(p.auto ? `已开启 ${CATALOG[id].title} 空闲自动更新` : `已关闭 ${CATALOG[id].title} 空闲自动更新`);
+    }
+    return;
+  }
+
+  const testBtn = e.target.closest('[data-run-test]');
+  if (testBtn) { runTest(S.envId, testBtn.dataset.runTest); return; }
+
+  const loginBtn = e.target.closest('[data-sim-login]');
+  if (loginBtn) {
+    const id = loginBtn.dataset.simLogin;
+    const env = curEnv();
+    if (!env.waitingLogin[id] && env.local && S.plat === 'mac') {
+      env.waitingLogin[id] = true;
+      showToast(`已在终端启动：${CATALOG[id].loginCmd}（再点一次模拟登录成功）`);
+    } else {
+      delete env.waitingLogin[id];
+      if (env.providers[id]) env.providers[id].loggedIn = true;
+      showToast(`${CATALOG[id].title} 已完成登录`);
+    }
+    render();
+    return;
+  }
+
+  const fixBrokenBtn = e.target.closest('[data-fix-broken]');
+  if (fixBrokenBtn) {
+    const id = fixBrokenBtn.dataset.fixBroken;
+    const env = curEnv();
+    env.providers[id] = { installed: true, version: '1.1.100', managed: false, auto: false, loggedIn: true, binary: '/usr/local/bin/qoder', model: '', effort: '' };
+    showToast(`已检测到 ${CATALOG[id].title} 命令行工具（1.1.100）`);
+    return;
+  }
+
+  if (e.target.closest('[data-recheck]')) {
+    showToast(`正在重新检测「${curEnv().name}」上的 Agent 提供方…`);
+    return;
+  }
+});
+
+document.addEventListener('change', e => {
+  const env = curEnv();
+  if (e.target.id === 'sim-fault') { S.fault = e.target.value; return; }
+  if (e.target.id === 'sim-busy') { env.busy = e.target.checked; render(); return; }
+  if (e.target.id === 'sim-offline') { env.online = !e.target.checked; render(); return; }
+  if (e.target.dataset.setModel) {
+    env.providers[e.target.dataset.setModel].model = e.target.value;
+    showToast('已更新默认模型');
+  }
+  if (e.target.dataset.setEffort) {
+    env.providers[e.target.dataset.setEffort].effort = e.target.value;
+    showToast('已更新默认推理强度');
+  }
+  if (e.target.dataset.setSpeed) {
+    env.providers[e.target.dataset.setSpeed].speed = e.target.value;
+    showToast('已更新默认速度');
+  }
+});
+
+document.getElementById('sim-reset').onclick = () => {
+  const plat = S.plat;
+  S = createInitialState();
+  S.plat = plat;
+  render();
+};
+
+render();
+</script>
+</body>
+</html>

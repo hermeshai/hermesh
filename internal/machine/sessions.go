@@ -96,6 +96,9 @@ func defaultDiscoverers(pathEnv string) map[string]AgentDiscoverer {
 		"codex":  cx,
 	}
 	for _, p := range rtacp.Providers(pathEnv) {
+		if p.Name() == "gemini" && os.Getenv("HERMESH_GEMINI_BIN") == "" {
+			continue
+		}
 		ds[p.Name()] = p
 	}
 	return ds

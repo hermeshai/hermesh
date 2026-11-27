@@ -4,16 +4,19 @@ import HermeshSessions
 import SwiftUI
 
 /// A machine's coding agents sorted out: installed (signed in first, then
-/// Claude Code and Codex, then by name), still being checked, not installed.
-func sortedAgents(_ agents: [AgentStatus]) -> (installed: [AgentStatus], checking: [AgentStatus], missing: [String]) {
+/// Claude Code and Codex, then by name), troubled (e.g. desktop app without CLI),
+/// still being checked, not installed (excluding retired Gemini CLI).
+func sortedAgents(_ agents: [AgentStatus]) -> (installed: [AgentStatus], troubled: [AgentStatus], checking: [AgentStatus], missing: [String]) {
     let first = ["claude", "codex"]
     let rank = { (a: AgentStatus) in first.firstIndex(of: a.name) ?? first.count }
     let installed = agents.filter(\.available).sorted {
         ($0.loggedIn ? 0 : 1, rank($0), agentTitle($0.name)) < ($1.loggedIn ? 0 : 1, rank($1), agentTitle($1.name))
     }
+    let troubled = agents.filter { !$0.available && !$0.checking && $0.problem != .unspecified && $0.problem != .notFound }
     let checking = agents.filter { $0.checking && !$0.available }
-    let missing = agents.filter { !$0.available && !$0.checking }.map(\.name)
-    return (installed, checking, missing)
+    let listed = Set((installed + troubled + checking).map(\.name))
+    let missing = codingAgentIDs.filter { $0 != "gemini" && !listed.contains($0) }
+    return (installed, troubled, checking, missing)
 }
 
 func effortName(_ e: String) -> String {
@@ -46,19 +49,19 @@ func defaultsText(_ a: AgentStatus) -> String {
 }
 
 /// An agent provider in an environment, opened from its Agent Providers page: signing in when it isn't,
-/// Test, and the model, reasoning effort and (Codex) speed its sessions run with when the agent starting
-/// one names no model (or why there is no choosing). Projects are the environment's, for every provider
-/// (docs/settings-environments.md §5.6).
+/// its default model, CLI installation & updates, and availability test.
 struct MachineAgentView: View {
     @Environment(AppModel.self) private var model
     let machineID: String
     let agent: String
     @State private var testing = false
     @State private var test: Result<Hermesh_Machine_V1_TestAgentResponse, Error>?
+    @State private var showInstallSheet = false
 
     var body: some View {
         Group {
-            if let m = model.machines.first(where: { $0.machineID == machineID }), let a = m.status.agents.first(where: { $0.name == agent && $0.available }) {
+            if let m = model.machines.first(where: { $0.machineID == machineID }).map(model.providerMachine),
+               let a = m.status.agents.first(where: { $0.name == agent && ($0.available || ($0.problem != .unspecified && $0.problem != .notFound)) }) {
                 content(m, a)
             } else {
                 ContentUnavailableView("This coding agent isn’t on this machine", systemImage: "questionmark.circle")
@@ -66,66 +69,105 @@ struct MachineAgentView: View {
         }
         .navigationTitle(agentTitle(agent))
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showInstallSheet) {
+            ProviderInstallSheet(machineID: machineID, provider: agent)
+        }
     }
 
     private func content(_ m: Machine, _ a: AgentStatus) -> some View {
         let title = agentTitle(agent)
         let editable = m.online
+        let cap = m.status.providerMaintenance.first { $0.provider == agent }
+        let latest = m.status.providerOperations.last { $0.request.provider == agent }
+        let activeOp = providerOperationActive(latest?.phase ?? "")
         return List {
             Section {
                 VStack(spacing: 8) {
                     AgentLogo(id: agent, size: 58)
                     Text(title).font(.title2.bold())
-                    Text("\(m.machineName) · \(a.version) · \(Text(a.loggedIn ? String(localized: "Signed in") : String(localized: "Not signed in")).foregroundStyle(a.loggedIn ? Color.secondary : .orange))")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                    if a.available {
+                        Text("\(m.machineName) · \(a.version) · \(Text(a.loggedIn ? String(localized: "Signed in") : String(localized: "Not signed in")).foregroundStyle(a.loggedIn ? Color.secondary : .orange))")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("installed-version-\(a.version)")
+                    } else {
+                        Text("\(m.machineName) · \(Text(a.problem == .appWithoutCli ? String(localized: "Needs CLI") : String(localized: "Cannot run")).foregroundStyle(.orange))")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
                 }
                 .frame(maxWidth: .infinity).listRowBackground(Color.clear)
             }
-            if !a.loggedIn {
+            if !a.available {
+                Section {
+                    if a.problem == .appWithoutCli {
+                        Text("Found the desktop app, but its command-line tool isn’t installed yet.").font(.subheadline)
+                        if let cap, !cap.package.isEmpty && cap.managedVersion.isEmpty {
+                            Button("Install Command-Line Tool…") { showInstallSheet = true }
+                                .disabled(!m.online || activeOp)
+                                .accessibilityIdentifier("install-\(agent)")
+                        } else if let url = installPage[agent] {
+                            Link("How to Install", destination: url)
+                        }
+                    } else if !a.detail.isEmpty {
+                        Text(a.detail).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    Button("Check Again") { Task { await model.recheck(machine: machineID) } }
+                        .disabled(!m.online)
+                }
+            }
+            if a.available && !a.loggedIn {
                 Section {
                     Label("Sign in to \(title) first so Hermesh can use it.", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
-                    if let command = ["claude": "claude", "codex": "codex login", "antigravity": "hermesh agent login antigravity"][agent] {
+                    if let command = [
+                        "claude": "claude",
+                        "codex": "codex login",
+                        "antigravity": "hermesh agent login antigravity",
+                        "copilot": "copilot",
+                        "opencode": "opencode auth login",
+                        "qoder": "qodercli",
+                        "qwen": "qwen",
+                        "kimi": "kimi",
+                        "codebuddy": "codebuddy",
+                        "grok": "grok",
+                        "auggie": "auggie login",
+                    ][agent] {
                         Text("On \(m.machineName), run \(Text(command).monospaced()) in Terminal").font(.subheadline).foregroundStyle(.secondary)
                         Text("On a server without a browser, it shows a link: open it on this iPhone.").font(.subheadline).foregroundStyle(.secondary)
                     }
                 }
             }
-            Section {
-                Button {
-                    testing = true
-                    test = nil
-                    Task {
-                        defer { testing = false }
-                        do {
-                            guard let api = model.api else { return }
-                            test = .success(try await api.testAgent(machine: machineID, agent: agent))
-                        } catch {
-                            test = .failure(error)
+            if a.available {
+                if !a.models.isEmpty {
+                    defaults(m, a, title: title).disabled(!editable)
+                } else if a.loggedIn && (a.modelsState == "unsupported" || a.modelsState == "error") {
+                    Section {
+                        Text(a.modelsState == "unsupported"
+                            ? String(localized: "\(title) offers no choice of model; its sessions use its own settings.")
+                            : String(localized: "Couldn’t read the models \(title) offers; the next check tries again. Its sessions use its own settings."))
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    } header: {
+                        Text("Default Model")
+                    }
+                }
+                ProviderMaintenanceSection(
+                    machine: m,
+                    agent: agent,
+                    info: a,
+                    testing: testing,
+                    testResult: test.map(testResultView),
+                    runTest: {
+                        testing = true
+                        test = nil
+                        Task {
+                            defer { testing = false }
+                            do {
+                                guard let api = model.api else { return }
+                                test = .success(try await api.testAgent(machine: machineID, agent: agent))
+                            } catch {
+                                test = .failure(error)
+                            }
                         }
                     }
-                } label: {
-                    HStack {
-                        Label("Test", systemImage: "play.circle")
-                        if testing { Spacer(); ProgressView() }
-                    }
-                }
-                .disabled(testing || !m.online || !a.loggedIn)
-                .accessibilityIdentifier("test-agent")
-                if let test { testResult(test) }
-            } footer: {
-                Text("One short turn, in a folder of its own, to show \(title) works on \(m.machineName). It keeps no session.")
-            }
-            if !a.models.isEmpty {
-                defaults(m, a, title: title).disabled(!editable)
-            } else if a.loggedIn && (a.modelsState == "unsupported" || a.modelsState == "error") {
-                Section {
-                    Text(a.modelsState == "unsupported"
-                        ? String(localized: "\(title) offers no choice of model; its sessions use its own settings.")
-                        : String(localized: "Couldn’t read the models \(title) offers; the next check tries again. Its sessions use its own settings."))
-                        .font(.subheadline).foregroundStyle(.secondary)
-                } header: {
-                    Text("Default Model")
-                }
+                )
             }
         }
         .refreshable {
@@ -133,31 +175,33 @@ struct MachineAgentView: View {
         }
     }
 
-    private func testResult(_ r: Result<Hermesh_Machine_V1_TestAgentResponse, Error>) -> some View {
-        Group {
-            switch r {
-            case .success(let t) where t.ok:
-                Label {
-                    Text("Replied in \(String(format: "%.1f", Double(t.millis) / 1000)) s: “\(t.reply)”")
-                } icon: {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                }
-            case .success(let t):
-                Label {
-                    Text(t.reply.isEmpty ? String(localized: "It didn’t reply.") : t.reply)
-                } icon: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
-                }
-            case .failure(let e):
-                Label {
-                    Text((e as? APIError)?.message ?? e.localizedDescription)
-                } icon: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+    private func testResultView(_ r: Result<Hermesh_Machine_V1_TestAgentResponse, Error>) -> AnyView {
+        AnyView(
+            Group {
+                switch r {
+                case .success(let t) where t.ok:
+                    Label {
+                        Text("Replied in \(String(format: "%.1f", Double(t.millis) / 1000)) s: “\(t.reply)”")
+                    } icon: {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    }
+                case .success(let t):
+                    Label {
+                        Text(t.reply.isEmpty ? String(localized: "It didn’t reply.") : t.reply)
+                    } icon: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+                    }
+                case .failure(let e):
+                    Label {
+                        Text((e as? APIError)?.message ?? e.localizedDescription)
+                    } icon: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+                    }
                 }
             }
-        }
-        .font(.subheadline)
-        .accessibilityIdentifier("test-result")
+            .font(.subheadline)
+            .accessibilityIdentifier("test-result")
+        )
     }
 
     /// The model, reasoning effort and (Codex) speed, one menu each: the

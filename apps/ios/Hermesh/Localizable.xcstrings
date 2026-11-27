@@ -794,7 +794,15 @@
       }
     },
     "%@ · %@": {
-      "shouldTranslate": false
+      "shouldTranslate": false,
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ · %2$@"
+          }
+        }
+      }
     },
     "%@ · %@ · %@": {
       "shouldTranslate": false
@@ -838,6 +846,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ · 已读完"
+          }
+        }
+      }
+    },
+    "%@ · npm (%@)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ · npm (%2$@)"
           }
         }
       }
@@ -3822,6 +3840,16 @@
         }
       }
     },
+    "Cannot run": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行不了"
+          }
+        }
+      }
+    },
     "Can’t Open This File": {
       "localizations": {
         "zh-Hans": {
@@ -4590,6 +4618,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "运行已手动停止，当前输出："
+          }
+        }
+      }
+    },
+    "Command-Line Tool": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "命令行工具"
           }
         }
       }
@@ -6798,6 +6836,16 @@
         }
       }
     },
+    "Installed into the default command-line directory so you can also run it directly in Terminal.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直接安装到默认命令行目录，安装后在终端也可直接使用。"
+          }
+        }
+      }
+    },
     "Exit %lld · %@": {
       "localizations": {
         "zh-Hans": {
@@ -6894,6 +6942,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "无需登录，探索示例任务"
+          }
+        }
+      }
+    },
+    "External": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "外部安装"
           }
         }
       }
@@ -7360,6 +7418,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "查到了，计划写好了。Codex 来改？"
+          }
+        }
+      }
+    },
+    "Found the desktop app, but its command-line tool isn’t installed yet.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已发现桌面应用，但还没有安装它的命令行工具。"
           }
         }
       }
@@ -8700,6 +8768,26 @@
         }
       }
     },
+    "Install %@ on “%@”?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要在「%2$@」上安装 %1$@ 吗？"
+          }
+        }
+      }
+    },
+    "Install Command-Line Tool…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装命令行工具…"
+          }
+        }
+      }
+    },
     "Install Hermesh on Linux": {
       "localizations": {
         "zh-Hans": {
@@ -8790,6 +8878,26 @@
         }
       }
     },
+    "Installation Source": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装来源"
+          }
+        }
+      }
+    },
+    "Installation and Update Activity": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装与更新记录"
+          }
+        }
+      }
+    },
     "Installation and Updates": {
       "localizations": {
         "zh-Hans": {
@@ -8816,6 +8924,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "已安装版本"
+          }
+        }
+      }
+    },
+    "Install…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装…"
           }
         }
       }
@@ -10380,6 +10498,16 @@
         }
       }
     },
+    "Needs CLI": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还差命令行工具"
+          }
+        }
+      }
+    },
     "Needs Update": {
       "localizations": {
         "zh-Hans": {
@@ -11732,6 +11860,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "一次运行"
+          }
+        }
+      }
+    },
+    "One short turn, in a folder of its own, confirms %@ works on %@. It keeps no session.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在临时目录跑一轮简短对话，确认 %1$@ 在 %2$@ 上可用，不保留会话。"
           }
         }
       }
@@ -13742,6 +13880,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "连接请求"
+          }
+        }
+      }
+    },
+    "Requires Face ID approval. After installation completes, sign in to %@ to start tasks.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要面容 ID 批准。安装完成后，登录 %@ 账号即可开始任务。"
           }
         }
       }
@@ -18422,6 +18570,16 @@
         }
       }
     },
+    "Up to date": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已是最新"
+          }
+        }
+      }
+    },
     "Up-to-date library documentation for writing code": {
       "localizations": {
         "zh-Hans": {
@@ -18438,6 +18596,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "更新"
+          }
+        }
+      }
+    },
+    "Update %@ available": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可更新至 %@"
+          }
+        }
+      }
+    },
+    "Update Automatically When Idle": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "空闲时自动更新"
           }
         }
       }
@@ -18478,6 +18656,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "更新密钥"
+          }
+        }
+      }
+    },
+    "Update When Idle": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "空闲时更新"
           }
         }
       }
@@ -18542,6 +18730,16 @@
         }
       }
     },
+    "Updates are managed by the original installer. Testing runs one short turn on %@ without keeping a session.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "由原安装渠道维护更新。测试会在 %@ 的临时目录运行一轮简短对话，不保留会话。"
+          }
+        }
+      }
+    },
     "Updating from %@…": {
       "localizations": {
         "zh-Hans": {
@@ -18558,6 +18756,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在从 %lld 个环境更新…"
+          }
+        }
+      }
+    },
+    "Upgrades when no tasks are running on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当 %@ 没有运行中的任务时自动升级"
           }
         }
       }
@@ -20265,6 +20473,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "现在"
+          }
+        }
+      }
+    },
+    "npm · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "npm · %@"
+          }
+        }
+      }
+    },
+    "npm · %@@%@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "npm · %1$@@%2$@"
           }
         }
       }
