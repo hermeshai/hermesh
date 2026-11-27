@@ -23,6 +23,8 @@ export type Tab = {
   kind: TabKind;
   file: SessionFile;
   name: string;
+  /** The running HTML page's document `<title>`, once reported; empty falls back to `name` without `.html`. */
+  pageTitle: string;
   /** How it read, once it did; or why it did not. */
   read: { res: ReadFileResponse } | { error: unknown } | null;
   target: Target | null;
@@ -105,6 +107,12 @@ export function setPreview(p: Panel, tab: Tab, on: boolean) {
   changed(p);
 }
 
+export function setPageTitle(p: Panel, tab: Tab, title: string) {
+  if (tab.pageTitle === title) return;
+  tab.pageTitle = title;
+  changed(p);
+}
+
 async function read(p: Panel, tab: Tab) {
   const file = tab.file;
   let got: Tab["read"];
@@ -121,7 +129,7 @@ async function read(p: Panel, tab: Tab) {
 
 /** A new tab, after the one in front. */
 function add(p: Panel, kind: TabKind, file: SessionFile, tree: boolean): Tab {
-  const tab: Tab = { key: `t${++tabs}`, kind, file, name: baseName(file.path), read: null, target: null, preview: true, replyRun: file.run, tree };
+  const tab: Tab = { key: `t${++tabs}`, kind, file, name: baseName(file.path), pageTitle: "", read: null, target: null, preview: true, replyRun: file.run, tree };
   const at = p.tabs.findIndex((t) => t.key === p.active);
   p.tabs.splice(at < 0 ? p.tabs.length : at + 1, 0, tab);
   if (file.path && kind !== "attachment") void read(p, tab);
@@ -152,7 +160,7 @@ export function openFromTree(p: Panel, path: string) {
 
 /** The tab shows another file (or another turn of it). */
 function go(p: Panel, tab: Tab, file: SessionFile) {
-  Object.assign(tab, { file, name: baseName(file.path), read: null, target: null, preview: true });
+  Object.assign(tab, { file, name: baseName(file.path), pageTitle: "", read: null, target: null, preview: true });
   void read(p, tab);
 }
 

@@ -60,8 +60,8 @@ export type SessionFileRef = {
 };
 /** Where a page's view goes over the window, in the page's coordinates. */
 export type PageRect = { x: number; y: number; width: number; height: number };
-/** What a page shown asks of the app: to open a web address. */
-export type SessionPageEvent = { kind: "link"; url: string };
+/** What a page shown tells or asks of the app: a web address to open, or the page's document title. */
+export type SessionPageEvent = { kind: "link"; url: string } | { kind: "title"; title: string };
 
 export type Bridge = {
   platform: string;

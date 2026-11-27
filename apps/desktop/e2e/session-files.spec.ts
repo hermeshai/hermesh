@@ -70,12 +70,13 @@ test("a reply's files are tags opening side panel tabs; a page runs there offlin
   await expect(panel).toBeVisible();
   const tabs = panel.getByRole("tab");
   await expect(tabs).toHaveCount(1);
-  await expect(panel.locator(".sfp-tab.on")).toHaveText("demo.html");
   await expect(panel.locator(".sfp-tab.on")).toHaveAttribute("data-kind", "page");
   await expect(panel.locator(".sfp-addr")).toHaveText("docs/demo.html");
   await expect(panel.getByTestId("panel-page")).toBeVisible();
   await expect.poll(() => inPage<string>(app, "document.getElementById('t')?.textContent ?? ''"), { timeout: 20_000 }).toBe("第一版");
   await expect.poll(() => inPage<string>(app, "document.title")).toBe("demo.js 读到了");
+  // Page tabs prefer the running HTML document's <title>, keeping the path in the address bar.
+  await expect(panel.locator(".sfp-tab.on")).toHaveText("demo.js 读到了");
   await inPage(app, "document.getElementById('b').click()");
   await expect.poll(() => inPage<string>(app, "document.getElementById('t').textContent")).toBe("点过了");
   expect(await inPage<string>(app, "fetch('https://example.com/').then(() => 'reached', () => 'blocked')")).toBe("blocked");
@@ -121,6 +122,9 @@ test("a reply's files are tags opening side panel tabs; a page runs there offlin
   await expect.poll(async () => (await pageView(app))?.width ?? 0).toBeLessThan(windowWidth - 400);
   await bar.getByRole("button", { name: "查看当前版本" }).click();
   await expect.poll(() => inPage<string>(app, "document.getElementById('t')?.textContent ?? ''"), { timeout: 20_000 }).toBe("第二版");
+  // Without a <title>, a page tab falls back to its filename without the .html extension.
+  await expect(panel.locator(".sfp-tab.on")).toHaveText("demo");
+  await expect(panel.locator(".sfp-addr")).toHaveText("docs/demo.html");
   await expect(bar).toContainText("这是当前版本");
 
   // Code, and anything a reply names a line of, opens in a tab of its own at that line; the tree is hidden at first.

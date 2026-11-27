@@ -140,7 +140,7 @@ export function PdfBody({ file, name }: { file: SessionFile; name: string }) {
  * sent, and the bar under it says so when it refers to some), SVG as it looks, Markdown as it reads, code and text in
  * numbered lines.
  */
-export function AttachmentBody({ file }: { file: SessionFile }) {
+export function AttachmentBody({ file, onTitle }: { file: SessionFile; onTitle?: (title: string) => void }) {
   const { t } = useTranslation("session");
   const [got, setGot] = useState<{ text: string; url: string | null } | { error: unknown } | null>(null);
   const view = fileView(file.path);
@@ -166,7 +166,7 @@ export function AttachmentBody({ file }: { file: SessionFile }) {
   if (view === "page") {
     return (
       <div className="sfv-att">
-        <PageBody file={file} />
+        <PageBody file={file} onTitle={onTitle} />
         {refersToOwnFiles(got.text) && (
           <div className="sfv-bar" data-testid="attachment-alone">
             <span>{t("files.attachmentAlone")}</span>
@@ -200,8 +200,10 @@ const covered = () => document.querySelector('dialog[open], [role="dialog"]') !=
  * the app, with no network, reading its own folder from the session's machine. It opens once the
  * room is laid out, and hides while something of the app's is over it.
  */
-export function PageBody({ file }: { file: SessionFile }) {
+export function PageBody({ file, onTitle }: { file: SessionFile; onTitle?: (title: string) => void }) {
   const room = useRef<HTMLDivElement>(null);
+  const onTitleRef = useRef(onTitle);
+  onTitleRef.current = onTitle;
   useEffect(() => {
     const bridge = window.hermesh;
     const el = room.current;
@@ -221,12 +223,15 @@ export function PageBody({ file }: { file: SessionFile }) {
     };
     let frame = 0;
     const soon = () => void (frame ||= requestAnimationFrame(() => ((frame = 0), place())));
+    const off = bridge.onSessionPage((event) => {
+      if (event.kind === "link") bridge.openExternal(event.url);
+      else if (event.kind === "title") onTitleRef.current?.(event.title);
+    });
     const sized = new ResizeObserver(place);
     sized.observe(el);
     const overlays = new MutationObserver(soon);
     overlays.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["open", "role"] });
     window.addEventListener("resize", place);
-    const off = bridge.onSessionPage((event) => bridge.openExternal(event.url));
     return () => {
       live = false;
       cancelAnimationFrame(frame);

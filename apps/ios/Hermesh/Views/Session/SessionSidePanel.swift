@@ -351,7 +351,13 @@ struct SessionSidePanel: View {
             .accessibilityIdentifier("file-more")
         } else if !tab.path.isEmpty {
             Menu {
-                SessionFileMenu(sessionID: files.sessionID, run: tab.run, path: tab.path, folder: files.folders[tab.id] ?? "", sharing: $files.sharing)
+                if tab.kind == .page {
+                    Section(tab.path) {
+                        SessionFileMenu(sessionID: files.sessionID, run: tab.run, path: tab.path, folder: files.folders[tab.id] ?? "", sharing: $files.sharing)
+                    }
+                } else {
+                    SessionFileMenu(sessionID: files.sessionID, run: tab.run, path: tab.path, folder: files.folders[tab.id] ?? "", sharing: $files.sharing)
+                }
             } label: {
                 Image(systemName: "ellipsis").font(.subheadline.weight(.medium)).frame(width: 34, height: 34)
             }
@@ -362,8 +368,11 @@ struct SessionSidePanel: View {
     }
 
     private func title(_ t: PanelTab) -> String {
-        if let a = t.attachment { return fileBaseName(a.name) }
-        return t.path.isEmpty ? String(localized: "Project Files") : fileBaseName(t.path)
+        if let a = t.attachment {
+            return fileView(a.name) == .page ? pageTabTitle(a.name, pageTitle: t.pageTitle) : fileBaseName(a.name)
+        }
+        if t.path.isEmpty { return String(localized: "Project Files") }
+        return t.kind == .page ? pageTabTitle(t.path, pageTitle: t.pageTitle) : fileBaseName(t.path)
     }
 
     private func chip(_ t: PanelTab) -> some View {
@@ -400,8 +409,8 @@ struct SessionSidePanel: View {
         .accessibilityIdentifier("side-panel-tab")
     }
 
-    /// Subtle subtitle bar only for tabs that have no bottom directory-tree drawer (attachments, standalone 项目文件,
-    /// and `.html` pages). File tabs carry their folder path on the bottom drawer bar instead, saving vertical room.
+    /// Subtle subtitle bar only for tabs that carry metadata outside the content (attachments and standalone 项目文件).
+    /// File tabs carry their folder path on the bottom drawer bar, and `.html` page tabs carry theirs in ⋯, saving vertical room.
     @ViewBuilder private func subBar(_ t: Binding<PanelTab>) -> some View {
         let tab = t.wrappedValue
         if let a = tab.attachment {
@@ -418,18 +427,6 @@ struct SessionSidePanel: View {
                     .padding(.horizontal, 14).frame(height: 36)
                 Divider()
             }
-        } else if tab.kind == .page {
-            VStack(spacing: 0) {
-                HStack {
-                    Text(verbatim: tab.path).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
-                        .padding(.horizontal, 10).frame(height: 26)
-                        .background(Capsule().fill(Color.secondary.opacity(0.12)))
-                        .accessibilityIdentifier("side-panel-path")
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 12).frame(height: 38)
-                Divider()
-            }
         }
     }
 
@@ -441,15 +438,18 @@ struct SessionSidePanel: View {
     @ViewBuilder private func tabBody(_ t: Binding<PanelTab>) -> some View {
         let tab = t.wrappedValue
         if let a = tab.attachment {
-            SessionAttachmentContent(sessionID: files.sessionID, machineID: machineID, ref: a)
+            SessionAttachmentContent(sessionID: files.sessionID, machineID: machineID, ref: a) { t.wrappedValue.pageTitle = $0 }
         } else if tab.path.isEmpty {
             SessionTree(files: files, activePath: nil, sizes: true) { files.openFromTree($0, machineID: machineID) }
         } else {
             let dir = tab.path.contains("/") ? String(tab.path[..<tab.path.lastIndex(of: "/")!]) : ""
             ZStack {
                 SessionFileContent(sessionID: files.sessionID, path: tab.path, line: tab.line, endLine: tab.endLine, turnRun: tab.replyRun,
-                                   run: t.run, source: tab.source) { files.folders[tab.id] = $0 }
+                                   run: t.run, source: tab.source, onFolder: { files.folders[tab.id] = $0 }, onTitle: { t.wrappedValue.pageTitle = $0 })
                     .id("\(tab.id)\u{0}\(tab.path)")
+                    .onChange(of: tab.run) { _, _ in
+                        if tab.kind == .page { t.wrappedValue.pageTitle = "" }
+                    }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         if tab.kind == .files {
                             SessionFileDrawerBar(project: projectID, dir: dir) {
@@ -477,6 +477,7 @@ struct SessionAttachmentContent: View {
     let sessionID: String
     let machineID: String
     let ref: Hermesh_Session_V1_AttachmentRef
+    var onTitle: (String) -> Void = { _ in }
     @State private var got: Result<Data, Error>?
     @State private var local: URL?
 
@@ -488,7 +489,7 @@ struct SessionAttachmentContent: View {
             case .failure(let e)?: FileCard(name: fileBaseName(ref.name), text: e.localizedDescription)
             case .success(let data)?:
                 if view == .page || view == .svg {
-                    AttachmentWeb(data: data, mime: view == .svg ? "image/svg+xml" : "text/html")
+                    AttachmentWeb(data: data, mime: view == .svg ? "image/svg+xml" : "text/html", onTitle: view == .page ? onTitle : { _ in })
                         .safeAreaInset(edge: .bottom, spacing: 0) {
                             if view == .page, refersToOwnFiles(String(decoding: data, as: UTF8.self)) {
                                 Text("Only this file was sent; the files the page refers to aren’t here")
@@ -546,16 +547,21 @@ struct SessionAttachmentPage: View {
     let sessionID: String
     let machineID: String
     let ref: Hermesh_Session_V1_AttachmentRef
+    @State private var pageTitle = ""
     @State private var sharing: URL?
     @Environment(AppModel.self) private var model
 
+    private var titleLabel: String {
+        fileView(ref.name) == .page ? pageTabTitle(ref.name, pageTitle: pageTitle) : fileBaseName(ref.name)
+    }
+
     var body: some View {
-        SessionAttachmentContent(sessionID: sessionID, machineID: machineID, ref: ref)
+        SessionAttachmentContent(sessionID: sessionID, machineID: machineID, ref: ref) { pageTitle = $0 }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 1) {
-                        Text(verbatim: fileBaseName(ref.name)).font(.subheadline.weight(.semibold))
+                        Text(verbatim: titleLabel).font(.subheadline.weight(.semibold))
                         Text(verbatim: String(localized: "Attachment · \(ByteCountFormatter.string(fromByteCount: Int64(ref.sizeBytes), countStyle: .file))"))
                             .font(.caption2).foregroundStyle(.secondary)
                     }
@@ -586,12 +592,46 @@ struct SessionAttachmentPage: View {
 private struct AttachmentWeb: UIViewRepresentable {
     let data: Data
     let mime: String
+    var onTitle: (String) -> Void = { _ in }
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        var onTitle: (String) -> Void
+        private var titleObservation: NSKeyValueObservation?
+        private var sawExplicitTitle = false
+
+        init(onTitle: @escaping (String) -> Void) { self.onTitle = onTitle }
+
+        func observeTitle(of web: WKWebView) {
+            titleObservation = web.observe(\.title, options: [.new]) { [weak self] web, _ in
+                let title = web.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                Task { @MainActor [weak self] in
+                    guard let self, !title.isEmpty else { return }
+                    self.sawExplicitTitle = true
+                    self.onTitle(title)
+                }
+            }
+        }
+
+        func webView(_ web: WKWebView, didFinish navigation: WKNavigation!) {
+            let title = web.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !title.isEmpty {
+                sawExplicitTitle = true
+                onTitle(title)
+            } else if !sawExplicitTitle {
+                onTitle("")
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(onTitle: onTitle) }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent()
         let web = WKWebView(frame: .zero, configuration: config)
+        web.navigationDelegate = context.coordinator
         web.accessibilityIdentifier = "file-page"
+        context.coordinator.observeTitle(of: web)
         WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "hermesh-attachment-page", encodedContentRuleList: #"[{"trigger":{"url-filter":"^(https?|wss?|ftp|file):"},"action":{"type":"block"}}]"#) { list, _ in
             if let list { web.configuration.userContentController.add(list) }
             web.load(data, mimeType: mime, characterEncodingName: "utf-8", baseURL: URL(string: "about:blank")!)
@@ -599,5 +639,7 @@ private struct AttachmentWeb: UIViewRepresentable {
         return web
     }
 
-    func updateUIView(_ web: WKWebView, context: Context) {}
+    func updateUIView(_ web: WKWebView, context: Context) {
+        context.coordinator.onTitle = onTitle
+    }
 }

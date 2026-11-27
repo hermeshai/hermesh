@@ -855,7 +855,7 @@ private struct SessionDuoWideItems: ToolbarContent {
                             SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
                         }
                     } else if !tab.path.isEmpty {
-                        Section(fileBaseName(tab.path)) {
+                        Section(tab.kind == .page ? tab.path : fileBaseName(tab.path)) {
                             SessionFileMenu(sessionID: files.sessionID, run: tab.run, path: tab.path,
                                             folder: files.folders[tab.id] ?? "", sharing: $files.sharing)
                         }

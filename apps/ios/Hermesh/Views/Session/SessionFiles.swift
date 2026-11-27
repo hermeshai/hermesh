@@ -313,6 +313,8 @@ struct PanelTab: Identifiable, Equatable {
     var endLine: Int?
     /// The turn of the reply it was opened from: where "Show Version at Reply" goes back to.
     var replyRun = ""
+    /// The running HTML page's document `<title>`, once reported; empty falls back to the filename without `.html`.
+    var pageTitle = ""
     var source = false
     var attachment: Hermesh_Session_V1_AttachmentRef?
 }
@@ -394,11 +396,13 @@ struct SessionFileContent: View {
     let source: Bool
     /// The session's folder, once the machine named it: for Copy Path.
     var onFolder: (String) -> Void = { _ in }
+    /// The running HTML page's document `<title>`, once reported.
+    var onTitle: (String) -> Void = { _ in }
     @State private var read: Result<Hermesh_Session_V1_ReadFileResponse, Error>?
     @State private var local: URL?
     @State private var docFiles: SessionFilesModel
 
-    init(sessionID: String, path: String, line: Int?, endLine: Int?, turnRun: String, run: Binding<String>, source: Bool, onFolder: @escaping (String) -> Void = { _ in }) {
+    init(sessionID: String, path: String, line: Int?, endLine: Int?, turnRun: String, run: Binding<String>, source: Bool, onFolder: @escaping (String) -> Void = { _ in }, onTitle: @escaping (String) -> Void = { _ in }) {
         self.sessionID = sessionID
         self.path = path
         self.line = line
@@ -407,6 +411,7 @@ struct SessionFileContent: View {
         _run = run
         self.source = source
         self.onFolder = onFolder
+        self.onTitle = onTitle
         _docFiles = State(initialValue: SessionFilesModel(sessionID: sessionID))
     }
 
@@ -436,7 +441,7 @@ struct SessionFileContent: View {
         case .success(let res)?:
             let filePath = res.path.isEmpty ? path : res.path
             if view == .page {
-                SessionPageWeb(api: model.api, sessionID: sessionID, run: run, path: filePath).id(run)
+                SessionPageWeb(api: model.api, sessionID: sessionID, run: run, path: filePath, onTitle: onTitle).id(run)
             } else if quickLooks || view == .svg && !source {
                 if view == .svg, !source {
                     SessionPageWeb(api: model.api, sessionID: sessionID, run: run, path: filePath).id(run)
@@ -540,6 +545,7 @@ struct SessionFilePage: View {
     @State private var turnRun: String
     @State private var run: String
     @State private var source = false
+    @State private var pageTitle = ""
     @State private var folder = ""
     @State private var sharing: URL?
     @State private var drawer = false
@@ -557,26 +563,33 @@ struct SessionFilePage: View {
     private var name: String { fileBaseName(path) }
     private var view: FileView { fileView(path) }
     private var dir: String { path.contains("/") ? String(path[..<path.lastIndex(of: "/")!]) : "" }
+    private var pageLabel: String { pageTabTitle(path, pageTitle: pageTitle) }
+    private var pageSubtitle: String {
+        if !pageTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return path }
+        return dir.isEmpty ? "" : "\(dir)/"
+    }
     /// A page is what it runs as: no source to switch to.
     private var sourceable: Bool { view == .markdown || view == .svg }
 
     var body: some View {
-        SessionFileContent(sessionID: sessionID, path: path, line: line, endLine: endLine, turnRun: turnRun, run: $run, source: source) { folder = $0 }
+        SessionFileContent(sessionID: sessionID, path: path, line: line, endLine: endLine, turnRun: turnRun, run: $run, source: source, onFolder: { folder = $0 }, onTitle: { pageTitle = $0 })
             .id(path)
+            .onChange(of: run) { _, _ in pageTitle = "" }
+            .onChange(of: path) { _, _ in pageTitle = "" }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if view != .page {
                     SessionFileDrawerBar(project: model.session(sessionID)?.projectID ?? "", dir: dir) { drawer = true }
                 }
             }
-            .navigationTitle(name)
+            .navigationTitle(view == .page ? pageLabel : name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // A page has no tree under it: where it is, under its name.
+                // A page has no tree under it: its document title (or stem), and where it is under it.
                 if view == .page {
                     ToolbarItem(placement: .principal) {
                         VStack(spacing: 1) {
-                            Text(verbatim: name).font(.subheadline.weight(.semibold))
-                            if !dir.isEmpty { Text(verbatim: "\(dir)/").font(.caption2).foregroundStyle(.secondary) }
+                            Text(verbatim: pageLabel).font(.subheadline.weight(.semibold))
+                            if !pageSubtitle.isEmpty { Text(verbatim: pageSubtitle).font(.caption2).foregroundStyle(.secondary) }
                         }
                         .lineLimit(1)
                         .truncationMode(.head)
@@ -822,8 +835,9 @@ struct SessionPageWeb: UIViewRepresentable {
     let sessionID: String
     let run: String
     let path: String
+    var onTitle: (String) -> Void = { _ in }
 
-    func makeCoordinator() -> SessionFileScheme { SessionFileScheme(api: api, sessionID: sessionID, run: run, base: dirOf(path)) }
+    func makeCoordinator() -> SessionFileScheme { SessionFileScheme(api: api, sessionID: sessionID, run: run, base: dirOf(path), onTitle: onTitle) }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -833,6 +847,7 @@ struct SessionPageWeb: UIViewRepresentable {
         web.navigationDelegate = context.coordinator
         web.isInspectable = true
         web.accessibilityIdentifier = "file-page"
+        context.coordinator.observeTitle(of: web)
         // Nothing from the network: the page reads its folder and nothing else.
         WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "hermesh-session-page", encodedContentRuleList: #"[{"trigger":{"url-filter":"^(https?|wss?|ftp|file):"},"action":{"type":"block"}}]"#) { list, _ in
             if let list { web.configuration.userContentController.add(list) }
@@ -841,7 +856,9 @@ struct SessionPageWeb: UIViewRepresentable {
         return web
     }
 
-    func updateUIView(_ web: WKWebView, context: Context) {}
+    func updateUIView(_ web: WKWebView, context: Context) {
+        context.coordinator.onTitle = onTitle
+    }
 }
 
 final class SessionFileScheme: NSObject, WKURLSchemeHandler, WKNavigationDelegate {
@@ -850,13 +867,42 @@ final class SessionFileScheme: NSObject, WKURLSchemeHandler, WKNavigationDelegat
     let sessionID: String
     let run: String
     let base: String
+    var onTitle: (String) -> Void
     private var stopped: Set<ObjectIdentifier> = []
+    private var titleObservation: NSKeyValueObservation?
+    private var sawExplicitTitle = false
 
-    init(api: AppAPI?, sessionID: String, run: String, base: String) {
+    init(api: AppAPI?, sessionID: String, run: String, base: String, onTitle: @escaping (String) -> Void = { _ in }) {
         self.api = api
         self.sessionID = sessionID
         self.run = run
         self.base = base
+        self.onTitle = onTitle
+    }
+
+    func observeTitle(of web: WKWebView) {
+        titleObservation = web.observe(\.title, options: [.new]) { [weak self] web, _ in
+            let title = web.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            Task { @MainActor [weak self] in
+                guard let self, !title.isEmpty else { return }
+                self.sawExplicitTitle = true
+                self.onTitle(title)
+            }
+        }
+    }
+
+    func webView(_ web: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        sawExplicitTitle = false
+    }
+
+    func webView(_ web: WKWebView, didFinish navigation: WKNavigation!) {
+        let title = web.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !title.isEmpty {
+            sawExplicitTitle = true
+            onTitle(title)
+        } else if !sawExplicitTitle {
+            onTitle("")
+        }
     }
 
     static func url(sessionID: String, run: String, path: String) -> URL {

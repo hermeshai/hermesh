@@ -305,6 +305,18 @@ export async function openSessionPage(owner: WebContents, ref: SessionFileRef, r
   view.setBackgroundColor("#ffffff");
   const wc = view.webContents;
   const tell = (event: SessionPageEvent) => void (!owner.isDestroyed() && owner.send("session-page", event));
+  let explicitTitle = false;
+  wc.on("did-start-navigation", (_e, _url, isInPlace, isMainFrame) => {
+    if (isMainFrame && !isInPlace) explicitTitle = false;
+  });
+  wc.on("page-title-updated", (_e, title, explicitSet) => {
+    if (!explicitSet) return;
+    explicitTitle = true;
+    tell({ kind: "title", title });
+  });
+  wc.on("did-finish-load", () => {
+    if (!explicitTitle) tell({ kind: "title", title: "" });
+  });
   wc.setWindowOpenHandler(({ url }) => {
     if (webAddress(url)) tell({ kind: "link", url });
     return { action: "deny" };

@@ -190,10 +190,12 @@ extension HermeshUITests {
             let tabs = app.descendants(matching: .any).matching(identifier: "side-panel-tab")
             XCTAssertEqual(tabs.count, 1)
             XCTAssertTrue(app.buttons["tree-README.md"].waitForExistence(timeout: 20), "项目文件: the tree alone")
-            // A reply's page: a tab of its own, running.
+            // A reply's page: a tab of its own, running; shows document <title> and omits the redundant path sub-bar.
             tag("docs/demo.html").tap()
             XCTAssertTrue(panel.webViews.firstMatch.staticTexts["第一版"].waitForExistence(timeout: 30), "the page, in its tab")
             XCTAssertEqual(tabs.count, 2)
+            XCTAssertFalse(panel.descendants(matching: .any)["side-panel-path"].firstMatch.exists, "no redundant path bar under page tab")
+            XCTAssertTrue(panel.staticTexts["demo.js 读到了"].waitForExistence(timeout: 10), "page tab uses HTML document title")
             XCTAssertTrue(tag("docs/demo.html").isHittable, "the conversation beside it")
             shot("files-panel-page")
             // Code at its line, in a tab of its own across the panel's full width; at its foot the unified bottom
