@@ -131,6 +131,8 @@ struct StepView: View {
             if let r {
                 SettledQuestionCard(question: q, resolution: r)
             }
+        case .planReview(_, let title, let approved, let by):
+            SettledPlanReviewCard(title: title, approved: approved, by: by)
         case .turnEnd(_, let end, _):
             if end.isError, isInterruption(end.hasFailure ? end.failure : nil) {
                 interruptNote(end.failure)
@@ -1086,13 +1088,14 @@ extension View {
         ready: Bool,
         spoken: Int = 0,
         waitingAgent: String? = nil,
+        waitingPlan: Bool = false,
         todoSummary: TodoEndSummary? = nil,
         atEnd: Binding<Bool>,
         position: Binding<ScrollPosition>,
         scrollBox: ConversationScrollBox,
         @ViewBuilder bottom: @escaping () -> Bottom
     ) -> some View {
-        modifier(FollowsEnd(id: id, ready: ready, spoken: spoken, waitingAgent: waitingAgent, todoSummary: todoSummary, atEnd: atEnd, position: position, scrollBox: scrollBox, bottom: bottom))
+        modifier(FollowsEnd(id: id, ready: ready, spoken: spoken, waitingAgent: waitingAgent, waitingPlan: waitingPlan, todoSummary: todoSummary, atEnd: atEnd, position: position, scrollBox: scrollBox, bottom: bottom))
     }
 }
 
@@ -1101,6 +1104,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
     let ready: Bool
     let spoken: Int
     let waitingAgent: String?
+    let waitingPlan: Bool
     let todoSummary: TodoEndSummary?
     @Binding var atEnd: Bool
     @Binding var position: ScrollPosition
@@ -1190,7 +1194,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 0) { bottom() }
                     .frame(maxWidth: .infinity)
-                    .toEndButton(away && !atEnd, waitingAgent: waitingAgent, todoSummary: todoSummary) {
+                    .toEndButton(away && !atEnd, waitingAgent: waitingAgent, waitingPlan: waitingPlan, todoSummary: todoSummary) {
                         atEnd = true
                         away = false
                         positioned = true
