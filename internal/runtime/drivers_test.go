@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -2351,29 +2352,51 @@ func TestCodexActiveWriterForkFallbackAndHerCloseSafety(t *testing.T) {
 	}
 	_ = sess.Close()
 
-	started := make(chan struct{})
-	release := make(chan struct{})
-	herDrv := her.NewDriver(func() bool { return true }, func(ctx context.Context, _, _ string) (string, string, error) {
-		close(started)
-		select {
-		case <-release:
-			return "late reply", "her_s2", nil
-		case <-ctx.Done():
-			return "", "", ctx.Err()
-		}
-	})
-	hs, err := herDrv.StartSession(ctx, runtime.StartSpec{ResumeCursor: "her_s1"})
+	// A force-stopped her session takes no late events: her conversation closes under it.
+	hb := &lateHer{started: make(chan struct{}), release: make(chan struct{})}
+	hs, err := her.NewDriver(hb).StartSession(ctx, runtime.StartSpec{ResumeCursor: "her_s1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := hs.StartTurn(ctx, runtime.TurnInput{RunID: "r_her", Prompt: "hi"}); err != nil {
-		t.Fatal(err)
-	}
-	<-started
+	go func() { _ = hs.StartTurn(ctx, runtime.TurnInput{RunID: "r_her", Prompt: "hi"}) }()
+	<-hb.started
 	_ = hs.ForceStop()
-	close(release)
+	close(hb.release)
 	time.Sleep(30 * time.Millisecond)
 }
+
+// lateHer is a Her whose answer to a prompt comes after the session was stopped.
+type lateHer struct {
+	started, release chan struct{}
+	once             sync.Once
+}
+
+func (h *lateHer) Available() bool { return true }
+func (h *lateHer) Models(context.Context) ([]*sessionv1.ModelCatalogEntry, error) {
+	return nil, nil
+}
+func (h *lateHer) NewConversation(context.Context, string, string) (string, error) {
+	return "her_s1", nil
+}
+func (h *lateHer) Attach(context.Context, string) (her.Conversation, error) {
+	return &lateConv{h: h, events: make(chan json.RawMessage)}, nil
+}
+func (h *lateHer) Op(context.Context, string, any) error            { return nil }
+func (h *lateHer) DeleteConversation(context.Context, string) error { return nil }
+
+type lateConv struct {
+	h      *lateHer
+	events chan json.RawMessage
+	closed sync.Once
+}
+
+func (c *lateConv) Events() <-chan json.RawMessage { return c.events }
+func (c *lateConv) Op(ctx context.Context, _ any) error {
+	c.h.once.Do(func() { close(c.h.started) })
+	<-c.h.release
+	return nil
+}
+func (c *lateConv) Close() error { c.closed.Do(func() { close(c.events) }); return nil }
 
 func TestACPArtifactProposalsStandardPlanExitAndCodexPlanReview(t *testing.T) {
 	ctx := context.Background()

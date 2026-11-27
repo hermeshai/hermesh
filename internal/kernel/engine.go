@@ -121,9 +121,18 @@ func (p *Principal) allowsAgent(instanceID, driverKind, acpFlavor string) bool {
 		(acpFlavor != "" && identity.Allows(p.AllowedAgents, acpFlavor))
 }
 
+// isHerConversation: the session is a conversation of the owner's with Her (docs/her-conversations.md).
+func isHerConversation(s *sessionv1.Session) bool {
+	return s.GetAgent() == "her" || s.GetModelSelection().GetInstanceId() == "her"
+}
+
 func (p *Principal) canViewSession(s *sessionv1.Session) bool {
 	if p == nil || s == nil {
 		return false
+	}
+	// The owner's conversations with Her are theirs alone: no agent sees them, Her's tools included.
+	if isHerConversation(s) {
+		return p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_OWNER
 	}
 	if p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_OWNER || p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_HER {
 		return true
@@ -1117,6 +1126,9 @@ func (e *Engine) ListProviders(ctx context.Context, p *Principal, projectID stri
 		if !p.allowsAgent(cfg.InstanceId, cfg.Driver, cfg.AcpFlavor) {
 			continue
 		}
+		if cfg.Driver == "her" && p.Actor.GetKind() != sessionv1.ActorKind_ACTOR_KIND_OWNER {
+			continue
+		}
 		out = append(out, e.cat.ResolveInstance(ctx, cfg, workdir, refresh))
 	}
 	return &sessionv1.ListProvidersResponse{
@@ -1269,6 +1281,11 @@ func (e *Engine) projectAllowsInstance(projectID, instanceID string) error {
 // ---------------------------------------------------------------------------
 // Session Start & Dispatch
 
+// isSubagent: the session is a sub-agent of its parent, which titles it; work Her sent is not one.
+func isSubagent(req *sessionv1.StartSessionRequest) bool {
+	return req.ParentSessionId != "" && req.ParentRelationship != "her"
+}
+
 func (e *Engine) StartSession(ctx context.Context, p *Principal, req *sessionv1.StartSessionRequest) (*sessionv1.StartSessionResponse, error) {
 	if p == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
@@ -1309,6 +1326,14 @@ func (e *Engine) StartSession(ctx context.Context, p *Principal, req *sessionv1.
 	}
 	if !p.allowsAgent(instCfg.InstanceId, instCfg.Driver, instCfg.AcpFlavor) {
 		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("grant does not permit provider %q", instCfg.InstanceId))
+	}
+	// Only Her (or the owner) says that work is Her's, sent from a conversation of the owner's with her.
+	if req.ParentRelationship == "her" && p.Actor.GetKind() != sessionv1.ActorKind_ACTOR_KIND_HER && p.Actor.GetKind() != sessionv1.ActorKind_ACTOR_KIND_OWNER {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("only Her sends work from her conversations"))
+	}
+	// A conversation with Her is the owner's own (docs/her-conversations.md): no agent opens one.
+	if instCfg.Driver == "her" && p.Actor.GetKind() != sessionv1.ActorKind_ACTOR_KIND_OWNER {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("only the owner talks with Her"))
 	}
 	if err := e.projectAllowsInstance(projectID, instCfg.InstanceId); err != nil {
 		return nil, err
@@ -1379,7 +1404,7 @@ func (e *Engine) StartSession(ctx context.Context, p *Principal, req *sessionv1.
 		} else {
 			seed, isFinal := runtime.DeriveSeedTitle(req.InitialPrompt, req.Attachments, titleLocale)
 			title = seed
-			if req.ParentSessionId != "" || isFinal || !e.hasTitleGenerator() {
+			if isSubagent(req) || isFinal || !e.hasTitleGenerator() {
 				titleState = sessionv1.TitleState_TITLE_STATE_FINAL
 			} else {
 				titleState = sessionv1.TitleState_TITLE_STATE_SEED
@@ -1388,7 +1413,7 @@ func (e *Engine) StartSession(ctx context.Context, p *Principal, req *sessionv1.
 		}
 	} else if p.Actor.GetKind() != sessionv1.ActorKind_ACTOR_KIND_OWNER &&
 		strings.TrimSpace(req.Locale) != "" &&
-		req.ParentSessionId == "" &&
+		!isSubagent(req) &&
 		hasInitial &&
 		!runtime.TitleMatchesLocaleScript(title, titleLocale) &&
 		e.hasTitleGenerator() {
@@ -1420,7 +1445,12 @@ func (e *Engine) StartSession(ctx context.Context, p *Principal, req *sessionv1.
 	}
 
 	lineage := &sessionv1.SessionLineage{Relationship: "root", Controllable: true}
-	if req.ParentSessionId != "" {
+	switch {
+	case req.ParentSessionId != "" && req.ParentRelationship == "her":
+		// Work Her sent from a conversation of hers, which may be on another machine: the
+		// conversation does not control it, and it is titled like any other session.
+		lineage = &sessionv1.SessionLineage{ParentSessionId: req.ParentSessionId, Relationship: "her"}
+	case req.ParentSessionId != "":
 		lineage = &sessionv1.SessionLineage{
 			ParentSessionId: req.ParentSessionId,
 			Relationship:    "subagent",
@@ -3206,12 +3236,14 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 	rsnBufs := map[string]*strings.Builder{}
 	var lastAssistantText string
 	var pendingPlan *sessionv1.PlanReviewPayload
+	var pendingQuestion *sessionv1.UserInputPayload
 
 	resetTurnBuffers := func() {
 		clear(msgBufs)
 		clear(rsnBufs)
 		lastAssistantText = ""
 		pendingPlan = nil
+		pendingQuestion = nil
 	}
 
 	// Reasoning still streaming (item -> run): shown as thinking until it ends, except for the one item given.
@@ -3315,7 +3347,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 
 		switch ev.Kind {
 		case runtime.EventNativeSession:
-			_, _ = e.st.Mutate(func(tx *store.Tx) error {
+			events, _ := e.st.Mutate(func(tx *store.Tx) error {
 				ps, err := tx.GetProviderSession(psID)
 				if err != nil {
 					return err
@@ -3330,6 +3362,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					return err
 				}
 				if sNow, sErr := tx.GetSession(sessionID); sErr == nil {
+					prev := sNow.ProviderSessionRef
 					ref := ps.ResumeCursor
 					if ref == "" {
 						ref = ps.NativeSessionId
@@ -3343,10 +3376,15 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					if ev.Effort != "" {
 						sNow.Effort = ev.Effort
 					}
+					if isHerConversation(sNow) && sNow.ProviderSessionRef != prev {
+						sNow.UpdatedAt = timestamppb.Now()
+						_ = tx.AppendEvent(&sessionv1.SessionEvent{SessionId: sessionID, Type: "session.updated", Session: sNow})
+					}
 					_ = putSessionSynced(tx, sNow)
 				}
 				return nil
 			})
+			e.publish(events, nil)
 
 		case runtime.EventBackgroundTask:
 			taskID := ev.TaskID
@@ -3756,6 +3794,11 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			})
 			e.publish(evs, nil)
 
+		case runtime.EventQuestionAsked:
+			if e.ensureContinuationTurn(pump) != nil && ev.Question != nil && len(ev.Question.Questions) > 0 {
+				pendingQuestion = ev.Question
+			}
+
 		case runtime.EventPlanProposed:
 			cur := e.ensureContinuationTurn(pump)
 			if cur == nil {
@@ -3956,10 +3999,11 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			}
 			resultText := lastAssistantText
 			planToReview := pendingPlan
+			questionToAsk := pendingQuestion
 			resetTurnBuffers()
 
 			capturedCp, cumStat := e.captureTurnCheckpoint(sessionID, cur.runID, cur.ordinal, cur.workdir, cur.prevTreeOID)
-			e.finishRunCompleted(sessionID, cur.runID, psID, capturedCp, cumStat, resultText, planToReview)
+			e.finishRunCompleted(sessionID, cur.runID, psID, capturedCp, cumStat, resultText, planToReview, questionToAsk)
 			pump.lease.SetInTurn(false)
 			cur.closeDone()
 
@@ -4088,7 +4132,7 @@ func (e *Engine) recordSwitchItem(sessionID, runID string, fromSel, toSel *sessi
 	e.publish(evs, nil)
 }
 
-func (e *Engine) finishRunCompleted(sessionID, runID, psID string, cp *sessionv1.Checkpoint, cumStat *sessionv1.DiffStat, resultText string, pendingPlan *sessionv1.PlanReviewPayload) {
+func (e *Engine) finishRunCompleted(sessionID, runID, psID string, cp *sessionv1.Checkpoint, cumStat *sessionv1.DiffStat, resultText string, pendingPlan *sessionv1.PlanReviewPayload, pendingQuestion *sessionv1.UserInputPayload) {
 	e.maybeRefineTitleBeforeTurnEnd(sessionID, runID, cp, resultText)
 	unlock := e.lockSession(sessionID)
 	preSess, _ := e.st.Session(sessionID)
@@ -4227,6 +4271,44 @@ func (e *Engine) finishRunCompleted(sessionID, runID, psID string, cp *sessionv1
 			sess.Status = sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT
 			sess.PendingRequestId = reqID
 			sess.Progress.PendingQuestion = nil
+		} else if pendingQuestion != nil {
+			// The agent ended its turn on a question (Her's, docs/her-conversations.md §5.3): the session
+			// waits on it, and the answer, or any message, starts the next turn.
+			reqID := newID("req")
+			resumeReq = &sessionv1.RuntimeRequest{
+				RequestId:    reqID,
+				SessionId:    sessionID,
+				RunId:        runID,
+				Kind:         sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT,
+				Status:       sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING,
+				ResponseMode: sessionv1.ResponseMode_RESPONSE_MODE_RESUME_TURN,
+				UserInput:    pendingQuestion,
+			}
+			if err := tx.PutRuntimeRequest(resumeReq); err != nil {
+				return err
+			}
+			resumeReqItem = &sessionv1.TurnItem{
+				ItemId:    "reqitm_" + reqID,
+				SessionId: sessionID,
+				RunId:     runID,
+				Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST,
+				Status:    "waiting",
+				RequestId: reqID,
+			}
+			if err := tx.PutTurnItem(resumeReqItem); err != nil {
+				return err
+			}
+			sess.ActiveRunId = ""
+			sess.QueuedRunCount = uint32(len(queued))
+			sess.Status = sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT
+			sess.PendingRequestId = reqID
+			sess.Progress.PendingQuestion = &sessionv1.Question{
+				QuestionId:           reqID,
+				Turn:                 r.Ordinal,
+				Items:                pendingQuestion.Questions,
+				AskedAt:              timestamppb.Now(),
+				LocalAnswerAvailable: true,
+			}
 		} else {
 			sess.ActiveRunId = ""
 			sess.QueuedRunCount = uint32(len(queued))
@@ -4528,7 +4610,7 @@ func (e *Engine) makeGate(sessionID, workdir string) runtime.GateFunc {
 		runID := sess.ActiveRunId
 		curRun, _ := e.st.Run(runID)
 
-		if req.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL && req.Approval != nil {
+		if req.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL && req.Approval != nil && !req.Delegated {
 			mode, imode := sess.EffectiveRuntimeMode, sess.InteractionMode
 			if curRun != nil {
 				mode, imode = curRun.RuntimeMode, curRun.InteractionMode
@@ -4749,9 +4831,43 @@ func (e *Engine) makeGate(sessionID, workdir string) runtime.GateFunc {
 			return runtime.ToolGateResult{CancelTurn: true}, context.Canceled
 		case <-ctx.Done():
 			expirePending()
+			if req.Delegated {
+				// Answered where the agent itself asked (Her's chat): the turn goes on.
+				e.resumeAfterRequest(sessionID, runID, reqID)
+			}
 			return runtime.ToolGateResult{CancelTurn: true}, ctx.Err()
 		}
 	}
+}
+
+// resumeAfterRequest puts a session back to running once a request it waited on was settled
+// elsewhere, unless it already waits on another.
+func (e *Engine) resumeAfterRequest(sessionID, runID, reqID string) {
+	if e.bgCtx.Err() != nil {
+		return
+	}
+	evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+		sNow, err := tx.GetSession(sessionID)
+		if err != nil || sNow.PendingRequestId != reqID {
+			return nil
+		}
+		sNow.PendingRequestId = ""
+		if sNow.Progress != nil {
+			sNow.Progress.PendingQuestion = nil
+		}
+		if rNow, rErr := tx.GetRun(runID); rErr == nil && rNow.Status == sessionv1.RunStatus_RUN_STATUS_WAITING_REQUEST {
+			rNow.Status = sessionv1.RunStatus_RUN_STATUS_RUNNING
+			_ = tx.PutRun(rNow)
+		}
+		if sNow.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT {
+			sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+		}
+		if err := putSessionSynced(tx, sNow); err != nil {
+			return err
+		}
+		return tx.AppendEvent(&sessionv1.SessionEvent{SessionId: sessionID, Type: "session.updated", Session: sNow})
+	})
+	e.publish(evs, nil)
 }
 
 func (e *Engine) canAnswerQuestion(p *Principal, sess *sessionv1.Session, run *sessionv1.Run) bool {
@@ -6421,6 +6537,17 @@ func (e *Engine) DeleteSession(ctx context.Context, p *Principal, sessionID stri
 	}
 	if sess.ActiveProviderSessionId != "" {
 		e.sup.Detach(sess.ActiveProviderSessionId, true)
+	}
+	// A provider that keeps the conversation itself (Her) deletes it there too.
+	if _, drv, _ := e.resolveInstanceConfig(p, sess.ProjectId, sess.GetModelSelection().GetInstanceId()); drv != nil {
+		if del, ok := drv.(runtime.Deleter); ok {
+			pss, _ := e.st.ProviderSessions(sessionID)
+			for _, ps := range pss {
+				if ref := ps.GetNativeSessionId(); ref != "" {
+					_ = del.Delete(ctx, ref)
+				}
+			}
+		}
 	}
 	if sess.GetWorkspaceStrategy().GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE && sess.GetWorkspaceStrategy().GetWorktreePath() != "" {
 		if ws, wErr := e.st.Workspace(sess.ProjectId); wErr == nil {

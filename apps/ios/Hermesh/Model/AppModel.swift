@@ -266,6 +266,7 @@ final class AppModel {
     var listView = SessionListLayout() { didSet { save(listView, "listView") } }
     var showArchived = false { didSet { save(showArchived, "showArchived") } }
     var collapsed: Set<String> = [] { didSet { save(collapsed, "collapsed") } }
+    var collapsedTrees: Set<String> = [] { didSet { save(collapsedTrees, "collapsedTrees") } }
     var pinnedOrder: [String] = [] { didSet { save(pinnedOrder, "pinnedOrder") } }
     var activeOrder: [String] = [] { didSet { save(activeOrder, "activeOrder") } }
     var toast: Toast?
@@ -284,6 +285,7 @@ final class AppModel {
         listView = Self.saved("listView") ?? SessionListLayout()
         showArchived = Self.saved("showArchived") ?? false
         collapsed = Self.saved("collapsed") ?? []
+        collapsedTrees = Self.saved("collapsedTrees") ?? []
         pinnedOrder = Self.saved("pinnedOrder") ?? []
         activeOrder = Self.saved("activeOrder") ?? []
         menuRail = Self.saved("menuRail") ?? false
@@ -957,7 +959,27 @@ final class AppModel {
     }
 
     /// A session's second line in lists: who sent the work to which coding agent, and the project.
-    func senderLine(_ s: Session) -> String { "\(senderName(s.createdBy)) → \(agentShortTitle(s.agent)) · \(s.projectID)" }
+    /// Her conversations show "You → Her" with no project (§3.3); nested child rows omit the sender (§3.4).
+    func senderLine(_ s: Session, child: Bool = false) -> String {
+        if s.isHerConversation { return String(localized: "You → Her") }
+        if child { return "\(agentShortTitle(s.agent)) · \(s.projectID)" }
+        return "\(senderName(s.createdBy)) → \(agentShortTitle(s.agent)) · \(s.projectID)"
+    }
+
+    /// The work a conversation with Her sent, nested in the list or not: archived with it (docs/her-conversations.md D14).
+    func sentFrom(_ s: Session) -> [Session] {
+        s.isHerConversation ? (childrenOf(sessions, nest: true)[s.sessionID] ?? []) : []
+    }
+
+    /// Whether a session can be archived now: a conversation with Her only once all it sent has stopped too (D14).
+    func canArchive(_ s: Session) -> Bool {
+        isTreeArchivable(s, children: sentFrom(s))
+    }
+
+    /// Immediately merges a newly started session into the list before Watch arrives.
+    func noteStarted(_ s: Session) {
+        replace(s)
+    }
 
     func machineName(_ id: String) -> String { machines.first { $0.machineID == id }?.machineName ?? String(id.prefix(12)) }
 
@@ -1081,21 +1103,29 @@ final class AppModel {
     }
 
     func setArchived(_ s: Session, _ archived: Bool, undoable: Bool = true) async {
-        guard let api else { return }
+        await setTreeArchived(archived ? [s] + sentFrom(s) : [s], archived, title: s.displayTitle, undoable: undoable)
+    }
+
+    private func setTreeArchived(_ tree: [Session], _ archived: Bool, title: String, undoable: Bool) async {
+        guard let api, !tree.isEmpty else { return }
         do {
-            let res = try await api.archive(s.sessionID, archived)
-            if res.hasSession { replace(res.session) }
+            var keptWorkspace = false
+            for (i, item) in tree.enumerated() {
+                let res = try await api.archive(item.sessionID, archived)
+                if res.hasSession { replace(res.session) }
+                if i == 0 && res.transitionApplied == "workspace_kept" { keptWorkspace = true }
+            }
             let text = if archived {
-                res.transitionApplied == "workspace_kept"
-                    ? String(localized: "Archived “\(s.displayTitle)” (worktree kept for local files)")
-                    : String(localized: "Archived “\(s.displayTitle)”")
+                keptWorkspace
+                    ? String(localized: "Archived “\(title)” (worktree kept for local files)")
+                    : String(localized: "Archived “\(title)”")
             } else {
-                String(localized: "Unarchived “\(s.displayTitle)”")
+                String(localized: "Unarchived “\(title)”")
             }
             var undo: (@MainActor () -> Void)?
             if undoable {
                 undo = { [weak self] in
-                    Task { await self?.setArchived(s, !archived, undoable: false) }
+                    Task { await self?.setTreeArchived(tree, !archived, title: title, undoable: false) }
                 }
             }
             show(text, undo: undo)
@@ -1269,6 +1299,7 @@ final class AppModel {
     func addProject(_ r: Hermesh_Local_V1_AddProjectRequest) async throws {
         signer.expect(.types([SigningPreview.adminCommand]))
         try await api?.addProject(r)
+        SessionChoices.forgetWorktree(machine: r.machineID, project: r.projectID)
     }
 
     func createFolder(machine: String, parent: String, name: String, gitInit: Bool) async throws {
@@ -1279,6 +1310,7 @@ final class AppModel {
     func removeProject(machine: String, project: String) async throws {
         signer.expect(.types([SigningPreview.adminCommand]))
         try await api?.removeProject(machine: machine, project: project)
+        SessionChoices.forgetWorktree(machine: machine, project: project)
     }
 
     /// Adds p again, working another way (adding again changes it). A project is for every agent provider

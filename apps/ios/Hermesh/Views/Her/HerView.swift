@@ -1,5 +1,6 @@
 import HermeshHer
 import HermeshKit
+import HermeshProto
 import HermeshSessions
 import SwiftUI
 
@@ -250,7 +251,7 @@ private struct HerTag: View {
         .animation(still ? nil : .easeInOut(duration: 0.2), value: statusText)
     }
 
-    private static func words(for status: HermeshHer.HerStatus) -> String {
+    fileprivate static func words(for status: HermeshHer.HerStatus) -> String {
         switch status {
         case .typing: String(localized: "Typing…")
         case .compacting: String(localized: "Compacting…")
@@ -351,17 +352,215 @@ private struct HerConnections: ViewModifier {
 
     func body(content: Content) -> some View {
         let running = herReachable(machine) && machine.her.running
-        let following = HerChat.Following(bot: chat.bot?.id, session: chat.bot?.sessionID, running: running, modelReady: machine.her.modelReady)
+        // A task conversation whose id Her has not created yet (`""`) never opens her main conversation.
+        let targetBot = chat.conversation == "" ? nil : chat.bot?.id
+        let sessionNow = chat.conversation ?? chat.bot?.sessionID
+        let following = HerChat.Following(bot: targetBot, session: sessionNow, conversation: chat.conversation, running: running, modelReady: machine.her.modelReady)
         content
             .task(id: following) {
-                if chat.kept == nil { await chat.loadKept() }
-                let current = HerChat.Following(bot: chat.bot?.id, session: chat.bot?.sessionID, running: running, modelReady: machine.her.modelReady)
+                if chat.isMainConversation && chat.kept == nil { await chat.loadKept() }
+                let botNow = chat.conversation == "" ? nil : chat.bot?.id
+                let sesNow = chat.conversation ?? chat.bot?.sessionID
+                let current = HerChat.Following(bot: botNow, session: sesNow, conversation: chat.conversation, running: running, modelReady: machine.her.modelReady)
                 await chat.hold(current)
             }
-            .task { if chat.kept == nil { await chat.loadKept() } }
+            .task { if chat.isMainConversation && chat.kept == nil { await chat.loadKept() } }
             .task(id: herReachable(machine)) { await chat.refreshWaiting() }
             // Delivered meanwhile: what waits is asked for again as the conversation grows.
             .onChange(of: chat.live?.entries.count) { if !chat.waiting.isEmpty { Task { await chat.refreshWaiting() } } }
+    }
+}
+
+/// A conversation of the owner's with Her besides her main one, opened from the task list (docs/her-conversations.md §3.2):
+/// Her's chat on that conversation, under a compact task bar with the task's title, Her and her machine (plus non-default model),
+/// and ⋯ for task actions and Her's settings.
+struct HerConversationPage: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var phase
+    @Environment(\.barsOnTheSide) private var sideBars
+    let sessionID: String
+    @State private var renaming = false
+    @State private var deleting = false
+    @State private var offlinePrompt: (text: String, sent: Date?, attachments: [Hermesh_Session_V1_AttachmentRef])?
+
+    private var session: Session? { model.session(sessionID) }
+    private var machine: HerMachine? { session.flatMap { s in model.machines.first { $0.machineID == s.machineID } } }
+
+    var body: some View {
+        if let session, let machine {
+            let convID = session.providerSessionRef
+            let chat = model.her.chat(machine.machineID, conversation: convID, model: model)
+            let state = herState(machine)
+            Group {
+                if chat.bot != nil && !convID.isEmpty {
+                    HerConversation(chat: chat, machine: machine, state: state, archived: session.status == .archived)
+                } else if session.offlineQueued {
+                    offlineQueuedView(session: session, machine: machine)
+                } else {
+                    HerStatus(machine: machine, state: state)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .scrollEdgeEffectStyle(.soft, for: .top)
+            .safeAreaBar(edge: .top) {
+                VStack(spacing: 6) {
+                    topBar(session: session, machine: machine, chat: chat)
+                    if session.status == .archived {
+                        ArchivedNote(session: session).padding(.horizontal, 16)
+                    }
+                }
+            }
+            .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
+            .background { if !sideBars { SwipesBack() } }
+            .toolbar {
+                if sideBars {
+                    if model.path.isEmpty { MenuToolbarItem() }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            moreItems(session: session, machine: machine)
+                        } label: {
+                            Image(systemName: "ellipsis")
+                        }
+                        .accessibilityLabel("More")
+                        .accessibilityIdentifier("session-more")
+                    }
+                }
+            }
+            .herConnections(chat, machine: machine)
+            .herAISharingAlert(chat)
+            .sessionDialogs(session, renaming: $renaming, deleting: $deleting)
+            .task(id: "\(sessionID)/\(session.offlineQueued)") {
+                guard session.offlineQueued, convID.isEmpty, let res = try? await model.api?.getSession(sessionID, cachedOnly: true) else { return }
+                if let item = res.projection.items.first(where: { $0.kind == .userMessage }) {
+                    offlinePrompt = (item.text, dateOf(item.createdAt, set: item.hasCreatedAt), item.attachments)
+                } else if let run = res.projection.runs.first {
+                    offlinePrompt = (run.prompt, dateOf(run.createdAt, set: run.hasCreatedAt), run.attachments)
+                }
+            }
+        } else {
+            PageLoader(text: "Reading the conversation…", bare: true)
+                .safeAreaBar(edge: .top) {
+                    HStack {
+                        if !sideBars {
+                            if !model.path.isEmpty {
+                                Button { model.path.removeLast() } label: { BarIcon(systemImage: "chevron.backward") }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Back")
+                                    .accessibilityIdentifier("BackButton")
+                            } else {
+                                GlassMenuButton()
+                            }
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16).padding(.bottom, 4)
+                }
+                .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
+        }
+    }
+
+    private func topBar(session: Session, machine: HerMachine, chat: HerChat) -> some View {
+        let side: CGFloat = sideBars ? 0 : 44
+        return HStack(spacing: 8) {
+            HStack(spacing: 8) {
+                if !sideBars {
+                    if !model.path.isEmpty {
+                        Button { model.path.removeLast() } label: { BarIcon(systemImage: "chevron.backward") }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Back")
+                            .accessibilityIdentifier("BackButton")
+                    } else {
+                        GlassMenuButton()
+                    }
+                }
+            }
+            .frame(width: side, alignment: .leading)
+            Spacer(minLength: 0)
+            TimelineView(.periodic(from: .now, by: chat.live?.live?.retryAt != nil ? 1 : 60)) { tick in
+                let status = chat.live.flatMap { herStatus($0, now: tick.date.timeIntervalSince1970 * 1000) }
+                let statusText = status.map(HerTag.words(for:))
+                let rawModel = (chat.live?.model).flatMap { $0.isEmpty ? nil : $0 }
+                    ?? ((session.modelSelection.model.isEmpty || session.modelSelection.model == "default") ? nil : session.modelSelection.model)
+                let namedModel: String = if let rawModel, let def = chat.models.defaultModel, !def.isEmpty {
+                    rawModel == def ? "" : chat.models.title(rawModel)
+                } else {
+                    ""
+                }
+                let subtitle = [chat.bot?.name ?? "Her", machine.machineName, namedModel, statusText ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
+                VStack(spacing: 1) {
+                    Text(verbatim: session.displayTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .accessibilityIdentifier("thread-title")
+                    HStack(spacing: 4) {
+                        HerSmallCat(size: 13)
+                        Text(verbatim: subtitle)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .shimmer(statusText != nil, paused: phase != .active)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("session-where")
+                }
+                .padding(.horizontal, 16)
+                .frame(maxWidth: 280)
+                .frame(height: 44)
+                .glassEffect(.regular, in: .capsule)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("her-conversation-bar")
+            }
+            .layoutPriority(1)
+            Spacer(minLength: 0)
+            HStack(spacing: 8) {
+                if !sideBars {
+                    Menu {
+                        moreItems(session: session, machine: machine)
+                    } label: {
+                        BarIcon(systemImage: "ellipsis")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("More")
+                    .accessibilityIdentifier("session-more")
+                }
+            }
+            .frame(width: side, alignment: .trailing)
+        }
+        .padding(.horizontal, 16).padding(.bottom, 4)
+    }
+
+    @ViewBuilder private func moreItems(session: Session, machine: HerMachine) -> some View {
+        Button("Copy Session ID", systemImage: "doc.on.doc") {
+            UIPasteboard.general.string = session.sessionID
+            model.show(String(localized: "Copied the session ID"))
+        }
+        SessionActions(session: session, renaming: $renaming, deleting: $deleting)
+        Divider()
+        Button("Her’s Settings", systemImage: "gearshape") {
+            model.her.machine = machine.machineID
+            model.path.append(.herSettings)
+        }
+        .accessibilityIdentifier("her-conversation-settings")
+    }
+
+    private func offlineQueuedView(session: Session, machine: HerMachine) -> some View {
+        let reachable = machine.local || (model.status.relayConnected && machine.online && machine.unreachable.isEmpty)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 13) {
+                if let p = offlinePrompt {
+                    PromptBubble(text: p.text, sent: p.sent, attachments: p.attachments, sessionID: session.sessionID, machineID: session.machineID,
+                                 faded: true, note: PromptNote(kind: .waiting(machine: machine.machineName) {
+                                     Task { _ = await model.delete(session) }
+                                 })) { EmptyView() }
+                }
+                ConnectionLine(machine: machine, linkUp: reachable)
+            }
+            .padding(.horizontal, 20).padding(.top, 13).padding(.bottom, 21)
+        }
+        .defaultScrollAnchor(.bottom, for: .initialOffset)
     }
 }
 

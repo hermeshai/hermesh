@@ -467,7 +467,7 @@ private func reduceChainProgress(_ proj: Hermesh_Session_V1_SessionProjection, c
     return (steps, focus)
 }
 
-/// Steps for the floating live checklist above the composer while the session is working.
+/// Steps for the inline live checklist at the foot of the conversation while the session is working.
 /// Automatically returns `[]` once the turn settles or all steps are completed/skipped.
 public func activeTodoSteps(_ proj: Hermesh_Session_V1_SessionProjection?) -> [TodoStepView] {
     guard let proj, isSessionChecklistLive(proj) else { return [] }
@@ -478,6 +478,71 @@ public func activeTodoSteps(_ proj: Hermesh_Session_V1_SessionProjection?) -> [T
         return []
     }
     return steps
+}
+
+public struct IndexedTodoStep: Equatable, Sendable {
+    public var index: Int
+    public var text: String
+    public var status: TodoStepStatus
+    public init(index: Int, text: String, status: TodoStepStatus) {
+        self.index = index
+        self.text = text
+        self.status = status
+    }
+}
+
+public struct TodoSpineWindow: Equatable, Sendable {
+    public var total: Int
+    public var settledCount: Int
+    public var stepNumber: Int
+    public var hasFailed: Bool
+    public var all: [IndexedTodoStep]
+    public var leading: [IndexedTodoStep]
+    public var foldLeading: Bool
+    public var active: [IndexedTodoStep]
+    public var upcoming: [IndexedTodoStep]
+    public var foldUpcoming: Bool
+    public var moreUpcomingCount: Int
+    public var subFocus: String?
+}
+
+/// Computes the B2 three-row smart window over an active checklist:
+/// - Lists of <= 3 steps render directly without fold chrome.
+/// - Lists of >= 4 steps fold completed/skipped leading steps into one summary row and cap trailing upcoming steps
+///   at one preview row + "+N more".
+/// - Deduplicates `workText` when it repeats an active step's title verbatim.
+public func windowTodoSteps(_ steps: [TodoStepView], workText: String? = nil) -> TodoSpineWindow? {
+    guard !steps.isEmpty else { return nil }
+    let all = steps.enumerated().map { IndexedTodoStep(index: $0.offset, text: $0.element.text, status: $0.element.status) }
+    var active = all.filter { $0.status == .inProgress || $0.status == .failed }
+    if active.isEmpty, let fallback = all.first(where: { $0.status == .pending }) ?? all.last {
+        active = [fallback]
+    }
+    let firstActive = active[0].index
+    let activeSet = Set(active.map(\.index))
+    let leading = Array(all.prefix(firstActive))
+    let upcoming = all.filter { $0.index > firstActive && !activeSet.contains($0.index) }
+    let settledCount = all.filter { $0.status == .completed || $0.status == .skipped }.count
+    let foldLeading = all.count >= 4 && !leading.isEmpty
+    let foldUpcoming = all.count >= 4 && upcoming.count >= 2
+    let moreUpcomingCount = foldUpcoming ? upcoming.count - 1 : 0
+    let w = workText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let subFocus = (!w.isEmpty && !active.contains { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) == w }) ? w : nil
+
+    return TodoSpineWindow(
+        total: all.count,
+        settledCount: settledCount,
+        stepNumber: firstActive + 1,
+        hasFailed: all.contains { $0.status == .failed },
+        all: all,
+        leading: leading,
+        foldLeading: foldLeading,
+        active: active,
+        upcoming: upcoming,
+        foldUpcoming: foldUpcoming,
+        moreUpcomingCount: moreUpcomingCount,
+        subFocus: subFocus
+    )
 }
 
 /// Native live focus phrase for the bottom working line when the model is not actively streaming

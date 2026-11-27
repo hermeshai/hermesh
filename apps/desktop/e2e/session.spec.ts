@@ -1285,15 +1285,15 @@ test("a message an agent writes to the session shows as a card that says who wro
   await app.close();
 });
 
-test("a live ACP session shows its floating step checklist and focus while running, animates only on the compositor, and auto-collapses when all steps finish", async () => {
+test("a live ACP session shows its inline step checklist and focus while running, animates only on the compositor, and auto-collapses when all steps finish", async () => {
   const { app, page } = await launch();
   try {
     const longFocus = "检查现有动效与测试约束，并完整验证 Run HermeshKit tests and iOS Simulator UI tests 不在单行被截断";
     const prompt = [
       `focus ${longFocus}`,
-      "steps 检查现有动效实现=in_progress|重写侧边栏光环=pending|运行桌面端基准验证=skipped",
-      "sleep 5s",
-      "steps 检查现有动效实现=done|重写侧边栏光环=done|运行桌面端基准验证=skipped",
+      "steps 梳理历史归约=done|清理冗余工具=done|检查现有动效实现=in_progress|重写侧边栏光环=pending|运行桌面端基准验证=skipped",
+      "sleep 6s",
+      "steps 梳理历史归约=done|清理冗余工具=done|检查现有动效实现=done|重写侧边栏光环=done|运行桌面端基准验证=skipped",
       "say 全部优化已完成",
     ].join("\n");
     await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "原生进展", "--prompt", prompt);
@@ -1302,12 +1302,21 @@ test("a live ACP session shows its floating step checklist and focus while runni
     const log = page.getByRole("log", { name: "对话" });
     const todoCard = page.getByTestId("thread-todo-card");
     await expect(todoCard).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByTestId("thread-todo-step-0")).toHaveAttribute("data-status", "in_progress");
-    await expect(page.getByTestId("thread-todo-step-0")).toContainText("检查现有动效实现");
-    await expect(page.getByTestId("thread-todo-step-1")).toHaveAttribute("data-status", "pending");
-    await expect(page.getByTestId("thread-todo-step-2")).toHaveAttribute("data-status", "skipped");
 
-    // Floating above the composer box, never leaked as tool rows (neither bare nor "Run update_steps") in the transcript:
+    // B2 smart 3-row window: folds leading settled steps, shows active step + 3/5, previews next step + "+1 步":
+    const toggle = page.getByTestId("thread-todo-toggle");
+    await expect(toggle).toContainText("已完成前 2 步 · 共 5 步");
+    await expect(page.getByTestId("thread-todo-step-0")).toHaveCount(0);
+    await expect(page.getByTestId("thread-todo-step-2")).toHaveAttribute("data-status", "in_progress");
+    await expect(page.getByTestId("thread-todo-step-2")).toContainText("检查现有动效实现");
+    await expect(page.getByTestId("thread-todo-step-2")).toContainText("3/5");
+    await expect(page.getByTestId("thread-todo-step-3")).toHaveAttribute("data-status", "pending");
+    await expect(page.getByTestId("thread-todo-step-3")).toContainText("下一步：重写侧边栏光环");
+    await expect(page.getByTestId("thread-todo-step-4")).toHaveCount(0);
+
+    // Flows inline inside .dbody above the composer (never inside .cmp-zone), and never leaks raw update_steps tool rows:
+    const inScrollFlow = await todoCard.evaluate((el) => !!el.closest(".dbody") && !el.closest(".cmp-zone"));
+    expect(inScrollFlow).toBe(true);
     const [cardBox, cmpBox] = [(await todoCard.boundingBox())!, (await page.locator(".th-cmp").boundingBox())!];
     expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(cmpBox.y);
     await expect(log).not.toContainText("update_steps");
@@ -1315,13 +1324,13 @@ test("a live ACP session shows its floating step checklist and focus while runni
     await expect(log).not.toContainText("update_focus");
     await expect(log).not.toContainText("使用了");
 
-    // Bottom working line displays native update_focus text with two-line clamp support:
+    // Inline working sub-focus displays native update_focus text with two-line clamp support:
     const working = page.getByTestId("thread-working");
     await expect(working).toContainText(longFocus);
     const clamp = await working.locator(".th-work-t").evaluate((el) => getComputedStyle(el).webkitLineClamp);
     expect(clamp).toBe("2");
 
-    // Every animation inside the checklist card runs strictly on the compositor (transform / opacity only):
+    // Every animation inside the checklist spine runs strictly on the compositor (transform / opacity only):
     const animProps = await todoCard.evaluate((el) =>
       el.getAnimations({ subtree: true }).flatMap((a) =>
         [...new Set((a.effect as KeyframeEffect).getKeyframes().flatMap((k) => Object.keys(k)))].filter(
@@ -1332,7 +1341,14 @@ test("a live ACP session shows its floating step checklist and focus while runni
     expect(animProps.length).toBeGreaterThan(0);
     for (const p of animProps) expect(p === "transform" || p === "opacity", `unexpected animated prop: ${p}`).toBe(true);
 
-    // Once all steps complete/skip and the turn settles, the floating card auto-collapses:
+    // Clicking the fold header expands all 5 steps inline, and clicking again collapses back:
+    await toggle.click();
+    await expect(page.getByTestId("thread-todo-step-0")).toContainText("梳理历史归约");
+    await expect(page.getByTestId("thread-todo-step-4")).toHaveAttribute("data-status", "skipped");
+    await page.getByTestId("thread-todo-toggle").click();
+    await expect(page.getByTestId("thread-todo-step-0")).toHaveCount(0);
+
+    // Once all steps complete/skip and the turn settles, the inline checklist auto-collapses:
     await expect(log).toContainText("全部优化已完成", { timeout: 15_000 });
     await expect(todoCard).toHaveCount(0);
   } finally {

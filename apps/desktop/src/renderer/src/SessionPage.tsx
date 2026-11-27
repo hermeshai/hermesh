@@ -29,16 +29,19 @@ import {
   applySessionEvent,
   backgroundTasksOf,
   clampRuntimeMode,
+  clockText,
   cycleReasoningSelection,
   dateOf,
   defaultModelSelectionFor,
   displayTitle,
+  elapsedSeconds,
   findProviderInstance,
   groupSteps,
   isSessionRunningOrWaiting,
   language,
   pendingRequestOf,
   projectOnMachine,
+  projectWorktree,
   providerUnusable,
   queuedRunsOf,
   replyEnds,
@@ -49,8 +52,12 @@ import {
   sessionTranscript,
   statusTitle,
   updatedDate,
+  windowTodoSteps,
+  type IndexedTodoStep,
   type TodoStepStatus,
+  type TodoStepView,
 } from "@hermesh/core";
+import { Mark } from "@hermesh/ui";
 import { local, sessions as sessionApi } from "./api";
 import { ConnectionLine } from "./ConnectionCapsule";
 import { GlassBar } from "./glass";
@@ -58,19 +65,20 @@ import { Icon } from "./icons";
 import { layoutOf, setCard } from "./layout";
 import { keys, ownKeys } from "./platform";
 import { TitleInput, grantLabel, unarchive } from "./Sidebar";
-import { errorText, useStore } from "./store";
+import { errorText, useNow, useStore } from "./store";
 import { Background, BackgroundLine } from "./session/Background";
 import { ChatFrame, Failed, PromptNote, Row, Stale, Unread, UserBubble, rowHeights, rowsOf, type ChatRow } from "./session/Chat";
 import { keepAttachmentBlob } from "./session/attachments";
 import { ComposerPlace, LaunchAsk, ModelButtons, ThreadComposer, type Branches, type Place } from "./session/Composer";
 import { Inspector } from "./session/Inspector";
 import { SessionRequest } from "./session/Request";
-import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, remember } from "./session/choices";
+import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, rememberedWorktree, remember, rememberWorktree } from "./session/choices";
 import { ContentScope, SessionRunContext, type SessionCodeActions } from "./session/scope";
 import { stripTerminalEscapes } from "./session/terminalText";
 import { FilesHomeContext, type FilesHome } from "./session/files/files";
 import { SidePanel } from "./session/files/SidePanel";
 import { setOpen as setPanelOpen, usePanel } from "./session/files/panel";
+import { Aurora, HerAsk, herMachine, Presence, rememberedWho, rememberWho, type Who } from "./session/Presence";
 import "./session/composer.css";
 
 /**
@@ -78,6 +86,26 @@ import "./session/composer.css";
  * unless another was chosen; from origin when asked), or the project's own folder, switched first when another branch
  * was chosen there. The temporary workspace has none to choose.
  */
+const HER = "her";
+
+/** A new conversation with Her: the model chosen when it is one of hers, else her default (first in her list); none known yet, hers to pick. */
+function herSelection(providers: ProviderInstance[] = [], prev?: ModelSelection): ModelSelection {
+  const her = providers.find((p) => p.instanceId === HER && providerUnusable(p, []) === "");
+  if (prev && her?.models.some((m) => m.slug === prev.model)) return prev;
+  return her ? defaultModelSelectionFor(her) : create(ModelSelectionSchema, { instanceId: HER, model: "", options: {} });
+}
+
+/** An agent for a new session on the machine: as last time there, else the one already chosen, else Claude, Codex, Gemini, or the first that works. */
+function agentSelection(providers: ProviderInstance[], machineId: string, prev?: ModelSelection): ModelSelection | undefined {
+  const usable = providers.filter((p) => providerUnusable(p, []) === "" && p.instanceId !== HER);
+  const last = remembered().byMachine[machineId]?.sel;
+  const lastInst = last && last.instanceId !== HER && usable.find((p) => p.instanceId === last.instanceId);
+  if (lastInst && lastInst.models.some((m) => m.slug === last.model)) return create(ModelSelectionSchema, last);
+  if (prev?.instanceId && usable.some((p) => p.instanceId === prev.instanceId)) return prev;
+  const first = ["claude", "codex", "gemini"].map((id) => usable.find((p) => p.instanceId === id)).find(Boolean) ?? usable[0] ?? findProviderInstance(providers.filter((p) => p.instanceId !== HER));
+  return first ? defaultModelSelectionFor(first) : undefined;
+}
+
 function workspaceFor(place: Place | undefined, branches: Branches | undefined) {
   if (!place) return { mode: Workspace.IN_PLACE };
   if (place.worktree) return { mode: Workspace.WORKTREE, baseRef: place.base || branches?.default || "", fromRemote: place.fromRemote };
@@ -151,8 +179,9 @@ export function SessionPage() {
   // A new session's where: as the entry asked (a project group's ＋), else as last time (choices.ts).
   const [machineId, setMachineId] = useState<string>("");
   const [projectId, setProjectId] = useState<string>(SCRATCH_PROJECT);
-  // Where it works and on which branch (§16): only this session's, never remembered.
+  // Working copy is remembered per (machine, project); branch selection applies only to this session.
   const [place, setPlace] = useState<Place>({ worktree: true, base: "", on: "", fromRemote: false });
+  const placeEdited = useRef(false);
   const [branches, setBranches] = useState<Branches | undefined>();
 
   // Composer controls
@@ -188,24 +217,71 @@ export function SessionPage() {
     const known = (id?: string) => !!id && st.machines.some((m) => m.machineId === id);
     const mid = [askedMachine, last.machineId].find(known) ?? st.machines.find((m) => m.local)?.machineId ?? st.machines[0]!.machineId;
     const pid = askedProject ?? projectOnMachine(projectsOn(mid).list, mid, "", last.byMachine[mid]?.projectId);
-    setMachineId(mid);
-    pickProject(mid, pid);
+    const her = !askedMachine && !askedProject && rememberedWho() === "her" ? herMachine(st.machines) : undefined;
+    setMachineId(her?.machineId ?? mid);
+    pickProject(her?.machineId ?? mid, her ? SCRATCH_PROJECT : pid);
+    if (her) setModelSel(herSelection());
     const mine = last.byMachine[mid];
     if (mine?.mode) setRuntimeMode(mine.mode);
     setInteractionMode(InteractionMode.CODE);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel.kind, askedMachine, askedProject, machinesKnown]);
 
-  /** A project, and whether a session of it gets its own worktree: as the project works. */
+  /** A project, and whether a session of it gets its own worktree: as last chosen for this project, else as the project works. */
+  const findProject = (mid: string, pid: string) =>
+    projectsOn(mid).list.find((p) => p.projectId === pid) ?? lastProjects(mid).find((p) => p.projectId === pid);
   const pickProject = (mid: string, pid: string) => {
     setProjectId(pid);
-    const pr = projectsOn(mid).list.find((p) => p.projectId === pid);
-    setPlace({ worktree: pr?.workspace === Workspace.WORKTREE, base: "", on: "", fromRemote: false });
+    placeEdited.current = false;
+    const pr = findProject(mid, pid);
+    setPlace({ worktree: projectWorktree(pr, rememberedWorktree(mid, pid)), base: "", on: "", fromRemote: false });
   };
   const pickMachine = (mid: string) => {
     setMachineId(mid);
     pickProject(mid, projectOnMachine(projectsOn(mid).list, mid, projectId, remembered().byMachine[mid]?.projectId));
   };
+
+  // Who a new session goes to (docs/her-conversations.md §3.1): Her while her model is chosen, else an agent. Her is
+  // there to choose while she is on somewhere.
+  const herAt = herMachine(st.machines);
+  const who: Who = !activeSessionId && modelSel.instanceId === HER ? "her" : "agent";
+  // The headline rises once the owner switched, not as the page opens.
+  const [rise, setRise] = useState(false);
+  const chooseWho = (next: Who) => {
+    if (activeSessionId || next === who || (next === "her" && !herAt)) return;
+    rememberWho(next);
+    setRise(true);
+    if (next === "her") {
+      setMachineId(herAt!.machineId);
+      pickProject(herAt!.machineId, SCRATCH_PROJECT);
+      setModelSel(herSelection(herAt!.machineId === effectiveMachineId ? providers : []));
+      return;
+    }
+    const last = remembered();
+    const known = (id?: string) => !!id && st.machines.some((m) => m.machineId === id);
+    const mid = [last.machineId].find(known) ?? st.machines.find((m) => m.local)?.machineId ?? st.machines[0]!.machineId;
+    setMachineId(mid);
+    pickProject(mid, projectOnMachine(projectsOn(mid).list, mid, "", last.byMachine[mid]?.projectId));
+    setModelSel((mid === effectiveMachineId && agentSelection(providers, mid)) || create(ModelSelectionSchema, { instanceId: "", model: "", options: {} }));
+  };
+  const whoNow = useRef(chooseWho);
+  whoNow.current = chooseWho;
+  // ⌘N on the new session's page gives it to the other one (D20).
+  const canSwitch = !activeSessionId && !!herAt;
+  useEffect(() => {
+    if (!canSwitch) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        e.stopPropagation();
+        whoNow.current(modelSelNow.current.instanceId === HER ? "agent" : "her");
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [canSwitch]);
+  const modelSelNow = useRef(modelSel);
+  modelSelNow.current = modelSel;
 
   const projSession = activeSessionId && projection?.session?.sessionId === activeSessionId ? projection.session : undefined;
   const listedAhead =
@@ -264,15 +340,8 @@ export function SessionPage() {
           setMaxCeiling(res.maxRuntimeMode);
         }
         if (activeSessionId) return; // an existing session keeps its own (from GetSession)
-        const usable = res.providers.filter((p) => providerUnusable(p, []) === "");
-        const last = remembered().byMachine[effectiveMachineId]?.sel;
-        const lastInst = last && usable.find((p) => p.instanceId === last.instanceId);
-        setModelSel((prev) => {
-          if (lastInst && lastInst.models.some((m) => m.slug === last.model)) return create(ModelSelectionSchema, last);
-          if (prev.instanceId && usable.some((p) => p.instanceId === prev.instanceId)) return prev;
-          const first = ["claude", "codex", "gemini"].map((id) => usable.find((p) => p.instanceId === id)).find(Boolean) ?? usable[0] ?? findProviderInstance(res.providers);
-          return first ? defaultModelSelectionFor(first) : prev;
-        });
+        // To Her: her model, her default unless one of hers was chosen; else an agent's.
+        setModelSel((prev) => (prev.instanceId === HER ? herSelection(res.providers, prev) : agentSelection(res.providers, effectiveMachineId, prev) ?? prev));
       });
     return () => {
       cancelled = true;
@@ -481,7 +550,19 @@ export function SessionPage() {
     const began = Date.now();
     try {
       const res = await sessionApi.startSession(start.req);
-      remember(start.req.machineId ?? "", { projectId: start.req.projectId ?? "", sel: modelSel, mode: clampedMode });
+      // An agent's choices are kept for the next session; Her's stay hers (rememberWho).
+      if (start.req.modelSelection?.instanceId !== HER) {
+        const mid = start.req.machineId ?? "";
+        const pid = start.req.projectId ?? "";
+        const pr = findProject(mid, pid);
+        const canWorktree = Boolean(pr?.repo || pr?.workspace === Workspace.WORKTREE);
+        remember(mid, {
+          projectId: pid,
+          sel: modelSel,
+          mode: clampedMode,
+          worktree: canWorktree ? start.req.workspace?.mode === Workspace.WORKTREE : undefined,
+        });
+      }
       // "Sending…", once shown (at 400 ms), stays half a second.
       const took = Date.now() - began;
       if (took > 400 && took < 900) await new Promise((r) => setTimeout(r, 900 - took));
@@ -599,15 +680,36 @@ export function SessionPage() {
   // working copy and branch over it (for a repository).
   const projectsHere = [...st.projects.filter((p) => p.machineId !== effectiveMachineId), ...projectsOn(effectiveMachineId).list];
   const project = projectsHere.find((p) => p.machineId === effectiveMachineId && p.projectId === effectiveProjectId);
+  useEffect(() => {
+    if (activeSessionId || !project || placeEdited.current) return;
+    const want = projectWorktree(project, rememberedWorktree(effectiveMachineId, effectiveProjectId));
+    setPlace((prev) => (prev.worktree === want ? prev : { ...prev, worktree: want }));
+  }, [activeSessionId, effectiveMachineId, effectiveProjectId, project?.repo, project?.workspace]);
+  const handlePlace = (next: Place) => {
+    placeEdited.current = true;
+    if (next.worktree !== place.worktree) {
+      rememberWorktree(effectiveMachineId, effectiveProjectId, next.worktree);
+    }
+    setPlace(next);
+  };
   const choice = { machineId: effectiveMachineId, projectId: effectiveProjectId, worktree: place.worktree, sel: modelSel, mode: clampedMode, plan: false };
   const modelButtons = (
     <ModelButtons
-      providers={providers}
+      providers={activeSessionId || !herAt ? providers.filter((p) => p.instanceId !== HER) : providers}
       sel={modelSel}
       stale={providersStale}
       machineName={targetMachine?.machineName ?? effectiveMachineId}
       projectAgents={project?.agents ?? []}
-      onModel={(next) => applyConfigUpdate({ sel: next })}
+      onModel={(next) => {
+        // Her's model in the panel gives the new session to Her, an agent's to the agent (§3.1).
+        const to: Who = next.instanceId === HER ? "her" : "agent";
+        if (!activeSessionId && to !== who) {
+          rememberWho(to);
+          setRise(true);
+          if (to === "her") pickProject(effectiveMachineId, SCRATCH_PROJECT);
+        }
+        applyConfigUpdate({ sel: next });
+      }}
       onNotice={(text) => st.show(text)}
     />
   );
@@ -617,9 +719,14 @@ export function SessionPage() {
     onMode: (rm: RuntimeMode) => applyConfigUpdate({ rm }),
     model: modelButtons,
   };
-  const placeRow = !activeSessionId && (project?.repo || project?.workspace === Workspace.WORKTREE) && <ComposerPlace place={place} branches={branches} onPlace={setPlace} />;
-  const ask = (
+  const placeRow = !activeSessionId && who === "agent" && (project?.repo || project?.workspace === Workspace.WORKTREE) && <ComposerPlace place={place} branches={branches} onPlace={handlePlace} />;
+  const presence = herAt && !activeSessionId ? <Presence who={who} onWho={chooseWho} /> : undefined;
+  const ask = who === "her" && herAt ? (
+    <HerAsk top={presence} machine={st.machines.find((m) => m.machineId === effectiveMachineId) ?? herAt} rise={rise} />
+  ) : (
     <LaunchAsk
+      top={presence}
+      rise={rise}
       machines={st.machines}
       projects={projectsHere}
       projectsStale={projectsOn(effectiveMachineId).stale}
@@ -633,6 +740,7 @@ export function SessionPage() {
             kind: "addProject",
             machineId,
             then: (pid, wt) => {
+              placeEdited.current = true;
               setProjectId(pid);
               setPlace({ worktree: wt, base: "", on: "", fromRemote: false });
             },
@@ -818,18 +926,6 @@ export function SessionPage() {
     },
     [allBgTasks, filePanel, st],
   );
-  const todoCard = activeSessionId && todoSteps.length > 0 && (
-    <div className="knote th-todo" role="region" aria-label={t("todo.label")} data-testid="thread-todo-card">
-      <div className="th-todo-list">
-        {todoSteps.map((step, idx) => (
-          <div key={`${idx}:${step.text}`} className={`th-todo-row ${step.status}`} data-status={step.status} data-testid={`thread-todo-step-${idx}`}>
-            <TodoStepGlyph status={step.status} />
-            <span className="th-todo-text">{step.text}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
   const writing = useMemo(() => sessionLiveReplies(activeProjection), [activeProjection]);
   // Whose files the replies' links are (docs/session-files.md §3): the session's machine, this Mac or another.
   const sessionMachine = currentSession?.machineId ?? "";
@@ -969,14 +1065,14 @@ export function SessionPage() {
           <Icon name="info" />
         </button>
       )}
-      {activeSessionId && (
+      {activeSessionId && !filesOpen && (
         <button
-          className={`tb ${filesOpen ? "on" : ""}`}
-          title={ts(filesOpen ? "page.hidePanel" : "page.showPanel")}
+          className="tb"
+          title={ts("page.showPanel")}
           aria-label={ts("panel.title")}
-          aria-pressed={filesOpen}
+          aria-pressed={false}
           data-testid="toolbar-panel-btn"
-          onClick={() => setPanelOpen(filePanel, !filesOpen)}
+          onClick={() => setPanelOpen(filePanel, true)}
         >
           <Icon name="panelRight" />
         </button>
@@ -988,7 +1084,8 @@ export function SessionPage() {
     return (
       <>
         <div className="ctool drag">{header}</div>
-        <div className="dwrap th" data-testid="thread-page">
+        <div className={`dwrap th ${herAt ? "th-new" : ""}`} data-who={who} data-testid="thread-page">
+          {herAt && <Aurora />}
           <div className="dmain" data-testid="thread-launch-card">
             {ask}
             <div className="cmp-zone">
@@ -1005,7 +1102,7 @@ export function SessionPage() {
                   onSend={() => submitMessage()}
                   running={false}
                   sending={busySend}
-                  placeholder={t("launch.promptPlaceholder")}
+                  placeholder={who === "her" ? t("chat.placeholder", { ns: "her", name: "Her" }) : t("launch.promptPlaceholder")}
                   attachments={attachments}
                   onAttach={handleAttachFiles}
                   onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
@@ -1109,7 +1206,10 @@ export function SessionPage() {
                   foot={
                     session && (
                       <>
-                        <ConnectionLine machine={targetMachine} linkUp={archived || (following && reachable)} work={work} />
+                        {todoSteps.length > 0 && (
+                          <TodoSpine steps={todoSteps} work={work} sessionKey={activeSessionId ?? ""} />
+                        )}
+                        <ConnectionLine machine={targetMachine} linkUp={archived || (following && reachable)} work={todoSteps.length > 0 ? undefined : work} />
                         <BackgroundLine tasks={activeBgTasks} />
                         <Stale s={session} behind={behind} />
                         {failure && <Failed s={session} failure={failure} grant={grant} />}
@@ -1120,7 +1220,6 @@ export function SessionPage() {
                     <ComposerZone onHeight={onHeight}>
                       {requestCard}
                       {queueCard}
-                      {todoCard}
                       {slashRow}
                       <ThreadComposer
                         {...composerProps}
@@ -1162,19 +1261,50 @@ function startingRow(st: Starting): ChatRow {
   return { key: "starting", kind: "user", it, end: false, live: false, previous: undefined };
 }
 
+const STEP_TOKEN_RE = /`([^`]+)`|(\b[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_./-]+|\b[a-zA-Z0-9_-]+\.(?:swift|tsx?|jsx?|go|rs|py|css|html|md|json|ya?ml|sql|db|app)\b)/g;
+
+function withSlashBreaks(raw: string): ReactNode[] {
+  const parts = raw.split("/");
+  const out: ReactNode[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (i > 0) out.push("/", <wbr key={`w:${i}`} />);
+    if (parts[i]) out.push(parts[i]);
+  }
+  return out;
+}
+
+function renderStepText(text: string): ReactNode {
+  const nodes: ReactNode[] = [];
+  let last = 0;
+  for (const m of text.matchAll(STEP_TOKEN_RE)) {
+    const at = m.index ?? 0;
+    if (at > last) nodes.push(text.slice(last, at));
+    const token = m[1] ?? m[2] ?? m[0];
+    nodes.push(
+      <code key={`c:${at}`} className="th-todo-code">
+        {withSlashBreaks(token)}
+      </code>,
+    );
+    last = at + m[0].length;
+  }
+  if (last === 0) return text;
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+function TodoCheckCircle() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.5" fill="var(--green-bg)" stroke="var(--green)" strokeOpacity="0.35" strokeWidth="1" />
+      <path d="M5.1 8.2l2 2 3.9-4.1" stroke="var(--green)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function TodoStepGlyph({ status }: { status: TodoStepStatus }) {
   switch (status) {
     case "in_progress":
-      return (
-        <span className="th-todo-ic th-todo-spin" aria-hidden="true">
-          <svg viewBox="0 0 14 14" width="14" height="14">
-            <circle cx="4.6" cy="4.6" r="1.35" fill="currentColor" />
-            <circle cx="9.4" cy="4.6" r="1.35" fill="currentColor" opacity="0.55" />
-            <circle cx="9.4" cy="9.4" r="1.35" fill="currentColor" />
-            <circle cx="4.6" cy="9.4" r="1.35" fill="currentColor" opacity="0.55" />
-          </svg>
-        </span>
-      );
+      return <Mark size={17} variant="seq" />;
     case "completed":
       return <Icon name="check" className="th-todo-ic" />;
     case "skipped":
@@ -1183,11 +1313,193 @@ function TodoStepGlyph({ status }: { status: TodoStepStatus }) {
       return <Icon name="x" className="th-todo-ic" />;
     default:
       return (
-        <svg className="th-todo-ic" viewBox="0 0 14 14" aria-hidden="true">
-          <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+        <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <circle cx="7" cy="7" r="4.6" stroke="var(--l4)" strokeWidth="1.35" />
         </svg>
       );
   }
+}
+
+function TodoSpine({
+  steps,
+  work,
+  sessionKey,
+}: {
+  steps: TodoStepView[];
+  work?: { text: string; since?: Date };
+  sessionKey: string;
+}) {
+  const { t } = useTranslation("thread");
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    setExpanded(false);
+  }, [sessionKey]);
+
+  const now = useNow(work?.since ? 1000 : 60_000);
+  const elapsed = work?.since ? clockText(elapsedSeconds(work.since, now)) : undefined;
+  const win = useMemo(() => windowTodoSteps(steps, work?.text), [steps, work?.text]);
+  if (!win) return null;
+
+  const activeIndexSet = new Set(win.active.map((a) => a.index));
+  const lastActiveIdx = win.active[win.active.length - 1]?.index;
+  const collapsedRowCount =
+    (win.foldLeading ? 1 : win.leading.length) + win.active.length + (win.foldUpcoming ? 1 : win.upcoming.length);
+  const spined = (expanded ? win.total + 1 : collapsedRowCount) >= 2;
+
+  const renderActiveNode = (step: IndexedTodoStep, activeOrder: number) => {
+    const isLastActive = step.index === lastActiveIdx;
+    const showSub = isLastActive && !!win.subFocus;
+    const deduplicatedWork = isLastActive && !win.subFocus && !!work;
+    return (
+      <div
+        key={`${step.index}:${step.text}`}
+        className={`th-todo-node active ${step.status}`}
+        data-status={step.status}
+        data-testid={`thread-todo-step-${step.index}`}
+      >
+        <span className="th-todo-g">
+          <TodoStepGlyph status={step.status} />
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div className="th-todo-main" data-testid={deduplicatedWork ? "thread-working" : undefined}>
+            <span className={deduplicatedWork ? "th-work-t" : undefined}>{renderStepText(step.text)}</span>
+            <span className="th-todo-meta">
+              {activeOrder === 0 ? (
+                `${win.stepNumber}/${win.total}${!win.subFocus && elapsed ? ` · ${elapsed}` : ""}`
+              ) : (
+                <span className="th-todo-chip run">{t("todo.parallel")}</span>
+              )}
+            </span>
+          </div>
+          {showSub && (
+            <div className="th-todo-sub" data-testid="thread-working">
+              <span className="th-work-t shimmer" title={win.subFocus}>
+                {withSlashBreaks(win.subFocus!)}
+              </span>
+              {elapsed && <span className="el">· {elapsed}</span>}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderPassiveNode = (step: IndexedTodoStep) => (
+    <div
+      key={`${step.index}:${step.text}`}
+      className={`th-todo-node ${step.status}`}
+      data-status={step.status}
+      data-testid={`thread-todo-step-${step.index}`}
+    >
+      <span className="th-todo-g">
+        <TodoStepGlyph status={step.status} />
+      </span>
+      <div className="th-todo-row-txt">
+        {renderStepText(step.text)}
+        {step.status === "skipped" && <span className="th-todo-chip skip">{t("todo.skipped")}</span>}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className={`th-todo ${spined ? "spined" : ""}`} role="region" aria-label={t("todo.label")} data-testid="thread-todo-card">
+      {expanded ? (
+        <>
+          <button
+            type="button"
+            className="th-todo-fold open"
+            data-testid="thread-todo-toggle"
+            aria-expanded="true"
+            onClick={() => setExpanded(false)}
+          >
+            <span className="th-todo-g">
+              <TodoCheckCircle />
+            </span>
+            <span className="th-todo-fold-lbl">
+              <span>{t("todo.expandedHeader", { done: win.settledCount, total: win.total })}</span>
+              <span>· {t("todo.hide")}</span>
+              <Icon name="chevD" className="chev flip" />
+            </span>
+          </button>
+          {win.all.map((step) =>
+            activeIndexSet.has(step.index)
+              ? renderActiveNode(step, win.active.findIndex((a) => a.index === step.index))
+              : renderPassiveNode(step),
+          )}
+        </>
+      ) : (
+        <>
+          {win.foldLeading ? (
+            <button
+              type="button"
+              className="th-todo-fold"
+              data-testid="thread-todo-toggle"
+              aria-expanded="false"
+              onClick={() => setExpanded(true)}
+            >
+              <span className="th-todo-g">
+                <TodoCheckCircle />
+              </span>
+              <span className="th-todo-fold-lbl">
+                <span>{t("todo.completedFold", { done: win.leading.length, total: win.total })}</span>
+                <Icon name="chevR" className="chev" />
+              </span>
+            </button>
+          ) : (
+            win.leading.map(renderPassiveNode)
+          )}
+
+          {win.active.map((act, idx) => renderActiveNode(act, idx))}
+
+          {win.foldUpcoming ? (
+            win.upcoming[0] && (
+              <div
+                key={`${win.upcoming[0].index}:${win.upcoming[0].text}`}
+                className={`th-todo-node ${win.upcoming[0].status}`}
+                data-status={win.upcoming[0].status}
+                data-testid={`thread-todo-step-${win.upcoming[0].index}`}
+              >
+                <span className="th-todo-g">
+                  <TodoStepGlyph status={win.upcoming[0].status} />
+                </span>
+                <div className="th-todo-next">
+                  <span className="th-todo-next-t">
+                    {win.upcoming[0].status === "pending"
+                      ? t("todo.next", { text: win.upcoming[0].text })
+                      : win.upcoming[0].text}
+                  </span>
+                  <button type="button" className="th-todo-more" onClick={() => setExpanded(true)}>
+                    <span>{t("todo.moreSteps", { count: win.moreUpcomingCount })}</span>
+                    <Icon name="chevR" className="chev" />
+                  </button>
+                </div>
+              </div>
+            )
+          ) : (
+            win.upcoming.map((step, idx) =>
+              win.foldLeading && idx === 0 && step.status === "pending" ? (
+                <div
+                  key={`${step.index}:${step.text}`}
+                  className={`th-todo-node ${step.status}`}
+                  data-status={step.status}
+                  data-testid={`thread-todo-step-${step.index}`}
+                >
+                  <span className="th-todo-g">
+                    <TodoStepGlyph status={step.status} />
+                  </span>
+                  <div className="th-todo-next">
+                    <span className="th-todo-next-t">{t("todo.next", { text: step.text })}</span>
+                  </div>
+                </div>
+              ) : (
+                renderPassiveNode(step)
+              ),
+            )
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 /** The box at the bottom of the conversation, as Her's (her.css .cmp-zone), telling the conversation how much of it it covers. */

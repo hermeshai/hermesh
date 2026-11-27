@@ -417,3 +417,36 @@ private func kind(_ it: TranscriptItem) -> String {
     })
     #expect(activeTodoSteps(p).isEmpty)
 }
+
+@Test func windowTodoStepsBuildsSmartThreeRowWindowAndDeduplicatesFocus() {
+    #expect(windowTodoSteps([]) == nil)
+
+    let short = windowTodoSteps([
+        TodoStepView(text: "Check motion constraints", status: .completed),
+        TodoStepView(text: "Rewrite CALayer halo", status: .inProgress),
+        TodoStepView(text: "Verify GPU usage", status: .pending),
+    ], workText: "Rewrite CALayer halo")!
+    #expect(!short.foldLeading)
+    #expect(!short.foldUpcoming)
+    #expect(short.stepNumber == 2)
+    #expect(short.settledCount == 1)
+    #expect(short.subFocus == nil)
+
+    let long = windowTodoSteps([
+        TodoStepView(text: "Sync main", status: .completed),
+        TodoStepView(text: "Backup SQLite", status: .completed),
+        TodoStepView(text: "Clean cache", status: .skipped),
+        TodoStepView(text: "Subagent 1: Desktop E2E", status: .inProgress),
+        TodoStepView(text: "Subagent 2: iOS XCUITest", status: .inProgress),
+        TodoStepView(text: "Bundle Hermesh.app", status: .pending),
+        TodoStepView(text: "Update docs", status: .pending),
+    ], workText: "Running Playwright and Simulator suites")!
+    #expect(long.foldLeading)
+    #expect(long.leading.count == 3)
+    #expect(long.settledCount == 3)
+    #expect(long.stepNumber == 4)
+    #expect(long.active.map(\.index) == [3, 4])
+    #expect(long.foldUpcoming)
+    #expect(long.moreUpcomingCount == 1)
+    #expect(long.subFocus == "Running Playwright and Simulator suites")
+}

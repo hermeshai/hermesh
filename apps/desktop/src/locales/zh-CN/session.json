@@ -176,6 +176,8 @@
     "source": "源码",
     "preview": "预览",
     "more": "更多",
+    "prevImage": "上一张",
+    "nextImage": "下一张",
     "line": "第 {{line}} 行",
     "lines": "第 {{line}}–{{end}} 行",
     "notFound": "找不到这个文件",

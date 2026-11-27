@@ -221,12 +221,92 @@ export interface SessionView {
   sort: SessionSort;
   newestFirst: boolean;
   metadata: boolean;
+  /** The work Her sent from a conversation of the owner's with her sits under it (docs/her-conversations.md §3.4). */
+  nest: boolean;
 }
 
 export function sessionView(v: Partial<SessionView> = {}): SessionView {
   const group: SessionGrouping = v.group && (sessionGroupings as readonly string[]).includes(v.group) ? v.group : "status";
   const sort: SessionSort = v.sort && (sessionSorts as readonly string[]).includes(v.sort) ? v.sort : "default";
-  return { group, sort, newestFirst: v.newestFirst ?? true, metadata: v.metadata ?? true };
+  return { group, sort, newestFirst: v.newestFirst ?? true, metadata: v.metadata ?? true, nest: v.nest ?? true };
+}
+
+/** The agent of a conversation of the owner's with Her (docs/her-conversations.md). */
+export const HER_AGENT = "her";
+
+/** A conversation of the owner's with Her, a session of the her provider. */
+export function isHerConversation(s: Session): boolean {
+  return s.agent === HER_AGENT || s.modelSelection?.instanceId === HER_AGENT;
+}
+
+/** The conversation with Her that this work was sent from, if any. */
+export function herParentOf(s: Session): string | undefined {
+  return s.lineage?.relationship === HER_AGENT && s.lineage.parentSessionId ? s.lineage.parentSessionId : undefined;
+}
+
+/** The key of the project section that holds Her's conversations: they belong to no project. */
+export const HER_SECTION = "her";
+
+/**
+ * The work under each conversation with Her, newest first, while the view nests it: only work whose
+ * conversation is in `sessions` too, and only while neither is archived (an archived one is listed
+ * on its own).
+ */
+export function childrenOf(sessions: readonly Session[], view: Pick<SessionView, "nest">): Map<string, Session[]> {
+  const out = new Map<string, Session[]>();
+  if (!view.nest) return out;
+  const parents = new Set(sessions.filter((s) => isHerConversation(s) && s.status !== SessionStatus.ARCHIVED).map((s) => s.sessionId));
+  for (const s of sessions) {
+    const parent = herParentOf(s);
+    if (!parent || !parents.has(parent) || s.status === SessionStatus.ARCHIVED) continue;
+    const list = out.get(parent);
+    if (list) list.push(s);
+    else out.set(parent, [s]);
+  }
+  for (const list of out.values()) list.sort((a, b) => byNewest(updatedDate(a), updatedDate(b)));
+  return out;
+}
+
+/** A conversation and the work under it: the most pressing state of them (needs you, runs, done). */
+export function treeStatus(s: Session, children: readonly Session[] = []): SessionBucket {
+  const tree = [s, ...children];
+  return tree.some(needsAttention) ? "attention" : tree.some(isActive) ? "active" : "done";
+}
+
+/** A conversation and the work under it: the last time any of them was active. */
+export function treeUpdated(s: Session, children: readonly Session[] = []): Date {
+  return new Date(Math.max(updatedDate(s).getTime(), ...children.map((c) => updatedDate(c).getTime())));
+}
+
+/**
+ * The mark a collapsed conversation's row shows: the most pressing of its own and its work's (an
+ * orange dot while any waits for the owner, a red one when any failed), else its own.
+ */
+export function treeMark(s: Session, children: readonly Session[]): "waiting" | "failed" | undefined {
+  const tree = [s, ...children];
+  if (tree.some((x) => x.status === SessionStatus.WAITING_INPUT)) return "waiting";
+  if (tree.some(isFailed)) return "failed";
+  return undefined;
+}
+
+/** A conversation with Her is archived with its work, so only once all of it can be. */
+export function isTreeArchivable(s: Session, children: readonly Session[]): boolean {
+  return isArchivable(s) && children.every((c) => isArchivable(c) || c.status === SessionStatus.ARCHIVED);
+}
+
+/** Work under a conversation shows five at once; what runs or waits always shows (docs/her-conversations.md D11). */
+export const CHILDREN_INITIAL_LIMIT = 5;
+
+/** The work a conversation's row shows, and how much stays behind "Show more". */
+export function sliceChildren(children: readonly Session[], expanded: boolean, selectedId?: string | null): SectionSlice {
+  if (expanded || children.length <= CHILDREN_INITIAL_LIMIT) return { visible: [...children], hiddenCount: 0 };
+  const keep = new Set(children.filter((c) => c.sessionId === selectedId || needsAttention(c) || isActive(c)).map((c) => c.sessionId));
+  for (const c of children) {
+    if (keep.size >= CHILDREN_INITIAL_LIMIT) break;
+    keep.add(c.sessionId);
+  }
+  const visible = children.filter((c) => keep.has(c.sessionId));
+  return { visible, hiddenCount: children.length - visible.length };
 }
 
 /** A section's key: pinned, a state or a day (titled by bucketTitle), who sent the work (a client id, or "owner"), a project, a coding agent, a machine id, or "archived". */
@@ -251,8 +331,8 @@ export function activityDate(s: Session): Date {
 }
 
 /** The day it was last active; "week" is the six days before today, not the calendar week. */
-export function dayOf(s: Session, now: Date): SessionBucket {
-  const d = updatedDate(s);
+export function dayOf(s: Session, now: Date, at?: Date): SessionBucket {
+  const d = at ?? updatedDate(s);
   return sameDay(d, now) ? "today" : isYesterday(d, now) ? "yesterday" : withinWeek(d, now) ? "week" : "earlier";
 }
 
@@ -301,8 +381,22 @@ function sortWithManualOrder(
     const tb = mb ? mb[0] : timeOf(b);
     if (ta !== tb) return cmpTime(ta, tb);
     if (ma && mb) return ma[1] - mb[1];
+    if (ma || mb) return ma ? dir : -dir;
     return 0;
   });
+}
+
+/** A session's non-pinned section key (`${group}:${bucket}`) in the given view. */
+export function naturalSectionKey(view: SessionView, s: Session, now: Date, children: readonly Session[] = []): string {
+  const k = {
+    sender: () => s.createdBy,
+    status: () => treeStatus(s, children),
+    date: () => dayOf(s, now, treeUpdated(s, children)),
+    project: () => (isHerConversation(s) ? HER_SECTION : s.projectId),
+    agent: () => s.agent,
+    machine: () => s.machineId,
+  }[view.group]();
+  return `${view.group}:${k}`;
 }
 
 /**
@@ -314,21 +408,43 @@ function sortWithManualOrder(
 export function sessionSections(
   sessions: Session[],
   view: SessionView,
-  o: { archived: boolean; now: Date; machines?: string[]; her?: string[]; alwaysActive?: boolean; pinnedOrder?: readonly string[]; activeOrder?: readonly string[] },
+  o: {
+    archived: boolean;
+    now: Date;
+    machines?: string[];
+    her?: string[];
+    alwaysActive?: boolean;
+    pinnedOrder?: readonly string[];
+    activeOrder?: readonly string[];
+    sectionOrder?: Readonly<Record<string, readonly string[]>>;
+  },
 ): SessionSection[] {
   const by = new Map<string, Session[]>();
   const pinned: Session[] = [];
   const archived: Session[] = [];
+  // Nested, the work under a conversation with Her goes where the conversation goes, and the
+  // conversation is placed by all of it (docs/her-conversations.md D8, D9).
+  const children = childrenOf(sessions, view);
+  const nested = new Set([...children.values()].flat().map((c) => c.sessionId));
+  const kidsOf = (s: Session) => children.get(s.sessionId) ?? [];
   for (const s of sessions) {
     if (s.status === SessionStatus.ARCHIVED) {
       if (o.archived) archived.push(s);
       continue;
     }
+    if (nested.has(s.sessionId)) continue;
     if (s.pinned) {
       pinned.push(s);
       continue;
     }
-    const k = { sender: () => s.createdBy, status: () => statusOf(s), date: () => dayOf(s, o.now), project: () => s.projectId, agent: () => s.agent, machine: () => s.machineId }[view.group]();
+    const k = {
+      sender: () => s.createdBy,
+      status: () => treeStatus(s, kidsOf(s)),
+      date: () => dayOf(s, o.now, treeUpdated(s, kidsOf(s))),
+      project: () => (isHerConversation(s) ? HER_SECTION : s.projectId),
+      agent: () => s.agent,
+      machine: () => s.machineId,
+    }[view.group]();
     const list = by.get(k);
     if (list) list.push(s);
     else by.set(k, [s]);
@@ -345,34 +461,44 @@ export function sessionSections(
     view.group === "sender" ? keys.sort((a, b) => senderRank(a) - senderRank(b) || latest(b) - latest(a) || a.localeCompare(b))
     : view.group === "status" ? statusOrder
     : view.group === "date" ? (view.newestFirst ? dayOrder : [...dayOrder].reverse())
-    : view.group === "project" ? keys.sort((a, b) => a.localeCompare(b))
-    : view.group === "agent" ? keys.sort((a, b) => codingAgentTitle(a).localeCompare(codingAgentTitle(b)))
+    : view.group === "project" ? keys.sort((a, b) => Number(b === HER_SECTION) - Number(a === HER_SECTION) || a.localeCompare(b))
+    : view.group === "agent" ? keys.sort((a, b) => Number(b === HER_AGENT) - Number(a === HER_AGENT) || codingAgentTitle(a).localeCompare(codingAgentTitle(b)))
     : keys.sort((a, b) => at(a) - at(b) || a.localeCompare(b));
 
   const timeFor = (s: Session): number => {
     if (view.sort === "created") return createdDate(s).getTime();
+    const kids = kidsOf(s);
+    // A conversation with work under it moves with its latest activity, whatever is running.
+    if (kids.length > 0) return treeUpdated(s, kids).getTime();
     if (view.sort === "updated") return activityDate(s).getTime();
     return isActive(s) && !needsAttention(s) ? createdDate(s).getTime() : updatedDate(s).getTime();
   };
-  const sorted = (list: Session[], isActBucket = false) =>
-    sortWithManualOrder(
+  const sorted = (list: Session[], secId?: string, isActBucket = false) => {
+    const secManual = secId ? o.sectionOrder?.[secId] : undefined;
+    if (secManual && secManual.length > 0) {
+      return sortWithManualOrder(list, timeFor, view.newestFirst, secManual);
+    }
+    return sortWithManualOrder(
       list,
       timeFor,
       view.newestFirst,
       o.activeOrder,
       (s) => isActBucket || (isActive(s) && !needsAttention(s)),
     );
+  };
 
   // By status, the running section stays while nothing runs, empty, so the sidebar always shows it (docs/her-team.md §16).
   const keep = o.alwaysActive && view.group === "status" && (by.size > 0 || pinned.length > 0);
   const out: SessionSection[] = [];
   if (pinned.length) {
     const pinTime = (s: Session) => (view.sort === "updated" ? activityDate(s).getTime() : createdDate(s).getTime());
-    out.push({ grouping: "pinned", key: "pinned", sessions: sortWithManualOrder(pinned, pinTime, view.newestFirst, o.pinnedOrder) });
+    const pinManual = o.sectionOrder?.["pinned:pinned"] ?? o.pinnedOrder;
+    out.push({ grouping: "pinned", key: "pinned", sessions: sortWithManualOrder(pinned, pinTime, view.newestFirst, pinManual) });
   }
   for (const k of order) {
     if (by.has(k) || (keep && k === "active")) {
-      out.push({ grouping: view.group, key: k, sessions: sorted(by.get(k) ?? [], view.group === "status" && k === "active") });
+      const secId = `${view.group}:${k}`;
+      out.push({ grouping: view.group, key: k, sessions: sorted(by.get(k) ?? [], secId, view.group === "status" && k === "active") });
     }
   }
   if (archived.length) out.push({ grouping: "archived", key: "archived", sessions: sorted(archived) });

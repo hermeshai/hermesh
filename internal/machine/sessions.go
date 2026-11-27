@@ -20,6 +20,7 @@ import (
 	rtacp "github.com/hermeshai/hermesh/internal/runtime/acp"
 	rtclaude "github.com/hermeshai/hermesh/internal/runtime/claude"
 	rtcodex "github.com/hermeshai/hermesh/internal/runtime/codex"
+	rther "github.com/hermeshai/hermesh/internal/runtime/her"
 	"github.com/hermeshai/hermesh/internal/runtime/scripted"
 	"github.com/hermeshai/hermesh/internal/shellenv"
 )
@@ -146,6 +147,10 @@ func buildRuntimeDrivers(cfg Config) (map[string]rt.Driver, bool) {
 
 func (n *Machine) openSessions() error {
 	drivers, includeScripted := buildRuntimeDrivers(n.cfg)
+	// Her's conversations besides her main one are sessions of hers (docs/her-conversations.md).
+	if _, ok := drivers["her"]; !ok && n.cfg.Drivers == nil && n.her != nil {
+		drivers["her"] = rther.NewDriver(n.her.Conversations())
+	}
 	idleTTL := n.cfg.Limits.IdleProcessTTL
 	if idleTTL <= 0 {
 		idleTTL = 10 * time.Minute
@@ -201,10 +206,14 @@ func (n *Machine) openSessions() error {
 		if name == "acp" || known[name] == name {
 			continue
 		}
+		display := name
+		if name == "her" {
+			display = "Her"
+		}
 		_, _ = eng.UpsertProviderInstance(context.Background(), kernel.OwnerPrincipal("owner", "Owner"), &sessionv1.ProviderInstanceConfig{
 			InstanceId:  name,
 			Driver:      name,
-			DisplayName: name,
+			DisplayName: display,
 			Enabled:     true,
 		})
 	}
@@ -332,16 +341,21 @@ func (n *Machine) resolveModelSelection(instanceID string, sel *sessionv1.ModelS
 }
 
 // BasicSession is s as lists show it: without result,
-// progress.last_message_excerpt and provider_session_ref.
+// progress.last_message_excerpt and provider_session_ref (except Her's, which
+// names the conversation her page opens).
 func BasicSession(s *sessionv1.Session) *sessionv1.Session {
 	if s == nil {
 		return nil
 	}
-	if s.Result == "" && s.ProviderSessionRef == "" && s.GetProgress().GetLastMessageExcerpt() == "" {
+	keepRef := s.Agent == "her" || s.GetModelSelection().GetInstanceId() == "her"
+	if s.Result == "" && (keepRef || s.ProviderSessionRef == "") && s.GetProgress().GetLastMessageExcerpt() == "" {
 		return s
 	}
 	b := proto.CloneOf(s)
-	b.Result, b.ProviderSessionRef = "", ""
+	b.Result = ""
+	if !keepRef {
+		b.ProviderSessionRef = ""
+	}
 	if b.Progress != nil {
 		b.Progress.LastMessageExcerpt = ""
 	}

@@ -10,6 +10,7 @@ import {
   diffBarBlocks,
   isFailed,
   mergeSessions,
+  naturalSectionKey,
   needsAttention,
   pendingQuestion,
   relistedCursor,
@@ -100,6 +101,64 @@ describe("session list", () => {
     ]);
     expect(sessionSections([dEarly], sessionView({ group: "project" }), { archived: false, now }).map((s) => s.key)).toEqual(["pinned"]);
     expect(sessionSections([dEarly], sessionView(), { archived: false, now, alwaysActive: true }).map((s) => s.key)).toEqual(["pinned", "active"]);
+  });
+
+  test("sectionOrder reorders arbitrary slots in any section, handles mixed statuses in project view, and maintains strict ordering on same-second timestamps", () => {
+    const d1 = session("d1", SessionStatus.IDLE, { created: -50, updated: -10 });
+    const d2 = session("d2", SessionStatus.IDLE, { created: -40, updated: -20 });
+    const d3 = session("d3", SessionStatus.IDLE, { created: -30, updated: -30 });
+    const d4 = session("d4", SessionStatus.IDLE, { created: -20, updated: -40 });
+    const d5 = session("d5", SessionStatus.IDLE, { created: -10, updated: -50 });
+    const doneList = [d1, d2, d3, d4, d5];
+
+    // Bottom -> top, top -> middle, middle -> bottom, and adjacent swaps in status:done.
+    for (const order of [
+      ["d5", "d1", "d2", "d3", "d4"],
+      ["d2", "d3", "d1", "d4", "d5"],
+      ["d1", "d2", "d4", "d5", "d3"],
+      ["d1", "d3", "d2", "d4", "d5"],
+    ]) {
+      const secs = sessionSections(doneList, sessionView(), {
+        archived: false,
+        now,
+        sectionOrder: { "status:done": order },
+      });
+      expect(ids(secs[0].sessions)).toEqual(order);
+    }
+
+    // Same-second timestamp tie-breaking: unordered newcomer `sameNew` sits between `sameA` and `sameC` in input array;
+    // comparator must remain strictly transitive so `sameC` still sorts ahead of `sameA`.
+    const sameA = session("sameA", SessionStatus.IDLE, { created: -10, updated: -10 });
+    const sameNew = session("sameNew", SessionStatus.IDLE, { created: -10, updated: -10 });
+    const sameC = session("sameC", SessionStatus.IDLE, { created: -10, updated: -10 });
+    const sameSecs = sessionSections([sameA, sameNew, sameC], sessionView(), {
+      archived: false,
+      now,
+      sectionOrder: { "status:done": ["sameC", "sameA"] },
+    });
+    expect(ids(sameSecs[0].sessions)).toEqual(["sameNew", "sameC", "sameA"]);
+
+    // Mixed-status project section (running + waiting + idle) respects arbitrary manual order.
+    const pRun = session("pRun", SessionStatus.RUNNING, { created: -100, updated: -2 });
+    const pWait = session("pWait", SessionStatus.WAITING_INPUT, { created: -200, updated: -15 });
+    ask(pWait);
+    const pIdle = session("pIdle", SessionStatus.IDLE, { created: -300, updated: -80 });
+    const projSecs = sessionSections([pRun, pWait, pIdle], sessionView({ group: "project" }), {
+      archived: false,
+      now,
+      sectionOrder: { "project:app": ["pIdle", "pRun", "pWait"] },
+    });
+    expect(ids(projSecs[0].sessions)).toEqual(["pIdle", "pRun", "pWait"]);
+
+    // naturalSectionKey maps a session to its non-pinned home section in every grouping.
+    expect(naturalSectionKey(sessionView({ group: "status" }), pIdle, now)).toBe("status:done");
+    expect(naturalSectionKey(sessionView({ group: "status" }), pRun, now)).toBe("status:active");
+    expect(naturalSectionKey(sessionView({ group: "status" }), pWait, now)).toBe("status:attention");
+    expect(naturalSectionKey(sessionView({ group: "project" }), pIdle, now)).toBe("project:app");
+    expect(naturalSectionKey(sessionView({ group: "date" }), d1, now)).toBe("date:today");
+    expect(naturalSectionKey(sessionView({ group: "agent" }), pIdle, now)).toBe("agent:claude");
+    expect(naturalSectionKey(sessionView({ group: "machine" }), pIdle, now)).toBe("machine:m1");
+    expect(naturalSectionKey(sessionView({ group: "sender" }), pIdle, now)).toBe("sender:c1");
   });
 
   test("by status, the sidebar keeps the running section while nothing runs, empty; with no session, none", () => {

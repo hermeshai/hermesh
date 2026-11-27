@@ -23,6 +23,18 @@
       "$ref": "#/definitions/BotAvatarResult"
     },
     {
+      "$ref": "#/definitions/BotConversationNewParams"
+    },
+    {
+      "$ref": "#/definitions/BotConversationNewResult"
+    },
+    {
+      "$ref": "#/definitions/BotConversationParams"
+    },
+    {
+      "$ref": "#/definitions/BotConversationsResult"
+    },
+    {
       "$ref": "#/definitions/BotCreateParams"
     },
     {
@@ -1730,6 +1742,77 @@
       ],
       "type": "object"
     },
+    "BotConversationNewParams": {
+      "description": "Parameters of `bots/conversation_new`: the bot, and the model and thinking this conversation runs with; none: those of the bot's main conversation.",
+      "properties": {
+        "bot_id": {
+          "type": "string"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "thinking": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ThinkingLevel"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "bot_id"
+      ],
+      "type": "object"
+    },
+    "BotConversationNewResult": {
+      "description": "The result of `bots/conversation_new`: the conversation it started.",
+      "properties": {
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "BotConversationParams": {
+      "description": "One of a bot's conversations besides its main one.",
+      "properties": {
+        "bot_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "bot_id",
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "BotConversationsResult": {
+      "description": "The result of `bots/conversations`: the bot's conversations besides its main one, newest first.",
+      "properties": {
+        "conversations": {
+          "items": {
+            "$ref": "#/definitions/SessionSummary"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "conversations"
+      ],
+      "type": "object"
+    },
     "BotCreateParams": {
       "properties": {
         "avatar": {
@@ -1839,6 +1922,13 @@
         },
         "bot_id": {
           "type": "string"
+        },
+        "conversation": {
+          "description": "Another of the bot's conversations to open (`bots/conversation_new`); none: its main one.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "events": {
           "$ref": "#/definitions/EventFilter",
@@ -14871,6 +14961,13 @@
           "description": "The model's tool call.",
           "type": "string"
         },
+        "conversation": {
+          "description": "That conversation's session. The host gives it back with the news of what the call started, for the news to reach the same conversation (`mesh/news`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "name": {
           "description": "The tool.",
           "type": "string"
@@ -14984,6 +15081,13 @@
         "bot": {
           "description": "The bot whose conversation takes the news.",
           "type": "string"
+        },
+        "conversation": {
+          "description": "The bot's conversation that takes it, as `mesh/call` named it; none, or one that is no longer the bot's: its main conversation.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "from": {
           "$ref": "#/definitions/AgentRef",
@@ -22132,6 +22236,18 @@
       "params": "BotIdParams",
       "result": "Empty"
     },
+    "bots/conversation_delete": {
+      "params": "BotConversationParams",
+      "result": "Empty"
+    },
+    "bots/conversation_new": {
+      "params": "BotConversationNewParams",
+      "result": "BotConversationNewResult"
+    },
+    "bots/conversations": {
+      "params": "BotIdParams",
+      "result": "BotConversationsResult"
+    },
     "bots/create": {
       "params": "BotCreateParams",
       "result": "BotResult"
@@ -22765,6 +22881,9 @@
       "auth/set": "stable",
       "bots/avatar": "experimental",
       "bots/clear": "experimental",
+      "bots/conversation_delete": "experimental",
+      "bots/conversation_new": "experimental",
+      "bots/conversations": "experimental",
       "bots/create": "experimental",
       "bots/delete": "experimental",
       "bots/memory": "experimental",

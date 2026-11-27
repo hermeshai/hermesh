@@ -5,8 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { TerminalCommand } from "../../shared/bridge";
+import { usesSidebarMaterial, windowBackgroundOf } from "../../shared/appearance";
 import { chooseMacTerminal, parseRunningBundleIds } from "../../shared/terminal";
 import { settleInApplications } from "../install";
+import { activePalette } from "../notify";
 import { testDataDir } from "../paths";
 import type { Platform, WindowKind } from "./types";
 
@@ -208,21 +210,29 @@ export const mac: Platform = {
   },
 
   frame(kind: WindowKind) {
+    const palette = activePalette();
+    const backgroundColor = windowBackgroundOf(palette);
     switch (kind) {
       case "panel":
         return { type: "panel", vibrancy: "popover", visualEffectState: "active", backgroundColor: "#00000000" };
       case "auxiliary":
-        return { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 12, y: 15 } };
-      default:
-        // The lights on the 44 px top band; the sidebar's material showing through (the content is opaque).
+        return { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 12, y: 15 }, backgroundColor };
+      default: {
+        // The lights on the 44 px top band; glass themes show the sidebar's material, solid themes stay opaque.
+        const glass = usesSidebarMaterial(palette);
         return {
           titleBarStyle: "hiddenInset",
           trafficLightPosition: kind === "onboarding" ? { x: 24, y: 24 } : { x: 12, y: 15 },
-          vibrancy: "sidebar",
           visualEffectState: "followWindow",
-          backgroundColor: "#00000000",
+          ...(glass ? { vibrancy: "sidebar", backgroundColor: "#00000000" } : { backgroundColor }),
         };
+      }
     }
+  },
+
+  applyMaterial(win, glass, backgroundColor) {
+    win.setVibrancy(glass ? "sidebar" : null);
+    win.setBackgroundColor(glass ? "#00000000" : backgroundColor);
   },
 
   placeButtons(win, kind) {

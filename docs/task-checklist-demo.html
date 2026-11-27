@@ -1,0 +1,2191 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="black">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>任务步骤提示 · 桌面端与手机端融合方案原型</title>
+<style>
+@font-face {
+  font-family: "Google Sans Flex";
+  src: url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-flex.ttf") format("truetype");
+  font-style: oblique 0deg 10deg;
+  font-weight: 100 1000;
+}
+@font-face {
+  font-family: "Google Sans Code";
+  src: url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-code.ttf") format("truetype");
+  font-weight: 300 800;
+}
+
+:root {
+  --font-mac: "Google Sans Flex", "Google Sans", -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif;
+  --font-ios: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", system-ui, sans-serif;
+  --mono: "Google Sans Code", ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --ease-out: cubic-bezier(.2, 0, 0, 1);
+  --ease-spring: cubic-bezier(.34, 1.4, .64, 1);
+}
+
+/* ---------- Pure Black OLED (Matches user's Desktop & iPhone screenshots) ---------- */
+[data-theme="black"] {
+  --page: #090a0e;
+  --page-fg: #ededf2;
+  --page-fg2: #9498a6;
+  --page-fg3: #626675;
+  --page-card: #121319;
+  --page-bd: rgba(255,255,255,.085);
+  --page-btn: rgba(255,255,255,.075);
+  --page-bar: rgba(16,17,23,.88);
+
+  /* Mac tokens (data-dark-style="black") */
+  --win: #000000;
+  --win-rgb: 0,0,0;
+  --win2: #121216;
+  --win3: #1c1c22;
+  --pill: #15151a;
+  --pill-tray: #0d0d11;
+  --pill-bd: rgba(255,255,255,.085);
+  --cmp-hi: rgba(255,255,255,.075);
+  --cmp-lift: 0 .5px 1px rgba(0,0,0,.55), 0 4px 14px rgba(0,0,0,.45);
+  --slice-sh: 0 0 0 1px rgba(255,255,255,.11), 0 24px 64px rgba(0,0,0,.75);
+
+  /* iPhone tokens */
+  --ios-bg: #000000;
+  --ios-bg-rgb: 0,0,0;
+  --glass: rgba(34,34,39,.78);
+  --glass-pill: rgba(30,30,35,.82);
+  --glass-sh: 0 0 0 .5px rgba(255,255,255,.13), inset 0 .5px 0 rgba(255,255,255,.12), 0 10px 28px rgba(0,0,0,.6);
+  --popover-bg: rgba(26,26,31,.94);
+
+  /* Shared text & semantic */
+  --l1: rgba(255,255,255,.92);
+  --l2: rgba(235,235,245,.58);
+  --l3: rgba(235,235,245,.34);
+  --l4: rgba(255,255,255,.15);
+  --sep: rgba(255,255,255,.085);
+  --fill: rgba(255,255,255,.055);
+  --fill2: rgba(255,255,255,.095);
+  --fill3: rgba(255,255,255,.14);
+  --code: rgba(255,255,255,.075);
+
+  --accent: #4a66ff;
+  --accent-t: #8fa2ff;
+  --accent-bg: rgba(74,102,255,.18);
+  --ok: #38ce86;
+  --ok-bg: rgba(56,206,134,.14);
+  --danger: #ff6670;
+  --danger-bg: rgba(255,102,112,.15);
+  --warn: #f5a53c;
+
+  /* Aurora Mark stops (dark) */
+  --aurora-g0: #22e1c9;
+  --aurora-g1: #00d0de;
+  --aurora-g2: #00b9f1;
+  --aurora-g3: #009cfe;
+  --aurora-g4: #3e7bff;
+  --aurora-g5: #5175ff;
+  --aurora-g6: #616eff;
+  --aurora-g7: #6e68ff;
+  --aurora-g8: #7b61ff;
+  --beam-opacity: 0.72;
+  --beam-blend: plus-lighter;
+}
+
+/* ---------- Standard Dark Gray ---------- */
+[data-theme="dark"] {
+  --page: #0e0f14;
+  --page-fg: #ececf1;
+  --page-fg2: #989ba8;
+  --page-fg3: #666977;
+  --page-card: #171820;
+  --page-bd: rgba(255,255,255,.085);
+  --page-btn: rgba(255,255,255,.08);
+  --page-bar: rgba(20,21,27,.88);
+
+  --win: #1e1e21;
+  --win-rgb: 30,30,33;
+  --win2: #252529;
+  --win3: #323237;
+  --pill: #29292d;
+  --pill-tray: #222226;
+  --pill-bd: rgba(255,255,255,.11);
+  --cmp-hi: rgba(255,255,255,.08);
+  --cmp-lift: 0 .5px 1px rgba(0,0,0,.32), 0 3px 10px rgba(0,0,0,.18);
+  --slice-sh: 0 0 0 .5px rgba(255,255,255,.14), 0 22px 60px rgba(0,0,0,.52);
+
+  --ios-bg: #000000;
+  --ios-bg-rgb: 0,0,0;
+  --glass: rgba(36,36,41,.78);
+  --glass-pill: rgba(32,32,37,.82);
+  --glass-sh: 0 0 0 .5px rgba(255,255,255,.13), inset 0 .5px 0 rgba(255,255,255,.12), 0 10px 28px rgba(0,0,0,.55);
+  --popover-bg: rgba(30,30,35,.94);
+
+  --l1: rgba(255,255,255,.90);
+  --l2: rgba(255,255,255,.56);
+  --l3: rgba(255,255,255,.33);
+  --l4: rgba(255,255,255,.15);
+  --sep: rgba(255,255,255,.09);
+  --fill: rgba(255,255,255,.055);
+  --fill2: rgba(255,255,255,.09);
+  --fill3: rgba(255,255,255,.14);
+  --code: rgba(255,255,255,.07);
+
+  --accent: #4a66ff;
+  --accent-t: #8fa2ff;
+  --accent-bg: rgba(74,102,255,.17);
+  --ok: #38ce86;
+  --ok-bg: rgba(56,206,134,.14);
+  --danger: #ff6670;
+  --danger-bg: rgba(255,102,112,.15);
+  --warn: #f5a53c;
+
+  --aurora-g0: #22e1c9;
+  --aurora-g1: #00d0de;
+  --aurora-g2: #00b9f1;
+  --aurora-g3: #009cfe;
+  --aurora-g4: #3e7bff;
+  --aurora-g5: #5175ff;
+  --aurora-g6: #616eff;
+  --aurora-g7: #6e68ff;
+  --aurora-g8: #7b61ff;
+  --beam-opacity: 0.68;
+  --beam-blend: plus-lighter;
+}
+
+/* ---------- Light Mode ---------- */
+[data-theme="light"] {
+  --page: #e8eaf0;
+  --page-fg: #1b1c22;
+  --page-fg2: #5d606d;
+  --page-fg3: #8a8e9c;
+  --page-card: #ffffff;
+  --page-bd: rgba(0,0,0,.085);
+  --page-btn: rgba(20,24,40,.065);
+  --page-bar: rgba(245,246,250,.88);
+
+  --win: #ffffff;
+  --win-rgb: 255,255,255;
+  --win2: #f4f4f7;
+  --win3: #ebebf0;
+  --pill: #ffffff;
+  --pill-tray: #f5f6f9;
+  --pill-bd: rgba(0,0,0,.105);
+  --cmp-hi: transparent;
+  --cmp-lift: 0 .5px 1px rgba(0,0,0,.05), 0 3px 10px rgba(10,20,50,.06);
+  --slice-sh: 0 0 0 .5px rgba(0,0,0,.15), 0 20px 52px rgba(10,20,50,.12);
+
+  --ios-bg: #fbfbfc;
+  --ios-bg-rgb: 251,251,252;
+  --glass: rgba(250,250,252,.82);
+  --glass-pill: rgba(255,255,255,.86);
+  --glass-sh: 0 0 0 .5px rgba(0,0,0,.095), inset 0 .5px 0 rgba(255,255,255,.85), 0 10px 28px rgba(20,24,40,.10), 0 2px 6px rgba(20,24,40,.05);
+  --popover-bg: rgba(255,255,255,.95);
+
+  --l1: rgba(0,0,0,.87);
+  --l2: rgba(0,0,0,.55);
+  --l3: rgba(0,0,0,.34);
+  --l4: rgba(0,0,0,.14);
+  --sep: rgba(0,0,0,.08);
+  --fill: rgba(0,0,0,.045);
+  --fill2: rgba(0,0,0,.075);
+  --fill3: rgba(0,0,0,.12);
+  --code: rgba(0,0,0,.055);
+
+  --accent: #3d5bff;
+  --accent-t: #2d4ae6;
+  --accent-bg: rgba(61,91,255,.10);
+  --ok: #17924f;
+  --ok-bg: rgba(23,146,79,.11);
+  --danger: #d7333f;
+  --danger-bg: rgba(215,51,63,.10);
+  --warn: #c86c08;
+
+  --aurora-g0: #0891b2;
+  --aurora-g1: #008cc2;
+  --aurora-g2: #0084d3;
+  --aurora-g3: #0079e3;
+  --aurora-g4: #2f6bf0;
+  --aurora-g5: #4361f2;
+  --aurora-g6: #5356f3;
+  --aurora-g7: #614af2;
+  --aurora-g8: #6d3cf0;
+  --beam-opacity: 0.78;
+  --beam-blend: multiply;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--page);
+  color: var(--page-fg);
+  font: 14px/1.55 var(--font-mac);
+  font-variation-settings: "ROND" 0, "slnt" 0, "wdth" 94;
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: 124px;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+svg { display: block; flex: none; }
+
+/* ---------- Hermesh Brand Emergence Mark (packages/ui/src/mark.tsx) ---------- */
+.hm-mark { flex: none; display: inline-block; }
+.hm-beam { opacity: var(--beam-opacity); mix-blend-mode: var(--beam-blend); }
+.hm-seq .hm-beam {
+  opacity: .26;
+  mix-blend-mode: normal;
+  animation: hm-seq 1.25s linear infinite;
+}
+.hm-seq .hm-b1 { animation-delay: .41s; }
+.hm-seq .hm-b2 { animation-delay: .82s; }
+@keyframes hm-seq {
+  0%, 62%, 100% { opacity: .26; }
+  30% { opacity: 1; }
+}
+@keyframes spin4 { to { transform: rotate(360deg); } }
+
+/* ---------- Page Header & Top Scheme Tabs ---------- */
+.page-head {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 22px 24px 12px;
+}
+.head-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px 20px;
+  flex-wrap: wrap;
+}
+.page-head h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+.page-head .lead {
+  margin: 6px 0 14px;
+  color: var(--page-fg2);
+  font-size: 13px;
+  max-width: 92ch;
+  line-height: 1.65;
+}
+.scheme-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--page-card);
+  border: 1px solid var(--page-bd);
+  width: fit-content;
+}
+.scheme-tab {
+  height: 32px;
+  padding: 0 13px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--page-fg2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background .16s, color .16s;
+}
+.scheme-tab:hover { color: var(--page-fg); background: var(--fill); }
+.scheme-tab.on { background: var(--accent); color: #fff; font-weight: 600; }
+.scheme-tab .rec {
+  font-size: 10.5px;
+  line-height: 15px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(255,255,255,.22);
+  color: inherit;
+  font-weight: 600;
+}
+.scheme-tab:not(.on) .rec {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+/* ---------- Main Stage: Mac + iPhone Side-by-Side ---------- */
+.stage-wrap {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 8px 24px 24px;
+}
+.scheme-banner {
+  background: var(--page-card);
+  border: 1px solid var(--page-bd);
+  border-radius: 14px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  display: grid;
+  grid-template-columns: minmax(240px, 1.1fr) minmax(240px, 1fr) minmax(240px, 1fr);
+  gap: 14px 24px;
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .scheme-banner { grid-template-columns: 1fr; }
+}
+.sb-col h2 {
+  margin: 0 0 4px;
+  font-size: 15.5px;
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sb-col h3 {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--page-fg);
+}
+.sb-col p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.62;
+  color: var(--page-fg2);
+}
+.tag-pill {
+  font-size: 11px;
+  line-height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.tag-pill.bad { background: var(--danger-bg); color: var(--danger); }
+.tag-pill.good { background: var(--ok-bg); color: var(--ok); }
+.tag-pill.info { background: var(--accent-bg); color: var(--accent-t); }
+
+.devices-row {
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.dev-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.dev-block.mac-block { flex: 1 1 680px; max-width: 810px; }
+.dev-block.ios-block { flex: 0 0 auto; }
+.dev-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--page-fg2);
+}
+.dev-caption b { color: var(--page-fg); font-weight: 600; }
+.dev-caption .hint { color: var(--page-fg3); }
+
+/* ==========================================================================
+   MAC DESKTOP WINDOW SLICE
+   ========================================================================== */
+.mac-win {
+  position: relative;
+  height: 560px;
+  border-radius: 16px;
+  background: var(--win);
+  box-shadow: var(--slice-sh);
+  overflow: hidden;
+  font-family: var(--font-mac);
+  color: var(--l1);
+  display: flex;
+  flex-direction: column;
+}
+.mac-titlebar {
+  height: 42px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: .5px solid var(--sep);
+  flex: none;
+  z-index: 6;
+  background: rgba(var(--win-rgb), .82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.tl-dots { display: flex; gap: 7px; margin-right: 6px; }
+.tl-dots i { width: 11px; height: 11px; border-radius: 50%; background: var(--fill3); display: block; }
+.mac-title { font-size: 13px; font-weight: 600; color: var(--l1); }
+.mac-sub {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--l3);
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: var(--fill);
+}
+.mac-chat {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 28px 180px;
+  scrollbar-width: none;
+}
+.mac-chat::-webkit-scrollbar { display: none; }
+.mac-col {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.m-ubub {
+  align-self: flex-end;
+  max-width: 78%;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 14px;
+  padding: 9px 14px;
+  font-size: 14px;
+  line-height: 1.58;
+}
+.m-am {
+  font-size: 14.5px;
+  line-height: 1.68;
+  color: var(--l1);
+}
+.m-am code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--code);
+  padding: 1.5px 5px;
+  border-radius: 5px;
+}
+.m-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13.5px;
+  color: var(--l2);
+}
+.m-tool code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--l2);
+}
+.m-work {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13.5px;
+  line-height: 19px;
+  color: var(--l2);
+  padding-top: 4px;
+}
+.m-work .el {
+  color: var(--l3);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Mac Composer Zone */
+.mac-zone {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 5;
+  pointer-events: none;
+  padding: 32px 24px 16px;
+  background: linear-gradient(to bottom, rgba(var(--win-rgb), 0), rgba(var(--win-rgb), .92) 26px, var(--win) 42px);
+}
+.mac-zcol {
+  pointer-events: auto;
+  max-width: 740px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+}
+
+/* Mac Composer Box (.cmp in her.css + composer.css) */
+.mac-cmp {
+  background: var(--pill);
+  border-radius: 18px;
+  box-shadow: inset 0 .5px 0 var(--cmp-hi), 0 0 0 .5px var(--pill-bd), var(--cmp-lift);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  transition: box-shadow .22s var(--ease-out);
+}
+.mac-cmp-in {
+  min-height: 54px;
+  padding: 14px 17px 6px;
+  font-size: 15px;
+  line-height: 21px;
+  color: var(--l3);
+  user-select: none;
+}
+.mac-cmp-bar {
+  display: flex;
+  align-items: center;
+  padding: 0 8px 8px 9px;
+  gap: 2px;
+}
+.mac-ib {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  color: var(--l3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.mac-ib:hover { background: var(--fill); color: var(--l1); }
+.mac-pick {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--l1);
+}
+.mac-pick:hover { background: var(--fill); }
+.mac-pick img { width: 15px; height: 15px; border-radius: 4px; }
+.mac-pick .lvl { color: var(--l3); }
+.mac-pick .lvl::before { content: "·"; margin-right: 5px; }
+.mac-stop {
+  width: 30px; height: 30px;
+  margin: 1px 3px 1px 1px;
+  border-radius: 50%;
+  color: var(--l1);
+  box-shadow: inset 0 0 0 1.5px var(--l4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.mac-send {
+  width: 30px; height: 30px;
+  margin: 1px;
+  border-radius: 50%;
+  color: var(--l3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ==========================================================================
+   MAC SCHEME STYLES
+   ========================================================================== */
+
+/* 0. Current Baseline (.knote.th-todo) */
+.mac-todo-now {
+  background: var(--pill);
+  border-radius: 12px; /* Mismatched 12px vs composer's 18px! */
+  box-shadow: 0 0 0 .5px var(--pill-bd), 0 10px 30px rgba(0,0,0,.22), 0 2px 6px rgba(0,0,0,.1);
+  padding: 11px 14px; /* Mismatched 14px vs composer's 17px! */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 176px;
+  overflow-y: auto;
+}
+.todo-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--l2);
+}
+.todo-row.completed, .todo-row.skipped { color: var(--l3); }
+.todo-row.in_progress { color: var(--l1); font-weight: 500; }
+.todo-row.failed { color: var(--danger); }
+.todo-ic-wrap {
+  width: 14px; height: 14px;
+  margin-top: 2.5px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Baseline uses bright accent-t for completed checkmarks & grey 4-dot spinner */
+.mac-todo-now .todo-row.completed .todo-ic-wrap { color: var(--accent-t); }
+.mac-todo-now .todo-row.in_progress .todo-ic-wrap { color: var(--l2); animation: spin4 3.2s linear infinite; }
+.mac-todo-now .todo-row.pending .todo-ic-wrap { color: var(--l3); }
+
+/* Refined shared step row colors (Schemes A, B, C, D): muted checkmarks, living Aurora mark on active! */
+.refined-rows .todo-row.completed .todo-ic-wrap { color: var(--l3); }
+.refined-rows .todo-row.pending .todo-ic-wrap { color: var(--l4); }
+.refined-rows .todo-row.failed .todo-ic-wrap { color: var(--danger); }
+.refined-rows .todo-row.completed .todo-txt { color: var(--l3); }
+.refined-rows .todo-row.pending .todo-txt { color: var(--l2); }
+.refined-rows .todo-row.in_progress .todo-txt { color: var(--l1); font-weight: 500; }
+
+/* Scheme A (Mac): Attached Composer Tray — One Unified Silhouette */
+.mac-shell-a {
+  border-radius: 18px;
+  background: var(--pill-tray);
+  box-shadow: 0 0 0 .5px var(--pill-bd), var(--cmp-lift);
+  overflow: hidden;
+  transition: box-shadow .22s var(--ease-out);
+}
+.mac-shell-a .mac-cmp {
+  border-radius: 16px 16px 18px 18px;
+  box-shadow: inset 0 .5px 0 var(--cmp-hi), 0 -.5px 0 var(--sep);
+}
+.tray-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8.5px 15px 8.5px 17px; /* Exact 17px left alignment with composer text! */
+  text-align: left;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--l1);
+  transition: background .15s;
+}
+.tray-head:hover { background: var(--fill); }
+.tray-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.tray-segs {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+.tray-segs i {
+  width: 10px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--fill3);
+  display: block;
+}
+.tray-segs i.done { background: var(--accent); opacity: .75; }
+.tray-segs i.run { background: var(--aurora-g3); box-shadow: 0 0 6px rgba(62,123,255,.5); }
+.tray-segs i.fail { background: var(--danger); }
+.tray-count {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--l2);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.tray-chev {
+  width: 13px; height: 13px;
+  color: var(--l3);
+  transition: transform .2s var(--ease);
+}
+.is-open .tray-chev { transform: rotate(180deg); }
+.tray-body {
+  padding: 2px 17px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 168px;
+  overflow-y: auto;
+  border-top: .5px solid var(--sep);
+}
+
+/* Scheme B (Mac): Inline Conversation Tail Spine (Zero card over composer!) */
+.inline-spine {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 2px 0;
+}
+.spine-fold-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  padding: 2px 6px 2px 0;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--l3);
+  transition: color .15s;
+}
+.spine-fold-btn:hover { color: var(--l2); }
+.spine-fold-btn .chev {
+  width: 12px; height: 12px;
+  transition: transform .18s var(--ease);
+}
+.spine-fold-btn.open .chev { transform: rotate(90deg); }
+.spine-group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 2px;
+}
+.spine-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13.5px;
+  line-height: 19px;
+}
+.spine-row .todo-txt {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.spine-row .el {
+  font-size: 12.5px;
+  color: var(--l3);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+/* Scheme C (Mac): Micro Progress Pill + Popover */
+.pill-anchor {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-left: 2px;
+}
+.micro-pill {
+  height: 31px;
+  max-width: min(460px, 100%);
+  padding: 0 11px 0 9px;
+  border-radius: 999px;
+  background: var(--pill);
+  box-shadow: inset 0 .5px 0 var(--cmp-hi), 0 0 0 .5px var(--pill-bd), 0 3px 10px rgba(0,0,0,.18);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--l1);
+  transition: transform .14s ease, box-shadow .18s ease, background .15s;
+}
+.micro-pill:hover { background: var(--win3); }
+.micro-pill:active { transform: scale(.98); }
+.micro-pill .mp-txt {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.micro-pill .mp-cnt {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--l2);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.pill-popover {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  width: min(420px, 100%);
+  background: var(--popover-bg);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border-radius: 14px;
+  box-shadow: 0 0 0 .5px var(--pill-bd), inset 0 .5px 0 var(--cmp-hi), 0 16px 42px rgba(0,0,0,.45);
+  padding: 11px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 210px;
+  overflow-y: auto;
+  transform-origin: bottom left;
+  animation: pop-in .18s var(--ease-spring);
+  z-index: 12;
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(6px) scale(.96); }
+  to { opacity: 1; transform: none; }
+}
+.pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--l3);
+  padding-bottom: 5px;
+  margin-bottom: 2px;
+  border-bottom: .5px solid var(--sep);
+}
+
+/* Scheme D (Mac): Borderless Segmented Hairline Strip */
+.strip-hud {
+  padding: 0 17px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.strip-expanded {
+  padding: 4px 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5.5px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.strip-bar-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--l2);
+}
+.strip-bar-btn:hover { color: var(--l1); }
+.strip-bar-btn .st-idx {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--accent-t);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.strip-bar-btn .st-cur {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--l1);
+  font-weight: 500;
+}
+.strip-bar-btn .st-act {
+  font-size: 11.5px;
+  color: var(--l3);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+.seg-track {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 6), 1fr);
+  gap: 4px;
+  height: 2.5px;
+}
+.seg-track i {
+  border-radius: 99px;
+  background: var(--fill3);
+  position: relative;
+  overflow: hidden;
+}
+.seg-track i.done { background: var(--accent); }
+.seg-track i.fail { background: var(--danger); }
+.seg-track i.run {
+  background: linear-gradient(90deg, var(--aurora-g0), var(--aurora-g4), var(--aurora-g8));
+  animation: pulse-seg 1.6s ease-in-out infinite alternate;
+}
+@keyframes pulse-seg {
+  from { opacity: .55; }
+  to { opacity: 1; }
+}
+
+/* ==========================================================================
+   IPHONE 17 PRO / DUO VIEWPORT (Matches uploaded_media_1_1795747937590.jpg)
+   ========================================================================== */
+.phone {
+  width: 386px;
+  height: 668px;
+  border-radius: 50px;
+  background: var(--ios-bg);
+  position: relative;
+  overflow: hidden;
+  overflow: clip;
+  box-shadow: 0 0 0 9px #1b1b1f, 0 0 0 10.5px #383840, 0 24px 64px rgba(0,0,0,.55);
+  color: var(--l1);
+  font-family: var(--font-ios);
+  font-size: 15.5px;
+  line-height: 1.44;
+  user-select: none;
+}
+.ios-top-fade {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 92px;
+  z-index: 6;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(var(--ios-bg-rgb), .92) 25%, rgba(var(--ios-bg-rgb), 0));
+}
+/* Top session capsule from screenshot 2 */
+.ios-session-cap {
+  position: absolute;
+  top: 16px;
+  left: 20px;
+  max-width: 248px;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--glass);
+  box-shadow: var(--glass-sh);
+  backdrop-filter: blur(22px) saturate(1.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  z-index: 8;
+}
+.ios-session-cap b {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ios-session-cap small {
+  font-size: 10.5px;
+  line-height: 1.2;
+  color: var(--l2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Right vertical Duo rail from screenshot 2 */
+.ios-side-rail {
+  position: absolute;
+  top: 78px;
+  right: 12px;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.ios-rail-time {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+  color: var(--l1);
+}
+.ios-rail-wifi {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: 2px solid var(--l2);
+  border-bottom-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.ios-rail-btn {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  background: var(--glass);
+  box-shadow: var(--glass-sh);
+  backdrop-filter: blur(22px) saturate(1.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--l1);
+}
+
+/* iPhone Conversation Stream */
+.ios-chat {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding: 76px 64px 230px 20px; /* Right 64px clears the Duo vertical rail */
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  scrollbar-width: none;
+}
+.ios-chat::-webkit-scrollbar { display: none; }
+.ios-msg {
+  font-size: 16px;
+  line-height: 1.48;
+  color: var(--l1);
+}
+.ios-msg code {
+  font-family: var(--mono);
+  font-size: 14px;
+  background: var(--code);
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.ios-tool {
+  font-size: 14px;
+  color: var(--l2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ios-tool code {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.ios-work {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13.5px;
+  line-height: 1.38;
+  color: var(--l2);
+}
+.ios-work .w-txt {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.ios-work .w-el {
+  color: var(--l3);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  flex: none;
+}
+
+/* iPhone Bottom Inset Zone */
+.ios-bottom {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 9;
+  pointer-events: none;
+  padding: 28px 0 16px;
+  background: linear-gradient(to bottom, rgba(var(--ios-bg-rgb), 0), rgba(var(--ios-bg-rgb), .90) 26px, var(--ios-bg) 48px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ios-bottom > * { pointer-events: auto; }
+
+/* Floating ToEnd / Live Step Capsule when scrolled away (Scheme B!) */
+.ios-toend-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+.ios-toend-cap {
+  height: 36px;
+  max-width: calc(100% - 32px);
+  padding: 0 8px 0 12px;
+  border-radius: 999px;
+  background: var(--glass-pill);
+  box-shadow: var(--glass-sh);
+  backdrop-filter: blur(22px) saturate(1.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  animation: pop-in .18s var(--ease-spring);
+}
+.ios-toend-cap .tc-txt {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 210px;
+}
+.ios-toend-cap .tc-arr {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+/* iPhone Standard Composer Pill (SessionPage.swift line 848: radius 24, h-padding 12) */
+.ios-box {
+  margin: 0 12px;
+  padding: 6px;
+  border-radius: 24px;
+  background: var(--glass-pill);
+  box-shadow: var(--glass-sh);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ios-plus {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--fill2);
+  color: var(--l1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.ios-ph {
+  flex: 1;
+  min-width: 0;
+  font-size: 15.5px;
+  color: var(--l3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ios-stop {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--fill2);
+  color: var(--l1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.ios-send {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 42%, transparent);
+  color: rgba(255,255,255,.85);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.ios-home {
+  position: absolute;
+  bottom: 6px; left: 50%;
+  transform: translateX(-50%);
+  width: 132px; height: 4.5px;
+  border-radius: 99px;
+  background: var(--l2);
+  opacity: .55;
+  z-index: 15;
+}
+
+/* 0. iPhone Current Baseline: Large 20pt Liquid Glass Slab with 20pt h-margin (narrower than composer's 12pt!) */
+.ios-todo-now {
+  margin: 0 20px; /* Exact bug in SessionPage.swift line 685: 20pt vs box's 12pt! */
+  padding: 11px 14px;
+  border-radius: 20px;
+  background: var(--glass);
+  box-shadow: var(--glass-sh);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+.ios-todo-now .todo-row { font-size: 14.5px; line-height: 1.35; }
+.ios-todo-now .todo-row.completed .todo-ic-wrap { color: var(--accent-t); }
+.ios-todo-now .todo-row.pending .todo-ic-wrap { color: var(--l3); }
+
+/* Scheme A (iPhone): Unified Single-Surface Composer Shell (12pt margin, 24pt radius, NO second glass slab!) */
+.ios-shell-a {
+  margin: 0 12px;
+  border-radius: 24px;
+  background: var(--glass-pill);
+  box-shadow: var(--glass-sh);
+  backdrop-filter: blur(26px) saturate(1.5);
+  -webkit-backdrop-filter: blur(26px) saturate(1.5);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.ios-shell-a .ios-box-inner {
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ios-tray-head {
+  width: 100%;
+  padding: 9px 14px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: .5px solid var(--sep);
+  text-align: left;
+  font-size: 13.5px;
+}
+.ios-tray-body {
+  padding: 8px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border-bottom: .5px solid var(--sep);
+  background: rgba(0,0,0,.14);
+  max-height: 164px;
+  overflow-y: auto;
+}
+[data-theme="light"] .ios-tray-body { background: rgba(0,0,0,.028); }
+.ios-tray-body .todo-row { font-size: 13.5px; line-height: 1.36; }
+
+/* Scheme C (iPhone): Small Liquid Glass Capsule + Clean Floating Sheet */
+.ios-pill-row {
+  margin: 0 12px;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.ios-micro-pill {
+  height: 33px;
+  max-width: 100%;
+  padding: 0 11px 0 9px;
+  border-radius: 999px;
+  background: var(--glass-pill);
+  box-shadow: var(--glass-sh);
+  backdrop-filter: blur(22px) saturate(1.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--l1);
+}
+.ios-micro-pill .mp-txt {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.ios-micro-pill .mp-cnt {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--l2);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.ios-pill-sheet {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: calc(100% + 7px);
+  background: var(--popover-bg);
+  backdrop-filter: blur(28px) saturate(1.5);
+  -webkit-backdrop-filter: blur(28px) saturate(1.5);
+  border-radius: 20px;
+  box-shadow: var(--glass-sh);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 196px;
+  overflow-y: auto;
+  animation: pop-in .18s var(--ease-spring);
+  z-index: 15;
+}
+.ios-pill-sheet .todo-row { font-size: 13.5px; line-height: 1.36; }
+
+/* Scheme D (iPhone): Borderless Hairline Strip */
+.ios-strip {
+  margin: 0 18px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ios-strip .todo-row { font-size: 13.5px; line-height: 1.36; }
+
+/* ==========================================================================
+   OVERVIEW MATRIX MODE (Compare All 4 Schemes Side-by-Side)
+   ========================================================================== */
+.matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+@media (max-width: 980px) {
+  .matrix-grid { grid-template-columns: 1fr; }
+}
+.matrix-card {
+  background: var(--page-card);
+  border: 1px solid var(--page-bd);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.matrix-card-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.matrix-card-h h3 { margin: 0; font-size: 15px; font-weight: 650; }
+.matrix-card-h .jump-btn {
+  font-size: 12px;
+  color: var(--accent-t);
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: var(--accent-bg);
+  font-weight: 500;
+}
+.matrix-preview {
+  position: relative;
+  height: 250px;
+  border-radius: 12px;
+  background: var(--win);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  overflow: hidden;
+}
+.matrix-preview .mac-chat { padding: 14px 18px 130px; }
+.matrix-preview .mac-zone { padding: 20px 14px 12px; }
+
+/* ---------- Sticky Control Bar ---------- */
+.ctl-bar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 99;
+  background: var(--page-bar);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--page-bd);
+  padding: 9px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+}
+.ctl-g { display: flex; align-items: center; gap: 4px; }
+.ctl-g > b { color: var(--page-fg2); font-weight: 500; margin-right: 4px; }
+.ctl-bar button {
+  height: 27px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: var(--page-btn);
+  color: var(--page-fg2);
+  font-weight: 500;
+  transition: background .15s, color .15s;
+}
+.ctl-bar button:hover { color: var(--page-fg); }
+.ctl-bar button.on { background: var(--accent); color: #fff; }
+.done-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--ok);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--ok-bg);
+  width: fit-content;
+}
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <div class="head-row">
+    <h1>任务步骤提示（Live Checklist）· 桌面端与手机端融合方案探索</h1>
+  </div>
+  <p class="lead">
+    核心诊断：桌面端现状套用了旧版通知框 <code>.knote</code>（12px 圆角、14px 左边距、高亮蓝勾 + 四点旋转），与新版「融入 · 浮起」输入框（18px 圆角、17px 左边距、顶沿高光）形成<strong>上下两块黑砖碰撞</strong>；手机端则将多行只读列表放进了高折射大面积<strong>液态玻璃矩形</strong>（20pt 边距、20pt 圆角），叠在更宽的液态玻璃输入胶囊（12pt 边距、24pt 圆角）上方，产生<strong>双层雾化玻璃打架 + 正文状态重复遮挡</strong>。点击下方各方案中的进度条均可<strong>直接交互展开 / 收起</strong>，也可在底栏推进步骤体验动态流转。
+  </p>
+  <nav class="scheme-tabs" id="top-tabs" aria-label="设计方案切换"></nav>
+</header>
+
+<main class="stage-wrap" id="stage"></main>
+
+<div class="ctl-bar" id="ctl-bar">
+  <div class="ctl-g">
+    <b>列表状态</b>
+    <button data-act="expand" data-val="0">默认收起（聚焦当前）</button>
+    <button data-act="expand" data-val="1">展开全部</button>
+  </div>
+  <div class="ctl-g">
+    <b>步骤演进</b>
+    <button data-act="step-prev">◀ 上一步</button>
+    <button data-act="step-next">下一步 ▶</button>
+    <button data-act="autoplay" id="btn-play">自动演示</button>
+  </div>
+  <div class="ctl-g">
+    <b>手机阅读位置</b>
+    <button data-act="scroll" data-val="bottom">在底部</button>
+    <button data-act="scroll" data-val="away">上滑看历史</button>
+  </div>
+  <div class="ctl-g">
+    <b>场景数据</b>
+    <button data-act="scene" data-val="normal">常规 6 步（原截图）</button>
+    <button data-act="scene" data-val="long">长列表 9 步</button>
+    <button data-act="scene" data-val="failed">含失败步骤</button>
+  </div>
+  <div class="ctl-g">
+    <b>外观</b>
+    <button data-act="theme" data-val="black">纯黑 OLED</button>
+    <button data-act="theme" data-val="dark">深色灰</button>
+    <button data-act="theme" data-val="light">浅色</button>
+  </div>
+</div>
+
+<script>
+const ANTIGRAVITY_LOGO = "data:image/png;base64,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";
+
+const SCHEMES = [
+  {
+    id: "now",
+    short: "0 · 现状对照",
+    title: "现状对照（独立面板常驻平铺）",
+    badge: { text: "当前问题", cls: "bad" },
+    summary: "复刻你截图中的真实线上样式：桌面端 .knote 卡片与输入框上下分离碰撞；手机端大面积液态玻璃矩形叠在液态玻璃输入条上方。",
+    macNote: "圆角不一致（12px vs 18px），左轴线错位（14px vs 17px）；4 个亮蓝色完成勾抢走视觉焦点，全部 6 行永远撑开遮挡对话。",
+    iosNote: "大面积多行只读文字不适合 Liquid Glass——变成一块灰蒙蒙的雾化板，且左右边距（20pt）比下方输入条（12pt）窄一截，还与上方正文末尾的实时状态重复。"
+  },
+  {
+    id: "a",
+    short: "方案 A · 连体托盘",
+    rec: "推荐 1",
+    title: "方案 A · 一体式抽屉托盘（Composer Tray）",
+    badge: { text: "最契合「融入 · 浮起」", cls: "good" },
+    summary: "消灭「第二个框」：任务提示变成输入框向上自然延伸的内凹帽檐（Recessed Tray），共享同一个外轮廓与 17px 左对齐轴线。",
+    macNote: "外轮廓统一 18px 圆角；平时仅 34px 单行展示「极光标 + 当前步骤 + 分段进度条 4/6」，点击平滑向上展开，已完成项用暗灰勾退后。",
+    iosNote: "彻底取消独立玻璃块！合并进输入框唯一的 12pt 边距、24pt 圆角容器顶部（细线分隔），消除双层玻璃错位，屏幕遮挡减少 72%。"
+  },
+  {
+    id: "b",
+    short: "方案 B · 随流内嵌",
+    rec: "推荐 2",
+    title: "方案 B · 对话流文末内嵌（Inline Stream Spine）",
+    badge: { text: "零玻璃面板 · 最安静纯粹", cls: "good" },
+    summary: "彻底移出输入区：将步骤清单与对话流末尾原有的实时状态行（WorkLine）合二为一，直接生长在纯净画布上。",
+    macNote: "底部只剩干净的输入框，不再有任何悬浮块；文末自动把已完成项折叠为「✓ 已完成前 4 步 ⌄」，紧跟当前活跃步骤与计时，并预告下一步。",
+    iosNote: "完全不使用液态玻璃承载列表，消除正文与卡片的重复提示；上滑翻看历史消息时，回到底部按钮轻巧变为「4/5 · Build signed… ↓」胶囊。"
+  },
+  {
+    id: "c",
+    short: "方案 C · 灵动胶囊",
+    title: "方案 C · 灵动微胶囊 + 按需浮层（Micro Pill）",
+    badge: { text: "把玻璃留给小体积控件", cls: "info" },
+    summary: "保留底部常驻感知，但把大面板浓缩为一颗自适应宽度的 32px 单行胶囊（环形进度 + 当前步），点击才弹出浮层。",
+    macNote: "左对齐紧凑胶囊不撑满整行，留出两侧对话呼吸空间；点击弹出 `.her-menu` 同款毛玻璃菜单浮层查看完整步骤。",
+    iosNote: "符合 iOS 26 Liquid Glass 设计本意——小巧胶囊如同顶部标题胶囊一样精致晶莹，平时只占一行，点按才展开悬浮面板。"
+  },
+  {
+    id: "d",
+    short: "方案 D · 无框步进条",
+    title: "方案 D · 无框步进刻度条（Hairline Step Strip）",
+    badge: { text: "极简工程师 HUD", cls: "info" },
+    summary: "零背景、零边框、零玻璃：在底部渐变遮罩上直接绘制 N 段 2.5px 进度刻度与单行排版文字，输入框是唯一的实体表面。",
+    macNote: "17px 左对齐轴线，前 4 格品牌蓝常亮、当前格极光呼吸流光；点击展开时步骤直接浮现在柔和底部渐变上，无任何硬框。",
+    iosNote: "OLED 纯黑底上只有细腻的分段光条与文字，彻底告别灰雾感，与底部单行胶囊输入框形成克制的主次对比。"
+  },
+  {
+    id: "all",
+    short: "全景同屏对比",
+    title: "四套优化方案 · 桌面端同屏矩阵速览",
+    badge: { text: "2×2 横向对比", cls: "info" },
+    summary: "在同一视口内横向对比 A / B / C / D 四种形态的空间占比、视觉重心与展开交互。",
+    macNote: "点击任意卡片内的进度条可直接展开或收起；点击右上角「切到此方案」可查看对应的 iPhone 端完整细节。",
+    iosNote: "手机端的核心原则一致：拒绝大面积多行液态玻璃板，要么合入输入框（A）、要么回归正文流（B）、要么缩成小胶囊（C）/ 无框刻度（D）。"
+  }
+];
+
+const SCENES = {
+  normal: {
+    mac: [
+      "修复并通过桌面端 E2E 测试",
+      "运行真实模型与后端回归 E2E 测试",
+      "提交后端与桌面端阶段性改动",
+      "制作并确认 iPhone 交互原型",
+      "实现 iPhone 端代码与端到端测试",
+      "更新设计文档已实现章节"
+    ],
+    ios: [
+      "Sync latest origin/main and verify clean merge",
+      "Back up local Hermesh SQLite databases safely",
+      "Build and install Hermesh onto Yi's iPhone",
+      "Build signed macOS Hermesh.app bundle",
+      "Upgrade macOS app and trigger automatic DB migration"
+    ]
+  },
+  long: {
+    mac: [
+      "拉取最新 main 分支并校验工作区干净",
+      "定义 Session V2 数据库迁移校验和结构",
+      "实现 SQLite 自动备份与回滚保护机制",
+      "补齐 Go 守护进程单元测试与并发压测",
+      "适配桌面端渲染进程状态投影与缓存",
+      "修复并通过桌面端 Playwright E2E 测试",
+      "制作并确认 iPhone 端交互原型设计",
+      "实现 SwiftUI 视图层改动与无障碍标识",
+      "运行真机签名打包与全链路回归验证"
+    ],
+    ios: [
+      "Sync latest origin/main and verify clean merge",
+      "Inspect SQLite schema_history checksum table",
+      "Back up local Hermesh SQLite databases safely",
+      "Run Go internal/sqlitedb & owner test suites",
+      "Compile embedded HermeshCore.xcframework",
+      "Build and install Hermesh onto Yi's iPhone",
+      "Build signed macOS Hermesh.app bundle",
+      "Verify Developer ID & notarization entitlements",
+      "Upgrade macOS app and trigger DB migration"
+    ]
+  },
+  failed: {
+    mac: [
+      "修复并通过桌面端 E2E 测试",
+      "运行真实模型与后端回归 E2E 测试",
+      "提交后端与桌面端阶段性改动",
+      "制作并确认 iPhone 交互原型",
+      "实现 iPhone 端代码与端到端测试（XCUITest 超时失败）",
+      "更新设计文档已实现章节"
+    ],
+    ios: [
+      "Sync latest origin/main and verify clean merge",
+      "Back up local Hermesh SQLite databases safely",
+      "Build and install Hermesh onto Yi's iPhone",
+      "Build signed macOS Hermesh.app bundle (codesign failed)",
+      "Upgrade macOS app and trigger automatic DB migration"
+    ]
+  }
+};
+
+const state = {
+  scheme: "a",
+  expanded: false,
+  spineHistoryOpen: false,
+  activeIdx: 4, // 0-based active step on Mac (4 = 5th step, matching screenshot!)
+  scrolledAway: false,
+  scene: "normal",
+  theme: "black",
+  playing: false,
+  timer: null
+};
+
+// Exact Hermesh Emergence Mark SVG (packages/ui/src/mark.tsx)
+let markSeqId = 0;
+function emergenceMark(size = 14) {
+  const uid = "hm-" + (++markSeqId);
+  const beams = [0, 1, 2].map((i) => {
+    const a = (i * Math.PI) / 3;
+    const dx = Math.cos(a), dy = Math.sin(a);
+    const nx = -dy, ny = dx;
+    const mx = nx * 10, my = ny * 10;
+    return {
+      x1: (mx - dx * 37).toFixed(2),
+      y1: (my - dy * 37).toFixed(2),
+      x2: (mx + dx * 37).toFixed(2),
+      y2: (my + dy * 37).toFixed(2),
+      cls: "hm-beam hm-b" + i,
+      gid: uid + "-" + i
+    };
+  });
+  const stops = [0,1,2,3,4,5,6,7,8].map(k =>
+    `<stop offset="${(k/8).toFixed(3)}" style="stop-color:var(--aurora-g${k})"/>`
+  ).join("");
+  return `<svg class="hm-mark hm-seq" width="${size}" height="${size}" viewBox="-49 -48 92 94" aria-hidden="true">
+    <defs>${beams.map(b => `<linearGradient id="${b.gid}" gradientUnits="userSpaceOnUse" x1="${b.x1}" y1="${b.y1}" x2="${b.x2}" y2="${b.y2}">${stops}</linearGradient>`).join("")}</defs>
+    <g>${beams.map(b => `<path d="M${b.x1} ${b.y1}L${b.x2} ${b.y2}" pathLength="100" class="${b.cls}" stroke="url(#${b.gid})" stroke-width="13" stroke-linecap="round" fill="none"/>`).join("")}</g>
+  </svg>`;
+}
+
+const ICONS = {
+  check: `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4l3.1 3.1 6.5-6.8"/></svg>`,
+  ring: `<svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="4.8" stroke="currentColor" stroke-width="1.3"/></svg>`,
+  x: `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6"/></svg>`,
+  dots4: `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="4.6" cy="4.6" r="1.35" fill="currentColor"/><circle cx="9.4" cy="4.6" r="1.35" fill="currentColor" opacity=".55"/><circle cx="9.4" cy="9.4" r="1.35" fill="currentColor"/><circle cx="4.6" cy="9.4" r="1.35" fill="currentColor" opacity=".55"/></svg>`,
+  chevD: `<svg class="tray-chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.3L8 9.8l3.5-3.5"/></svg>`,
+  chevR: `<svg class="chev" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 4.4L9.8 8l-3.6 3.6"/></svg>`,
+  plus: `<svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>`,
+  up: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M4.2 6.8L8 3l3.8 3.8"/></svg>`,
+  down: `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4.2 9.2L8 13l3.8-3.8"/></svg>`,
+  stop: `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="4" width="8" height="8" rx="1.7"/></svg>`,
+  menu: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3.5 5.5h11M3.5 9h11M3.5 12.5h11"/></svg>`,
+  more: `<svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor"><circle cx="4.5" cy="9" r="1.4"/><circle cx="9" cy="9" r="1.4"/><circle cx="13.5" cy="9" r="1.4"/></svg>`,
+  wifi: `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 6.2a8.5 8.5 0 0 1 11 0M4.8 8.8a5.2 5.2 0 0 1 6.4 0"/><circle cx="8" cy="11.6" r="1" fill="currentColor" stroke="none"/></svg>`
+};
+
+function buildSteps(platform) {
+  const raw = SCENES[state.scene][platform];
+  const total = raw.length;
+  // Map state.activeIdx proportionally across Mac & iPhone step counts
+  const maxMac = SCENES[state.scene].mac.length;
+  const ratio = state.activeIdx / maxMac;
+  const cur = state.activeIdx >= maxMac ? total : Math.min(total - 1, Math.round(ratio * total));
+
+  return raw.map((text, idx) => {
+    let status = "pending";
+    if (idx < cur) status = "completed";
+    else if (idx === cur) status = state.scene === "failed" ? "failed" : "in_progress";
+    return { text, status, idx };
+  });
+}
+
+function progressRingSVG(done, total, hasFail) {
+  const r = 6;
+  const c = 2 * Math.PI * r;
+  const pct = total > 0 ? done / total : 0;
+  const dash = (pct * c).toFixed(2);
+  const color = hasFail ? "var(--danger)" : "var(--accent)";
+  return `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+    <circle cx="8" cy="8" r="${r}" fill="none" stroke="var(--fill3)" stroke-width="2"/>
+    <circle cx="8" cy="8" r="${r}" fill="none" stroke="${color}" stroke-width="2"
+      stroke-dasharray="${dash} ${c.toFixed(2)}" stroke-linecap="round" transform="rotate(-90 8 8)"/>
+  </svg>`;
+}
+
+function renderStepRows(steps, baseline = false) {
+  return steps.map((s) => {
+    let ic = ICONS.ring;
+    if (s.status === "completed") ic = ICONS.check;
+    else if (s.status === "failed") ic = ICONS.x;
+    else if (s.status === "in_progress") ic = baseline ? ICONS.dots4 : emergenceMark(14);
+    return `<div class="todo-row ${s.status}">
+      <span class="todo-ic-wrap">${ic}</span>
+      <span class="todo-txt">${s.text}</span>
+    </div>`;
+  }).join("");
+}
+
+function stepSummary(steps) {
+  const total = steps.length;
+  const done = steps.filter(s => s.status === "completed").length;
+  const active = steps.find(s => s.status === "in_progress" || s.status === "failed");
+  const allDone = done === total;
+  const hasFail = steps.some(s => s.status === "failed");
+  return { total, done, active, allDone, hasFail };
+}
+
+function renderMacComposerInner() {
+  return `
+    <div class="mac-cmp-in">继续说，会排到下一轮…</div>
+    <div class="mac-cmp-bar">
+      <button class="mac-ib" aria-label="添加附件">${ICONS.plus}</button>
+      <button class="mac-pick">
+        <img src="${ANTIGRAVITY_LOGO}" alt="">
+        <span>Gemini 4 Carbon</span>
+        <span class="lvl">高</span>
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4.5 6.3L8 9.8l3.5-3.5"/></svg>
+      </button>
+      <div style="flex:1"></div>
+      <button class="mac-stop" aria-label="停止">${ICONS.stop}</button>
+      <button class="mac-send" aria-label="发送">${ICONS.up}</button>
+    </div>
+  `;
+}
+
+function renderMacInlineTail(scheme, steps) {
+  const { total, done, active, allDone, hasFail } = stepSummary(steps);
+  if (scheme !== "b") {
+    // Standard WorkLine in conversation tail (specific tool/focus activity)
+    if (allDone) {
+      return `<div class="done-toast">${ICONS.check} 全部 ${total} 个步骤已执行完成</div>`;
+    }
+    return `<div class="m-work">
+      ${hasFail ? `<span style="color:var(--danger);margin-top:2px">${ICONS.x}</span>` : `<span style="margin-top:2px">${emergenceMark(15)}</span>`}
+      <span>Run xcodebuild test -scheme Hermesh -only-testing:HermeshUITests/SessionDetailUITests</span>
+      <span class="el">4:18</span>
+    </div>`;
+  }
+
+  // Scheme B: Unified Inline Conversation Tail Spine!
+  if (allDone) {
+    return `<div class="done-toast">${ICONS.check} 已完成全部 ${total} 步计划</div>`;
+  }
+  const completedSteps = steps.filter(s => s.status === "completed");
+  const pendingSteps = steps.filter(s => s.status === "pending");
+  const nextStep = pendingSteps[0];
+
+  return `<div class="inline-spine refined-rows">
+    ${completedSteps.length > 0 ? `
+      <button class="spine-fold-btn ${state.expanded ? "open" : ""}" data-toggle="expand">
+        <span style="color:var(--ok);display:inline-flex">${ICONS.check}</span>
+        <span>已完成前 ${completedSteps.length} 步（共 ${total} 步）</span>
+        ${ICONS.chevR}
+      </button>
+      ${state.expanded ? `<div class="spine-group">${renderStepRows(completedSteps, false)}</div>` : ""}
+    ` : ""}
+    ${active ? `
+      <div class="spine-row todo-row ${active.status}">
+        <span class="todo-ic-wrap">${active.status === "failed" ? ICONS.x : emergenceMark(15)}</span>
+        <span class="todo-txt">${active.text}</span>
+        <span class="el">4:18</span>
+      </div>
+    ` : ""}
+    ${nextStep ? `
+      <div class="spine-row todo-row pending" style="opacity:.78">
+        <span class="todo-ic-wrap">${ICONS.ring}</span>
+        <span class="todo-txt">下一步：${nextStep.text}${pendingSteps.length > 1 ? `（余 ${pendingSteps.length} 步）` : ""}</span>
+      </div>
+    ` : ""}
+  </div>`;
+}
+
+function renderMacZone(scheme, steps) {
+  const { total, done, active, allDone, hasFail } = stepSummary(steps);
+
+  if (allDone) {
+    // Auto-collapses cleanly when all steps complete!
+    return `<div class="mac-cmp">${renderMacComposerInner()}</div>`;
+  }
+
+  if (scheme === "now") {
+    return `
+      <div class="mac-todo-now">
+        ${renderStepRows(steps, true)}
+      </div>
+      <div class="mac-cmp">${renderMacComposerInner()}</div>
+    `;
+  }
+
+  if (scheme === "a") {
+    const segs = steps.map(s => `<i class="${s.status === "completed" ? "done" : s.status === "failed" ? "fail" : s.status === "in_progress" ? "run" : ""}"></i>`).join("");
+    return `
+      <div class="mac-shell-a refined-rows ${state.expanded ? "is-open" : ""}">
+        <button class="tray-head" data-toggle="expand" title="点击展开或收起步骤清单">
+          ${state.expanded ? `
+            <span class="tray-title" style="color:var(--l2);font-size:12px">步骤进展</span>
+            <span class="tray-segs">${segs}</span>
+            <span class="tray-count">已完成 ${done}/${total}</span>
+          ` : `
+            <span class="todo-ic-wrap" style="margin-top:0">${hasFail ? `<span style="color:var(--danger)">${ICONS.x}</span>` : emergenceMark(14)}</span>
+            <span class="tray-title">${active ? active.text : ""}</span>
+            <span class="tray-segs">${segs}</span>
+            <span class="tray-count">${done + 1}/${total}</span>
+          `}
+          ${ICONS.chevD}
+        </button>
+        ${state.expanded ? `<div class="tray-body">${renderStepRows(steps, false)}</div>` : ""}
+        <div class="mac-cmp">${renderMacComposerInner()}</div>
+      </div>
+    `;
+  }
+
+  if (scheme === "b") {
+    // Pure standalone composer! Zero floating clutter above it!
+    return `<div class="mac-cmp">${renderMacComposerInner()}</div>`;
+  }
+
+  if (scheme === "c") {
+    return `
+      <div class="pill-anchor refined-rows ${state.expanded ? "is-open" : ""}">
+        ${state.expanded ? `
+          <div class="pill-popover">
+            <div class="pop-head">
+              <span>执行步骤进展</span>
+              <span style="font-family:var(--mono)">已完成 ${done} / ${total}</span>
+            </div>
+            ${renderStepRows(steps, false)}
+          </div>
+        ` : ""}
+        <button class="micro-pill" data-toggle="expand" title="点击查看全部步骤">
+          ${progressRingSVG(done, total, hasFail)}
+          <span class="mp-txt">${active ? active.text : ""}</span>
+          <span class="mp-cnt">${done + 1}/${total}</span>
+          ${ICONS.chevD}
+        </button>
+      </div>
+      <div class="mac-cmp">${renderMacComposerInner()}</div>
+    `;
+  }
+
+  if (scheme === "d") {
+    const segs = steps.map(s => `<i class="${s.status === "completed" ? "done" : s.status === "failed" ? "fail" : s.status === "in_progress" ? "run" : ""}"></i>`).join("");
+    return `
+      <div class="strip-hud refined-rows ${state.expanded ? "is-open" : ""}">
+        ${state.expanded ? `<div class="strip-expanded">${renderStepRows(steps, false)}</div>` : ""}
+        <button class="strip-bar-btn" data-toggle="expand" title="点击展开或收起全部步骤">
+          ${state.expanded ? `
+            <span class="st-cur" style="color:var(--l2);font-weight:450;font-size:12px">步骤进展 · 已完成 ${done}/${total}</span>
+          ` : `
+            <span class="st-idx">${String(done + 1).padStart(2, "0")}/${String(total).padStart(2, "0")}</span>
+            <span class="st-cur">${active ? active.text : ""}</span>
+          `}
+          <span class="st-act">${state.expanded ? "收起" : "全部步骤"} ${ICONS.chevD}</span>
+        </button>
+        <div class="seg-track" style="--n:${total}">${segs}</div>
+      </div>
+      <div class="mac-cmp">${renderMacComposerInner()}</div>
+    `;
+  }
+  return "";
+}
+
+function renderMacWindow(scheme, compact = false) {
+  const steps = buildSteps("mac");
+  return `
+    <div class="mac-win" ${compact ? 'style="height:310px;border-radius:12px;box-shadow:inset 0 0 0 .5px var(--sep)"' : ""}>
+      ${compact ? "" : `
+        <div class="mac-titlebar">
+          <div class="tl-dots"><i></i><i></i><i></i></div>
+          <span class="mac-title">实现 iPhone 端交互与桌面端回归</span>
+          <span class="mac-sub">hermesh · main</span>
+        </div>
+      `}
+      <div class="mac-chat">
+        <div class="mac-col">
+          ${compact ? "" : `
+            <div class="m-ubub">把桌面端和 iPhone 端的任务步骤状态跑通，并补齐端到端测试。</div>
+            <div class="m-tool"><span>已使用 <code>pnpm --filter @hermesh/desktop test:e2e</code></span> ${ICONS.chevR}</div>
+          `}
+          <div class="m-am">
+            桌面端与后端回归测试已全部通过，改动已阶段性提交；iPhone 端交互原型已确认，正在编写 <code>SessionPage.swift</code> 视图与 <code>SessionDetailUITests</code> 用例。
+          </div>
+          ${renderMacInlineTail(scheme, steps)}
+        </div>
+      </div>
+      <div class="mac-zone">
+        <div class="mac-zcol">
+          ${renderMacZone(scheme, steps)}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderIOSBottom(scheme, steps) {
+  const { total, done, active, allDone, hasFail } = stepSummary(steps);
+
+  const boxInner = `
+    <button class="ios-plus" aria-label="添加">${ICONS.plus}</button>
+    <span class="ios-ph">继续说，会排到下一轮…</span>
+    <button class="ios-stop" aria-label="停止">${ICONS.stop}</button>
+    <button class="ios-send" aria-label="发送">${ICONS.up}</button>
+  `;
+
+  if (allDone) {
+    return `<div class="ios-box">${boxInner}</div>`;
+  }
+
+  if (scheme === "now") {
+    return `
+      <div class="ios-todo-now">
+        ${renderStepRows(steps, false)}
+      </div>
+      <div class="ios-box">${boxInner}</div>
+    `;
+  }
+
+  if (scheme === "a") {
+    return `
+      <div class="ios-shell-a refined-rows ${state.expanded ? "is-open" : ""}">
+        <button class="ios-tray-head" data-toggle="expand">
+          ${state.expanded ? `
+            <span class="tray-title" style="color:var(--l2);font-size:12.5px">步骤进展</span>
+            <span class="tray-count">已完成 ${done}/${total}</span>
+          ` : `
+            <span class="todo-ic-wrap" style="margin-top:0">${hasFail ? `<span style="color:var(--danger)">${ICONS.x}</span>` : emergenceMark(14)}</span>
+            <span class="tray-title">${active ? active.text : ""}</span>
+            <span class="tray-count">${done + 1}/${total}</span>
+          `}
+          ${ICONS.chevD}
+        </button>
+        ${state.expanded ? `<div class="ios-tray-body">${renderStepRows(steps, false)}</div>` : ""}
+        <div class="ios-box-inner">${boxInner}</div>
+      </div>
+    `;
+  }
+
+  if (scheme === "b") {
+    // When scrolled away from bottom, show sleek "4/5 · Step ↓" capsule (like Back to question!)
+    return `
+      ${state.scrolledAway ? `
+        <div class="ios-toend-wrap">
+          <button class="ios-toend-cap" data-act="scroll-bottom">
+            ${emergenceMark(14)}
+            <span style="font-family:var(--mono);font-size:11.5px;color:var(--l2)">${done + 1}/${total}</span>
+            <span class="tc-txt">${active ? active.text : ""}</span>
+            <span class="tc-arr">${ICONS.down}</span>
+          </button>
+        </div>
+      ` : ""}
+      <div class="ios-box">${boxInner}</div>
+    `;
+  }
+
+  if (scheme === "c") {
+    return `
+      <div class="ios-pill-row refined-rows ${state.expanded ? "is-open" : ""}">
+        ${state.expanded ? `
+          <div class="ios-pill-sheet">
+            <div class="pop-head">
+              <span>步骤进展</span>
+              <span style="font-family:var(--mono)">${done} / ${total} 已完成</span>
+            </div>
+            ${renderStepRows(steps, false)}
+          </div>
+        ` : ""}
+        <button class="ios-micro-pill" data-toggle="expand">
+          ${progressRingSVG(done, total, hasFail)}
+          <span class="mp-txt">${active ? active.text : ""}</span>
+          <span class="mp-cnt">${done + 1}/${total}</span>
+          ${ICONS.chevD}
+        </button>
+      </div>
+      <div class="ios-box">${boxInner}</div>
+    `;
+  }
+
+  if (scheme === "d") {
+    const segs = steps.map(s => `<i class="${s.status === "completed" ? "done" : s.status === "failed" ? "fail" : s.status === "in_progress" ? "run" : ""}"></i>`).join("");
+    return `
+      <div class="ios-strip refined-rows ${state.expanded ? "is-open" : ""}">
+        ${state.expanded ? `<div class="strip-expanded">${renderStepRows(steps, false)}</div>` : ""}
+        <button class="strip-bar-btn" data-toggle="expand">
+          ${state.expanded ? `
+            <span class="st-cur" style="color:var(--l2);font-weight:450;font-size:12.5px">步骤进展 · 已完成 ${done}/${total}</span>
+          ` : `
+            <span class="st-idx">${done + 1}/${total}</span>
+            <span class="st-cur">${active ? active.text : ""}</span>
+          `}
+          <span class="st-act">${state.expanded ? "收起" : "展开"} ${ICONS.chevD}</span>
+        </button>
+        <div class="seg-track" style="--n:${total}">${segs}</div>
+      </div>
+      <div class="ios-box">${boxInner}</div>
+    `;
+  }
+  return "";
+}
+
+function renderIOSInlineTail(scheme, steps) {
+  const { total, done, active, allDone, hasFail } = stepSummary(steps);
+
+  if (scheme !== "b") {
+    if (allDone) {
+      return `<div class="done-toast">${ICONS.check} 全部 ${total} 步已完成</div>`;
+    }
+    return `
+      <div class="ios-work">
+        <span style="margin-top:2px">${hasFail ? `<span style="color:var(--danger)">${ICONS.x}</span>` : emergenceMark(15)}</span>
+        <span class="w-txt">Build signed macOS Hermesh.app with rustup/cargo in PATH</span>
+        <span class="w-el">8:57</span>
+      </div>
+    `;
+  }
+
+  // Scheme B on iPhone: Fused inline checklist right at the end of conversation!
+  if (allDone) {
+    return `<div class="done-toast">${ICONS.check} 已完成全部 ${total} 步任务</div>`;
+  }
+  const completedSteps = steps.filter(s => s.status === "completed");
+  const pendingSteps = steps.filter(s => s.status === "pending");
+  const nextStep = pendingSteps[0];
+
+  return `
+    <div class="inline-spine refined-rows" style="gap:7px">
+      ${completedSteps.length > 0 ? `
+        <button class="spine-fold-btn ${state.expanded ? "open" : ""}" data-toggle="expand" style="font-size:13.5px">
+          <span style="color:var(--ok);display:inline-flex">${ICONS.check}</span>
+          <span>已完成前 ${completedSteps.length} 步（共 ${total} 步）</span>
+          ${ICONS.chevR}
+        </button>
+        ${state.expanded ? `<div class="spine-group">${renderStepRows(completedSteps, false)}</div>` : ""}
+      ` : ""}
+      ${active ? `
+        <div class="spine-row todo-row ${active.status}" style="font-size:14.5px">
+          <span class="todo-ic-wrap">${active.status === "failed" ? ICONS.x : emergenceMark(15)}</span>
+          <span class="todo-txt">${active.text}</span>
+          <span class="el">8:57</span>
+        </div>
+      ` : ""}
+      ${nextStep ? `
+        <div class="spine-row todo-row pending" style="font-size:13.5px;opacity:.76">
+          <span class="todo-ic-wrap">${ICONS.ring}</span>
+          <span class="todo-txt">${nextStep.text}</span>
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+function renderIPhone(scheme) {
+  const steps = buildSteps("ios");
+  const historyMsgs = state.scrolledAway ? `
+    <div class="ios-msg" style="opacity:.85">已核查 <code>internal/sqlitedb/steps.go</code> 中的版本号校验逻辑，准备备份本地 SQLite 库并执行全端升级。</div>
+    <div class="ios-tool"><span>已使用 <code>Run backup_sqlite</code></span> ${ICONS.chevR}</div>
+    <div class="ios-msg">本地 <code>sessions.db</code> 与 <code>owner.db</code> 快照已安全保存至备份目录，校验和一致。</div>
+    <div class="ios-tool"><span>已使用 <code>xcrun devicectl install</code></span> ${ICONS.chevR}</div>
+    <div class="ios-msg">iPhone 端新包已签名安装到「Yi's iPhone」（屏幕当前处于锁屏状态，解锁打开即可）。接下来等待 macOS 桌面端 <code>Hermesh.app</code> 编译打包完成。</div>
+  ` : `
+    <div class="ios-msg">iPhone 端已编译签名并安装到「Yi's iPhone」（屏幕当前处于锁屏状态，解锁打开即可）。接下来等待 macOS 桌面端 <code>Hermesh.app</code> 编译打包完成。</div>
+    <div class="ios-tool"><span>已使用 <code>Run manage_task</code></span> ${ICONS.chevR}</div>
+    <div class="ios-msg">macOS 端全部组件（Go 守护进程、Rust <code>her</code>、<code>hermesh-screen</code>、<code>Hermesh Signer</code>）已编译完成，正在执行最后的应用打包与 Developer ID 签名。</div>
+    ${renderIOSInlineTail(scheme, steps)}
+  `;
+
+  return `
+    <div class="phone">
+      <div class="ios-top-fade"></div>
+      <div class="ios-session-cap">
+        <b>查明 session V2 DB 命名…</b>
+        <small>yee-homebook/hermesh</small>
+      </div>
+      <div class="ios-side-rail">
+        <span class="ios-rail-time">10:14</span>
+        <div class="ios-rail-wifi">${ICONS.wifi}</div>
+        <div class="ios-rail-btn">${ICONS.menu}</div>
+        <div class="ios-rail-btn">${ICONS.more}</div>
+      </div>
+      <div class="ios-chat">
+        ${historyMsgs}
+      </div>
+      <div class="ios-bottom">
+        ${renderIOSBottom(scheme, steps)}
+      </div>
+      <div class="ios-home"></div>
+    </div>
+  `;
+}
+
+function render() {
+  document.documentElement.setAttribute("data-theme", state.theme);
+
+  // Render Top Tabs
+  const tabsEl = document.getElementById("top-tabs");
+  tabsEl.innerHTML = SCHEMES.map(s => `
+    <button class="scheme-tab ${state.scheme === s.id ? "on" : ""}" data-scheme="${s.id}">
+      <span>${s.short}</span>
+      ${s.rec ? `<span class="rec">${s.rec}</span>` : ""}
+    </button>
+  `).join("");
+
+  const curScheme = SCHEMES.find(s => s.id === state.scheme) || SCHEMES[1];
+  const stageEl = document.getElementById("stage");
+
+  if (state.scheme === "all") {
+    const compareIds = ["a", "b", "c", "d"];
+    stageEl.innerHTML = `
+      <section class="scheme-banner">
+        <div class="sb-col">
+          <h2>${curScheme.title} <span class="tag-pill ${curScheme.badge.cls}">${curScheme.badge.cls === "good" ? "★ " : ""}${curScheme.badge.text}</span></h2>
+          <p>${curScheme.summary}</p>
+        </div>
+        <div class="sb-col">
+          <h3>交互说明</h3>
+          <p>${curScheme.macNote}</p>
+        </div>
+        <div class="sb-col">
+          <h3>手机端液态玻璃取舍</h3>
+          <p>${curScheme.iosNote}</p>
+        </div>
+      </section>
+      <div class="matrix-grid">
+        ${compareIds.map(id => {
+          const info = SCHEMES.find(x => x.id === id);
+          return `
+            <div class="matrix-card">
+              <div class="matrix-card-h">
+                <h3>${info.short} <span class="tag-pill ${info.badge.cls}" style="margin-left:6px">${info.badge.text}</span></h3>
+                <button class="jump-btn" data-scheme="${id}">查看 Mac + iPhone 详情 →</button>
+              </div>
+              <p style="margin:0;font-size:12.5px;color:var(--page-fg2)">${info.summary}</p>
+              ${renderMacWindow(id, true)}
+            </div>
+          `;
+        }).join("")}
+      </div>
+    `;
+  } else {
+    stageEl.innerHTML = `
+      <section class="scheme-banner">
+        <div class="sb-col">
+          <h2>${curScheme.title} <span class="tag-pill ${curScheme.badge.cls}">${curScheme.badge.text}</span></h2>
+          <p>${curScheme.summary}</p>
+        </div>
+        <div class="sb-col">
+          <h3>桌面端（macOS）设计要点</h3>
+          <p>${curScheme.macNote}</p>
+        </div>
+        <div class="sb-col">
+          <h3>手机端（iPhone）与液态玻璃取舍</h3>
+          <p>${curScheme.iosNote}</p>
+        </div>
+      </section>
+      <div class="devices-row">
+        <div class="dev-block mac-block">
+          <div class="dev-caption">
+            <b>macOS 桌面端会话底部</b>
+            <span class="hint">${state.scheme === "now" ? "现状全部常驻展开" : "点击进度条可展开 / 收起"}</span>
+          </div>
+          ${renderMacWindow(state.scheme, false)}
+        </div>
+        <div class="dev-block ios-block">
+          <div class="dev-caption">
+            <b>iPhone 端会话页（复刻截图竖排工具栏场景）</b>
+            <span class="hint">${state.scrolledAway ? "已上滑浏览历史" : "位于对话底部"}</span>
+          </div>
+          ${renderIPhone(state.scheme)}
+        </div>
+      </div>
+    `;
+  }
+
+  // Update bottom control active states
+  document.querySelectorAll("[data-act='expand']").forEach(b => {
+    b.classList.toggle("on", Boolean(Number(b.dataset.val)) === state.expanded);
+  });
+  document.querySelectorAll("[data-act='scroll']").forEach(b => {
+    b.classList.toggle("on", (b.dataset.val === "away") === state.scrolledAway);
+  });
+  document.querySelectorAll("[data-act='scene']").forEach(b => {
+    b.classList.toggle("on", b.dataset.val === state.scene);
+  });
+  document.querySelectorAll("[data-act='theme']").forEach(b => {
+    b.classList.toggle("on", b.dataset.val === state.theme);
+  });
+  const playBtn = document.getElementById("btn-play");
+  if (playBtn) {
+    playBtn.classList.toggle("on", state.playing);
+    playBtn.textContent = state.playing ? "暂停演示" : "自动演示";
+  }
+}
+
+document.addEventListener("click", (e) => {
+  const schemeBtn = e.target.closest("[data-scheme]");
+  if (schemeBtn) {
+    state.scheme = schemeBtn.dataset.scheme;
+    render();
+    return;
+  }
+  const toggleBtn = e.target.closest("[data-toggle='expand']");
+  if (toggleBtn) {
+    state.expanded = !state.expanded;
+    render();
+    return;
+  }
+  const actBtn = e.target.closest("[data-act]");
+  if (!actBtn) return;
+  const act = actBtn.dataset.act;
+  const maxSteps = SCENES[state.scene].mac.length;
+
+  if (act === "expand") {
+    state.expanded = Boolean(Number(actBtn.dataset.val));
+  } else if (act === "scroll") {
+    state.scrolledAway = actBtn.dataset.val === "away";
+  } else if (act === "scroll-bottom") {
+    state.scrolledAway = false;
+  } else if (act === "scene") {
+    state.scene = actBtn.dataset.val;
+    state.activeIdx = Math.min(state.activeIdx, SCENES[state.scene].mac.length - 1);
+  } else if (act === "theme") {
+    state.theme = actBtn.dataset.val;
+  } else if (act === "step-prev") {
+    state.activeIdx = Math.max(0, state.activeIdx - 1);
+  } else if (act === "step-next") {
+    state.activeIdx = (state.activeIdx + 1) % (maxSteps + 1);
+  } else if (act === "autoplay") {
+    state.playing = !state.playing;
+    if (state.playing) {
+      state.timer = setInterval(() => {
+        const m = SCENES[state.scene].mac.length;
+        state.activeIdx = (state.activeIdx + 1) % (m + 1);
+        render();
+      }, 1300);
+    } else if (state.timer) {
+      clearInterval(state.timer);
+      state.timer = null;
+    }
+  }
+  render();
+});
+
+render();
+</script>
+</body>
+</html>

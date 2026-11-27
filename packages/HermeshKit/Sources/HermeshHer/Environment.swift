@@ -101,15 +101,18 @@ public struct HerProvider: Equatable, Sendable {
 public struct HerModels: Equatable, Sendable {
     public var models: [HerModel]
     public var providers: [HerProvider]
+    public var defaultModel: String?
 
     public static let none = HerModels(models: [], providers: [])
 
-    public init(models: [HerModel], providers: [HerProvider]) {
+    public init(models: [HerModel], providers: [HerProvider], defaultModel: String? = nil) {
         self.models = models
         self.providers = providers
+        self.defaultModel = defaultModel
     }
 
     public init(_ j: JSON) {
+        defaultModel = j["defaults"]["model"].string
         models = (j["models"].array ?? []).compactMap { m in
             m["id"].string.map { HerModel(id: $0, name: m["name"].string ?? $0, provider: m["provider"].string ?? "", available: m["available"].bool ?? false, shown: m["shown"].bool ?? false,
                                           thinkingLevels: (m["thinking_levels"].array ?? []).compactMap(\.string), defaultThinking: m["default_thinking"].string ?? "default") }

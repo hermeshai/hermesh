@@ -28,6 +28,8 @@ const paths: Record<string, string> = {
   chevR: "<path d=\"M6.3 4.5L9.8 8l-3.5 3.5\"/>",
   // Up over down: a pop-up button, which opens a menu of choices.
   chevUD: "<path d=\"M5.2 6.2L8 3.5l2.8 2.7M5.2 9.8L8 12.5l2.8-2.7\"/>",
+  // Left over right: a button that switches between two states on click.
+  swap: "<path d=\"M2.5 4.8h10.5M10.4 2.4L13 4.8l-2.6 2.4M13.5 11.2H3M5.6 8.8L3 11.2l2.6 2.4\"/>",
   stop: "<rect x=\"4.3\" y=\"4.3\" width=\"7.4\" height=\"7.4\" rx=\"1.6\"/>",
   archive: "<rect x=\"2\" y=\"2.8\" width=\"12\" height=\"3.4\" rx=\"1\"/><path d=\"M3.2 6.2v6c0 .7.5 1.2 1.2 1.2h7.2c.7 0 1.2-.5 1.2-1.2v-6M6.4 9h3.2\"/>",
   unarchive: "<rect x=\"2\" y=\"2.8\" width=\"12\" height=\"3.4\" rx=\"1\"/><path d=\"M3.2 6.2v6c0 .7.5 1.2 1.2 1.2h7.2c.7 0 1.2-.5 1.2-1.2v-6M8 11.6V8.2M6.5 9.6L8 8.1l1.5 1.5\"/>",

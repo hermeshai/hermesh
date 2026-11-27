@@ -5,7 +5,7 @@ import { i18n } from "../shared/i18n";
 import { openComputerPermission } from "./computer";
 import { daemonInfo, quitForRelaunch, startBackgroundService, stopBackgroundService } from "./daemon";
 import { cancelHerChatGpt, cancelHerConnector, herConsoleURL, herFilesKept, reopenHerChatGpt, reopenHerConnector, readHerFile, saveHerFile, signInHerChatGpt, signInHerConnector } from "./her";
-import { preferences, setPreferences, world } from "./notify";
+import { preferences, setAppearancePreview, setPreferences, world } from "./notify";
 import { closeSessionPage, openCheckedFolder, openSessionFolder, openSessionPage, openSessionPageInBrowser, placeSessionPage, quickLookSessionFile, refOf, revealSessionFile, saveSessionFile } from "./sessionFiles";
 import { platform } from "./platform";
 import { cancelSignIn, completeResume, completeSignIn, connectURL, errorMessage, signIn, signInPending, takeLinks } from "./signin";
@@ -280,6 +280,7 @@ export function registerIPC() {
   // Notifications, the menu bar and opening at login (main/notify.ts, main/platform).
   ipcMain.handle("preferences", (e) => (trusted(e) ? preferences() : null));
   ipcMain.handle("set-preferences", (e, p: Partial<Preferences>) => (trusted(e) && typeof p === "object" && p !== null ? setPreferences(p) : null));
+  ipcMain.on("preview-appearance", (e, a: unknown) => trusted(e) && setAppearancePreview(a));
   ipcMain.handle("login-item", (e) => (trusted(e) ? platform.loginItem() : null));
   ipcMain.handle("set-login-item", (e, on: unknown) => (trusted(e) && typeof on === "boolean" ? platform.setLoginItem(on) : null));
   ipcMain.handle("daemon-needs-approval", (e) => trusted(e) && platform.daemonNeedsApproval());

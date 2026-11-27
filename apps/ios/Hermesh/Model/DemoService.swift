@@ -1463,15 +1463,17 @@ final class DemoService {
             $0.itemID = "r1:todo:todo"
             $0.todoSteps = [
                 .with { $0.text = "Check motion constraints"; $0.status = "completed" },
+                .with { $0.text = "Audit main-thread layout"; $0.status = "completed" },
                 .with { $0.text = "Rewrite CALayer halo"; $0.status = "in_progress" },
                 .with { $0.text = "Verify GPU usage"; $0.status = "pending" },
+                .with { $0.text = "Update perf docs"; $0.status = "pending" },
             ]
         }
         appendItem(id, runID: "r1", kind: .toolCall) {
             $0.itemID = "r1:call_legacy_steps"
             $0.toolName = "Run update_steps"
             $0.status = "completed"
-            $0.input = #"{"steps":[{"title":"Check motion constraints","status":"done"},{"title":"Rewrite CALayer halo","status":"in_progress"},{"title":"Verify GPU usage","status":"pending"}]}"#
+            $0.input = #"{"steps":[{"title":"Check motion constraints","status":"done"},{"title":"Audit main-thread layout","status":"done"},{"title":"Rewrite CALayer halo","status":"in_progress"},{"title":"Verify GPU usage","status":"pending"},{"title":"Update perf docs","status":"pending"}]}"#
         }
         appendItem(id, runID: "r1", kind: .assistantMessage) {
             $0.text = "Running GPU benchmark in background."
@@ -1517,7 +1519,7 @@ final class DemoService {
         let id = "demo-live-progress"
         guard tasks[id] == nil else { return }
         tasks[id] = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(5500))
+            try? await Task.sleep(for: .milliseconds(12000))
             guard !Task.isCancelled, let self,
                   let sIdx = self.world.sessions.firstIndex(where: { $0.sessionID == id }) else { return }
             if let cmdIdx = self.projections[id]?.items.firstIndex(where: { $0.itemID == "r2:cmd:1" }) {
@@ -1531,8 +1533,10 @@ final class DemoService {
                 $0.itemID = "r2:todo:todo"
                 $0.todoSteps = [
                     .with { $0.text = "Check motion constraints"; $0.status = "completed" },
+                    .with { $0.text = "Audit main-thread layout"; $0.status = "completed" },
                     .with { $0.text = "Rewrite CALayer halo"; $0.status = "completed" },
                     .with { $0.text = "Verify GPU usage"; $0.status = "completed" },
+                    .with { $0.text = "Update perf docs"; $0.status = "completed" },
                 ]
             }
             self.appendItem(id, runID: "r2", kind: .assistantMessage) {

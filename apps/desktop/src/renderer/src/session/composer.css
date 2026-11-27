@@ -9,25 +9,45 @@
 .th-qtext{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .th-qrow .field{flex:1;height:26px;border-radius:var(--r-sm)}
 .btn.th-qbtn{height:26px;padding:0 10px;font-size:12px;flex:none}
-/* Live checklist floating over the composer while a multi-step turn runs; auto-collapses when all steps complete. */
-.knote.th-todo{padding:11px 14px}
-.th-todo-list{display:flex;flex-direction:column;gap:6px;max-height:176px;overflow-y:auto}
-.th-todo-row{display:flex;align-items:flex-start;gap:9px;min-width:0;font-size:13px;line-height:19px;color:var(--l2)}
-.th-todo-row.in_progress{color:var(--l1)}
-.th-todo-row.completed,.th-todo-row.skipped{color:var(--l3)}
-.th-todo-row.failed{color:var(--red)}
-.th-todo-ic{width:14px;height:14px;margin-top:2.5px;flex:none;color:var(--l3)}
-.th-todo-row.in_progress .th-todo-ic{color:var(--l2)}
-.th-todo-row.completed .th-todo-ic{color:var(--accent-t)}
-.th-todo-row.failed .th-todo-ic{color:var(--red)}
-.th-todo-spin{display:inline-flex;will-change:transform;transform-origin:center;animation:spin 3.2s linear infinite}
-.th-todo-text{flex:1;min-width:0;overflow-wrap:anywhere}
+/* Inline live checklist spine (B2) at the foot of the conversation: 18px icon axis matching .th-work, 1px vertical
+   spine between nodes, smart 3-row window while collapsed, auto-collapsing once all steps complete. */
+.th-todo{position:relative;display:flex;flex-direction:column;padding:var(--sp-2) 0 0}
+.th-todo.spined::before{content:"";position:absolute;left:8.5px;top:calc(var(--sp-2) + 10px);bottom:10px;width:1px;background:var(--sep);pointer-events:none}
+.th-todo-node{position:relative;display:grid;grid-template-columns:18px minmax(0,1fr);column-gap:8px;align-items:start;padding:3.5px 0;min-width:0}
+.th-todo-node.active{padding:4.5px 0}
+.th-todo-g{width:18px;height:20px;background:var(--win);display:flex;align-items:center;justify-content:center;position:relative;z-index:1;color:var(--l3);flex:none}
+.th-todo-ic{width:13px;height:13px;flex:none;color:var(--l3)}
+.th-todo-node.failed .th-todo-ic{color:var(--red)}
+.th-todo-fold{width:fit-content;max-width:100%;border:0;background:none;padding:3px 0;display:grid;grid-template-columns:18px minmax(0,1fr);column-gap:8px;align-items:center;text-align:left;font-size:13px;line-height:20px;color:var(--l3);cursor:pointer;transition:color .15s}
+.th-todo-fold:hover,.th-todo-fold.open:hover{color:var(--l1)}
+.th-todo-fold.open{color:var(--l2)}
+.th-todo-fold-lbl{display:inline-flex;align-items:center;gap:5px;min-width:0;flex-wrap:wrap}
+.th-todo-fold .chev,.th-todo-more .chev{width:12px;height:12px;color:var(--l3);flex:none;transition:transform .16s var(--ease-out)}
+.th-todo-fold .chev.flip{transform:rotate(180deg)}
+.th-todo-main{min-width:0;font-size:14px;line-height:20px;color:var(--l1);font-weight:var(--font-weight-medium);overflow-wrap:break-word}
+.th-todo-node.failed .th-todo-main{color:var(--red)}
+.th-todo-meta{display:inline-flex;align-items:center;gap:5px;margin-left:7px;font-family:var(--mono);font-size:11.5px;font-weight:var(--font-weight-normal);color:var(--l3);font-variant-numeric:tabular-nums;white-space:nowrap;vertical-align:baseline}
+.th-todo-chip{display:inline-block;font-family:var(--font);font-size:11px;line-height:16px;padding:0 5.5px;border-radius:4px;font-weight:var(--font-weight-medium)}
+.th-todo-chip.run{background:var(--accent-bg);color:var(--accent-t)}
+.th-todo-chip.skip{background:var(--fill2);color:var(--l3);margin-left:6px}
+.th-todo-sub{margin-top:2.5px;display:flex;align-items:flex-start;gap:6px;min-width:0;font-size:13px;line-height:18.5px;color:var(--l2)}
+.th-todo-sub .th-work-t{flex:0 1 auto;min-width:0}
+.th-todo-sub .el{flex:none;white-space:nowrap;font-family:var(--mono);font-size:11.5px;line-height:18.5px;color:var(--l3);font-variant-numeric:tabular-nums}
+.th-todo-row-txt{min-width:0;font-size:13px;line-height:20px;color:var(--l3);overflow-wrap:break-word}
+.th-todo-node.pending .th-todo-row-txt{color:var(--l2);opacity:.78}
+.th-todo-next{min-width:0;display:flex;align-items:baseline;gap:6px;font-size:13px;line-height:20px;color:var(--l3)}
+.th-todo-next-t{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.th-todo-more{flex:none;border:0;background:none;padding:0;display:inline-flex;align-items:center;gap:2px;font-size:12px;line-height:20px;color:var(--l2);cursor:pointer;white-space:nowrap}
+.th-todo-more:hover{color:var(--l1)}
+.th-todo-code{font-family:var(--mono);font-size:.88em;background:var(--fill2);padding:1px 5px;border-radius:var(--r-xs);word-break:normal;overflow-wrap:break-word;box-decoration-break:clone;-webkit-box-decoration-break:clone}
 .wake-h{max-width:100%;min-width:0;cursor:pointer}
 .wake-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@media (prefers-reduced-motion:reduce){.th-todo-spin{animation:none}}
 
 /* ---------- The composer (docs/thread-composer.md §4): Her's box (her.css .cmp), the line under it ---------- */
 .th{--pill:var(--win);--pill-bd:var(--menu-bd)}
+@media (prefers-color-scheme:light){
+  :root[data-light-style="soft"] .th{--pill:#ffffff;--pill-bd:rgba(32,33,39,.10)}
+}
 @media (prefers-color-scheme:dark){
   .th{--pill:var(--win2)}
   :root[data-dark-style="black"] .th{--pill:#15151a;--pill-bd:rgba(255,255,255,.08)}
@@ -78,10 +98,23 @@
 .th-off{width:6px;height:6px;border-radius:50%;background:var(--l4);flex:none}
 .th-where{height:22px;margin-left:10px;display:inline-flex;align-items:center;gap:5px;color:var(--l3);font-size:12.5px;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .th-where .ic{width:13px;height:13px;flex:none}
-/* Over a new session's box: where it works, and on which branch. */
+/* Over a new session's box: where it works (one click toggles, hover explains), and on which branch. */
 .th-place{display:flex;align-items:center;gap:2px;min-width:0;padding:0 10px;margin-bottom:-4px}
 .th-place .mb{height:26px;padding:0 7px;gap:5px}
 .th-place .mb .lbl{max-width:280px}
+.th-wt-wrap{position:relative;display:inline-flex;flex:none}
+.th-wtbtn:active{transform:scale(.965)}
+.th-wt-slot{display:inline-flex;align-items:center;gap:5px;animation:th-wt-in .16s var(--ease-out, cubic-bezier(.2,0,0,1))}
+@keyframes th-wt-in{from{opacity:.3;transform:translateY(3px)}to{opacity:1;transform:none}}
+.th-swap{display:inline-flex;color:var(--l3);transition:transform .32s cubic-bezier(.34,1.45,.64,1),color .14s}
+.th-swap .ic{width:11.5px;height:11.5px;stroke-width:1.6}
+.th-wtbtn:hover .th-swap{color:var(--l2)}
+.th-wttip{position:absolute;left:0;bottom:calc(100% + 6px);z-index:25;padding:5px 9px;border-radius:7px;background:var(--win3, #2c2c31);color:var(--l1);box-shadow:0 0 0 .5px var(--menu-bd),0 6px 18px rgba(0,0,0,.22);font-size:11.5px;line-height:1.45;white-space:nowrap;pointer-events:none;opacity:0;transform:translateY(3px);transition:opacity .15s ease,transform .15s ease}
+@media (prefers-color-scheme:light){.th-wttip{background:var(--win)}}
+.th-wttip b{font-weight:var(--font-weight-semibold)}
+.th-wttip span{color:var(--l2);margin-left:5px}
+.th-wt-wrap:hover .th-wttip,.th-wt-wrap:has(:focus-visible) .th-wttip{opacity:1;transform:none;transition-delay:.18s}
+@media (prefers-reduced-motion:reduce){.th-wt-slot{animation:none}.th-swap,.th-wttip{transition:none}}
 .th-br b,.th-mono{font-family:var(--mono);font-weight:var(--font-weight-normal);font-size:12px}
 .th-br b{color:var(--l1)}
 .th-slash{display:flex;gap:6px;flex-wrap:wrap;padding:6px 2px 0}

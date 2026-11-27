@@ -650,7 +650,7 @@ struct SessionBar: View {
 }
 
 /// A button of the page's own bar: its symbol in a circle of the system's glass, the size of the system's bar buttons.
-private struct BarIcon: View {
+struct BarIcon: View {
     let systemImage: String
 
     var body: some View {
@@ -913,7 +913,7 @@ private struct SessionBarTop: ViewModifier {
 /// The system's swipe back from the left edge, on a page that hides the system's bar: UIKit stops that swipe with the
 /// bar hidden. While the page shows, the stack's edge swipe asks this whether to begin (on a pushed page, with no
 /// transition under way) and its own delegate everything else; when the page goes, the swipe is the system's again.
-private struct SwipesBack: UIViewControllerRepresentable {
+struct SwipesBack: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> Controller { Controller() }
     func updateUIViewController(_ controller: Controller, context: Context) {}
 
@@ -1064,12 +1064,13 @@ extension View {
         ready: Bool,
         spoken: Int = 0,
         waitingAgent: String? = nil,
+        todoSummary: TodoEndSummary? = nil,
         atEnd: Binding<Bool>,
         position: Binding<ScrollPosition>,
         scrollBox: ConversationScrollBox,
         @ViewBuilder bottom: @escaping () -> Bottom
     ) -> some View {
-        modifier(FollowsEnd(id: id, ready: ready, spoken: spoken, waitingAgent: waitingAgent, atEnd: atEnd, position: position, scrollBox: scrollBox, bottom: bottom))
+        modifier(FollowsEnd(id: id, ready: ready, spoken: spoken, waitingAgent: waitingAgent, todoSummary: todoSummary, atEnd: atEnd, position: position, scrollBox: scrollBox, bottom: bottom))
     }
 }
 
@@ -1078,6 +1079,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
     let ready: Bool
     let spoken: Int
     let waitingAgent: String?
+    let todoSummary: TodoEndSummary?
     @Binding var atEnd: Bool
     @Binding var position: ScrollPosition
     let scrollBox: ConversationScrollBox
@@ -1166,7 +1168,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 0) { bottom() }
                     .frame(maxWidth: .infinity)
-                    .toEndButton(away && !atEnd, waitingAgent: waitingAgent) {
+                    .toEndButton(away && !atEnd, waitingAgent: waitingAgent, todoSummary: todoSummary) {
                         atEnd = true
                         away = false
                         positioned = true

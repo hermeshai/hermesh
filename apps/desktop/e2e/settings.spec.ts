@@ -571,57 +571,93 @@ test("settings 账号与设备 shows the account, the devices and, folded, the a
   await app.close();
 });
 
-test("通用's 外观 follows the system, or keeps every window light, dark or deep black (暗黑模式), also next time", async () => {
+test("通用's 外观 follows the system (remembering the chosen light and dark pair), previews on hover, and keeps glass vs solid styles across launches", async () => {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
   let { app, page } = await launch(undefined, { profile, systemColors: true });
   const dark = (p: Page) => p.evaluate(() => matchMedia("(prefers-color-scheme: dark)").matches);
+  const lightStyle = (p: Page) => p.evaluate(() => document.documentElement.dataset.lightStyle);
   const darkStyle = (p: Page) => p.evaluate(() => document.documentElement.dataset.darkStyle);
+  const vibrant = (p: Page) => p.evaluate(() => document.documentElement.classList.contains("vibrant"));
+  const hasMaterial = await page.evaluate(() => !!window.hermesh?.material);
   const source = () => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource);
   let settings = await openSettings(app, page, "general");
   const appearance = () => page_(settings, "通用").getByRole("group", { name: "外观" });
-  await expect(appearance().getByRole("button")).toHaveText(["跟随系统", "浅色", "深色", "暗黑模式"]);
+  await expect(appearance().getByRole("button")).toHaveText(["跟随系统", "浅色", "柔白", "深色", "暗黑"]);
   await expect(appearance().getByRole("button", { name: "跟随系统" })).toHaveAttribute("aria-pressed", "true");
   expect(await source()).toBe("system");
+
+  // Hovering previews across both windows without committing, and leaving restores the saved choice.
+  await appearance().getByRole("button", { name: "柔白" }).hover();
+  await expect.poll(() => lightStyle(page)).toBe("soft");
+  await expect.poll(() => vibrant(page)).toBe(false);
+  await expect(settings.locator(".set-main")).toHaveCSS("background-color", "rgb(244, 245, 247)");
+  await expect(appearance().getByRole("button", { name: "跟随系统" })).toHaveAttribute("aria-pressed", "true");
+  await settings.mouse.move(4, 4);
+  await expect.poll(source).toBe("system");
 
   await appearance().getByRole("button", { name: "深色" }).click();
   await expect(appearance().getByRole("button", { name: "深色" })).toHaveAttribute("aria-pressed", "true");
   await expect.poll(() => dark(page)).toBe(true);
   await expect.poll(() => dark(settings)).toBe(true);
   await expect.poll(() => darkStyle(page)).toBe("dark");
+  await expect.poll(() => vibrant(page)).toBe(hasMaterial);
   await expect(settings.locator(".set-main")).toHaveCSS("background-color", "rgb(30, 30, 33)");
   await snap(settings, "settings-appearance-dark");
 
-  await appearance().getByRole("button", { name: "暗黑模式" }).click();
-  await expect(appearance().getByRole("button", { name: "暗黑模式" })).toHaveAttribute("aria-pressed", "true");
+  await appearance().getByRole("button", { name: "暗黑" }).click();
+  await expect(appearance().getByRole("button", { name: "暗黑" })).toHaveAttribute("aria-pressed", "true");
   await expect.poll(() => dark(page)).toBe(true);
   await expect.poll(() => darkStyle(page)).toBe("black");
   await expect.poll(() => darkStyle(settings)).toBe("black");
+  await expect.poll(() => vibrant(page)).toBe(false);
+  await expect.poll(() => vibrant(settings)).toBe(false);
   await expect(settings.locator(".set-main")).toHaveCSS("background-color", "rgb(7, 7, 9)");
   await expect(page.locator(".side")).toHaveCSS("background-color", "rgb(17, 17, 20)");
 
-  // Kept for next time, from the very first frame (including 暗黑模式).
+  // Kept for next time, from the very first frame (including 暗黑 with solid sidebar).
   await app.close();
   ({ app, page } = await launch(undefined, { profile, systemColors: true }));
   expect(await source()).toBe("dark");
   expect(await dark(page)).toBe(true);
   expect(await darkStyle(page)).toBe("black");
+  expect(await vibrant(page)).toBe(false);
   await expect(page.locator(".side")).toHaveCSS("background-color", "rgb(17, 17, 20)");
   settings = await openSettings(app, page, "general");
-  await expect(appearance().getByRole("button", { name: "暗黑模式" })).toHaveAttribute("aria-pressed", "true");
+  await expect(appearance().getByRole("button", { name: "暗黑" })).toHaveAttribute("aria-pressed", "true");
   await expect(settings.locator(".set-main")).toHaveCSS("background-color", "rgb(7, 7, 9)");
 
-  await appearance().getByRole("button", { name: "浅色" }).click();
+  // FinxWork soft paper light ("柔白"): opaque #eef0f4 sidebar, #f4f5f7 ground, persisted across restarts.
+  await appearance().getByRole("button", { name: "柔白" }).click();
+  await expect(appearance().getByRole("button", { name: "柔白" })).toHaveAttribute("aria-pressed", "true");
   await expect.poll(() => dark(page)).toBe(false);
-  await expect.poll(() => dark(settings)).toBe(false);
+  await expect.poll(() => lightStyle(page)).toBe("soft");
+  await expect.poll(() => vibrant(page)).toBe(false);
+  await expect.poll(() => vibrant(settings)).toBe(false);
+  await expect(settings.locator(".set-main")).toHaveCSS("background-color", "rgb(244, 245, 247)");
+  await expect(page.locator(".side")).toHaveCSS("background-color", "rgb(238, 240, 244)");
 
   await app.close();
   ({ app, page } = await launch(undefined, { profile, systemColors: true }));
   expect(await source()).toBe("light");
   expect(await dark(page)).toBe(false);
+  expect(await lightStyle(page)).toBe("soft");
+  expect(await vibrant(page)).toBe(false);
+  await expect(page.locator(".side")).toHaveCSS("background-color", "rgb(238, 240, 244)");
   settings = await openSettings(app, page, "general");
-  await expect(appearance().getByRole("button", { name: "浅色" })).toHaveAttribute("aria-pressed", "true");
+  await expect(appearance().getByRole("button", { name: "柔白" })).toHaveAttribute("aria-pressed", "true");
+  await expect(settings.locator(".set-main")).toHaveCSS("background-color", "rgb(244, 245, 247)");
+
+  // Crisp light ("浅色") restores sidebar vibrancy, and "跟随系统" remembers the chosen pair.
+  await appearance().getByRole("button", { name: "浅色" }).click();
+  await expect.poll(() => lightStyle(page)).toBe("light");
+  await expect.poll(() => vibrant(page)).toBe(hasMaterial);
+  await expect(settings.locator(".set-main")).toHaveCSS("background-color", "rgb(255, 255, 255)");
+
+  await appearance().getByRole("button", { name: "柔白" }).click();
   await appearance().getByRole("button", { name: "跟随系统" }).click();
   await expect.poll(source).toBe("system");
+  await expect(settings.locator(".sys-win.day.m-soft")).toBeVisible();
+  await expect(settings.locator(".sys-win.night.m-black")).toBeVisible();
   await app.close();
 });
 

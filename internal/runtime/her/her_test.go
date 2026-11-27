@@ -1,0 +1,262 @@
+package her
+
+import (
+	"context"
+	"encoding/json"
+	"sync"
+	"testing"
+	"time"
+
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/runtime"
+)
+
+// fakeBridge stands in for the Her service: conversations whose events the test writes and whose
+// ops it reads.
+type fakeBridge struct {
+	mu      sync.Mutex
+	made    []string // model/thinking of each new conversation
+	convs   map[string]*fakeConv
+	ops     []any // one-shot ops
+	deleted []string
+}
+
+func newFakeBridge() *fakeBridge { return &fakeBridge{convs: map[string]*fakeConv{}} }
+
+func (b *fakeBridge) Available() bool { return true }
+func (b *fakeBridge) Models(context.Context) ([]*sessionv1.ModelCatalogEntry, error) {
+	return []*sessionv1.ModelCatalogEntry{{Slug: "tc/auto", Name: "Auto", IsDefault: true}, {Slug: "tc/glm", Name: "GLM-5.3"}}, nil
+}
+func (b *fakeBridge) NewConversation(_ context.Context, model, thinking string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.made = append(b.made, model+"/"+thinking)
+	return "her_conv_1", nil
+}
+func (b *fakeBridge) Attach(_ context.Context, id string) (Conversation, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	c := &fakeConv{events: make(chan json.RawMessage, 16), ops: make(chan map[string]any, 16)}
+	b.convs[id] = c
+	return c, nil
+}
+func (b *fakeBridge) Op(_ context.Context, id string, op any) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.ops = append(b.ops, op)
+	return nil
+}
+func (b *fakeBridge) DeleteConversation(_ context.Context, id string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.deleted = append(b.deleted, id)
+	return nil
+}
+
+type fakeConv struct {
+	events chan json.RawMessage
+	ops    chan map[string]any
+	once   sync.Once
+}
+
+func (c *fakeConv) Events() <-chan json.RawMessage { return c.events }
+func (c *fakeConv) Op(_ context.Context, op any) error {
+	b, _ := json.Marshal(op)
+	var m map[string]any
+	json.Unmarshal(b, &m)
+	c.ops <- m
+	return nil
+}
+func (c *fakeConv) Close() error { c.once.Do(func() { close(c.events) }); return nil }
+
+func (c *fakeConv) say(t *testing.T, ev string) {
+	t.Helper()
+	c.events <- json.RawMessage(ev)
+}
+
+func next(t *testing.T, s runtime.Session) runtime.Event {
+	t.Helper()
+	select {
+	case ev := <-s.Events():
+		return ev
+	case <-time.After(5 * time.Second):
+		t.Fatal("no event")
+	}
+	return runtime.Event{}
+}
+
+func op(t *testing.T, c *fakeConv) map[string]any {
+	t.Helper()
+	select {
+	case o := <-c.ops:
+		return o
+	case <-time.After(5 * time.Second):
+		t.Fatal("no op")
+	}
+	return nil
+}
+
+func start(t *testing.T, b *fakeBridge, gate runtime.GateFunc, resume string) (runtime.Session, *fakeConv) {
+	t.Helper()
+	sel := &sessionv1.ModelSelection{InstanceId: "her", Model: "tc/glm", Options: map[string]*sessionv1.OptionValue{"effort": {Kind: &sessionv1.OptionValue_StringValue{StringValue: "low"}}}}
+	s, err := NewDriver(b).StartSession(context.Background(), runtime.StartSpec{Selection: sel, Gate: gate, ResumeCursor: resume})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	if ev := next(t, s); ev.Kind != runtime.EventNativeSession || ev.NativeID == "" {
+		t.Fatalf("first event: %+v", ev)
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, c := range b.convs {
+		return s, c
+	}
+	t.Fatal("not attached")
+	return nil, nil
+}
+
+// A new session starts a conversation on the model and thinking chosen; one resumed follows its own.
+func TestStartAndResume(t *testing.T) {
+	b := newFakeBridge()
+	start(t, b, nil, "")
+	if len(b.made) != 1 || b.made[0] != "tc/glm/low" {
+		t.Fatalf("new conversation: %v", b.made)
+	}
+	b2 := newFakeBridge()
+	start(t, b2, nil, "her_conv_9")
+	if len(b2.made) != 0 || b2.convs["her_conv_9"] == nil {
+		t.Fatalf("resumed: made %v, attached %v", b2.made, b2.convs)
+	}
+}
+
+// A turn: the prompt goes to her as the owner's words; what she sends becomes the session's
+// messages, her tools its tool items, and her task's end the turn's.
+func TestTurn(t *testing.T) {
+	b := newFakeBridge()
+	s, c := start(t, b, nil, "")
+	if err := s.StartTurn(context.Background(), runtime.TurnInput{RunID: "run_01", Prompt: "plan v2.4"}); err != nil {
+		t.Fatal(err)
+	}
+	if o := op(t, c); o["type"] != "prompt" || o["id"] != "hm_run_01" || o["input"].([]any)[0].(map[string]any)["text"] != "plan v2.4" {
+		t.Fatalf("prompt op: %v", o)
+	}
+	c.say(t, `{"type":"task_started","task_id":"t1"}`)
+	c.say(t, `{"type":"tool_started","call_id":"c1","name":"call_tool","title":"session_start","args":{}}`)
+	c.say(t, `{"type":"tool_completed","call_id":"c1","result":{"tool_name":"call_tool","is_error":false}}`)
+	c.say(t, `{"type":"tool_started","call_id":"c2","name":"send_to_user","args":{"text":"Started it."}}`)
+	c.say(t, `{"type":"tool_completed","call_id":"c2","result":{"tool_name":"send_to_user"}}`)
+	c.say(t, `{"type":"task_completed","task_id":"t1"}`)
+	want := []runtime.EventKind{runtime.EventToolStarted, runtime.EventToolCompleted, runtime.EventAssistantMessage, runtime.EventTurnCompleted}
+	for i, k := range want {
+		ev := next(t, s)
+		if ev.Kind != k {
+			t.Fatalf("event %d: %+v, want kind %d", i, ev, k)
+		}
+		if k == runtime.EventAssistantMessage && ev.Text != "Started it." {
+			t.Fatalf("message: %q", ev.Text)
+		}
+	}
+	c.say(t, `{"type":"task_failed","task_id":"t2","error":{"kind":"quota_exceeded","message":"out of tokens"}}`)
+	if ev := next(t, s); ev.Kind != runtime.EventTurnFailed || ev.ErrorMessage != "out of tokens" {
+		t.Fatalf("failure: %+v", ev)
+	}
+}
+
+// A question with answers to tap ends the turn on it; the answer comes back as the owner's words.
+func TestQuestion(t *testing.T) {
+	b := newFakeBridge()
+	s, c := start(t, b, nil, "")
+	c.say(t, `{"type":"tool_started","call_id":"c3","name":"send_to_user","args":{"type":"question","text":"Now or later?","options":[{"label":"Now"},{"label":"Later"}]}}`)
+	if ev := next(t, s); ev.Kind != runtime.EventAssistantMessage {
+		t.Fatalf("the question's words: %+v", ev)
+	}
+	ev := next(t, s)
+	if ev.Kind != runtime.EventQuestionAsked || len(ev.Question.Questions) != 1 {
+		t.Fatalf("question: %+v", ev)
+	}
+	q := ev.Question.Questions[0]
+	if q.Text != "Now or later?" || len(q.Options) != 2 || q.Options[0].Label != "Now" || !q.AllowOther {
+		t.Fatalf("question item: %v", q)
+	}
+	// Words alone are no question.
+	c.say(t, `{"type":"tool_started","call_id":"c4","name":"send_to_user","args":{"text":"Done."}}`)
+	c.say(t, `{"type":"task_completed","task_id":"t1"}`)
+	if next(t, s).Kind != runtime.EventAssistantMessage || next(t, s).Kind != runtime.EventTurnCompleted {
+		t.Fatal("a plain message asked something")
+	}
+	// The kernel's report of the answer reaches her as what the owner tapped.
+	s.StartTurn(context.Background(), runtime.TurnInput{RunID: "r2", Prompt: "Answers to previous questions:\nq: Now"})
+	if o := op(t, c); o["input"].([]any)[0].(map[string]any)["text"] != "Now" {
+		t.Fatalf("answer: %v", o)
+	}
+}
+
+// An approval Her asks for is put to the owner as delegated; their answer goes back to her. One
+// answered in her own chat ends the wait.
+func TestApproval(t *testing.T) {
+	asked := make(chan runtime.ToolGateRequest, 2)
+	answer := make(chan runtime.ToolGateResult, 2)
+	gate := func(ctx context.Context, req runtime.ToolGateRequest) (runtime.ToolGateResult, error) {
+		asked <- req
+		select {
+		case r := <-answer:
+			return r, nil
+		case <-ctx.Done():
+			return runtime.ToolGateResult{CancelTurn: true}, ctx.Err()
+		}
+	}
+	b := newFakeBridge()
+	_, c := start(t, b, gate, "")
+	c.say(t, `{"type":"approval_requested","call_id":"c5","name":"call_tool","args":{},"summary":"Start Claude Code in mini/app\n\nfix the test"}`)
+	req := <-asked
+	if !req.Delegated || req.Approval.GetCommand() != "Start Claude Code in mini/app" || req.Approval.GetDiffPreview() != "fix the test" || req.Approval.GetToolCategory() != "her" {
+		t.Fatalf("request: %+v", req)
+	}
+	answer <- runtime.ToolGateResult{Allowed: true}
+	if o := op(t, c); o["type"] != "approval" || o["call_id"] != "c5" || o["decision"].(map[string]any)["type"] != "approve" {
+		t.Fatalf("approve: %v", o)
+	}
+	c.say(t, `{"type":"approval_requested","call_id":"c6","name":"call_tool","args":{},"summary":"Write to session s_1"}`)
+	<-asked
+	answer <- runtime.ToolGateResult{Allowed: false, Feedback: "not now"}
+	if o := op(t, c); o["decision"].(map[string]any)["type"] != "deny" || o["decision"].(map[string]any)["feedback"] != "not now" {
+		t.Fatalf("deny: %v", o)
+	}
+	// Answered in Her's chat: the wait ends and nothing more is sent to her.
+	c.say(t, `{"type":"approval_requested","call_id":"c7","name":"call_tool","args":{},"summary":"x"}`)
+	<-asked
+	c.say(t, `{"type":"approval_resolved","call_id":"c7","decision":{"type":"approve"}}`)
+	select {
+	case o := <-c.ops:
+		t.Fatalf("sent after her own answer: %v", o)
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+// Deleting and archiving the session reach her conversation.
+func TestDeleteAndArchive(t *testing.T) {
+	b := newFakeBridge()
+	d := NewDriver(b)
+	d.Delete(context.Background(), "her_conv_1")
+	d.Archive(context.Background(), "her_conv_1", true)
+	if len(b.deleted) != 1 || len(b.ops) != 1 || b.ops[0].(map[string]any)["type"] != "set_archived" {
+		t.Fatalf("deleted %v, ops %v", b.deleted, b.ops)
+	}
+	if r := d.Probe(context.Background(), nil, ""); !r.Installed || len(r.Models) != 2 || !r.Models[0].IsDefault {
+		t.Fatalf("probe: %+v", r)
+	}
+}
+
+func TestAsOwner(t *testing.T) {
+	for in, want := range map[string]string{
+		"plain words":                              "plain words",
+		"Answers to previous questions:\nq: Now":   "Now",
+		"Answers to previous questions:\nq: A, B":  "A, B",
+		"Answers to previous questions:\nnonsense": "Answers to previous questions:\nnonsense",
+	} {
+		if got := asOwner(in); got != want {
+			t.Errorf("asOwner(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

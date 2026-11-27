@@ -203,4 +203,23 @@ import Testing
         #expect(grantsReaching(clients, machineID: "b", projectID: "relay").map { "\($0.client.clientID):\($0.all)" } == ["all:true", "relay:false"])
         #expect(grantsReaching(clients, machineID: "b", projectID: "").map(\.client.clientID) == ["all"])
     }
+
+    @Test func testProjectWorktreeFollowsRememberedChoiceThenProjectSetting() {
+        func p(repo: Bool, workspace: Hermesh_Identity_V1_Workspace) -> Hermesh_Local_V1_Project {
+            var x = Hermesh_Local_V1_Project()
+            x.repo = repo
+            x.workspace = workspace
+            return x
+        }
+        let repoWorktree = p(repo: true, workspace: .worktree)
+        let repoInPlace = p(repo: true, workspace: .inPlace)
+        let plainFolder = p(repo: false, workspace: .inPlace)
+
+        #expect(projectWorktree(repoWorktree) == true)
+        #expect(projectWorktree(repoWorktree, remembered: false) == false)
+        #expect(projectWorktree(repoInPlace) == false)
+        #expect(projectWorktree(repoInPlace, remembered: true) == true)
+        #expect(projectWorktree(plainFolder, remembered: true) == false)
+        #expect(projectWorktree(nil, remembered: true) == false)
+    }
 }

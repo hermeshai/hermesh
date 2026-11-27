@@ -137,7 +137,7 @@ async fn her_uses_the_hosts_tools_asks_about_its_writes_and_is_woken_by_its_news
     let (method, called) = asked(&mut wire).await;
     assert_eq!(method, "mesh/call");
     schema.check("MeshCallParams", &called);
-    assert_eq!(called, json!({"bot": bot, "call_id": ask["call_id"], "name": "start", "arguments": arguments}));
+    assert_eq!(called, json!({"bot": bot, "conversation": session, "call_id": ask["call_id"], "name": "start", "arguments": arguments}));
     assert_eq!(sent(&events), [r#"mesh done: {"ok":true,"tool":"start"}"#]);
 
     // The rule is kept: the same workshop runs unasked, described first; a tool that only reads
@@ -149,7 +149,7 @@ async fn her_uses_the_hosts_tools_asks_about_its_writes_and_is_woken_by_its_news
     say(&client, &session, "[[mock:mesh:look]]").await;
     let events = until(&mut wire, ended).await;
     assert!(!events.iter().any(|e| e["type"] == "approval_requested"));
-    assert_eq!(asked(&mut wire).await, ("mesh/call".to_string(), json!({"bot": bot, "call_id": called_id(&events), "name": "look", "arguments": {}})));
+    assert_eq!(asked(&mut wire).await, ("mesh/call".to_string(), json!({"bot": bot, "conversation": session, "call_id": called_id(&events), "name": "look", "arguments": {}})));
     assert_eq!(sent(&events), [r#"mesh done: {"ok":true,"tool":"look"}"#]);
 
     // News wakes her, and its sender hears once she has it.
@@ -175,6 +175,74 @@ async fn her_uses_the_hosts_tools_asks_about_its_writes_and_is_woken_by_its_news
     client.request("mesh/host", json!({"summary": "", "guidelines": [], "tools": []})).await.unwrap();
     say(&client, &session, "[[mock:mesh:look]]").await;
     assert_eq!(sent(&until(&mut wire, ended).await), ["mesh failed: Unknown tool 'look'. Use tool_search to find tools."]);
+}
+
+/// A call from another of Her's conversations names it, and the news of what it started comes
+/// back to it; news that names no conversation of hers, or none, goes to her main one.
+#[tokio::test]
+async fn news_comes_back_to_the_conversation_that_made_the_call() {
+    let env = TestEnv::new("manual", "").await;
+    let (_child, client, incoming) = env.spawn_rpc(&["serve", "--stdio"]);
+    native_init(&client).await;
+    let mut wire = route(incoming, client.clone());
+    let listed = client.request("bots/subscribe", Value::Null).await.unwrap();
+    let bot = listed["bots"][0]["id"].as_str().unwrap().to_string();
+    let group = json!({
+        "summary": "Work in the user's other workshops",
+        "guidelines": [],
+        "tools": [{"name": "look", "description": "See what a workshop holds.", "parameters": {"type": "object"}, "writes": false}],
+    });
+    client.request("mesh/host", group).await.unwrap();
+    let main = client.request("bots/open", json!({"bot_id": bot, "history_limit": 0})).await.unwrap()["session_id"].as_str().unwrap().to_string();
+    client.request("session/detach", json!({"session_id": main})).await.unwrap();
+
+    // Only the other conversation is followed: what reaches the main one is not seen here.
+    let other = client.request("bots/conversation_new", json!({"bot_id": bot})).await.unwrap()["session_id"].as_str().unwrap().to_string();
+    client
+        .request("bots/open", json!({"bot_id": bot, "conversation": other, "events": {"exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]}}))
+        .await
+        .unwrap();
+    say(&client, &other, "[[mock:mesh:look]]").await;
+    let events = until(&mut wire, ended).await;
+    assert_eq!(asked(&mut wire).await, ("mesh/call".to_string(), json!({"bot": bot, "conversation": other, "call_id": called_id(&events), "name": "look", "arguments": {}})));
+
+    let from = json!({"id": "shed", "name": "Shed"});
+    let news = json!({"bot": bot, "id": "n1", "from": from, "text": "<news id=\"n1\">[[mock:send:The shelf is built.]]</news>", "conversation": other});
+    client.request("mesh/news", news).await.unwrap();
+    let events = until(&mut wire, ended).await;
+    assert_eq!(events.iter().find(|e| e["type"] == "task_started").expect("a task")["trigger"], "mail");
+    assert_eq!(sent(&events), ["The shelf is built."]);
+
+    // No conversation, or one that is not hers: the main one takes it.
+    for (id, conversation) in [("n2", Value::Null), ("n3", json!("s_gone"))] {
+        let mut news = json!({"bot": bot, "id": id, "from": from, "text": format!("<news id=\"{id}\">the door, {id}</news>")});
+        if !conversation.is_null() {
+            news["conversation"] = conversation;
+        }
+        client.request("mesh/news", news).await.unwrap();
+    }
+    // Looks until `what` is there, or once when `wait` is false.
+    let has = async |conversation: Option<&str>, what: &str, wait: bool| {
+        let deadline = tokio::time::Instant::now() + if wait { WAIT } else { std::time::Duration::ZERO };
+        loop {
+            let mut open = json!({"bot_id": bot, "history_limit": 100});
+            if let Some(c) = conversation {
+                open["conversation"] = json!(c);
+            }
+            let opened = client.request("bots/open", open).await.unwrap();
+            let session = opened["session_id"].as_str().unwrap().to_string();
+            let found = opened["snapshot"]["transcript"].to_string().contains(what);
+            client.request("session/detach", json!({"session_id": session})).await.unwrap();
+            if found || tokio::time::Instant::now() > deadline {
+                return found;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    };
+    assert!(has(None, "the door, n2", true).await && has(None, "the door, n3", true).await, "the main conversation lacks the news");
+    assert!(!has(None, "The shelf is built.", false).await, "the other conversation's news reached the main one");
+    let other_has = has(Some(&other), "the door", false).await;
+    assert!(!other_has, "the main conversation's news reached the other one");
 }
 
 /// The id of the `call_tool` call among `events`.

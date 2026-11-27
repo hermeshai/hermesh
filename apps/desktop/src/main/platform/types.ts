@@ -60,6 +60,8 @@ export interface Platform {
   computerName(): Promise<string>;
   /** A window's frame: its title bar and material. */
   frame(kind: WindowKind): BrowserWindowConstructorOptions;
+  /** Updates a main or settings window's sidebar material and background when appearance changes. */
+  applyMaterial(win: BrowserWindow, glass: boolean, backgroundColor: string): void;
   /** Places the window's own buttons for its mode (macOS's traffic lights). */
   placeButtons(win: BrowserWindow, kind: WindowKind): void;
   /** Moves the window to bounds, animated. */

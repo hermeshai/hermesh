@@ -2,6 +2,9 @@
    Corners come from --r-*, colours from the design variables, except an avatar's own. */
 
 .her{--pill:var(--win);--pill-bd:var(--menu-bd);position:relative;display:flex;flex:1;min-width:0;min-height:0}
+@media (prefers-color-scheme:light){
+  :root[data-light-style="soft"] .her{--pill:#ffffff;--pill-bd:rgba(32,33,39,.10)}
+}
 @media (prefers-color-scheme:dark){
   .her{--pill:var(--win2)}
   :root[data-dark-style="black"] .her{--pill:#15151a;--pill-bd:rgba(255,255,255,.08)}
@@ -388,7 +391,7 @@ button.wb-h:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 /* Written in, it rises a little: deeper shadows, no ring (a session's box too, session/composer.css .th-cmp). */
 .cmp:focus-within:not(.dropping){box-shadow:inset 0 .5px 0 var(--cmp-hi),0 0 0 .5px var(--l4),var(--cmp-lift-f)}
 .cmp-row{display:flex;align-items:flex-end;gap:2px}
-.cmp button,.cmp .tile{cursor:default}
+.cmp button:not(:disabled),.cmp .tile{cursor:pointer}
 .cmp-in{flex:1;min-width:0;resize:none;border:0;outline:none;background:none;font:inherit;font-size:15px;line-height:21px;color:var(--l1);padding:5.5px 6px;min-height:32px;max-height:220px;overflow-y:auto;caret-color:var(--accent)}
 /* The text has no focus ring of its own (the page's :focus-visible would draw one inside the box): the box shows it. */
 .cmp-in:focus-visible{outline:none}
