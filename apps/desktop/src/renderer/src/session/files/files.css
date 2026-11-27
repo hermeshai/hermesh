@@ -56,7 +56,7 @@
 .spage:has(> .sfp.max) > .scol{display:none}
 .sfp-grip{position:absolute;left:-3px;top:0;bottom:0;width:6px;cursor:col-resize;z-index:2}
 .sfp-grip:hover,.sfp.resizing .sfp-grip{background:var(--sel)}
-.sfp-strip{height:44px;flex:none;display:flex;align-items:center;gap:2px;padding:0 8px 0 10px;min-width:0;border-bottom:.5px solid var(--sep)}
+.sfp-strip{height:44px;flex:none;display:flex;align-items:center;gap:2px;padding:0 14px 0 10px;min-width:0;border-bottom:.5px solid var(--sep)}
 html[data-platform=win] .sfp-strip{padding-right:calc(var(--caption) + 8px)}
 .noside .sfp.max .sfp-strip{padding-left:117px}
 html[data-platform=win] .noside .sfp.max .sfp-strip,html[data-platform=linux] .noside .sfp.max .sfp-strip{padding-left:76px}

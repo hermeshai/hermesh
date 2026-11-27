@@ -59,6 +59,11 @@ test("a reply's files are tags opening side panel tabs; a page runs there offlin
   await expect(reply.locator('[data-testid=file-tag][data-path="/etc/hosts"]')).toHaveAttribute("title", /会话的文件夹之外/);
   await snap(page, "files-tags");
 
+  // Before opening, the panel toggle sits at the conversation toolbar's right end.
+  const closedPanelBtn = page.locator(".ctool").getByTestId("toolbar-panel-btn");
+  await expect(closedPanelBtn).toHaveAttribute("aria-pressed", "false");
+  const closedBtnBox = (await closedPanelBtn.boundingBox())!;
+
   // The page, as turn 1 left it, in a tab of its own: it runs (its script beside it read too), and cannot reach the network.
   await demo.click();
   const panel = page.getByTestId("side-panel");
@@ -76,8 +81,14 @@ test("a reply's files are tags opening side panel tabs; a page runs there offlin
   expect(await inPage<string>(app, "fetch('https://example.com/').then(() => 'reached', () => 'blocked')")).toBe("blocked");
   expect(await inPage<string>(app, "fetch('demo.js').then((r) => r.ok ? 'read' : 'refused', () => 'blocked')")).toBe("read");
   expect(await inPage<string>(app, "fetch('../README.md').then((r) => r.ok ? 'read' : 'refused', () => 'blocked')")).not.toBe("read");
-  // The toolbar: the panel's button pressed; the info card cannot be shown while the panel is open.
-  await expect(page.getByTestId("toolbar-panel-btn")).toHaveAttribute("aria-pressed", "true");
+  // While open, the panel toggle moves to the far right of the side panel's strip (same x as before, to the right of ⤢); the info card stays disabled.
+  await expect(page.locator(".ctool").getByTestId("toolbar-panel-btn")).toHaveCount(0);
+  const openPanelBtn = panel.getByTestId("toolbar-panel-btn");
+  await expect(openPanelBtn).toHaveAttribute("aria-pressed", "true");
+  const openBtnBox = (await openPanelBtn.boundingBox())!;
+  const maxBtnBox = (await panel.getByRole("button", { name: "放大" }).boundingBox())!;
+  expect(openBtnBox.x).toBeGreaterThan(maxBtnBox.x);
+  expect(Math.abs(openBtnBox.x - closedBtnBox.x)).toBeLessThanOrEqual(1);
   await expect(page.getByTestId("toolbar-info-btn")).toBeDisabled();
   // It is a turn's file, changed since: the bar says so, and shows the current one.
   const bar = panel.getByTestId("file-version");
@@ -94,6 +105,17 @@ test("a reply's files are tags opening side panel tabs; a page runs there offlin
   await expect(page.locator(".dmain")).toBeHidden();
   await expect.poll(async () => (await pageView(app))?.width ?? 0).toBeGreaterThan(Math.max(before, windowWidth - 400));
   await snap(page, "files-panel-max");
+  // Even while maximized, the collapse button stays at the far right and closes the panel directly.
+  await expect(openPanelBtn).toBeVisible();
+  const maxedBtnBox = (await openPanelBtn.boundingBox())!;
+  expect(Math.abs(maxedBtnBox.x - closedBtnBox.x)).toBeLessThanOrEqual(1);
+  await openPanelBtn.click();
+  await expect(panel).toBeHidden();
+  await expect(page.locator(".dmain")).toBeVisible();
+  await closedPanelBtn.click();
+  await expect(panel).toBeVisible();
+  await panel.getByRole("button", { name: "放大" }).click();
+  await expect(page.locator(".dmain")).toBeHidden();
   await panel.getByRole("button", { name: "还原" }).click();
   await expect(page.locator(".dmain")).toBeVisible();
   await expect.poll(async () => (await pageView(app))?.width ?? 0).toBeLessThan(windowWidth - 400);
