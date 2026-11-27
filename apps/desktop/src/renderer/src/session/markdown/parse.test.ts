@@ -6,7 +6,7 @@ import Markdown from "react-markdown";
 import gfm from "remark-gfm";
 import math from "remark-math";
 import directive from "remark-directive";
-import { createMarkdownSlices, extractPureImageSlice, pendingText, scanReplyImages, unwrapCarousels } from "./parse.ts";
+import { createMarkdownSlices, extractPureImageSlice, pendingText, scanReplyImages, shortImageTag, unwrapCarousels } from "./parse.ts";
 
 const render = (text: string) => renderToStaticMarkup(createElement(Markdown, { remarkPlugins: [gfm, [math, { singleDollarTextMath: false }], directive], children: text })).replace(/>\s+</g, "><");
 const cases = [
@@ -144,4 +144,10 @@ test("extractPureImageSlice recognizes standalone image blocks and pure image li
     { path: "/tmp/a (1).png", caption: "主图 [1/2]" },
     { path: "/tmp/b.png", caption: "另一张" },
   ]);
+
+  assert.equal(shortImageTag("0 · 现状对照：桌面端双黑砖碰撞", "demo.png"), "现状对照");
+  assert.equal(shortImageTag("方案 A（默认收起 · 推荐 1）：连体抽屉托盘", "demo-a.png"), "方案 A");
+  assert.equal(shortImageTag("方案一 [默认收起]：连体抽屉托盘", "stage_1.png"), "方案一 [默认收起]");
+  assert.equal(shortImageTag("stage_1.png", "stage_1.png"), "");
+  assert.equal(shortImageTag("", "stage_1.png"), "");
 });

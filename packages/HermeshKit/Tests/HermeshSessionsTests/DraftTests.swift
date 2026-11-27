@@ -76,4 +76,9 @@ import Testing
 
     let nested = "````carousel\n![方案 A [推荐 1]](/Users/me/Library/Application Support/demo (1).png)\n<!-- slide -->\n![方案 B [推荐 2]](/tmp/demo (2).png)\n````"
     #expect(unwrapCarousels(nested) == "![方案 A [推荐 1]](/Users/me/Library/Application%20Support/demo%20(1).png)\n![方案 B [推荐 2]](/tmp/demo%20(2).png)")
+
+    #expect(shortImageTag("0 · 现状对照：桌面端双黑砖碰撞", fileName: "demo.png") == "现状对照")
+    #expect(shortImageTag("方案 A（默认收起 · 推荐 1）：连体抽屉托盘", fileName: "demo-a.png") == "方案 A")
+    #expect(shortImageTag("方案一 [默认收起]：连体抽屉托盘", fileName: "stage_1.png") == "方案一 [默认收起]")
+    #expect(shortImageTag("stage_1.png", fileName: "stage_1.png") == "")
 }

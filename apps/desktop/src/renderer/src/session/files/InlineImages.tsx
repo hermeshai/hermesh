@@ -9,7 +9,7 @@ import { DraftContext } from "../scope";
 import { FileTag } from "./FileTag";
 import { baseName, FilesHomeContext, FilesRunContext, sizeText, useFileInfo, type FilesHome, type SessionFile } from "./files";
 import { openFileInLightbox, openSessionLightbox, sessionImageMenu } from "./ImageLightbox";
-import { ReplyImagesContext, requestSessionImage, useSessionImage, type ReplyImageItem } from "./images";
+import { ReplyImagesContext, requestSessionImage, shortImageTag, useSessionImage, type ReplyImageItem } from "./images";
 
 export type InlineImageSlotPayload = {
   items: ReplyImageItem[];
@@ -119,6 +119,8 @@ function SessionImageGroup({ items, fromLinks }: { items: ReplyImageItem[]; from
   );
 }
 
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
 function SessionImageStage({
   boxRef,
   items,
@@ -138,30 +140,20 @@ function SessionImageStage({
 }) {
   const { t } = useTranslation("session");
   const st = useStore();
-  const stripRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
   const stateKey = `${home.session}\0${run}\0${items[0]?.path ?? ""}`;
   const [activeIdx, setActiveIdx] = useState(() => stageIndexStore.get(stateKey) ?? 0);
   const [stageRatio, setStageRatio] = useState<number | null>(null);
+  const [loupe, setLoupe] = useState<{ idx: number; left: number; bottom: number } | null>(null);
   const safeIdx = Math.max(0, Math.min(items.length - 1, activeIdx));
   const activeItem = items[safeIdx]!;
 
   const select = (next: number) => {
     const wrapped = ((next % items.length) + items.length) % items.length;
     rememberStageIndex(stateKey, wrapped);
+    setLoupe(null);
     setActiveIdx(wrapped);
   };
-
-  useEffect(() => {
-    const strip = stripRef.current;
-    if (!strip) return;
-    const thumb = strip.children[safeIdx] as HTMLElement | undefined;
-    if (!thumb) return;
-    const targetLeft = thumb.offsetLeft - strip.clientWidth / 2 + thumb.offsetWidth / 2;
-    const clampedLeft = Math.max(0, Math.min(strip.scrollWidth - strip.clientWidth, targetLeft));
-    if (Math.abs(strip.scrollLeft - clampedLeft) > 8) {
-      strip.scrollTo({ left: clampedLeft, behavior: "smooth" });
-    }
-  }, [safeIdx]);
 
   const info = useFileInfo(activeItem.path);
   const machine = st.machines.find((m) => m.machineId === home.machine);
@@ -171,8 +163,8 @@ function SessionImageStage({
   const activeFile: SessionFile = { session: home.session, run, path: effectivePath };
   const activeState = useSessionImage(goneByInfo ? null : activeFile, visible && !goneByInfo, online, true);
 
-  // Lock stage aspect ratio to the first decoded slide (clamped for portrait decks) so the viewport
-  // fills the prose column edge-to-edge without shifting height when stepping across slides.
+  // Lock stage aspect ratio to the first decoded slide so stepping across slides never shifts vertical scroll,
+  // while keeping the stage background transparent so narrower/portrait slides never show gray side walls.
   useEffect(() => {
     if (stageRatio !== null) return;
     if (activeState?.status === "ready" && activeState.width > 0 && activeState.height > 0) {
@@ -180,7 +172,7 @@ function SessionImageStage({
     }
   }, [stageRatio, activeState]);
 
-  // Prioritize immediate neighbor slides right after the active slide so stepping feels instantaneous.
+  // Only prefetch immediate neighbors on initial view (avoids flooding N thumbnail fetches at once).
   useEffect(() => {
     if (!visible) return;
     for (const delta of [1, -1]) {
@@ -192,15 +184,26 @@ function SessionImageStage({
   const activeResolvedPath = activeState?.status === "ready" ? activeState.resolvedPath : effectivePath;
   const activeFolder = activeState?.status === "ready" ? activeState.folder : info?.folder ?? "";
   const activeName = baseName(activeResolvedPath);
-  const activeDims =
-    activeState?.status === "ready" && activeState.width > 0 && activeState.height > 0
-      ? `${activeState.width} × ${activeState.height}`
-      : "";
   const anyCaption = items.some((it) => hasDistinctCaption(it.caption, baseName(it.path)));
   const stageLoading = !goneByInfo && (!activeState || activeState.status === "loading");
 
+  const showLoupe = (idx: number, chipEl: HTMLButtonElement) => {
+    if (idx === safeIdx) {
+      setLoupe(null);
+      return;
+    }
+    const bar = barRef.current;
+    if (!bar) return;
+    const barRect = bar.getBoundingClientRect();
+    const chipRect = chipEl.getBoundingClientRect();
+    const center = chipRect.left - barRect.left + chipRect.width / 2;
+    const clampedLeft = Math.max(70, Math.min(Math.max(70, barRect.width - 70), center));
+    const bottom = barRect.bottom - chipRect.top + 7;
+    setLoupe({ idx, left: clampedLeft, bottom });
+  };
+
   return (
-    <div
+    <figure
       ref={boxRef}
       className="simg-stage"
       data-testid="session-image-row"
@@ -220,9 +223,6 @@ function SessionImageStage({
         className={`simg-stage-main ${stageLoading ? "shimmer" : ""}`}
         style={stageRatio ? ({ "--stage-ratio": String(stageRatio) } as CSSProperties) : undefined}
       >
-        <span className="simg-stage-pill" data-testid="session-image-counter">
-          {`${safeIdx + 1} / ${items.length}${activeDims ? ` · ${activeDims}` : ""}`}
-        </span>
         <button
           type="button"
           className="simg-stage-nav prev"
@@ -295,80 +295,93 @@ function SessionImageStage({
         </button>
       </div>
 
-      {anyCaption && (
-        <div className="simg-stage-cap" data-testid="session-image-caption">
-          <span>{activeItem.caption || activeName}</span>
-        </div>
-      )}
-
-      <div ref={stripRef} className="simg-filmstrip" role="tablist">
-        {items.map((it, idx) => (
-          <SessionStageThumb
-            key={`${idx}:${it.path}`}
-            item={it}
-            index={idx}
-            total={items.length}
-            selected={idx === safeIdx}
+      <div
+        ref={barRef}
+        className="simg-index-bar"
+        role="tablist"
+        onMouseLeave={() => setLoupe(null)}
+      >
+        {items.map((it, idx) => {
+          const name = baseName(it.path);
+          const tag = shortImageTag(it.caption, name);
+          const selected = idx === safeIdx;
+          const label = it.caption || name;
+          return (
+            <button
+              key={`${idx}:${it.path}`}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              aria-label={`${idx + 1} / ${items.length}: ${label}`}
+              title={label}
+              data-testid="session-image-thumb"
+              data-index={idx}
+              data-path={it.path}
+              className={`simg-index-chip ${selected ? "on" : ""}`}
+              onMouseEnter={(e) => showLoupe(idx, e.currentTarget)}
+              onFocus={(e) => showLoupe(idx, e.currentTarget)}
+              onBlur={() => setLoupe(null)}
+              onClick={() => select(idx)}
+            >
+              <i>{pad2(idx + 1)}</i>
+              {tag && <span>{tag}</span>}
+            </button>
+          );
+        })}
+        <span className="simg-index-count" data-testid="session-image-counter">
+          {`${safeIdx + 1} / ${items.length}`}
+        </span>
+        {loupe && loupe.idx !== safeIdx && items[loupe.idx] && (
+          <SessionIndexLoupe
+            item={items[loupe.idx]!}
             home={home}
             run={run}
-            visible={visible}
             online={online}
-            onSelect={() => select(idx)}
+            left={loupe.left}
+            bottom={loupe.bottom}
           />
-        ))}
+        )}
       </div>
-    </div>
+
+      {anyCaption && (
+        <figcaption className="simg-stage-cap" data-testid="session-image-caption">
+          <span>{activeItem.caption || activeName}</span>
+        </figcaption>
+      )}
+    </figure>
   );
 }
 
-function SessionStageThumb({
+function SessionIndexLoupe({
   item,
-  index,
-  total,
-  selected,
   home,
   run,
-  visible,
   online,
-  onSelect,
+  left,
+  bottom,
 }: {
   item: ReplyImageItem;
-  index: number;
-  total: number;
-  selected: boolean;
   home: FilesHome;
   run: string;
-  visible: boolean;
   online: boolean;
-  onSelect: () => void;
+  left: number;
+  bottom: number;
 }) {
   const info = useFileInfo(item.path);
   const goneByInfo = info?.kind === FileRefKind.MISSING || info?.kind === FileRefKind.OUTSIDE;
   const effectivePath = info && !goneByInfo && info.path ? info.path : item.path;
-  const state = useSessionImage(goneByInfo ? null : { session: home.session, run, path: effectivePath }, visible && !goneByInfo, online, selected);
-  const name = baseName(effectivePath);
-  const label = item.caption || name;
-  const loading = !goneByInfo && (!state || state.status === "loading");
-
+  const state = useSessionImage(goneByInfo ? null : { session: home.session, run, path: effectivePath }, !goneByInfo, online, true);
+  if (goneByInfo || state?.status === "missing" || state?.status === "offline" || state?.status === "error" || state?.status === "tooLarge") {
+    return null;
+  }
   return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={selected}
-      aria-label={`${index + 1} / ${total}: ${label}`}
-      title={label}
-      data-testid="session-image-thumb"
-      data-index={index}
-      data-path={effectivePath}
-      className={`simg-thumb ${selected ? "on" : ""} ${loading ? "shimmer" : ""}`}
-      onClick={onSelect}
+    <div
+      className={`simg-loupe ${state?.status === "ready" ? "ready" : "shimmer"}`}
+      style={{ left, bottom }}
+      aria-hidden="true"
     >
-      {state?.status === "ready" ? (
-        <img src={state.url} alt="" draggable={false} />
-      ) : goneByInfo || state?.status === "missing" || state?.status === "offline" || state?.status === "error" || state?.status === "tooLarge" ? (
-        <Icon name={state?.status === "offline" ? "cloudOff" : "doc"} />
-      ) : null}
-    </button>
+      {state?.status === "ready" && <img src={state.url} alt="" draggable={false} />}
+    </div>
   );
 }
 

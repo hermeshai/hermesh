@@ -261,6 +261,24 @@ export function extractPureImageSlice(text: string, basePath = ""): { items: Rep
 }
 
 /**
+ * Extracts a concise 2–12 char editorial label from an image caption for typographic index chips
+ * (e.g. `"0 · 现状对照：桌面端..."` → `"现状对照"`, `"方案 A（默认收起）：..."` → `"方案 A"`),
+ * returning `""` when the caption carries no distinct title beyond the filename.
+ */
+export function shortImageTag(caption: string, fileName: string): string {
+  const trimmed = caption.trim();
+  if (!trimmed || trimmed.toLowerCase() === fileName.trim().toLowerCase()) return "";
+  let head = trimmed.split(/\s*(?:[：:—–]| - )\s*/)[0]!.trim();
+  head = head.replace(/^(?:第\s*\d+\s*[张页步帧]?|0?\d+\s*[.、·\-:])\s*/u, "").trim();
+  if (head.length > 11) {
+    const stripped = head.replace(/\s*(?:（[^）]*）|\([^)]*\)|\[[^\]]*\])\s*$/g, "").trim();
+    if (stripped.length >= 2) head = stripped;
+  }
+  if (head.length > 12) return `${head.slice(0, 11).trimEnd()}…`;
+  return head;
+}
+
+/**
  * Scans settled Markdown text (skipping fenced and inline code) to find `![alt](src)` explicit
  * images and ordered unique gallery items so `[label](path)` never duplicates `![alt](path)`.
  */

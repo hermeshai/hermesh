@@ -2,10 +2,10 @@ import { createContext, useEffect, useSyncExternalStore } from "react";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { FileContentKind } from "@hermesh/proto/session";
 import { sessions } from "../../api";
-import { extractPureImageSlice, scanReplyImages, type ReplyImageItem, type ReplyImages } from "../markdown/parse";
+import { extractPureImageSlice, scanReplyImages, shortImageTag, type ReplyImageItem, type ReplyImages } from "../markdown/parse";
 import type { SessionFile } from "./files";
 
-export { extractPureImageSlice, scanReplyImages, type ReplyImageItem, type ReplyImages };
+export { extractPureImageSlice, scanReplyImages, shortImageTag, type ReplyImageItem, type ReplyImages };
 
 export const ReplyImagesContext = createContext<ReplyImages | null>(null);
 

@@ -364,3 +364,33 @@ public func unwrapCarousels(_ text: String) -> String {
     if !carouselFence.isEmpty { flushCarousel() }
     return out.joined(separator: "\n")
 }
+
+private let tagClauseCut = #/\s*(?:[：:—–]| - )\s*/#
+private let tagLeadNum = #/^(?:第\s*\d+\s*[张页步帧]?|0?\d+\s*[.、·\-:])\s*/#
+private let tagTrailingParen = #/\s*(?:（[^）]*）|\([^)]*\)|\[[^\]]*\])\s*$/#
+
+/// Extracts a concise 2–12 char editorial label from an image caption for typographic index chips,
+/// returning `""` when the caption carries no distinct title beyond `fileName`.
+public func shortImageTag(_ caption: String, fileName: String) -> String {
+    let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty || trimmed.lowercased() == fileName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        return ""
+    }
+    var head: String
+    if let cut = trimmed.firstMatch(of: tagClauseCut) {
+        head = String(trimmed[..<cut.range.lowerBound]).trimmingCharacters(in: .whitespaces)
+    } else {
+        head = trimmed
+    }
+    if let lead = head.firstMatch(of: tagLeadNum) {
+        head = String(head[lead.range.upperBound...]).trimmingCharacters(in: .whitespaces)
+    }
+    if head.count > 11, let paren = head.firstMatch(of: tagTrailingParen) {
+        let stripped = String(head[..<paren.range.lowerBound]).trimmingCharacters(in: .whitespaces)
+        if stripped.count >= 2 { head = stripped }
+    }
+    if head.count > 12 {
+        return String(head.prefix(11)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+    return head
+}
