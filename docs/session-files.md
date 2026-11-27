@@ -394,13 +394,15 @@ the window (§3.3) goes into it.
 - **信息面板** (ⓘ, the app's `info` glyph; it was `infoCard`, too like the panel's own): the environment
   and context cards. It cannot be shown while the side panel is open: the button is greyed, ⌥⌘0 does
   nothing, and opening the panel puts the cards away (as before).
-- **侧边面板** (`panelRight`, the side bar's glyph mirrored): shows and puts away the panel. The 文件 button
-  and the panel's own close button are gone.
+- **侧边面板** (`panelRight`, the side bar's glyph mirrored): shows the panel from the toolbar's right
+  end while closed; while open (including maximized), it moves to the right end of the panel's strip
+  after ⤢ so opening and putting away stay at the same corner of the window. The 文件 button is gone.
 
 **The panel** (`session/files/SidePanel.tsx`, state in `panel.ts`):
 
 - The strip: one tab per thing open (kind glyph, name, close), ＋ for a new tab (a native menu of
-  kinds: today only 项目文件), and ⤢ to take the window but the side bar. Under it, the tab's own bar.
+  kinds: today only 项目文件), ⤢ to take the window but the side bar, and the panel's toggle at its right
+  end to put it away. Under it, the tab's own bar.
 - Each session keeps its tabs. Opened empty, the panel starts with 项目文件; the last tab closed, it goes.
 - **Files tab**: a file (code at its lines, Markdown and SVG as they look or their source, a picture, a
   PDF) with the folder's tree beside it, shown or hidden by the bar's tree button; hidden when a reply

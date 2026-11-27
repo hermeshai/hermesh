@@ -903,14 +903,14 @@ export function SessionPage() {
           <Icon name="info" />
         </button>
       )}
-      {activeSessionId && (
+      {activeSessionId && !filesOpen && (
         <button
-          className={`tb ${filesOpen ? "on" : ""}`}
-          title={ts(filesOpen ? "page.hidePanel" : "page.showPanel")}
+          className="tb"
+          title={ts("page.showPanel")}
           aria-label={ts("panel.title")}
-          aria-pressed={filesOpen}
+          aria-pressed={false}
           data-testid="toolbar-panel-btn"
-          onClick={() => setPanelOpen(filePanel, !filesOpen)}
+          onClick={() => setPanelOpen(filePanel, true)}
         >
           <Icon name="panelRight" />
         </button>
