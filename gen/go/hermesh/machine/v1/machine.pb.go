@@ -986,7 +986,10 @@ type GetInfoRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// An owner's device asks the machine to check its coding agents again
 	// now (installed, version, signed in), and waits for it: Check Again.
-	Recheck       bool `protobuf:"varint,1,opt,name=recheck,proto3" json:"recheck,omitempty"`
+	Recheck bool `protobuf:"varint,1,opt,name=recheck,proto3" json:"recheck,omitempty"`
+	// With recheck, also refresh out-of-band account rate limits (e.g.
+	// Antigravity's `agy -p /usage`), subject to cooldown.
+	Limits        bool `protobuf:"varint,2,opt,name=limits,proto3" json:"limits,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1024,6 +1027,13 @@ func (*GetInfoRequest) Descriptor() ([]byte, []int) {
 func (x *GetInfoRequest) GetRecheck() bool {
 	if x != nil {
 		return x.Recheck
+	}
+	return false
+}
+
+func (x *GetInfoRequest) GetLimits() bool {
+	if x != nil {
+		return x.Limits
 	}
 	return false
 }
@@ -3679,9 +3689,10 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\ffailed_turns\x18\x04 \x01(\rR\vfailedTurns\x12!\n" +
 	"\finput_tokens\x18\x05 \x01(\x04R\vinputTokens\x12#\n" +
 	"\routput_tokens\x18\x06 \x01(\x04R\foutputTokens\x12!\n" +
-	"\fbusy_seconds\x18\a \x01(\rR\vbusySeconds\"*\n" +
+	"\fbusy_seconds\x18\a \x01(\rR\vbusySeconds\"B\n" +
 	"\x0eGetInfoRequest\x12\x18\n" +
-	"\arecheck\x18\x01 \x01(\bR\arecheck\"\x8e\x01\n" +
+	"\arecheck\x18\x01 \x01(\bR\arecheck\x12\x16\n" +
+	"\x06limits\x18\x02 \x01(\bR\x06limits\"\x8e\x01\n" +
 	"\x0fGetInfoResponse\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12!\n" +

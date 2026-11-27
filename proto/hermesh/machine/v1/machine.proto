@@ -142,6 +142,9 @@ message GetInfoRequest {
   // An owner's device asks the machine to check its coding agents again
   // now (installed, version, signed in), and waits for it: Check Again.
   bool recheck = 1;
+  // With recheck, also refresh out-of-band account rate limits (e.g.
+  // Antigravity's `agy -p /usage`), subject to cooldown.
+  bool limits = 2;
 }
 
 message GetInfoResponse {

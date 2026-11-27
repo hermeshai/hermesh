@@ -606,6 +606,7 @@ struct LimitsPage: View {
             Text("Each provider gives its own limits: each computer asks Claude Code, Codex and Antigravity when it checks its agents, and running a task updates them too. Hermesh only passes them on and doesn’t read your accounts.")
                 .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 4)
         }
+        .task { await model.refreshLimits() }
     }
 }
 

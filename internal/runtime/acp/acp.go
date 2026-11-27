@@ -55,16 +55,21 @@ type App struct {
 
 type Provider struct {
 	Agent
-	PathEnv      string
-	Binary       string
-	drv          *Driver
-	modelsMu     sync.Mutex
-	list         *modelList
-	acpMu        sync.Mutex
-	acpProbe     map[string]bool
-	chosenStamp  string
-	chosenLaunch launch
-	startSem     chan struct{}
+	PathEnv       string
+	Binary        string
+	drv           *Driver
+	modelsMu      sync.Mutex
+	list          *modelList
+	acpMu         sync.Mutex
+	acpProbe      map[string]bool
+	chosenStamp   string
+	chosenLaunch  launch
+	startSem      chan struct{}
+	usageMu       sync.Mutex
+	usageKey      string
+	usageAt       time.Time
+	usageCooldown time.Duration
+	now           func() time.Time
 }
 
 type launch struct {

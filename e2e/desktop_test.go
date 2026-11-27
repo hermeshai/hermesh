@@ -621,7 +621,7 @@ func otherMacLimits(t *testing.T, f desktopFixture) {
 	agy, _ := w.otherMac("agy-mac", env)
 	joined := w.joinTyped(agy, home, "agy-mac")
 	eventually(t, time.Minute, "agy-mac checked again", func() bool {
-		_, err := w.app.client.CheckAgents(ctx, &localv1.CheckAgentsRequest{MachineId: joined.LocalMachineId})
+		_, err := w.app.client.CheckAgents(ctx, &localv1.CheckAgentsRequest{MachineId: joined.LocalMachineId, Limits: true})
 		return err == nil
 	})
 	eventually(t, time.Minute, "Antigravity's quota from agy-mac", func() bool {

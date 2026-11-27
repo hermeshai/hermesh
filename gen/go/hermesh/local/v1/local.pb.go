@@ -4603,7 +4603,10 @@ type CheckAgentsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// A machine of the owner to check, end to end, waiting for it; empty:
 	// this device's own machine, in the background.
-	MachineId     string `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
+	MachineId string `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
+	// Also refresh out-of-band account rate limits (e.g. Antigravity's
+	// `agy -p /usage`), subject to cooldown. Set only when viewing Limits.
+	Limits        bool `protobuf:"varint,2,opt,name=limits,proto3" json:"limits,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4643,6 +4646,13 @@ func (x *CheckAgentsRequest) GetMachineId() string {
 		return x.MachineId
 	}
 	return ""
+}
+
+func (x *CheckAgentsRequest) GetLimits() bool {
+	if x != nil {
+		return x.Limits
+	}
+	return false
 }
 
 type CheckAgentsResponse struct {
@@ -9898,10 +9908,11 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12>\n" +
 	"\bdefaults\x18\x02 \x01(\v2\".hermesh.identity.v1.AgentDefaultsR\bdefaults\"\x1a\n" +
-	"\x18SetAgentDefaultsResponse\"3\n" +
+	"\x18SetAgentDefaultsResponse\"K\n" +
 	"\x12CheckAgentsRequest\x12\x1d\n" +
 	"\n" +
-	"machine_id\x18\x01 \x01(\tR\tmachineId\"\x15\n" +
+	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x16\n" +
+	"\x06limits\x18\x02 \x01(\bR\x06limits\"\x15\n" +
 	"\x13CheckAgentsResponse\"8\n" +
 	"\x17ListMachineReposRequest\x12\x1d\n" +
 	"\n" +

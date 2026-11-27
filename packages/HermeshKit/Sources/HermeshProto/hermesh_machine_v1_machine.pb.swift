@@ -510,6 +510,10 @@ public nonisolated struct Hermesh_Machine_V1_GetInfoRequest: Sendable {
   /// now (installed, version, signed in), and waits for it: Check Again.
   public var recheck: Bool = false
 
+  /// With recheck, also refresh out-of-band account rate limits (e.g.
+  /// Antigravity's `agy -p /usage`), subject to cooldown.
+  public var limits: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -2054,7 +2058,7 @@ nonisolated extension Hermesh_Machine_V1_WorkMeasure: SwiftProtobuf.Message, Swi
 
 nonisolated extension Hermesh_Machine_V1_GetInfoRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GetInfoRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}recheck\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}recheck\0\u{1}limits\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2063,6 +2067,7 @@ nonisolated extension Hermesh_Machine_V1_GetInfoRequest: SwiftProtobuf.Message, 
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularBoolField(value: &self.recheck) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.limits) }()
       default: break
       }
     }
@@ -2072,11 +2077,15 @@ nonisolated extension Hermesh_Machine_V1_GetInfoRequest: SwiftProtobuf.Message, 
     if self.recheck != false {
       try visitor.visitSingularBoolField(value: self.recheck, fieldNumber: 1)
     }
+    if self.limits != false {
+      try visitor.visitSingularBoolField(value: self.limits, fieldNumber: 2)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Machine_V1_GetInfoRequest, rhs: Hermesh_Machine_V1_GetInfoRequest) -> Bool {
     if lhs.recheck != rhs.recheck {return false}
+    if lhs.limits != rhs.limits {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

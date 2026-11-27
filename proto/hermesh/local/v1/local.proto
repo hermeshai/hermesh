@@ -773,6 +773,9 @@ message CheckAgentsRequest {
   // A machine of the owner to check, end to end, waiting for it; empty:
   // this device's own machine, in the background.
   string machine_id = 1;
+  // Also refresh out-of-band account rate limits (e.g. Antigravity's
+  // `agy -p /usage`), subject to cooldown. Set only when viewing Limits.
+  bool limits = 2;
 }
 
 message CheckAgentsResponse {}

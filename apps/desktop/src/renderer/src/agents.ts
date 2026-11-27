@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import type { Machine } from "@hermesh/proto/local";
 import { local } from "./api";
 
 // This Mac's coding agents are checked (each CLI run) only when something
@@ -11,6 +12,24 @@ export function useCheckAgents(on = true) {
   useEffect(() => {
     if (on) check();
   }, [on]);
+}
+
+/**
+ * Refreshes account rate limits (including out-of-band queries like Antigravity's
+ * `agy -p /usage`) once when Limits opens, for this Mac and any online remote
+ * machines. Each machine is asked at most once per mount (and rate-limited on
+ * the machine itself); stale cached limits stay visible while fresh ones load.
+ */
+export function useCheckLimits(machines: readonly Machine[]) {
+  const asked = useRef(new Set<string>());
+  useEffect(() => {
+    for (const m of machines) {
+      const key = m.local ? "" : m.machineId;
+      if ((!m.local && !m.online) || asked.current.has(key)) continue;
+      asked.current.add(key);
+      void local.checkAgents(m.local ? { limits: true } : { machineId: m.machineId, limits: true }).catch(() => {});
+    }
+  }, [machines]);
 }
 
 /** Checks them again every few seconds while on: waiting for a sign-in in Terminal. */

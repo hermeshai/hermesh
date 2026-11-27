@@ -185,6 +185,13 @@ func main() {
 			return
 		}
 	}
+	if len(os.Args) > 2 && os.Args[1] == "-p" && os.Args[2] == "/usage" {
+		if usage := fakeSetting("FAKE_ACP_USAGE", "fakeacp.usage"); usage != "" {
+			fmt.Println(usage)
+			return
+		}
+		os.Exit(2)
+	}
 	if agyMode == "acp" && !slices.Equal(os.Args[1:], []string{"acp"}) {
 		fmt.Fprintf(os.Stderr, "expected args [acp], got %v\n", os.Args[1:])
 		os.Exit(2)

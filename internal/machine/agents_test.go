@@ -145,3 +145,88 @@ func TestAgentMissingIsCheckedAgainBeforeASession(t *testing.T) {
 		t.Fatal("an available agent was checked again")
 	}
 }
+
+type limitsProbe struct {
+	name      string
+	installed atomic.Bool
+	loggedIn  atomic.Bool
+	runs      atomic.Int32
+	limitRuns atomic.Int32
+	usedPct   atomic.Uint32
+	hold      sync.Mutex
+}
+
+func (p *limitsProbe) Discover(context.Context) rt.Info {
+	p.hold.Lock()
+	defer p.hold.Unlock()
+	p.runs.Add(1)
+	if !p.installed.Load() {
+		return rt.Info{Name: p.name, Detail: p.name + " not found"}
+	}
+	return rt.Info{Name: p.name, Available: true, Version: "1.5.16", LoggedIn: p.loggedIn.Load()}
+}
+
+func (p *limitsProbe) ReadLimits(context.Context) *rt.Limits {
+	p.limitRuns.Add(1)
+	return &rt.Limits{
+		Windows: []rt.LimitWindow{{
+			Minutes:     300,
+			UsedPercent: p.usedPct.Load(),
+			ResetsAt:    time.Now().Add(4 * time.Hour).UTC().Truncate(time.Second),
+			Group:       "Gemini Models",
+		}},
+	}
+}
+
+func TestCheckLimitsOnlyWhenAsked(t *testing.T) {
+	agy := &limitsProbe{name: "antigravity"}
+	agy.installed.Store(true)
+	agy.usedPct.Store(17)
+	n, err := Open(Config{DataDir: t.TempDir(), Discoverers: map[string]AgentDiscoverer{"antigravity": agy}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { n.Close() })
+
+	// Routine checks (startup, forced recheck, fresh check) never invoke ReadLimits.
+	agy.loggedIn.Store(false)
+	<-n.CheckAgents(false, AgentsOnce)
+	<-n.CheckLimits()
+	if got := agy.limitRuns.Load(); got != 0 {
+		t.Fatalf("ReadLimits called %d times while signed out, want 0", got)
+	}
+
+	agy.loggedIn.Store(true)
+	<-n.CheckAgents(true, 0)
+	<-n.CheckAgents(false, AgentsFresh)
+	if got := agy.limitRuns.Load(); got != 0 {
+		t.Fatalf("ReadLimits called %d times during routine CheckAgents, want 0", got)
+	}
+	if a := agent(n.Status(), "antigravity"); a == nil || a.Limits != nil {
+		t.Fatalf("limits populated before CheckLimits: %+v", a)
+	}
+
+	// Opening Limits calls ReadLimits and records the snapshot.
+	<-n.CheckLimits()
+	if got := agy.limitRuns.Load(); got != 1 {
+		t.Fatalf("ReadLimits called %d times, want 1", got)
+	}
+	if a := agent(n.Status(), "antigravity"); a == nil || a.Limits == nil || len(a.Limits.Windows) != 1 || a.Limits.Windows[0].UsedPercent != 17 {
+		t.Fatalf("limits after CheckLimits: %+v", a)
+	}
+
+	// Even if a routine CheckAgents is already in flight, CheckLimits still queries ReadLimits.
+	agy.usedPct.Store(29)
+	agy.hold.Lock()
+	inFlight := n.CheckAgents(true, 0)
+	limitsDone := n.CheckLimits()
+	agy.hold.Unlock()
+	<-inFlight
+	<-limitsDone
+	if got := agy.limitRuns.Load(); got != 2 {
+		t.Fatalf("ReadLimits called %d times while CheckAgents in flight, want 2", got)
+	}
+	if a := agent(n.Status(), "antigravity"); a == nil || a.Limits == nil || a.Limits.Windows[0].UsedPercent != 29 {
+		t.Fatalf("limits after concurrent CheckLimits: %+v", a)
+	}
+}

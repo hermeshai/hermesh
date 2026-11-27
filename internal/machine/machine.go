@@ -540,6 +540,46 @@ func (n *Machine) CheckAgents(force bool, maxAge time.Duration) <-chan struct{} 
 	return done
 }
 
+// CheckLimits refreshes coding agents and also asks any LimitsReader
+// (Antigravity's `agy -p /usage`) for its account's rate limits. It is called
+// only when the owner opens the Limits view.
+func (n *Machine) CheckLimits() <-chan struct{} {
+	checkDone := n.CheckAgents(true, 0)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		var wg sync.WaitGroup
+		for name, p := range n.cfg.Discoverers {
+			lr, ok := p.(LimitsReader)
+			if !ok {
+				continue
+			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				n.mu.Lock()
+				info, known := n.infos[name]
+				n.mu.Unlock()
+				if !known || !info.Available || !info.LoggedIn {
+					<-checkDone
+					n.mu.Lock()
+					info = n.infos[name]
+					n.mu.Unlock()
+					if !info.Available || !info.LoggedIn {
+						return
+					}
+				}
+				if lim := lr.ReadLimits(context.Background()); lim != nil {
+					n.noteLimits(name, *lim)
+				}
+			}()
+		}
+		<-checkDone
+		wg.Wait()
+	}()
+	return done
+}
+
 // Discover checks every coding agent now and returns what it found.
 func (n *Machine) Discover(ctx context.Context) map[string]rt.Info {
 	select {

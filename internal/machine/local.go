@@ -51,6 +51,10 @@ func (l *Local) Info() *machinev1.GetInfoResponse {
 // CheckAgents checks the coding agents again, in the background.
 func (l *Local) CheckAgents() { l.n.CheckAgents(true, 0) }
 
+// CheckLimits checks the coding agents and refreshes out-of-band rate limits
+// (Antigravity's `agy -p /usage`), in the background.
+func (l *Local) CheckLimits() { l.n.CheckLimits() }
+
 // TestAgent runs Test on this device's own machine.
 func (l *Local) TestAgent(ctx context.Context, agent string) (*machinev1.TestAgentResponse, error) {
 	return l.n.TestAgent(ctx, agent)

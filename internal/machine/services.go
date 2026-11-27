@@ -64,8 +64,14 @@ func (s *machineService) GetInfo(ctx context.Context, req *machinev1.GetInfoRequ
 	// Again).
 	switch {
 	case req.Recheck && principalFrom(ctx).Kind == PrincipalOwner:
+		var done <-chan struct{}
+		if req.Limits {
+			done = s.n.CheckLimits()
+		} else {
+			done = s.n.CheckAgents(true, 0)
+		}
 		select {
-		case <-s.n.CheckAgents(true, 0):
+		case <-done:
 		case <-ctx.Done():
 		}
 	case principalFrom(ctx).Kind == PrincipalClient:

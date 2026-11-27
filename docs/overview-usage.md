@@ -511,12 +511,14 @@ whenever it checks its coding agents (§7.2):
 |---|---|---|
 | Claude Code (2.1.330) | the control request `get_usage` (`skip_behaviors`: only the limits, not the scan of every transcript), on the process that already answers `initialize` for the models | `subscription_type` (the plan); `rate_limits.five_hour` and `.seven_day`: `utilization` from 0 to 100 here, `resets_at` in RFC 3339; `rate_limits_available` false with an API key. Much else (per-model weeks, spend) is left out |
 | Codex (app-server 0.171) | the request `account/rateLimits/read` (no params), on the app-server that already answers `model/list` | `rateLimits` as the notification has them, and the account's id, which is not kept |
-| Antigravity (agy 1.5.16) | its own `/usage`, run headless: `agy -p /usage --output-format json` (no turn, no tokens, no conversation), once the agy CLI is chosen and signed in | `command.data.groups`: groups of models counted apart (`Gemini Models`, `Claude and GPT models`), each with buckets of `window` `5h` or `weekly`, `remaining_fraction` 0 to 1 and `reset_time` in RFC 3339. With an API key it exits 2: none (fixture `internal/runtime/acp/testdata/agy-1.5.16-usage.json`) |
+| Antigravity (agy 1.5.16) | its own `/usage`, run headless: `agy -p /usage --output-format json` (no turn, no tokens, no conversation), **only when the owner opens Limits** (`limits: true`, once the agy CLI is chosen and signed in), with a 1-minute cooldown so repeated tab switches or checks do not re-run it | `command.data.groups`: groups of models counted apart (`Gemini Models`, `Claude and GPT models`), each with buckets of `window` `5h` or `weekly`, `remaining_fraction` 0 to 1 and `reset_time` in RFC 3339. With an API key it exits 2: none (fixture `internal/runtime/acp/testdata/agy-1.5.16-usage.json`) |
 
 Antigravity's ACP says its plan (`_meta.antigravity.tier`) and nothing of
 its limits, and `/usage` sent as a prompt over ACP goes to the model. Its
 `-p` slash commands are agy's own (its changelog: `/usage`, `/quota` and
-`/credits` in `-p` runs). The standalone ACP server (no agy) is not asked.
+`/credits` in `-p` runs). Routine agent checks (startup, settings, login
+polling, external `GetInfo`) do not call `agy -p /usage`; it runs only on
+demand when Limits is viewed. The standalone ACP server (no agy) is not asked.
 Hermesh does not read agy's sign-in or call Google's unpublished endpoints
 itself.
 
@@ -620,10 +622,11 @@ screen: they are the owner's accounts.
   the agent says one), not a "running low" badge: a card holds several
   windows, often of several groups of models, and one running low is not
   the whole account running low.
-- Limits move while that agent runs, and when the agents are checked: the
-  machine's first check after it starts, and on the Mac each time the page
-  opens (it asks for a check, as the Providers page does). Nothing polls; a
-  card from another computer has what that one last said.
+- Limits move while that agent runs (Claude Code and Codex), on routine
+  checks for those two, and when the owner opens Limits (Mac and iPhone both
+  show the persisted snapshot immediately and trigger a background `limits: true`
+  refresh on online machines, which also runs Antigravity's `agy -p /usage`
+  subject to its 1-minute cooldown). Nothing polls in the background.
 
 ### 7.5 What it costs
 

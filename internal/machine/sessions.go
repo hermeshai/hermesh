@@ -73,6 +73,13 @@ type AgentDiscoverer interface {
 	Discover(ctx context.Context) rt.Info
 }
 
+// LimitsReader is optionally implemented by an AgentDiscoverer whose account
+// rate limits are queried separately from routine agent discovery (e.g.
+// Antigravity's `agy -p /usage`), only when the owner views Limits.
+type LimitsReader interface {
+	ReadLimits(ctx context.Context) *rt.Limits
+}
+
 func DefaultDiscoverers() map[string]AgentDiscoverer {
 	pathEnv := shellenv.Path()
 	cl := rtclaude.NewDriver(pathEnv)

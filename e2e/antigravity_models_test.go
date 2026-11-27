@@ -190,7 +190,11 @@ func fakeAgy(t *testing.T, usage []byte) []string {
 	os.WriteFile(answer, usage, 0o644)
 	agy := filepath.Join(dir, "agy")
 	os.WriteFile(agy, []byte(`#!/bin/sh
-if [ "$1" = "-p" ] && [ "$2" = "/usage" ]; then cat `+answer+`; exit 0; fi
+if [ "$1" = "-p" ] && [ "$2" = "/usage" ]; then
+  if [ -n "$FAKE_AGY_USAGE_LOG" ]; then echo usage >> "$FAKE_AGY_USAGE_LOG"; fi
+  cat `+answer+`
+  exit 0
+fi
 exec `+filepath.Join(binaries(t), "fakeacp")+` "$@"
 `), 0o755)
 	env, _ := antigravityEnv(t)

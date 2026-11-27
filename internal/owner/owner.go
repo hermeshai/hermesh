@@ -2849,12 +2849,12 @@ func (o *Owner) machineClient(ctx context.Context, machineID string) (*peer.Mach
 
 // RecheckAgents has a machine check its coding agents now (Check Again)
 // and waits for it; the new state then reaches this device's replica.
-func (o *Owner) RecheckAgents(ctx context.Context, machineID string) error {
+func (o *Owner) RecheckAgents(ctx context.Context, machineID string, withLimits bool) error {
 	n, err := o.machineClient(ctx, machineID)
 	if err != nil {
 		return err
 	}
-	_, err = n.Info.GetInfo(ctx, &machinev1.GetInfoRequest{Recheck: true})
+	_, err = n.Info.GetInfo(ctx, &machinev1.GetInfoRequest{Recheck: true, Limits: withLimits})
 	return err
 }
 

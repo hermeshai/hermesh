@@ -401,7 +401,7 @@ func (l *localService) SetAgentDefaults(ctx context.Context, req *localv1.SetAge
 // to end, waiting for it; this device's own in the background.
 func (l *localService) CheckAgents(ctx context.Context, req *localv1.CheckAgentsRequest) (*localv1.CheckAgentsResponse, error) {
 	if req.MachineId != "" && (l.o().local() == nil || l.o().local().MachineID() != req.MachineId) {
-		return &localv1.CheckAgentsResponse{}, l.o().RecheckAgents(ctx, req.MachineId)
+		return &localv1.CheckAgentsResponse{}, l.o().RecheckAgents(ctx, req.MachineId, req.Limits)
 	}
 	m, ok, err := l.o().onlyMachine()
 	if !ok {
@@ -413,7 +413,11 @@ func (l *localService) CheckAgents(ctx context.Context, req *localv1.CheckAgents
 	if err != nil {
 		return nil, err
 	}
-	m.CheckAgents()
+	if req.Limits {
+		m.CheckLimits()
+	} else {
+		m.CheckAgents()
+	}
 	return &localv1.CheckAgentsResponse{}, nil
 }
 

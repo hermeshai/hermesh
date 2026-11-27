@@ -1679,6 +1679,10 @@ public nonisolated struct Hermesh_Local_V1_CheckAgentsRequest: Sendable {
   /// this device's own machine, in the background.
   public var machineID: String = String()
 
+  /// Also refresh out-of-band account rate limits (e.g. Antigravity's
+  /// `agy -p /usage`), subject to cooldown. Set only when viewing Limits.
+  public var limits: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -6280,7 +6284,7 @@ nonisolated extension Hermesh_Local_V1_SetAgentDefaultsResponse: SwiftProtobuf.M
 
 nonisolated extension Hermesh_Local_V1_CheckAgentsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CheckAgentsRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{1}limits\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -6289,6 +6293,7 @@ nonisolated extension Hermesh_Local_V1_CheckAgentsRequest: SwiftProtobuf.Message
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.limits) }()
       default: break
       }
     }
@@ -6298,11 +6303,15 @@ nonisolated extension Hermesh_Local_V1_CheckAgentsRequest: SwiftProtobuf.Message
     if !self.machineID.isEmpty {
       try visitor.visitSingularStringField(value: self.machineID, fieldNumber: 1)
     }
+    if self.limits != false {
+      try visitor.visitSingularBoolField(value: self.limits, fieldNumber: 2)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Local_V1_CheckAgentsRequest, rhs: Hermesh_Local_V1_CheckAgentsRequest) -> Bool {
     if lhs.machineID != rhs.machineID {return false}
+    if lhs.limits != rhs.limits {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

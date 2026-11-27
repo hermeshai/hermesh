@@ -455,9 +455,10 @@ extension AppAPI {
     }
 
     /// Check Again on a machine: it looks at its coding agents now.
-    func checkAgents(machine: String) async throws {
+    func checkAgents(machine: String, limits: Bool = false) async throws {
         var r = Hermesh_Local_V1_CheckAgentsRequest()
         r.machineID = machine
+        r.limits = limits
         let _: Hermesh_Local_V1_CheckAgentsResponse = try await call("CheckAgents", r, timeout: 60)
     }
 

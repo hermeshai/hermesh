@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { agentLimits, agoText, codingAgentTitle, hourMinute, limitLow, sameDay, weekday, type AgentLimitsCard, type LimitShown } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
-import { useCheckAgents } from "../agents";
+import { useCheckLimits } from "../agents";
 import { machineName } from "../Sidebar";
 import { useStore, type Store } from "../store";
 
@@ -49,7 +49,7 @@ export function Limits({ now }: { now: Date }) {
   const { t } = useTranslation("overview");
   const st = useStore();
   const cards = useMemo(() => agentLimits(st.machines, now), [st.machines, now]);
-  useCheckAgents();
+  useCheckLimits(st.machines);
   return (
     <section aria-label={t("limits.title")}>
       <div className="us-stack">

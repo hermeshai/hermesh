@@ -1431,6 +1431,22 @@ final class AppModel {
         } catch { report(error) }
     }
 
+    /// Refreshes account rate limits (including out-of-band queries like Antigravity's
+    /// `agy -p /usage`) on each online machine when Limits opens; stale cached limits
+    /// stay visible while fresh ones arrive over Watch.
+    func refreshLimits() async {
+        guard let api else { return }
+        let ids = machines.filter(\.online).map(\.machineID)
+        guard !ids.isEmpty else { return }
+        let tasks = ids.map { id in
+            Task { _ = try? await api.checkAgents(machine: id, limits: true) }
+        }
+        for t in tasks { await t.value }
+        if let fresh = try? await api.machines() {
+            machines = fresh
+        }
+    }
+
     /// A machine looks for its coding agents when asked: a page that needs
     /// them asks those with none listed (just joined, or just restarted).
     func recheckUnlisted() async {

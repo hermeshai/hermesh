@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -215,6 +216,11 @@ func TestRealLimitsAsked(t *testing.T) {
 	}
 	_, agy := exec.LookPath("agy")
 	w := newOwnerMac(t, []string{"PATH=" + os.Getenv("PATH")}, &localv1.GrantSpec{})
+	if agy == nil {
+		if _, err := w.app.client.CheckAgents(context.Background(), &localv1.CheckAgentsRequest{Limits: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	var got map[string]*machinev1.AgentLimits
 	eventually(t, 90*time.Second, "the agents' limits", func() bool {
 		got = agentLimits(t, w.app.client)
@@ -229,9 +235,9 @@ func TestRealLimitsAsked(t *testing.T) {
 }
 
 // TestAntigravityLimitsAsked (docs/overview-usage.md §7): Antigravity, as
-// the agy CLI, is asked its quota when the agents are checked, without a
-// session: its own /usage, a group of models at a time, which the machine
-// tells as it was said (recorded from agy 1.5.16).
+// the agy CLI, is NOT asked its quota during startup or routine agent checks
+// (settings, login polling). Only an explicit Limits check (`limits: true`)
+// runs `agy -p /usage`, and repeated calls within its cooldown do not re-run it.
 func TestAntigravityLimitsAsked(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
@@ -240,9 +246,47 @@ func TestAntigravityLimitsAsked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := newOwnerMac(t, fakeAgy(t, usage), &localv1.GrantSpec{Agents: []string{"antigravity"}})
+	usageLog := filepath.Join(t.TempDir(), "usage.calls")
+	env := fakeAgy(t, usage)
+	env = append(env, "FAKE_AGY_USAGE_LOG="+usageLog)
+	w := newOwnerMac(t, env, &localv1.GrantSpec{Agents: []string{"antigravity"}})
+	ctx := context.Background()
+
+	// Wait for the initial agent check to finish: Antigravity is ready, yet
+	// `/usage` must not have been called.
+	waitChecked := func() {
+		t.Helper()
+		eventually(t, time.Minute, "antigravity checked", func() bool {
+			res, err := w.app.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
+			if err != nil || len(res.Machines) == 0 {
+				return false
+			}
+			for _, a := range res.Machines[0].Status.GetAgents() {
+				if a.Name == "antigravity" {
+					return a.Available && a.LoggedIn && !a.Checking
+				}
+			}
+			return false
+		})
+	}
+	waitChecked()
+	if _, err := w.app.client.CheckAgents(ctx, &localv1.CheckAgentsRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	waitChecked()
+	if l := agentLimits(t, w.app.client)["antigravity"]; l != nil {
+		t.Fatalf("Antigravity limits populated before Limits view asked: %v", l)
+	}
+	if b, _ := os.ReadFile(usageLog); len(bytes.TrimSpace(b)) != 0 {
+		t.Fatalf("agy -p /usage ran during routine CheckAgents: %q", b)
+	}
+
+	// Opening Limits asks with limits=true: runs `agy -p /usage` once and reports all 4 windows.
+	if _, err := w.app.client.CheckAgents(ctx, &localv1.CheckAgentsRequest{Limits: true}); err != nil {
+		t.Fatal(err)
+	}
 	var l *machinev1.AgentLimits
-	eventually(t, time.Minute, "Antigravity's quota from the first check", func() bool {
+	eventually(t, time.Minute, "Antigravity's quota after Limits check", func() bool {
 		l = agentLimits(t, w.app.client)["antigravity"]
 		return l != nil
 	})
@@ -258,5 +302,25 @@ func TestAntigravityLimitsAsked(t *testing.T) {
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") || l.Plan != "" {
 		t.Fatalf("windows:\n%s", strings.Join(got, "\n"))
+	}
+	calls := func() int {
+		b, _ := os.ReadFile(usageLog)
+		s := strings.TrimSpace(string(b))
+		if s == "" {
+			return 0
+		}
+		return len(strings.Split(s, "\n"))
+	}
+	if n := calls(); n != 1 {
+		t.Fatalf("agy -p /usage calls = %d, want 1", n)
+	}
+
+	// Asking again immediately (e.g. toggling tabs) hits cooldown and does not re-run agy.
+	if _, err := w.app.client.CheckAgents(ctx, &localv1.CheckAgentsRequest{Limits: true}); err != nil {
+		t.Fatal(err)
+	}
+	waitChecked()
+	if n := calls(); n != 1 {
+		t.Fatalf("agy -p /usage re-ran within cooldown: calls = %d, want 1", n)
 	}
 }
