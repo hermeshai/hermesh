@@ -371,6 +371,65 @@ func TestThreadV2EndToEnd(t *testing.T) {
 			s.GetProgress().GetTurnCount() == 2
 	})
 
+	// 3c. Remote ACP (Antigravity, MidTurnSteer=false) PROMOTE_TO_STEER over Relay:
+	// While a long turn runs on vps-1, queue 2 messages and promote the 2nd ("Steer Now") ->
+	// interrupts the active turn and executes the promoted message immediately before the 1st queued message!
+	if _, err := sc.DispatchMessage(ctx, &sessionv1.DispatchMessageRequest{
+		SessionId: planSessionID,
+		Text:      "sleep 20s\nsay acp_never_finishes",
+	}); err != nil {
+		t.Fatalf("start slow antigravity turn: %v", err)
+	}
+	eventually(t, 10*time.Second, "antigravity slow turn running", func() bool {
+		g, err := sc.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: planSessionID})
+		return err == nil && g.Projection.GetSession().GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+	})
+	acpQ1, err := sc.DispatchMessage(ctx, &sessionv1.DispatchMessageRequest{
+		SessionId: planSessionID,
+		Text:      "say acp_queued_after",
+		Intent:    sessionv1.DispatchIntent_DISPATCH_INTENT_QUEUE,
+	})
+	if err != nil {
+		t.Fatalf("queue acpQ1: %v", err)
+	}
+	acpQ2, err := sc.DispatchMessage(ctx, &sessionv1.DispatchMessageRequest{
+		SessionId: planSessionID,
+		Text:      "say acp_promoted_now",
+		Intent:    sessionv1.DispatchIntent_DISPATCH_INTENT_QUEUE,
+	})
+	if err != nil {
+		t.Fatalf("queue acpQ2: %v", err)
+	}
+	if _, err := sc.ManageQueue(ctx, &sessionv1.ManageQueueRequest{
+		SessionId: planSessionID,
+		Operation: sessionv1.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER,
+		RunId:     acpQ2.Run.RunId,
+	}); err != nil {
+		t.Fatalf("remote ManageQueue(PROMOTE_TO_STEER) on antigravity failed: %v", err)
+	}
+	var acpSteerProj *sessionv1.SessionProjection
+	eventually(t, 15*time.Second, "antigravity promoted steer + remaining queue completed", func() bool {
+		g, err := sc.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: planSessionID})
+		if err == nil && g.Projection.GetSession().GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_IDLE &&
+			g.Projection.GetSession().GetQueuedRunCount() == 0 {
+			acpSteerProj = g.Projection
+			return true
+		}
+		return false
+	})
+	var q1Ord, q2Ord uint32
+	for _, r := range acpSteerProj.GetRuns() {
+		if r.RunId == acpQ1.Run.RunId && r.Status == sessionv1.RunStatus_RUN_STATUS_COMPLETED {
+			q1Ord = r.Ordinal
+		}
+		if r.RunId == acpQ2.Run.RunId && r.Status == sessionv1.RunStatus_RUN_STATUS_COMPLETED {
+			q2Ord = r.Ordinal
+		}
+	}
+	if q2Ord == 0 || q1Ord == 0 || q2Ord >= q1Ord {
+		t.Fatalf("expected promoted acpQ2 to execute before acpQ1, got q2Ord=%d q1Ord=%d", q2Ord, q1Ord)
+	}
+
 	// 4. Durable Offline Outbox: stop vps-1, launch session + queue follow-up while offline, restart vps-1 -> auto-flushes FIFO!
 	vpsProc.stop()
 	eventually(t, 15*time.Second, "vps-1 marked offline", func() bool {
@@ -551,5 +610,29 @@ func TestThreadV2EndToEnd(t *testing.T) {
 	}
 	if stopDaemonRes.GetSession().GetActiveDaemonCount() != 0 || len(stopDaemonRes.GetStoppedTasks()) != 1 {
 		t.Fatalf("expected remote daemon stopped cleanly, got %+v", stopDaemonRes)
+	}
+
+	// Verify Owner's cached projection also settled the stopped daemon when vps-1 goes offline:
+	vpsProc.stop()
+	eventually(t, 15*time.Second, "vps-1 offline after stopping daemon", func() bool {
+		ms, err := app.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
+		if err != nil {
+			return false
+		}
+		for _, m := range ms.Machines {
+			if m.MachineId == vpsID && !m.Online {
+				return true
+			}
+		}
+		return false
+	})
+	cachedBgProj, err := sc.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: bgSessionID})
+	if err != nil {
+		t.Fatalf("GetSession cached bgSessionID while offline: %v", err)
+	}
+	for _, bt := range cachedBgProj.GetProjection().GetBackgroundTasks() {
+		if bt.Status == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+			t.Fatalf("expected cached remote BackgroundTasks settled after StopBackgroundTask, got %+v", bt)
+		}
 	}
 }

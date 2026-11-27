@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -720,4 +721,210 @@ func TestEngineInPlaceTodoAndFocusUpdates(t *testing.T) {
 	if cmdItem == nil || cmdItem.Text != "Unit test execution" || cmdItem.Command != "go test ./..." {
 		t.Fatalf("expected command TurnItem to preserve Text summary and Command, got %+v", cmdItem)
 	}
+}
+
+func TestForceInterruptAndProviderSwitchSettleBackgroundTasks(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("force_interrupt_settles_running_background_and_daemon_tasks", func(t *testing.T) {
+		hangCh := make(chan struct{})
+		t.Cleanup(func() { close(hangCh) })
+
+		drv := &customTestDriver{
+			kind: "hang_bg",
+			caps: &sessionv1.ProviderCapabilities{NativeResume: true},
+			onStart: func(_ context.Context, _ runtime.StartSpec) (runtime.Session, error) {
+				ch := make(chan runtime.Event, 32)
+				return &customTestSession{
+					events: ch,
+					onTurn: func(_ context.Context, _ runtime.TurnInput, out chan<- runtime.Event) {
+						out <- runtime.Event{Kind: runtime.EventToolStarted, ItemID: "it_cmd", ToolName: "Bash", Command: "sleep 999"}
+						out <- runtime.Event{
+							Kind:                runtime.EventBackgroundTask,
+							TaskID:              "bg_cmd_1",
+							ItemID:              "it_cmd",
+							ToolName:            "Long build",
+							Command:             "sleep 999",
+							BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
+							BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+							BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+							BackgroundAwaited:   true,
+						}
+						out <- runtime.Event{
+							Kind:                runtime.EventBackgroundTask,
+							TaskID:              "bg_daemon_1",
+							ToolName:            "Dev server",
+							Command:             "pnpm dev",
+							BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
+							BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+							BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+							BackgroundAwaited:   false,
+						}
+						<-hangCh
+					},
+				}, nil
+			},
+		}
+
+		eng, err := Open(Config{
+			DataDir:   t.TempDir(),
+			MachineID: "m_force_bg",
+			Drivers:   map[string]runtime.Driver{"hang_bg": drv},
+			IdleTTL:   time.Minute,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer eng.Close()
+
+		owner := OwnerPrincipal("dev_owner", "Owner")
+		_, _ = eng.UpsertProviderInstance(ctx, owner, &sessionv1.ProviderInstanceConfig{
+			InstanceId: "hang-agent", Driver: "hang_bg", DisplayName: "Hang", Enabled: true,
+		})
+		started, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+			ModelSelection: &sessionv1.ModelSelection{InstanceId: "hang-agent", Model: "m1"},
+			InitialPrompt:  "start bg and hang",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sid := started.Session.SessionId
+
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			p, _ := eng.GetSession(ctx, owner, sid)
+			if p.GetSession().GetActiveBackgroundCount() == 1 && p.GetSession().GetActiveDaemonCount() == 1 {
+				break
+			}
+			time.Sleep(15 * time.Millisecond)
+		}
+
+		// Force-interrupt must settle both background tasks and reset counts to 0 immediately.
+		intRes, err := eng.InterruptSession(ctx, owner, &sessionv1.InterruptSessionRequest{
+			SessionId: sid,
+			Force:     true,
+		})
+		if err != nil {
+			t.Fatalf("InterruptSession(Force=true): %v", err)
+		}
+		if intRes.Session.ActiveBackgroundCount != 0 || intRes.Session.ActiveDaemonCount != 0 {
+			t.Fatalf("expected ActiveBackgroundCount=0 ActiveDaemonCount=0 after Force interrupt, got bg=%d daemon=%d",
+				intRes.Session.ActiveBackgroundCount, intRes.Session.ActiveDaemonCount)
+		}
+		proj, err := eng.GetSession(ctx, owner, sid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, bt := range proj.BackgroundTasks {
+			if bt.Status != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED {
+				t.Fatalf("expected background task %s STOPPED after Force interrupt, got %+v", bt.TaskId, bt)
+			}
+		}
+		for _, it := range proj.Items {
+			if it.Kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION && it.Status == "running" {
+				t.Fatalf("linked TurnItem remained running after Force interrupt: %+v", it)
+			}
+		}
+	})
+
+	t.Run("fresh_context_provider_replacement_settles_old_tasks_without_clobbering_new", func(t *testing.T) {
+		var sessionNum int
+		drv := &customTestDriver{
+			kind: "switch_bg",
+			caps: &sessionv1.ProviderCapabilities{NativeResume: true},
+			onStart: func(_ context.Context, _ runtime.StartSpec) (runtime.Session, error) {
+				sessionNum++
+				n := sessionNum
+				ch := make(chan runtime.Event, 32)
+				return &customTestSession{
+					events: ch,
+					onTurn: func(_ context.Context, _ runtime.TurnInput, out chan<- runtime.Event) {
+						out <- runtime.Event{
+							Kind:                runtime.EventBackgroundTask,
+							TaskID:              fmt.Sprintf("daemon_ps_%d", n),
+							ToolName:            fmt.Sprintf("Daemon #%d", n),
+							Command:             "pnpm dev",
+							BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
+							BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+							BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+							BackgroundAwaited:   false,
+						}
+						out <- runtime.Event{Kind: runtime.EventAssistantMessage, ItemID: "m1", Text: fmt.Sprintf("ps_%d_ok", n)}
+						out <- runtime.Event{Kind: runtime.EventTurnCompleted}
+					},
+				}, nil
+			},
+		}
+
+		eng, err := Open(Config{
+			DataDir:   t.TempDir(),
+			MachineID: "m_switch_bg",
+			Drivers:   map[string]runtime.Driver{"switch_bg": drv},
+			IdleTTL:   time.Minute,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer eng.Close()
+
+		owner := OwnerPrincipal("dev_owner", "Owner")
+		_, _ = eng.UpsertProviderInstance(ctx, owner, &sessionv1.ProviderInstanceConfig{
+			InstanceId: "sw-agent", Driver: "switch_bg", DisplayName: "Switch", Enabled: true,
+		})
+		started, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+			ModelSelection: &sessionv1.ModelSelection{InstanceId: "sw-agent", Model: "m1"},
+			InitialPrompt:  "turn 1",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sid := started.Session.SessionId
+
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			p, _ := eng.GetSession(ctx, owner, sid)
+			if len(p.GetRuns()) == 1 && p.Runs[0].Status == sessionv1.RunStatus_RUN_STATUS_COMPLETED {
+				break
+			}
+			time.Sleep(15 * time.Millisecond)
+		}
+
+		// Dispatch Turn #2 with FRESH_CONTEXT -> replaces PS #1 with PS #2:
+		if _, err := eng.DispatchMessage(ctx, owner, &sessionv1.DispatchMessageRequest{
+			SessionId: sid,
+			Text:      "turn 2 fresh",
+			Intent:    sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var finalProj *sessionv1.SessionProjection
+		deadline = time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			p, _ := eng.GetSession(ctx, owner, sid)
+			if len(p.GetRuns()) == 2 && p.Runs[1].Status == sessionv1.RunStatus_RUN_STATUS_COMPLETED {
+				finalProj = p
+				break
+			}
+			time.Sleep(15 * time.Millisecond)
+		}
+		if finalProj == nil {
+			t.Fatal("timed out waiting for Turn #2 completion")
+		}
+		if finalProj.Session.ActiveDaemonCount != 1 {
+			t.Fatalf("expected ActiveDaemonCount=1 (only PS #2 daemon running), got %d; tasks=%+v",
+				finalProj.Session.ActiveDaemonCount, finalProj.BackgroundTasks)
+		}
+		for _, bt := range finalProj.BackgroundTasks {
+			switch bt.TaskId {
+			case "daemon_ps_1":
+				if bt.Status != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED {
+					t.Fatalf("expected daemon_ps_1 STOPPED when PS #1 was replaced, got %+v", bt)
+				}
+			case "daemon_ps_2":
+				if bt.Status != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+					t.Fatalf("expected daemon_ps_2 RUNNING on PS #2, got %+v", bt)
+				}
+			}
+		}
+	})
 }

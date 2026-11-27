@@ -351,6 +351,75 @@ func runMockClaude() {
 					"type":  "result",
 					"usage": map[string]any{"input_tokens": 40, "output_tokens": 12},
 				})
+			} else if strings.Contains(prompt, "claude_superseded_bg") {
+				write(map[string]any{
+					"type": "assistant",
+					"message": map[string]any{"content": []any{
+						map[string]any{
+							"type":  "tool_use",
+							"id":    "tu_sched_1",
+							"name":  "ScheduleWakeup",
+							"input": map[string]any{"delaySeconds": 60, "reason": "First check"},
+						},
+						map[string]any{
+							"type":  "tool_use",
+							"id":    "tu_sched_2",
+							"name":  "ScheduleWakeup",
+							"input": map[string]any{"delaySeconds": 30, "reason": "Second check"},
+						},
+						map[string]any{
+							"type":  "tool_use",
+							"id":    "tu_bash_early",
+							"name":  "Bash",
+							"input": map[string]any{"command": "sleep 2 && echo ok", "run_in_background": true},
+						},
+					}},
+				})
+				// Send tool_result BEFORE system/task_started with NO task id in text so claude-bg-tu_bash_early is synthesized first!
+				write(map[string]any{
+					"type": "user",
+					"message": map[string]any{"content": []any{
+						map[string]any{"type": "tool_result", "tool_use_id": "tu_sched_1", "content": "Scheduled"},
+						map[string]any{"type": "tool_result", "tool_use_id": "tu_sched_2", "content": "Scheduled"},
+						map[string]any{"type": "tool_result", "tool_use_id": "tu_bash_early", "content": "Started in background."},
+					}},
+				})
+				// Now system/task_started arrives with real task_id "b_real_99":
+				write(map[string]any{
+					"type":        "system",
+					"subtype":     "task_started",
+					"task_id":     "b_real_99",
+					"tool_use_id": "tu_bash_early",
+					"task_type":   "local_bash",
+					"description": "sleep 2 && echo ok",
+				})
+				write(map[string]any{
+					"type":    "assistant",
+					"message": map[string]any{"content": []any{map[string]any{"type": "text", "text": "Waiting on background work."}}},
+				})
+				write(map[string]any{
+					"type":  "result",
+					"usage": map[string]any{"input_tokens": 30, "output_tokens": 10},
+				})
+				go func() {
+					time.Sleep(60 * time.Millisecond)
+					write(map[string]any{
+						"type":        "system",
+						"subtype":     "task_notification",
+						"task_id":     "b_real_99",
+						"tool_use_id": "tu_bash_early",
+						"status":      "completed",
+						"summary":     "ok",
+					})
+					write(map[string]any{
+						"type":    "assistant",
+						"message": map[string]any{"content": []any{map[string]any{"type": "text", "text": "All Claude tasks settled."}}},
+					})
+					write(map[string]any{
+						"type":  "result",
+						"usage": map[string]any{"input_tokens": 20, "output_tokens": 8},
+					})
+				}()
 			} else if strings.Contains(prompt, "run_bash") {
 				pendingCtrl["perm_1"] = func(res map[string]any) {
 					beh, _ := res["behavior"].(string)
@@ -1646,6 +1715,202 @@ func runMockACP() {
 						"jsonrpc": "2.0",
 						"method":  "session/update",
 						"params":  map[string]any{"update": map[string]any{"sessionUpdate": "usage_update", "used": 1200, "size": 200000}},
+					})
+				}()
+			} else if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "agy_real_wire_reconcile") {
+				sysDir := filepath.Join(os.Getenv("MOCK_AGY_BRAIN_DIR"), ".system_generated")
+				tasksDir := filepath.Join(sysDir, "tasks")
+				msgsDir := filepath.Join(sysDir, "messages")
+				_ = os.MkdirAll(tasksDir, 0o755)
+				_ = os.MkdirAll(msgsDir, 0o755)
+				toFileURI := func(name string) string {
+					full := filepath.Join(tasksDir, name)
+					_ = os.WriteFile(full, nil, 0o644)
+					sl := filepath.ToSlash(full)
+					if strings.HasPrefix(sl, "/") {
+						return "file://" + sl
+					}
+					return "file:///" + sl
+				}
+				emitRealAgyBg := func(id, title, kind string, rawIn any, taskID, taskDesc, logFile string) {
+					// Simulate Antigravity's blank first-chunk placeholder followed by completion ack:
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "tool_call",
+								"toolCallId":    id,
+								"title":         title,
+								"kind":          kind,
+								"status":        "pending",
+								"rawInput":      map[string]any{},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "tool_call_update",
+								"toolCallId":    id,
+								"status":        "completed",
+								"rawInput":      rawIn,
+								"content": []any{
+									map[string]any{
+										"type": "content",
+										"content": map[string]any{
+											"type": "text",
+											"text": "Created At: 2026-11-27T11:50:51+08:00\nTool is running as a background task with task id: " + taskID + "\nTask Description: " + taskDesc + "\nTask logs are available at: " + toFileURI(logFile) + "\nYOU MUST TAKE ONE OF THE FOLLOWING TWO ACTIONS: A) proceed or B) wait.",
+										},
+									},
+								},
+							},
+						},
+					})
+				}
+
+				// 1) build task + schedule with stringified integer/quoted args (TimerCondition: "\"any\""):
+				emitRealAgyBg("tc_real_build", "Run run_command", "execute", map[string]any{}, "conv_real/task-333", "xcodebuild build-for-testing", "task-333.log")
+				emitRealAgyBg("tc_str_cond", "Run schedule", "other", map[string]any{
+					"DurationSeconds": "90",
+					"Prompt":          `"Check completion of task-333"`,
+					"TimerCondition":  `"any"`,
+				}, "conv_real/task-337", "Timer: 1m 30s, Prompt: Check completion of task-333", "task-337.log")
+				// 2) schedule with empty rawInput:{} killed via manage_task with empty rawInput:{} ("Task ... cancelled."):
+				emitRealAgyBg("tc_empty_kill", "Run schedule", "other", map[string]any{}, "conv_real/task-344", "Timer: 2m, Prompt: Wait for task-342 completion", "task-344.log")
+				// 3) schedule with empty rawInput:{} reconciled via partial manage_task(list) JSON array:
+				emitRealAgyBg("tc_list_pruned", "Run schedule", "other", map[string]any{}, "conv_real/task-pruned", "Timer: 5m, Prompt: Poll build", "task-pruned.log")
+				// 4) command reconciled via empty manage_task(list) ("No background tasks are currently running."):
+				emitRealAgyBg("tc_still_alive", "Run run_command", "execute", map[string]any{}, "conv_real/task-alive", "go test ./e2e", "task-alive.log")
+				// 5) short 1s one-shot schedule with empty rawInput:{} and NO manage_task / NO message file (settled by deadline fallback):
+				emitRealAgyBg("tc_deadline_fallback", "Run schedule", "other", map[string]any{}, "conv_real/task-short", "Timer: 150ms, Prompt: Short timer", "task-short.log")
+
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "agent_message_chunk",
+							"content":       map[string]any{"type": "text", "text": "Armed 6 real-wire background tasks."},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      promptReqID,
+					"result":  map[string]any{"stopReason": "end_turn"},
+				})
+
+				go func() {
+					waitGate := func(name string) bool {
+						gp := filepath.Join(os.Getenv("MOCK_AGY_BRAIN_DIR"), name)
+						for i := 0; i < 400; i++ {
+							if _, err := os.Stat(gp); err == nil {
+								return true
+							}
+							time.Sleep(15 * time.Millisecond)
+						}
+						return false
+					}
+					if !waitGate("real_step_kill_and_partial_list") {
+						return
+					}
+					// manage_task(kill) with empty rawInput:{}, only text output "Task \"...\" cancelled.":
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "tool_call",
+								"toolCallId":    "tc_mt_kill_empty",
+								"title":         "Run manage_task",
+								"kind":          "other",
+								"status":        "completed",
+								"rawInput":      map[string]any{},
+								"content": []any{
+									map[string]any{
+										"type": "content",
+										"content": map[string]any{
+											"type": "text",
+											"text": "Created At: 2026-11-27T11:53:02+08:00\nCompleted At: 2026-11-27T11:53:03+08:00\nTask \"conv_real/task-344\" cancelled.",
+										},
+									},
+								},
+							},
+						},
+					})
+					// manage_task(list) listing ONLY task-alive and task-short (so task-pruned is missing and must reconcile):
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "tool_call",
+								"toolCallId":    "tc_mt_list_partial",
+								"title":         "Run manage_task",
+								"kind":          "other",
+								"status":        "completed",
+								"rawInput":      map[string]any{},
+								"content": []any{
+									map[string]any{
+										"type": "content",
+										"content": map[string]any{
+											"type": "text",
+											"text": "You have 2 background task(s) currently running:\n[{\"taskId\":\"conv_real/task-alive\",\"toolName\":\"run_command\"},{\"taskId\":\"conv_real/task-short\",\"toolName\":\"schedule\"}]",
+										},
+									},
+								},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params":  map[string]any{"update": map[string]any{"sessionUpdate": "usage_update", "used": 1300, "size": 200000}},
+					})
+
+					if !waitGate("real_step_empty_list") {
+						return
+					}
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "tool_call",
+								"toolCallId":    "tc_mt_list_empty",
+								"title":         "Run manage_task",
+								"kind":          "other",
+								"status":        "completed",
+								"rawInput":      map[string]any{},
+								"content": []any{
+									map[string]any{
+										"type": "content",
+										"content": map[string]any{
+											"type": "text",
+											"text": "No background tasks are currently running.",
+										},
+									},
+								},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "agent_message_chunk",
+								"content":       map[string]any{"type": "text", "text": "Confirmed zero running tasks."},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params":  map[string]any{"update": map[string]any{"sessionUpdate": "usage_update", "used": 1500, "size": 200000}},
 					})
 				}()
 			} else if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "multistep_acp") {
@@ -3148,5 +3413,193 @@ loop:
 	}
 	if got := runtime.FormatToolJSON(json.RawMessage(`{"command":"echo ran \u003e ran.txt \u0026\u0026 cat \u003c ran.txt"}`)); !strings.Contains(got, `"echo ran > ran.txt && cat < ran.txt"`) {
 		t.Fatalf("FormatToolJSON did not unescape HTML angle/ampersand escapes: %s", got)
+	}
+}
+
+func TestAntigravityACPRealWireScheduleAndManageTaskReconciliation(t *testing.T) {
+	ctx := context.Background()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	brainDir := t.TempDir()
+	msgsDir := filepath.Join(brainDir, ".system_generated", "messages")
+
+	drv := acp.NewDriver("")
+	drv.PostPromptMergeWindow = 30 * time.Millisecond
+	drv.OutOfTurnDebounce = 30 * time.Millisecond
+	drv.OutOfTurnToolWait = 40 * time.Millisecond
+	drv.TaskLogPollInterval = 20 * time.Millisecond
+	drv.ScheduleExpiryGrace = 30 * time.Millisecond
+
+	eng, err := kernel.Open(kernel.Config{
+		DataDir:   t.TempDir(),
+		MachineID: "m_agy_real_wire",
+		Drivers:   map[string]runtime.Driver{"acp": drv},
+		IdleTTL:   time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+
+	owner := kernel.OwnerPrincipal("dev_owner", "Owner")
+	if _, err := eng.UpsertProviderInstance(ctx, owner, &sessionv1.ProviderInstanceConfig{
+		InstanceId:  "antigravity",
+		Driver:      "acp",
+		AcpFlavor:   "antigravity",
+		DisplayName: "Antigravity",
+		Enabled:     true,
+		BinaryPath:  exe,
+		LaunchArgs:  []string{"-test.run=TestHelperMockCLI", "--", "acp"},
+		Env: map[string]string{
+			"HERMESH_MOCK_DRIVER": "acp",
+			"MOCK_AGY_BRAIN_DIR":  brainDir,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	launched, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "antigravity", Model: "default"},
+		InitialPrompt:  "agy_real_wire_reconcile",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid := launched.Session.SessionId
+
+	waitProj := func(label string, pred func(*sessionv1.SessionProjection) bool) *sessionv1.SessionProjection {
+		t.Helper()
+		deadline := time.Now().Add(8 * time.Second)
+		var last *sessionv1.SessionProjection
+		for time.Now().Before(deadline) {
+			p, gErr := eng.GetSession(ctx, owner, sid)
+			if gErr == nil {
+				last = p
+				if pred(p) {
+					return p
+				}
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("timed out waiting for %s (session=%+v bgs=%+v)", label, last.GetSession(), last.GetBackgroundTasks())
+		return nil
+	}
+	bgByID := func(p *sessionv1.SessionProjection, id string) *sessionv1.BackgroundTask {
+		for _, bt := range p.GetBackgroundTasks() {
+			if bt.TaskId == id {
+				return bt
+			}
+		}
+		return nil
+	}
+
+	// 1. Wait for tc_deadline_fallback (150ms + 30ms grace) to auto-settle by deadline while the other 5 tasks are recorded:
+	p1 := waitProj("short timer deadline auto-settlement", func(p *sessionv1.SessionProjection) bool {
+		return len(p.GetBackgroundTasks()) == 6 &&
+			bgByID(p, "tc_deadline_fallback").GetStatus() == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+	})
+	// Verify "Run schedule" / "Run run_command" titles did NOT shadow prompt / command descriptions:
+	if gotTitle := bgByID(p1, "tc_str_cond").GetTitle(); gotTitle != "Check completion of task-333" {
+		t.Fatalf("expected schedule title extracted from Prompt/Task Description instead of 'Run schedule', got %q", gotTitle)
+	}
+	if gotTitle := bgByID(p1, "tc_real_build").GetTitle(); gotTitle != "xcodebuild build-for-testing" {
+		t.Fatalf("expected run_command title extracted from Task Description instead of 'Run run_command', got %q", gotTitle)
+	}
+
+	// 2. Finish task-333 -> settles tc_real_build COMPLETED AND cancels tc_str_cond (stringified DurationSeconds:"90" + TimerCondition:"\"any\"") as STOPPED!
+	if err := os.WriteFile(filepath.Join(msgsDir, "m_build_done.json"), []byte(`{"sender":"conv_real/task-333","content":"Task id \"conv_real/task-333\" finished with result:\nCommand exited with code 0.\n"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	waitProj("stringified TimerCondition:any canceled on build completion", func(p *sessionv1.SessionProjection) bool {
+		return bgByID(p, "tc_real_build").GetStatus() == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED &&
+			bgByID(p, "tc_str_cond").GetStatus() == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+	})
+
+	// 3. Trigger manage_task(kill) with empty rawInput:{} ("Task ... cancelled.") + partial manage_task(list):
+	if err := os.WriteFile(filepath.Join(brainDir, "real_step_kill_and_partial_list"), []byte("1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p3 := waitProj("output-driven cancel and partial list reconciliation", func(p *sessionv1.SessionProjection) bool {
+		return bgByID(p, "tc_empty_kill").GetStatus() == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED &&
+			bgByID(p, "tc_list_pruned").GetStatus() == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+	})
+	if bgByID(p3, "tc_still_alive").GetStatus() != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+		t.Fatalf("expected tc_still_alive present in manage_task(list) to stay RUNNING, got %+v", bgByID(p3, "tc_still_alive"))
+	}
+
+	// 4. Trigger empty manage_task(list) ("No background tasks are currently running.") -> ActiveBackgroundCount == 0!
+	if err := os.WriteFile(filepath.Join(brainDir, "real_step_empty_list"), []byte("1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	waitProj("empty manage_task(list) reconciles remaining tasks to 0", func(p *sessionv1.SessionProjection) bool {
+		return p.GetSession().GetActiveBackgroundCount() == 0 &&
+			p.GetSession().GetActiveRunId() == "" &&
+			p.GetSession().GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_IDLE &&
+			bgByID(p, "tc_still_alive").GetStatus() == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+	})
+}
+
+func TestClaudeSupersededScheduleAndPlaceholderNoCountLeak(t *testing.T) {
+	ctx := context.Background()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng, err := kernel.Open(kernel.Config{
+		DataDir:   t.TempDir(),
+		MachineID: "m_cl_superseded",
+		Drivers:   map[string]runtime.Driver{"claude": claude.NewDriver("")},
+		IdleTTL:   time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+
+	owner := kernel.OwnerPrincipal("dev_owner", "Owner")
+	if _, err := eng.UpsertProviderInstance(ctx, owner, &sessionv1.ProviderInstanceConfig{
+		InstanceId:  "claude",
+		Driver:      "claude",
+		DisplayName: "Claude",
+		Enabled:     true,
+		BinaryPath:  exe,
+		LaunchArgs:  []string{"-test.run=TestHelperMockCLI", "--"},
+		Env:         map[string]string{"HERMESH_MOCK_DRIVER": "claude"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	launched, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "claude", Model: "claude-sonnet-4-6"},
+		InitialPrompt:  "claude_superseded_bg",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid := launched.Session.SessionId
+
+	deadline := time.Now().Add(8 * time.Second)
+	var finalProj *sessionv1.SessionProjection
+	for time.Now().Before(deadline) {
+		p, gErr := eng.GetSession(ctx, owner, sid)
+		if gErr == nil && len(p.Runs) >= 2 &&
+			p.Runs[1].Status == sessionv1.RunStatus_RUN_STATUS_COMPLETED &&
+			p.Session.ActiveBackgroundCount == 0 &&
+			p.Session.Status == sessionv1.SessionStatus_SESSION_STATUS_IDLE {
+			finalProj = p
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if finalProj == nil {
+		cur, _ := eng.GetSession(ctx, owner, sid)
+		t.Fatalf("expected superseded Claude schedule & synthesized placeholder to leave ActiveBackgroundCount=0; got session=%+v bgs=%+v",
+			cur.GetSession(), cur.GetBackgroundTasks())
+	}
+	for _, bt := range finalProj.BackgroundTasks {
+		if bt.Status == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+			t.Fatalf("leaked RUNNING background task in projection: %+v", bt)
+		}
 	}
 }

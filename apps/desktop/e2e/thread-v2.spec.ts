@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import type { TrayView } from "../src/shared/bridge";
-import { launch, onWindows, pickFrom, snap } from "./app";
+import { cli, launch, onWindows, pickFrom, snap } from "./app";
 
 // The composer's line (docs/thread-composer.md): the project and model menus, and the permission mode menu.
 async function pickDemoAndScripted(page: Page) {
@@ -141,11 +141,11 @@ test("while a turn runs, messages queue; one can steer the turn now, be edited o
     await page.getByTestId("nav-new-thread").click();
     await pickDemoAndScripted(page);
 
-    // Launch a long-running turn (8s) in Auto Edits mode (2) so steer + queue edit + cancel + interrupt all execute deterministically.
+    // Launch a long-running turn (20s, ended by Interrupt below) in Auto Edits mode (2) so steer + queue edit + cancel + interrupt all execute deterministically.
     await pickMode(page, "runtime-mode-2");
     await expect.poll(async () => (await trayView(app)).state).toBe("ok");
     const runningBefore = (await trayView(app)).running;
-    await page.getByTestId("thread-composer-input").fill("sleep 8s\nsay slow_turn_done");
+    await page.getByTestId("thread-composer-input").fill("sleep 20s\nsay slow_turn_done");
     await page.getByTestId("composer-submit-btn").click();
 
     // While running, Stop sits beside Send; the menu bar counts it as running.
@@ -182,6 +182,47 @@ test("while a turn runs, messages queue; one can steer the turn now, be edited o
     await clickMenu(app, "interrupt");
     await expect(page.getByTestId("composer-stop-btn")).toHaveCount(0, { timeout: 10_000 });
     await expect(page.getByTestId("composer-submit-btn")).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test("on an ACP provider without native mid-turn steer, Steer Now promotes the chosen queued item, interrupts the turn, and runs it first", async () => {
+  await cli(
+    "session",
+    "start",
+    "--project",
+    "demo",
+    "--agent",
+    "gemini",
+    "--model",
+    "gemini-3-pro",
+    "--runtime-mode",
+    "auto_edits",
+    "--title",
+    "ACP 引导测试",
+    "--prompt",
+    "read README.md\nsleep 20s",
+  );
+  const { app, page } = await launch();
+  try {
+    await page.locator(".side").getByText("ACP 引导测试").click();
+    await expect(page.getByTestId("composer-stop-btn")).toBeVisible({ timeout: 10_000 });
+    await expect(conversation(page).locator(".tgroup, .tool").first()).toBeVisible({ timeout: 10_000 });
+
+    await page.getByTestId("thread-composer-input").fill("say acp_queued_second");
+    await page.getByTestId("composer-submit-btn").click();
+    await page.getByTestId("thread-composer-input").fill("say acp_steered_first");
+    await page.getByTestId("composer-submit-btn").click();
+
+    await expect(page.getByTestId("queued-run-0")).toContainText("acp_queued_second");
+    await expect(page.getByTestId("queued-run-1")).toContainText("acp_steered_first");
+    await page.getByTestId("queue-promote-1").click();
+
+    await expect(replies(page).first()).toContainText("acp_steered_first", { timeout: 15_000 });
+    await expect(replies(page).nth(1)).toContainText("acp_queued_second", { timeout: 15_000 });
+    await expect(page.getByTestId("queued-runs-strip")).toHaveCount(0);
+    await expect(page.getByTestId("composer-stop-btn")).toHaveCount(0, { timeout: 10_000 });
   } finally {
     await app.close();
   }

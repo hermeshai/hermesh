@@ -114,6 +114,8 @@ struct SessionPage: View {
     @State private var askSpace: CGFloat = 0
     /// Messages to a session go out one after another, in the order sent.
     @State private var lastSend: Task<Void, Never>?
+    /// Queued run IDs with an in-flight ManageQueue action.
+    @State private var managingRuns: Set<String> = []
     /// A new session's first message, from Send until its machine answers.
     @State private var starting: Starting?
     /// Horizontal drag offset when swiping the side panel's leading edge right to put it away.
@@ -641,11 +643,21 @@ struct SessionPage: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Queue (\(queued.count))").font(.caption).foregroundStyle(.secondary)
                 ForEach(Array(queued.enumerated()), id: \.element.runID) { i, run in
+                    let rowBusy = managingRuns.contains(run.runID)
                     HStack {
                         Text(verbatim: run.prompt.isEmpty ? run.attachments.map(\.name).joined(separator: ", ") : run.prompt).font(.subheadline).lineLimit(1)
                         Spacer()
-                        Button("Steer Now") { manage(run, .promoteToSteer) }.font(.footnote).tint(.accentColor)
-                        Button("Remove", systemImage: "xmark") { manage(run, .cancel) }.labelStyle(.iconOnly).font(.footnote).tint(.secondary)
+                        if rowBusy {
+                            ProgressView().controlSize(.mini)
+                        }
+                        Button("Steer Now") { manage(run, .promoteToSteer) }
+                            .font(.footnote).tint(.accentColor)
+                            .disabled(rowBusy)
+                            .accessibilityIdentifier("thread-queue-promote-\(i)")
+                        Button("Remove", systemImage: "xmark") { manage(run, .cancel) }
+                            .labelStyle(.iconOnly).font(.footnote).tint(.secondary)
+                            .disabled(rowBusy)
+                            .accessibilityIdentifier("thread-queue-cancel-\(i)")
                     }
                     .accessibilityIdentifier("thread-queued-\(i)")
                 }
@@ -1383,8 +1395,29 @@ struct SessionPage: View {
 
     private func stopBackgroundTask(_ taskID: String = "") {
         Task {
-            do { _ = try await model.api?.stopBackgroundTask(sessionID, taskID: taskID) }
-            catch { model.report(error) }
+            do {
+                guard let res = try await model.api?.stopBackgroundTask(sessionID, taskID: taskID) else { return }
+                if var cur = projection {
+                    var stoppedByID = Dictionary(uniqueKeysWithValues: res.stoppedTasks.map { ($0.taskID, $0) })
+                    let stoppedItems = Set(res.stoppedTasks.map(\.itemID).filter { !$0.isEmpty })
+                    for idx in cur.backgroundTasks.indices {
+                        if let hit = stoppedByID.removeValue(forKey: cur.backgroundTasks[idx].taskID) {
+                            cur.backgroundTasks[idx] = hit
+                        }
+                    }
+                    for bt in res.stoppedTasks where stoppedByID[bt.taskID] != nil {
+                        cur.backgroundTasks.append(bt)
+                    }
+                    if !stoppedItems.isEmpty {
+                        for idx in cur.items.indices where stoppedItems.contains(cur.items[idx].itemID) && cur.items[idx].status == "running" {
+                            cur.items[idx].streaming = false
+                            cur.items[idx].status = "interrupted"
+                        }
+                    }
+                    if res.hasSession { cur.session = res.session }
+                    projection = cur
+                }
+            } catch { model.report(error) }
         }
     }
 
@@ -1414,13 +1447,48 @@ struct SessionPage: View {
     }
 
     private func manage(_ run: Hermesh_Session_V1_Run, _ op: Hermesh_Session_V1_QueueOperation) {
+        guard !managingRuns.contains(run.runID), let api = model.api else { return }
         var r = Hermesh_Session_V1_ManageQueueRequest()
         r.commandID = UUID().uuidString
         r.sessionID = sessionID
         r.runID = run.runID
         r.operation = op
-        if op == .promoteToSteer { spoken += 1 }
-        Task { do { _ = try await model.api?.manageQueue(r) } catch { model.report(error) } }
+        managingRuns.insert(run.runID)
+        Task {
+            defer { managingRuns.remove(run.runID) }
+            do {
+                let res = try await api.manageQueue(r)
+                if op == .promoteToSteer { spoken += 1 }
+                reconcileQueueResponse(res)
+            } catch {
+                model.report(error)
+            }
+        }
+    }
+
+    private func reconcileQueueResponse(_ res: Hermesh_Session_V1_ManageQueueResponse) {
+        guard var cur = projection else { return }
+        let prevSeq = cur.session.progress.lastEventSeq
+        let resSeq = res.session.progress.lastEventSeq
+        if resSeq > 0, prevSeq >= resSeq, !res.session.offlineQueued, !cur.session.offlineQueued {
+            return
+        }
+        var stillQueued = Dictionary(uniqueKeysWithValues: res.queuedRuns.map { ($0.runID, $0) })
+        let shown = Set(cur.items.filter { $0.kind == .userMessage }.map(\.runID))
+        let activeID = res.hasSession ? res.session.activeRunID : cur.session.activeRunID
+        for idx in cur.runs.indices {
+            let rid = cur.runs[idx].runID
+            if let q = stillQueued.removeValue(forKey: rid) {
+                cur.runs[idx] = q
+            } else if cur.runs[idx].status == .queued, !shown.contains(rid), rid != activeID {
+                cur.runs[idx].status = .cancelled
+            }
+        }
+        for q in res.queuedRuns where stillQueued[q.runID] != nil {
+            cur.runs.append(q)
+        }
+        if res.hasSession { cur.session = res.session }
+        projection = cur
     }
 }
 

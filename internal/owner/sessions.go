@@ -1352,13 +1352,23 @@ func (s *ownerSessionService) DispatchMessage(ctx context.Context, req *sessionv
 	} else {
 		sess = &sessionv1.Session{SessionId: req.SessionId, MachineId: machineID, OfflineQueued: true, QueuedRunCount: 1, UpdatedAt: timestamppb.Now()}
 	}
+	nextOrder := 1000.0
+	if proj != nil {
+		for _, r := range proj.Runs {
+			if r.QueueOrder >= nextOrder {
+				nextOrder = r.QueueOrder + 1000.0
+			}
+		}
+	}
 	qRun := &sessionv1.Run{
-		RunId:     "run_" + strings.ToLower(ulid.Make().String()),
-		SessionId: req.SessionId,
-		Status:    sessionv1.RunStatus_RUN_STATUS_QUEUED,
-		Author:    o.ownerPrincipal().Actor,
-		Prompt:    req.Text,
-		CreatedAt: timestamppb.Now(),
+		RunId:       "offline_" + req.CommandId,
+		SessionId:   req.SessionId,
+		Status:      sessionv1.RunStatus_RUN_STATUS_QUEUED,
+		QueueOrder:  nextOrder,
+		Author:      o.ownerPrincipal().Actor,
+		Prompt:      req.Text,
+		Attachments: req.Attachments,
+		CreatedAt:   timestamppb.Now(),
 	}
 	if proj != nil {
 		proj.Runs = append(proj.Runs, qRun)
@@ -1413,7 +1423,40 @@ func (s *ownerSessionService) StopBackgroundTask(ctx context.Context, req *sessi
 	}
 	res, err := pm.Session.StopBackgroundTask(ctx, req)
 	if err == nil {
-		o.cacheSession(res.GetSession(), nil)
+		proj := o.cachedProjectionOnly(req.SessionId)
+		if proj != nil {
+			stoppedByID := make(map[string]*sessionv1.BackgroundTask, len(res.GetStoppedTasks()))
+			stoppedItems := map[string]bool{}
+			for _, bt := range res.GetStoppedTasks() {
+				if bt != nil && bt.TaskId != "" {
+					stoppedByID[bt.TaskId] = bt
+					if bt.ItemId != "" {
+						stoppedItems[bt.ItemId] = true
+					}
+				}
+			}
+			for i, bg := range proj.BackgroundTasks {
+				if updated, ok := stoppedByID[bg.GetTaskId()]; ok {
+					proj.BackgroundTasks[i] = updated
+					delete(stoppedByID, bg.GetTaskId())
+				}
+			}
+			for _, bt := range res.GetStoppedTasks() {
+				if bt != nil && stoppedByID[bt.TaskId] != nil {
+					proj.BackgroundTasks = append(proj.BackgroundTasks, bt)
+				}
+			}
+			for _, it := range proj.Items {
+				if stoppedItems[it.GetItemId()] && it.GetStatus() == "running" {
+					it.Streaming = false
+					it.Status = "interrupted"
+				}
+			}
+			if res.GetSession() != nil {
+				proj.Session = res.GetSession()
+			}
+		}
+		o.cacheSession(res.GetSession(), proj)
 	}
 	return res, err
 }
@@ -1430,6 +1473,9 @@ func (s *ownerSessionService) ManageQueue(ctx context.Context, req *sessionv1.Ma
 	if eng != nil {
 		return eng.ManageQueue(ctx, o.ownerPrincipal(), req)
 	}
+	if strings.HasPrefix(req.RunId, "offline_") {
+		return o.manageOfflineOutboxRun(req)
+	}
 	if pm, dErr := o.dialRemoteSessionMachine(ctx, machineID); dErr == nil {
 		res, mErr := pm.Session.ManageQueue(ctx, req)
 		if mErr == nil {
@@ -1440,11 +1486,186 @@ func (s *ownerSessionService) ManageQueue(ctx context.Context, req *sessionv1.Ma
 			return nil, mErr
 		}
 	}
+	if req.Operation == sessionv1.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("machine is offline; cannot steer right now"))
+	}
 	if err := o.enqueueOutbox(req.CommandId, machineID, req.SessionId, "ManageQueue", req.Operation.String(), req); err != nil {
 		return nil, err
 	}
+	return o.applyOfflineQueueCache(req)
+}
+
+func cachedQueuedRuns(proj *sessionv1.SessionProjection) []*sessionv1.Run {
+	if proj == nil {
+		return nil
+	}
+	shown := map[string]bool{}
+	for _, it := range proj.Items {
+		if it.Kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE && it.RunId != "" {
+			shown[it.RunId] = true
+		}
+	}
+	var out []*sessionv1.Run
+	for _, r := range proj.Runs {
+		if r.Status == sessionv1.RunStatus_RUN_STATUS_QUEUED && !shown[r.RunId] {
+			out = append(out, r)
+		}
+	}
+	slices.SortFunc(out, func(a, b *sessionv1.Run) int { return cmp.Compare(a.QueueOrder, b.QueueOrder) })
+	return out
+}
+
+func (o *Owner) manageOfflineOutboxRun(req *sessionv1.ManageQueueRequest) (*sessionv1.ManageQueueResponse, error) {
+	if req.Operation == sessionv1.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("machine is offline; cannot steer right now"))
+	}
 	proj := o.cachedProjection(req.SessionId)
-	return &sessionv1.ManageQueueResponse{Session: proj.GetSession()}, nil
+	if proj == nil || proj.Session == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("session not found"))
+	}
+	dispatchCmdID := strings.TrimPrefix(req.RunId, "offline_")
+	switch req.Operation {
+	case sessionv1.QueueOperation_QUEUE_OPERATION_CANCEL:
+		res, err := o.st.db.Exec(`DELETE FROM sessions_outbox WHERE session_id = ? AND command_id = ? AND method = 'DispatchMessage'`, req.SessionId, dispatchCmdID)
+		if err != nil {
+			return nil, err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("run is no longer queued"))
+		}
+	case sessionv1.QueueOperation_QUEUE_OPERATION_EDIT:
+		if strings.TrimSpace(req.Text) == "" && len(req.Attachments) == 0 {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("edited message cannot be empty"))
+		}
+		var raw []byte
+		if err := o.st.db.QueryRow(`SELECT req_payload FROM sessions_outbox WHERE session_id = ? AND command_id = ? AND method = 'DispatchMessage'`, req.SessionId, dispatchCmdID).Scan(&raw); err != nil {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("run is no longer queued"))
+		}
+		m := &sessionv1.DispatchMessageRequest{}
+		if err := proto.Unmarshal(raw, m); err != nil {
+			return nil, err
+		}
+		m.Text = req.Text
+		if req.Attachments != nil {
+			m.Attachments = req.Attachments
+		}
+		b, err := proto.Marshal(m)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := o.st.db.Exec(`UPDATE sessions_outbox SET summary = ?, req_payload = ? WHERE session_id = ? AND command_id = ? AND method = 'DispatchMessage'`, req.Text, b, req.SessionId, dispatchCmdID); err != nil {
+			return nil, err
+		}
+	case sessionv1.QueueOperation_QUEUE_OPERATION_REORDER:
+		res, err := o.applyOfflineQueueCache(req)
+		if err != nil {
+			return nil, err
+		}
+		type outboxEntry struct {
+			seq     int64
+			cmdID   string
+			summary string
+			payload []byte
+		}
+		rows, qErr := o.st.db.Query(`SELECT seq, command_id, summary, req_payload FROM sessions_outbox WHERE session_id = ? AND method = 'DispatchMessage' ORDER BY seq ASC`, req.SessionId)
+		if qErr == nil {
+			var entries []outboxEntry
+			for rows.Next() {
+				var e outboxEntry
+				if rows.Scan(&e.seq, &e.cmdID, &e.summary, &e.payload) == nil {
+					entries = append(entries, e)
+				}
+			}
+			rows.Close()
+			if len(entries) > 1 {
+				orderPos := map[string]int{}
+				for idx, r := range res.QueuedRuns {
+					if after, ok := strings.CutPrefix(r.RunId, "offline_"); ok {
+						orderPos[after] = idx
+					}
+				}
+				sorted := slices.Clone(entries)
+				slices.SortStableFunc(sorted, func(a, b outboxEntry) int {
+					pa, oka := orderPos[a.cmdID]
+					pb, okb := orderPos[b.cmdID]
+					if oka && okb {
+						return cmp.Compare(pa, pb)
+					}
+					return 0
+				})
+				for i, slot := range entries {
+					_, _ = o.st.db.Exec(`UPDATE sessions_outbox SET command_id = ? WHERE seq = ?`, fmt.Sprintf("__reorder_%d_%s", i, slot.cmdID), slot.seq)
+				}
+				for i, slot := range entries {
+					src := sorted[i]
+					_, _ = o.st.db.Exec(`UPDATE sessions_outbox SET command_id = ?, summary = ?, req_payload = ? WHERE seq = ?`, src.cmdID, src.summary, src.payload, slot.seq)
+				}
+			}
+		}
+		return res, nil
+	}
+	return o.applyOfflineQueueCache(req)
+}
+
+func (o *Owner) applyOfflineQueueCache(req *sessionv1.ManageQueueRequest) (*sessionv1.ManageQueueResponse, error) {
+	proj := o.cachedProjection(req.SessionId)
+	if proj == nil || proj.Session == nil {
+		return &sessionv1.ManageQueueResponse{}, nil
+	}
+	sess := proj.Session
+	switch req.Operation {
+	case sessionv1.QueueOperation_QUEUE_OPERATION_CANCEL:
+		for _, r := range proj.Runs {
+			if r.RunId == req.RunId && r.Status == sessionv1.RunStatus_RUN_STATUS_QUEUED {
+				r.Status = sessionv1.RunStatus_RUN_STATUS_CANCELLED
+				r.CompletedAt = timestamppb.Now()
+			}
+		}
+	case sessionv1.QueueOperation_QUEUE_OPERATION_EDIT:
+		for _, r := range proj.Runs {
+			if r.RunId == req.RunId && r.Status == sessionv1.RunStatus_RUN_STATUS_QUEUED {
+				r.Prompt = req.Text
+				if req.Attachments != nil {
+					r.Attachments = req.Attachments
+				}
+			}
+		}
+	case sessionv1.QueueOperation_QUEUE_OPERATION_REORDER:
+		queued := cachedQueuedRuns(proj)
+		idx := slices.IndexFunc(queued, func(r *sessionv1.Run) bool { return r.RunId == req.RunId })
+		if idx >= 0 {
+			moving := queued[idx]
+			rest := slices.Delete(slices.Clone(queued), idx, idx+1)
+			insertAt := len(rest)
+			if req.BeforeRunId != "" {
+				if bIdx := slices.IndexFunc(rest, func(r *sessionv1.Run) bool { return r.RunId == req.BeforeRunId }); bIdx >= 0 {
+					insertAt = bIdx
+				}
+			}
+			reordered := slices.Insert(rest, insertAt, moving)
+			for i, r := range reordered {
+				r.QueueOrder = float64((i + 1) * 1000)
+			}
+		}
+	case sessionv1.QueueOperation_QUEUE_OPERATION_RESUME_QUEUE:
+		sess.QueueHeld = false
+	}
+	rem := cachedQueuedRuns(proj)
+	var outboxCount int
+	_ = o.st.db.QueryRow(`SELECT COUNT(*) FROM sessions_outbox WHERE session_id = ?`, req.SessionId).Scan(&outboxCount)
+	if outboxCount == 0 {
+		sess.OfflineQueued = false
+	}
+	shownPending := 0
+	for _, r := range proj.Runs {
+		if r.Status == sessionv1.RunStatus_RUN_STATUS_QUEUED {
+			shownPending++
+		}
+	}
+	sess.QueuedRunCount = uint32(shownPending)
+	sess.UpdatedAt = timestamppb.Now()
+	o.cacheSession(sess, proj)
+	return &sessionv1.ManageQueueResponse{Session: sess, QueuedRuns: rem}, nil
 }
 
 func (s *ownerSessionService) UpdateSession(ctx context.Context, req *sessionv1.UpdateSessionRequest) (*sessionv1.UpdateSessionResponse, error) {
