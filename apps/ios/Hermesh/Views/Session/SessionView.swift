@@ -170,59 +170,79 @@ struct SettledQuestionCard: View {
         let rows = settledQuestionRows(question, resolution: resolution, name: nameOf)
         let byOther: String? = (resolution.by.isEmpty || resolution.by == "owner") ? nil : nameOf(resolution.by)
 
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 11) {
             if let byOther, resolution.resolution == .answered {
                 Text("\(byOther) answered")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .padding(.horizontal, 2)
             }
             ForEach(Array(rows.enumerated()), id: \.offset) { i, row in
                 if i > 0 {
                     Rectangle().fill(Palette.separator).frame(height: 0.5)
                 }
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 7) {
                     if !row.prompt.isEmpty {
                         Text(verbatim: row.prompt)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
+                            .lineSpacing(2)
+                            .padding(.horizontal, 2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    if row.status == .answered {
-                        answerBox(choices: row.choices, status: row.status, statusText: "")
+                    if row.status == .answered && !row.choices.isEmpty {
+                        answeredChoicesBox(row.choices)
                     } else if !row.statusText.isEmpty {
-                        answerBox(choices: [], status: row.status, statusText: row.statusText)
+                        mutedAnswerBox(status: row.status, statusText: row.statusText)
                     }
                 }
             }
         }
-        .padding(.horizontal, 13).padding(.vertical, 11)
+        .padding(.horizontal, 14).padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
+        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settled-question")
     }
 
-    @ViewBuilder private func answerBox(choices: [ParsedOptionLabel], status: SettledQuestionRow.StatusKind, statusText: String) -> some View {
-        let answered = status == .answered
-        HStack(alignment: .top, spacing: 8) {
-            answerMark(status)
-                .padding(.top, 1.5)
-            Group {
-                if answered {
-                    joinedChoicesText(choices)
-                        .foregroundStyle(.primary)
-                } else {
-                    Text(verbatim: statusText)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+    @ViewBuilder private func answeredChoicesBox(_ choices: [ParsedOptionLabel]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(choices.enumerated()), id: \.offset) { idx, choice in
+                if idx > 0 {
+                    Rectangle().fill(Palette.separator).frame(height: 0.5)
                 }
+                HStack(alignment: .top, spacing: 9) {
+                    answerMark(.answered)
+                        .padding(.top, 1.5)
+                    choiceText(choice)
+                        .foregroundStyle(.primary)
+                        .lineSpacing(3)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.leading, 11).padding(.trailing, 13).padding(.vertical, 9.5)
             }
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 11).padding(.vertical, 8.5)
-        .background(answered ? Palette.fill2 : Color.clear, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .background(Palette.settledAnswer, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.settledAnswerBorder, lineWidth: 0.5))
+        .shadow(color: Palette.settledAnswerShadow, radius: 1.5, x: 0, y: 0.5)
+    }
+
+    @ViewBuilder private func mutedAnswerBox(status: SettledQuestionRow.StatusKind, statusText: String) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            answerMark(status)
+                .padding(.top, 0.5)
+            Text(verbatim: statusText)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineSpacing(2.5)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.leading, 11).padding(.trailing, 13).padding(.vertical, 9)
         .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
     }
 
@@ -250,28 +270,22 @@ struct SettledQuestionCard: View {
         }
     }
 
-    private func joinedChoicesText(_ choices: [ParsedOptionLabel]) -> some View {
+    @ViewBuilder private func choiceText(_ choice: ParsedOptionLabel) -> some View {
         let baseFont: Font = .subheadline.weight(.medium)
-        let badgeFont: Font = .caption2.weight(.semibold)
-        let sep = String(localized: " · ")
-        let combined = choices.enumerated().reduce(Text(verbatim: "")) { acc, entry in
-            let prefix = entry.offset == 0 ? Text(verbatim: "") : Text(verbatim: sep).font(baseFont).foregroundStyle(.secondary)
-            let p = entry.element
-            let itemText: Text
-            if p.recommended {
-                let badge = Text(verbatim: "\u{00A0}\(String(localized: "Recommended"))\u{00A0}")
-                    .font(badgeFont)
-                    .foregroundStyle(Color.accentColor)
-                    .customAttribute(RecommendedBadgeAttribute(selected: false))
-                let space = Text(verbatim: " ").font(baseFont)
-                let label = Text(verbatim: p.text).font(baseFont)
-                itemText = Text("\(badge)\(space)\(label)")
-            } else {
-                itemText = Text(verbatim: p.text).font(baseFont)
-            }
-            return Text("\(acc)\(prefix)\(itemText)")
+        let label = Text(verbatim: choice.text).font(baseFont)
+        if choice.recommended {
+            let badgeFont: Font = .caption2.weight(.semibold)
+            let space = Text(verbatim: " ").font(baseFont)
+            let badge = Text(verbatim: "\u{00A0}\(String(localized: "Recommended"))\u{00A0}")
+                .font(badgeFont)
+                .foregroundStyle(Color.accentColor)
+                .baselineOffset(0.5)
+                .customAttribute(RecommendedBadgeAttribute(selected: false))
+            Text("\(label)\(space)\(badge)")
+                .textRenderer(RecommendedTextRenderer(accent: .accentColor))
+        } else {
+            label
         }
-        return combined.textRenderer(RecommendedTextRenderer(accent: .accentColor))
     }
 }
 

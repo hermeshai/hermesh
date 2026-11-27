@@ -536,6 +536,13 @@ enum Palette {
     /// The lines a reply pointed at in a file (the Mac's --target).
     static let target = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 1, green: 196 / 255, blue: 0, alpha: 0.16)
         : UIColor(red: 1, green: 196 / 255, blue: 0, alpha: 0.22) })
+    /// Elevated crisp surface for settled decision answers (the Mac's --tq-ans).
+    static let settledAnswer = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.055)
+        : UIColor(white: 1, alpha: 0.92) })
+    static let settledAnswerBorder = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.09)
+        : UIColor(white: 0, alpha: 0.085) })
+    static let settledAnswerShadow = Color(UIColor { $0.userInterfaceStyle == .dark ? .clear
+        : UIColor(white: 0, alpha: 0.03) })
 }
 
 /// Putting the keyboard away, as Messages does (docs/thread-composer.md §16): there is no button for it on iPhone.

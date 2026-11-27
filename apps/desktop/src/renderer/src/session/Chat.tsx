@@ -440,24 +440,33 @@ function RowView({ it, rowKey, end, live, sessionId, machineId, clients, starter
           {rows.map((row, idx) => (
             <div key={idx} className="tq-item">
               {row.prompt !== "" && <div className="tq-q sel-text">{row.prompt}</div>}
-              {(row.choices.length > 0 || row.statusText !== "") && (
-                <div className={`tq-ans ${row.status === "answered" ? "" : "muted"}`}>
-                  <span className={`tq-ck ${row.status === "answered" ? "ok" : "skip"}`} aria-hidden="true">
-                    {row.status === "answered" ? <Icon name="check" /> : "—"}
-                  </span>
-                  <span className="tq-atxt sel-text">
-                    {row.status === "answered"
-                      ? row.choices.map((c, ci) => (
-                          <span key={ci}>
-                            {ci > 0 && " · "}
-                            {c.recommended && <span className="tq-rec">{t("question.recommended")}</span>}
-                            {c.text}
-                          </span>
-                        ))
-                      : row.statusText}
-                  </span>
+              {row.status === "answered" && row.choices.length > 0 ? (
+                <div className="tq-ans">
+                  {row.choices.map((c, ci) => (
+                    <div key={ci} className="tq-choice">
+                      <span className="tq-ck ok" aria-hidden="true">
+                        <Icon name="check" />
+                      </span>
+                      <span className="tq-atxt sel-text">
+                        <span className="tq-val">{c.text}</span>
+                        {c.recommended && (
+                          <>
+                            {" "}
+                            <span className="tq-rec">{t("question.recommended")}</span>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              )}
+              ) : row.statusText !== "" ? (
+                <div className="tq-ans muted">
+                  <div className="tq-choice">
+                    <span className="tq-ck skip" aria-hidden="true">—</span>
+                    <span className="tq-atxt sel-text">{row.statusText}</span>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
