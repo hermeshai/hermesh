@@ -203,6 +203,32 @@ test("a reply's files are tags opening side panel tabs; a page runs there offlin
   await page.keyboard.press("Escape");
   await expect.poll(async () => (await pageView(app))?.visible).toBe(true);
 
+  // Antigravity ````carousel```` + [!NOTE] callout + outside brain/walkthrough.md artifact preview with relative images.
+  await open(page, "走查预览");
+  const walkReply = log.locator(".am").filter({ hasText: "走查结果：" });
+  await expect(walkReply.locator('.md-callout[data-kind="note"]')).toContainText("兼容 Antigravity 轮播与提示框");
+  await expect(walkReply).not.toContainText("[!NOTE]");
+  await expect(walkReply.locator("pre")).toHaveCount(0);
+  await expect(walkReply.getByTestId("session-image-row").getByTestId("session-image")).toHaveCount(2);
+  const walkTag = walkReply.locator('[data-testid=file-tag][data-path$="walkthrough.md"]');
+  await expect(walkTag).toBeVisible();
+  await expect(walkTag).not.toHaveClass(/\bgone\b/);
+  await walkTag.click();
+  const mdPreview = panel.getByTestId("file-markdown");
+  await expect(mdPreview).toBeVisible();
+  await expect(mdPreview.locator('.md-callout[data-kind="note"]')).toContainText("已合并同源连线并渲染轮播对比。");
+  await expect(mdPreview.locator("pre")).toHaveCount(0);
+  const mdImgs = mdPreview.getByTestId("session-image-row").getByTestId("session-image");
+  await expect(mdImgs).toHaveCount(2);
+  await expect(mdImgs.first().locator("img")).toBeVisible();
+  await mdImgs.first().click();
+  await expect(lb).toBeVisible();
+  await expect(lb.getByTestId("lightbox-title")).toHaveText("carousel_dark.png");
+  await expect(lb.getByTestId("lightbox-meta")).toContainText("1 / 2 · 150 × 220");
+  await page.keyboard.press("Escape");
+  await expect(lb).toBeHidden();
+  await open(page, "文件预览");
+
   // files-mac gone: what was read before still opens, in the panel and in the Lightbox.
   process.kill(-fixture.otherMac, "SIGTERM");
   await lines.click();

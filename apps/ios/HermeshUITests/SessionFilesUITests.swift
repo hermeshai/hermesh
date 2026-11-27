@@ -117,6 +117,36 @@ extension HermeshUITests {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "document.title")).firstMatch.waitForExistence(timeout: 20), "demo.js as it is now")
         XCTAssertFalse(app.descendants(matching: .any)["file-version"].exists, "no version bar for a file as it is now")
 
+        // Antigravity ````carousel```` + [!NOTE] callout + outside brain/walkthrough.md artifact preview with relative images.
+        openSession("走查预览")
+        let replyCallout = app.descendants(matching: .any)["markdown-callout-note"].firstMatch
+        XCTAssertTrue(replyCallout.waitForExistence(timeout: 30), "parsed [!NOTE] callout")
+        XCTAssertTrue(replyCallout.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "兼容 Antigravity 轮播与提示框")).firstMatch.exists, "callout text")
+        XCTAssertFalse(replyCallout.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "[!NOTE]")).firstMatch.exists, "raw callout marker stripped")
+        let darkSlide = app.buttons["session-image-carousel_dark.png"]
+        let lightSlide = app.buttons["session-image-carousel_light.png"]
+        XCTAssertTrue(darkSlide.waitForExistence(timeout: 20) && lightSlide.waitForExistence(timeout: 20), "unwrapped carousel images")
+        XCTAssertEqual(darkSlide.frame.minY, lightSlide.frame.minY, accuracy: 8, "2-slide carousel side-by-side")
+        let walkTag = app.links.containing(NSPredicate(format: "label CONTAINS %@", "walkthrough.md")).firstMatch
+        XCTAssertTrue(walkTag.waitForExistence(timeout: 20), "outside artifact walkthrough.md tag")
+        reach(walkTag)
+        walkTag.tap()
+        let mdPage = app.descendants(matching: .any)["file-markdown"].firstMatch
+        XCTAssertTrue(mdPage.waitForExistence(timeout: 20), "walkthrough.md Markdown preview")
+        let mdCallout = mdPage.descendants(matching: .any)["markdown-callout-note"].firstMatch
+        XCTAssertTrue(mdCallout.waitForExistence(timeout: 20))
+        XCTAssertTrue(mdCallout.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "已合并同源连线并渲染轮播对比")).firstMatch.exists)
+        XCTAssertFalse(mdPage.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "[!NOTE]")).firstMatch.exists)
+        let mdDark = mdPage.buttons["session-image-carousel_dark.png"]
+        XCTAssertTrue(mdDark.waitForExistence(timeout: 20), "relative image inside walkthrough.md")
+        reach(mdDark)
+        mdDark.tap()
+        XCTAssertTrue(lb.waitForExistence(timeout: 10), "Lightbox opened from Markdown preview")
+        XCTAssertEqual(app.staticTexts["lightbox-title"].label, "carousel_dark.png")
+        XCTAssertTrue(app.staticTexts["lightbox-meta"].label.contains("1 / 2 · 150 × 220"))
+        app.buttons["lightbox-close"].tap()
+        XCTAssertTrue(lb.waitForNonExistence(timeout: 5))
+
         // On its side, where the screen is wide (a Pro Max, iPhone Duo open), the menu stands beside the page: the
         // page's button widens it over the menu, which shrinks to its rail, as a session's page does. Elsewhere, none.
         app.terminate()

@@ -291,7 +291,7 @@ func fileRefPaths(_ blocks: [MarkdownBlock]) -> [String] {
         case .images(let items, _):
             for it in items where !out.contains(it.path) { out.append(it.path) }
         case .list(_, _, let items): items.forEach { $0.blocks.forEach(walk) }
-        case .quote(let bs): bs.forEach(walk)
+        case .quote(let bs), .callout(_, let bs): bs.forEach(walk)
         case .table(let head, let rows, _): head.forEach(text); rows.forEach { $0.forEach(text) }
         case .footnotes(let notes): notes.forEach { $0.forEach(walk) }
         default: break
@@ -396,16 +396,33 @@ struct SessionFileContent: View {
     var onFolder: (String) -> Void = { _ in }
     @State private var read: Result<Hermesh_Session_V1_ReadFileResponse, Error>?
     @State private var local: URL?
+    @State private var docFiles: SessionFilesModel
+
+    init(sessionID: String, path: String, line: Int?, endLine: Int?, turnRun: String, run: Binding<String>, source: Bool, onFolder: @escaping (String) -> Void = { _ in }) {
+        self.sessionID = sessionID
+        self.path = path
+        self.line = line
+        self.endLine = endLine
+        self.turnRun = turnRun
+        _run = run
+        self.source = source
+        self.onFolder = onFolder
+        _docFiles = State(initialValue: SessionFilesModel(sessionID: sessionID))
+    }
 
     private var name: String { fileBaseName(path) }
     private var view: FileView { fileView(path) }
     private var quickLooks: Bool { [.image, .pdf, .media, .office, .other].contains(view) }
 
     var body: some View {
+        let _ = { docFiles.sessionID = sessionID; docFiles.api = model.api }()
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if case .success(let res)? = read { VersionBar(res: res, run: $run, turnRun: turnRun) }
+            }
+            .fullScreenCover(item: Binding(get: { docFiles.lightbox }, set: { docFiles.lightbox = $0 })) {
+                SessionImageLightbox(presentation: $0).environment(\.sessionFiles, docFiles)
             }
             .task(id: "\(run)\u{0}\(path)") { await load() }
     }
@@ -433,8 +450,12 @@ struct SessionFileContent: View {
             } else if res.kind == .tooLarge {
                 FileCard(name: name, text: String(localized: "This file is \(ByteCountFormatter.string(fromByteCount: Int64(res.size), countStyle: .file)), too large to show here"))
             } else if view == .markdown && !source && line == nil {
+                let slashDir = filePath.contains("/") ? String(filePath[..<filePath.lastIndex(of: "/")!]) : ""
                 ScrollView {
-                    MarkdownText(text: res.text, lazy: true).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20)
+                    MarkdownText(text: res.text, basePath: slashDir, lazy: true)
+                        .environment(\.sessionFiles, docFiles)
+                        .environment(\.filesRun, run)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20)
                 }
                 .contentMargins(.vertical, 13, for: .scrollContent)
                 .accessibilityElement(children: .contain)

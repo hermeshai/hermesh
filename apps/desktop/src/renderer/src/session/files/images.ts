@@ -1,6 +1,6 @@
 import { createContext, useEffect, useSyncExternalStore } from "react";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { sameImagePath, sessionImageRef } from "@hermesh/her-client";
+import { resolveDocPath, sameImagePath, sessionImageRef } from "@hermesh/her-client";
 import { FileContentKind } from "@hermesh/proto/session";
 import { sessions } from "../../api";
 import type { SessionFile } from "./files";
@@ -141,10 +141,10 @@ export function useSessionImage(file: SessionFile | null, active: boolean, onlin
  * Scans settled Markdown text (skipping fenced and inline code) to find `![alt](src)` explicit
  * images and ordered unique gallery items so `[label](path)` never duplicates `![alt](path)`.
  */
-export function scanReplyImages(text: string): ReplyImages {
+export function scanReplyImages(text: string, basePath = ""): ReplyImages {
   // Strip fenced code blocks and single-line inline code spans before scanning links/images.
   const stripped = text
-    .replace(/^(?:```|~~~)[\s\S]*?^(?:```|~~~)/gm, "")
+    .replace(/^(?:`{3,}|~{3,})[\s\S]*?^(?:`{3,}|~{3,})/gm, "")
     .replace(/`[^`\n]+`/g, "");
   const found: { bang: boolean; label: string; path: string }[] = [];
   const re = /(!?)\[([^\]]*)\]\(([^)\n]+)\)/g;
@@ -156,7 +156,8 @@ export function scanReplyImages(text: string): ReplyImages {
       const titleIdx = raw.search(/\s+["']/);
       if (titleIdx > 0) raw = raw.slice(0, titleIdx);
     }
-    const path = sessionImageRef(raw);
+    const rawPath = sessionImageRef(raw);
+    const path = rawPath ? resolveDocPath(basePath, rawPath) : null;
     if (path) found.push({ bang: m[1] === "!", label: m[2]!.trim(), path });
   }
   const explicit: string[] = [];

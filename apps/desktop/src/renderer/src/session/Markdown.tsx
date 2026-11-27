@@ -7,8 +7,8 @@ import remarkMath from "remark-math";
 import remarkDirective from "remark-directive";
 import type { PluggableList } from "unified";
 import type { Root as HtmlRoot, Element as HtmlElement, RootContent as HtmlContent } from "hast";
-import { sameImagePath, sessionImageRef } from "@hermesh/her-client";
-import { createMarkdownSlices, pendingText } from "./markdown/parse";
+import { resolveDocPath, sameImagePath, sessionImageRef } from "@hermesh/her-client";
+import { createMarkdownSlices, pendingText, unwrapCarousels } from "./markdown/parse";
 import { anchors, contentExtensions } from "./markdown/plugins";
 import { silkWipe, useStreamText, type SilkWipeState } from "./markdown/stream";
 import { texMath } from "./markdown/tex";
@@ -21,6 +21,7 @@ import { DraftContext, StreamContext } from "./scope";
 
 const MermaidBlock = lazy(() => import("./markdown/Mermaid"));
 const SourceContext = createContext("");
+const BasePathContext = createContext("");
 
 /**
  * An agent's reply as GitHub Markdown with formulas, diagrams, callouts and footnotes, rendered as
@@ -29,14 +30,15 @@ const SourceContext = createContext("");
  * memoized, and the block still being written is closed (remend) so nothing shows as raw Markdown
  * on its way (docs/reply-streaming.md); document-scoped references take the whole-document path.
  */
-export function Markdown({ text, streaming = false, mode = "chat" }: { text: string; streaming?: boolean; mode?: "chat" | "document" | "compact" }) {
+export function Markdown({ text, streaming = false, mode = "chat", basePath = "" }: { text: string; streaming?: boolean; mode?: "chat" | "document" | "compact"; basePath?: string }) {
   const prefix = useId();
   const home = useContext(FilesHomeContext);
-  const inSession = Boolean(home) && mode === "chat";
-  const { shown, animate } = useStreamText(text, streaming);
+  const inSession = Boolean(home) && (mode === "chat" || mode === "document");
+  const normalized = useMemo(() => unwrapCarousels(text), [text]);
+  const { shown, animate } = useStreamText(normalized, streaming);
   const split = useRef(createMarkdownSlices());
   const blocks = useMemo(() => split.current(shown, streaming), [shown, streaming]);
-  const replyImages = useMemo(() => (inSession ? scanReplyImages(shown) : null), [shown, inSession]);
+  const replyImages = useMemo(() => (inSession ? scanReplyImages(shown, basePath) : null), [shown, inSession, basePath]);
   const explicitKey = replyImages ? replyImages.explicit.join("\0") : "";
   // Pre-compute per-block claimed link paths so `[shot.png](p)` repeated across two blocks in one reply only expands once.
   const blockAllowedLinks = useMemo(() => {
@@ -44,7 +46,7 @@ export function Markdown({ text, streaming = false, mode = "chat" }: { text: str
     const claimed = [...replyImages.explicit];
     return blocks.map((b) => {
       if (b.pending) return "";
-      const local = scanReplyImages(b.text);
+      const local = scanReplyImages(b.text, basePath);
       const allowed: string[] = [];
       for (const g of local.gallery) {
         if (local.explicit.some((e) => sameImagePath(e, g.path))) continue;
@@ -54,28 +56,31 @@ export function Markdown({ text, streaming = false, mode = "chat" }: { text: str
       }
       return allowed.join("\0");
     });
-  }, [blocks, inSession, replyImages]);
+  }, [blocks, inSession, replyImages, basePath]);
 
   return (
     <StreamContext.Provider value={animate}>
-      <ReplyImagesContext.Provider value={replyImages}>
-        <div className="md sel-text" data-mode={mode}>
-          {blocks.map((block, idx) => (
-            <Block
-              key={block.id}
-              text={block.text}
-              pending={block.pending}
-              animate={animate}
-              prefix={prefix}
-              offset={block.id}
-              mode={mode}
-              inSession={inSession}
-              explicitKey={explicitKey}
-              allowedLinksKey={blockAllowedLinks[idx] ?? ""}
-            />
-          ))}
-        </div>
-      </ReplyImagesContext.Provider>
+      <BasePathContext.Provider value={basePath}>
+        <ReplyImagesContext.Provider value={replyImages}>
+          <div className="md sel-text" data-mode={mode}>
+            {blocks.map((block, idx) => (
+              <Block
+                key={block.id}
+                text={block.text}
+                pending={block.pending}
+                animate={animate}
+                prefix={prefix}
+                offset={block.id}
+                mode={mode}
+                inSession={inSession}
+                basePath={basePath}
+                explicitKey={explicitKey}
+                allowedLinksKey={blockAllowedLinks[idx] ?? ""}
+              />
+            ))}
+          </div>
+        </ReplyImagesContext.Provider>
+      </BasePathContext.Provider>
     </StreamContext.Provider>
   );
 }
@@ -92,6 +97,7 @@ const Block = memo(function Block({
   offset,
   mode,
   inSession,
+  basePath,
   explicitKey,
   allowedLinksKey,
 }: {
@@ -102,6 +108,7 @@ const Block = memo(function Block({
   offset: number;
   mode: string;
   inSession: boolean;
+  basePath: string;
   explicitKey: string;
   allowedLinksKey: string;
 }) {
@@ -127,7 +134,7 @@ const Block = memo(function Block({
   }, [hasMath]);
   const shown = pending ? remend(pendingText(text), { linkMode: "text-only", katex: true }) : text;
   const rehypePlugins: PluggableList = [...mathPlugin, [anchors, { prefix, block: offset }]];
-  if (inSession) rehypePlugins.push([rehypeSessionImages, { pending, explicitKey, allowedLinksKey }]);
+  if (inSession) rehypePlugins.push([rehypeSessionImages, { pending, explicitKey, allowedLinksKey, basePath }]);
   if (animate || wipeState.current.waves.length > 0) rehypePlugins.push([silkWipe, { state: wipeState.current }]);
   useEffect(() => {
     const waves = wipeState.current.waves;
@@ -193,7 +200,7 @@ function codeOf(pre: HNode | undefined): { lang: string; text: string } | null {
 const components: Components = {
   a: ({ href, children, node, ...props }) => {
     if (href?.startsWith("#")) return <Anchor href={href} {...props}>{children}</Anchor>;
-    return <Link href={href}>{children}</Link>;
+    return <DocAwareLink href={href}>{children}</DocAwareLink>;
   },
   img: ({ alt }) => <span>{alt}</span>,
   div: ({ node, children, ...props }) => {
@@ -277,11 +284,19 @@ function trimBr(nodes: HtmlContent[]): HtmlContent[] {
   return nodes.slice(start, end);
 }
 
+function DocAwareLink({ href, children }: { href?: string; children?: ReactNode }) {
+  const basePath = useContext(BasePathContext);
+  const resolved = href && basePath && !web.test(href) && !href.startsWith("#") && !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(href)
+    ? resolveDocPath(basePath, href)
+    : href;
+  return <Link href={resolved}>{children}</Link>;
+}
+
 /**
  * Lifts session `![alt](path)` images out of `<p>` into block-level `<SessionImageSlot>` cards,
  * and attaches deduplicated `[label](path.png)` image strips below their enclosing block.
  */
-function rehypeSessionImages(opts: { pending: boolean; explicitKey: string; allowedLinksKey: string }) {
+function rehypeSessionImages(opts: { pending: boolean; explicitKey: string; allowedLinksKey: string; basePath: string }) {
   const explicit = opts.explicitKey ? opts.explicitKey.split("\0") : [];
   const allowedLinks = opts.allowedLinksKey ? opts.allowedLinksKey.split("\0") : [];
   return (tree: HtmlRoot) => {
@@ -312,7 +327,8 @@ function rehypeSessionImages(opts: { pending: boolean; explicitKey: string; allo
             if (inl.type === "element" && inl.tagName === "img") {
               const src = String(inl.properties?.src ?? "");
               const alt = String(inl.properties?.alt ?? "").trim();
-              const path = sessionImageRef(src);
+              const rawPath = sessionImageRef(src);
+              const path = rawPath ? resolveDocPath(opts.basePath, rawPath) : null;
               if (path) {
                 flushProse();
                 if (!imgBuf.some((x) => sameImagePath(x.path, path))) imgBuf.push({ path, caption: alt });
@@ -327,7 +343,7 @@ function rehypeSessionImages(opts: { pending: boolean; explicitKey: string; allo
           flushProse();
           next.push(...parts);
           if (topLevel && !opts.pending && allowedLinks.length > 0) {
-            const linked = collectLinkedImages(child, allowedLinks, claimed);
+            const linked = collectLinkedImages(child, allowedLinks, claimed, opts.basePath);
             if (linked.length > 0) next.push(makeImageSlot(linked, true));
           }
           continue;
@@ -336,7 +352,7 @@ function rehypeSessionImages(opts: { pending: boolean; explicitKey: string; allo
           transformChildren(child, false);
           next.push(child);
           if (topLevel && !opts.pending && allowedLinks.length > 0) {
-            const linked = collectLinkedImages(child, allowedLinks, claimed);
+            const linked = collectLinkedImages(child, allowedLinks, claimed, opts.basePath);
             if (linked.length > 0) next.push(makeImageSlot(linked, true));
           }
           continue;
@@ -349,13 +365,14 @@ function rehypeSessionImages(opts: { pending: boolean; explicitKey: string; allo
   };
 }
 
-function collectLinkedImages(node: HtmlElement, allowedLinks: string[], claimed: string[]): ReplyImageItem[] {
+function collectLinkedImages(node: HtmlElement, allowedLinks: string[], claimed: string[], basePath: string): ReplyImageItem[] {
   const out: ReplyImageItem[] = [];
   const walk = (el: HtmlContent) => {
     if (el.type !== "element" || el.tagName === "code" || el.tagName === "pre") return;
     if (el.tagName === "a") {
       const href = String(el.properties?.href ?? "");
-      const path = sessionImageRef(href);
+      const rawPath = sessionImageRef(href);
+      const path = rawPath ? resolveDocPath(basePath, rawPath) : null;
       if (
         path &&
         allowedLinks.some((a) => sameImagePath(a, path)) &&
