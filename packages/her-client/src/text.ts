@@ -20,12 +20,32 @@ export function clockText(seconds: number): string {
   return m >= 60 ? `${Math.trunc(m / 60)}:${pad2(m % 60)}:${pad2(s % 60)}` : `${m}:${pad2(s % 60)}`;
 }
 
-/** 412K, 1.8M. */
-export function tokensText(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1e6).toFixed(1).replace(/\.0$/, "")}M`;
-  if (n >= 10_000) return `${Math.round(n / 1000)}K`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}K`;
-  return `${n}`;
+const chineseUnits = [[1000n, "千"], [10_000n, "万"], [100_000_000n, "亿"], [1_000_000_000_000n, "万亿"]] as const;
+const englishUnits = [[1_000_000n, "M"], [1_000_000_000n, "B"], [1_000_000_000_000n, "T"]] as const;
+
+/** A token count in the interface language, compact enough for a chart label. */
+export function tokensText(n: number | bigint, language = "en"): string {
+  if (n < 1000) return String(n);
+  const chinese = language.split("-")[0] === "zh";
+  if (!chinese && n < 1_000_000) return `${Math.trunc(Number(n) / 1000)}K`;
+
+  const count = typeof n === "bigint" ? n : BigInt(Math.trunc(n));
+  const units = chinese ? chineseUnits : englishUnits;
+  let unit: readonly [bigint, string] = units[0];
+  for (const next of units) {
+    // Promote when rounding to one decimal would reach the next unit.
+    if (count < next[0] - unit[0] / 20n) break;
+    unit = next;
+  }
+  const [scale, suffix] = unit;
+  if (suffix === "M") {
+    // Match the native overview's printf rounding at an exact x.25 million tie.
+    const v = Number(count);
+    const millions = v % 1_000_000 === 250_000 ? `${Math.trunc(v / 1e6)}.2` : (v / 1e6).toFixed(1);
+    return `${millions.replace(/\.0$/, "")}M`;
+  }
+  const tenths = (count + scale / 20n) / (scale / 10n);
+  return `${Number(tenths) / 10}${suffix}`;
 }
 
 /** ¥0.42, $1.20; small amounts keep enough digits to show they are not nothing. */

@@ -1,4 +1,6 @@
 import http from "node:http";
+import { create, toBinary } from "@bufbuild/protobuf";
+import { QueryWorkResponseSchema } from "@hermesh/proto/local";
 import { expect, test, type ElectronApplication, type Locator } from "@playwright/test";
 import { fixture, launch, mapHeight, snap, thisComputer, sessionList, navTo, pickFrom } from "./app";
 
@@ -159,6 +161,34 @@ test("a node clicked on the link map turns 进行中 into the sessions through i
   await app.close();
 });
 
+test("the same token usage follows the overview language", async () => {
+  const turn = { bucket: 6, inputTokens: 999_000_000_000n, outputTokens: 1_000_000_000n };
+  const body = Array.from(toBinary(QueryWorkResponseSchema, create(QueryWorkResponseSchema, { turns: [turn], rangeTurns: [turn] })));
+  for (const [language, tab, title, total, facts] of [
+    ["zh-CN", "用量", "Token", "1万亿", "输入9990亿输出10亿"],
+    ["en", "Usage", "Tokens", "1T", "Input999BOutput1B"],
+  ]) {
+    const { app, page } = await launch(undefined, { systemLanguages: [language] });
+    try {
+      // app:// is handled by Electron directly. Supply one known week at the renderer's RPC boundary.
+      await page.evaluate((bytes) => {
+        const fetch = window.fetch.bind(window);
+        window.fetch = (url, init) => String(url).endsWith("/QueryWork")
+          ? Promise.resolve(new Response(new Uint8Array(bytes), { headers: { "Content-Type": "application/proto" } }))
+          : fetch(url, init);
+      }, body);
+      await page.getByRole("tab", { name: tab }).click();
+      const card = page.getByRole("group", { name: title, exact: true });
+      await expect(card.locator(".us-big b")).toHaveText(total);
+      await expect(card.locator(".us-facts")).toHaveText(facts);
+      await card.scrollIntoViewIfNeeded();
+      await snap(page, `token-usage-${language}`);
+    } finally {
+      await app.close();
+    }
+  }
+});
+
 type Shown = { label: string; detail?: string; checked?: boolean; submenu?: Shown[] };
 
 /**
@@ -219,8 +249,8 @@ test("用量 counts a range under its filters: a measure a row beside its chart,
     await expect(tasks.locator(".us-big")).toHaveText(/^[1-9]\d*个任务运行过$/);
     const ran = Number((await tasks.locator(".us-big b").textContent())!);
     await expect(tasks.locator(".us-facts")).toHaveText(/^已完成\d+出错\d+ 轮工作时长.+$/);
-    await expect(tokens.locator(".us-big")).toHaveText(/^\d+(\.\d)?[KM]?token$/);
-    await expect(tokens.locator(".us-facts")).toHaveText(/^输入\d+(\.\d)?[KM]?输出\d+(\.\d)?[KM]?$/);
+    await expect(tokens.locator(".us-big")).toHaveText(/^\d+(\.\d)?(?:千|万|亿|万亿)?token$/);
+    await expect(tokens.locator(".us-facts")).toHaveText(/^输入\d+(\.\d)?(?:千|万|亿|万亿)?输出\d+(\.\d)?(?:千|万|亿|万亿)?$/);
     // Nothing ran before today: no change to say, and today's is the only bar, named under the chart.
     await expect(tasks.locator(".us-delta")).toHaveText(" ");
     await expect(tasks.locator(".us-slots i")).toHaveCount(7);
@@ -233,7 +263,7 @@ test("用量 counts a range under its filters: a measure a row beside its chart,
     await expect(group.getByRole("radio", { name: "Agent 提供方" })).toHaveAttribute("aria-checked", "true");
     const legend = tasks.locator(".us-legend").getByRole("button");
     await expect(legend).toHaveText([`Gemini CLI${ran}100%`]);
-    await expect(tokens.locator(".us-legend").getByRole("button")).toHaveText([/^Gemini CLI\d+(\.\d)?[KM]?100%$/]);
+    await expect(tokens.locator(".us-legend").getByRole("button")).toHaveText([/^Gemini CLI\d+(\.\d)?(?:千|万|亿|万亿)?100%$/]);
     await expect(tasks.locator(".us-facts")).toHaveText(/^已完成\d+出错\d+ 轮工作时长.+$/);
     const part = tasks.locator(".us-slots .us-bar u");
     await expect(part).toHaveCount(1);
@@ -264,12 +294,12 @@ test("用量 counts a range under its filters: a measure a row beside its chart,
     await tasks.locator(".us-slots i.now").hover();
     await expect(tasks.locator(".u-tip")).toHaveText(new RegExp(`^${ran} 个任务运行过.*周`));
     await tokens.locator(".us-slots i.now").hover();
-    await expect(tokens.locator(".u-tip")).toHaveText(/^\d+(\.\d)?[KM]? token/);
+    await expect(tokens.locator(".u-tip")).toHaveText(/^\d+(\.\d)?(?:千|万|亿|万亿)? token/);
     await snap(page, "overview-usage-total");
 
     // A filter's menu is the system's, under its button: each choice with its work in the range, the chosen checked.
     const agent = usage.getByRole("button", { name: "Agent 提供方" });
-    const counts = new RegExp(`^${ran} 个任务 · \\d+(\\.\\d)?[KM]? token$`);
+    const counts = new RegExp(`^${ran} 个任务 · \\d+(\\.\\d)?(?:千|万|亿|万亿)? token$`);
     let shown = await menu.open(agent, null);
     expect(shown.map((i) => i.label)).toEqual(["全部", "Gemini CLI"]);
     expect(shown[0].checked).toBe(true);
@@ -326,9 +356,9 @@ test("用量 counts a range under its filters: a measure a row beside its chart,
     // A year of tokens by day, under the filters: today's is the one day with any.
     const year = usage.getByRole("group", { name: "近一年" });
     await expect(year).toContainText("活跃天数 1 · 连续使用 1 天");
-    await expect(year.getByRole("img", { name: /^近一年 \d+(\.\d)?[KM]? tokens，1 天有用量$/ })).toBeVisible();
+    await expect(year.getByRole("img", { name: /^近一年 \d+(\.\d)?(?:千|万|亿|万亿)? tokens，1 天有用量$/ })).toBeVisible();
     await year.locator(".us-cells div:not(.none):not(.l0)").hover();
-    await expect(year.locator(".u-tip")).toHaveText(/^\d+(\.\d)?[KM]? token.*周/);
+    await expect(year.locator(".u-tip")).toHaveText(/^\d+(\.\d)?(?:千|万|亿|万亿)? token.*周/);
     await expect(usage).toContainText("输入含各提供方的缓存读写。");
 
     // In a narrow window a chart goes under its number, and nothing runs off the side.

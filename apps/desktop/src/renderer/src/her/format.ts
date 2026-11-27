@@ -51,13 +51,6 @@ export function durationText(ms: number): string {
   return pair(part("days", Math.trunc(s / 86400)), part("hours", Math.trunc(s / 3600) % 24), Math.trunc(s / 3600) % 24);
 }
 
-/** "412K", "1.8M". */
-export function tokensText(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  if (n >= 1000) return `${Math.round(n / 1000)}K`;
-  return String(n);
-}
-
 /** The verb for a step: "Read", "Running"; a refused one is "Denied". */
 export function toolVerb(tool: ToolView): string {
   if (tool.state === "denied") return t("steps.denied.done");

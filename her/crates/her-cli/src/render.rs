@@ -243,8 +243,8 @@ pub fn status_lines(style: &Style, msg: &EventMsg) -> Vec<String> {
             };
             vec![style.dim(&format!(
                 "context compacted (#{seq}): {} → {} tokens · kept {retained_messages} user message(s){skills} · summary {} chars",
-                group_digits(*tokens_before),
-                group_digits(*tokens_after),
+                grouped_tokens(*tokens_before),
+                grouped_tokens(*tokens_after),
                 group_digits(summary.chars().count() as u64)
             ))]
         }
@@ -314,6 +314,10 @@ fn result_line(tool: &str, text: &str, duration_ms: Option<u64>) -> String {
     truncate(text, 100)
 }
 
+fn grouped_tokens(n: u64) -> String {
+    her_core::lang::format_tokens(n, group_digits)
+}
+
 fn group_digits(n: u64) -> String {
     let digits = n.to_string();
     let mut out = String::new();
@@ -331,9 +335,9 @@ pub fn usage_line(usage: &UsageTotals) -> String {
     let input = tokens.input + tokens.cache_read + tokens.cache_write;
     let mut line = format!(
         "tokens: {} in ({} cached) · {} out",
-        group_digits(input),
-        group_digits(tokens.cache_read),
-        group_digits(tokens.output)
+        grouped_tokens(input),
+        grouped_tokens(tokens.cache_read),
+        grouped_tokens(tokens.output)
     );
     let costs = usage.cost_by_currency();
     if !costs.is_empty() {

@@ -154,7 +154,7 @@ test("numbers as the window shows them", () => {
   assert.equal(clockText(252), "4:12");
   assert.equal(clockText(3723), "1:02:03");
   assert.equal(tokensText(950), "950");
-  assert.equal(tokensText(1500), "1.5K");
+  assert.equal(tokensText(1500), "1K");
   assert.equal(tokensText(412_000), "412K");
   assert.equal(tokensText(1_800_000), "1.8M");
   assert.equal(costText({ currency: "CNY", total: 0.42 }), "¥0.42");

@@ -537,6 +537,30 @@ test("the Storage page says where her data is and what it holds", async ({ page 
 
 test.describe("in Chinese", () => {
   test.use({ locale: "zh-CN" });
+  test("context windows use the console language", async ({ page }) => {
+    await page.goto(site.url);
+    const manage = page.locator(".mrow", { hasText: "Mock" }).getByRole("button", { name: "管理模型" });
+    await manage.click();
+    const dialog = page.getByRole("dialog", { name: /Mock/ });
+    await expect(dialog).toBeVisible();
+    const setKey = dialog.getByRole("button", { name: "设置密钥…" });
+    if (await setKey.isVisible()) {
+      await setKey.click();
+      const key = page.getByRole("dialog", { name: "设置密钥" });
+      await key.getByLabel("API Key").fill("sk-e2e");
+      await key.getByRole("button", { name: "保存" }).click();
+      await expect(key).toBeHidden();
+      await manage.click();
+    }
+    await expect(dialog.getByText(/上下文 20万/)).toBeVisible();
+
+    const embedded = new URL(site.url);
+    embedded.searchParams.set("lang", "en");
+    await page.goto(embedded.href);
+    await page.locator(".mrow", { hasText: "Mock" }).getByRole("button", { name: "Manage Models" }).click();
+    await expect(page.getByRole("dialog").getByText(/200K context/)).toBeVisible();
+  });
+
   test("the console speaks the browser's language", async ({ page }) => {
     await page.goto(site.url);
     await expect(page.getByRole("navigation", { name: "页面" }).getByRole("button", { name: "连接器" })).toBeVisible();

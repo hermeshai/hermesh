@@ -1,6 +1,7 @@
 //! `her models check`: real requests to one model, to see what works before relying on it
 //! (standalone-cli-design §7.6). Each check costs a few dozen tokens.
 
+use her_core::lang::token_count;
 use her_llm::AssistantMessage;
 use her_llm::Context;
 use her_llm::Message;
@@ -107,7 +108,7 @@ async fn check_text(llm: &ModelRegistry, model: &Arc<Model>) -> (Status, String)
     if message.usage.input == 0 && message.usage.output == 0 {
         return (Status::Note, "a reply, without usage numbers".into());
     }
-    (Status::Ok, format!("{} tokens in, {} out", message.usage.input, message.usage.output))
+    (Status::Ok, format!("{} tokens in, {} out", token_count(message.usage.input), token_count(message.usage.output)))
 }
 
 async fn check_tools(llm: &ModelRegistry, model: &Arc<Model>) -> (Status, String) {
@@ -209,7 +210,7 @@ async fn check_cache(llm: &ModelRegistry, model: &Arc<Model>) -> (Status, String
         return (Status::Failed, failure);
     }
     if second.usage.cache_read > 0 {
-        (Status::Ok, format!("{} tokens from the cache", second.usage.cache_read))
+        (Status::Ok, format!("{} tokens from the cache", token_count(second.usage.cache_read)))
     } else {
         (Status::Note, "no cache hit on the second request".into())
     }

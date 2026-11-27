@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { tokensText } from "@hermesh/core";
 import { RpcError, conversation, routineGroups, routineLine, runLate, runRows, runTime, runTook, totals, viewOfRun, type RunRow, type SessionView } from "@hermesh/her-client";
 import type { BotRoutineRunResult, BotSummary, RoutineDetail, RoutineRunInfo, RoutineSummary, SessionInfo } from "@hermesh/her-protocol";
 import { Icon } from "../icons";
 import { Markdown } from "../session/Markdown";
 import { useNow, useStore } from "../store";
 import { useHer, type RoutinesRoute } from "./context";
-import { durationText, momentText, tokensText } from "./format";
+import { durationText, momentText } from "./format";
 import { Process } from "./Process";
 
 /** A page of a routine's runs. */
@@ -446,7 +447,7 @@ function RunPage({ bot, routineId, lastRun, id, info, onShowBubble, onGone }: {
           </div>
           <div className="frow">
             <span className="fl">{t("routines.run.usage")}</span>
-            <div className="fv">{tokens > 0 ? `${tokensText(tokens)} tokens` : "—"}</div>
+            <div className="fv">{tokens > 0 ? t("progress.tokens", { tokens: tokensText(tokens) }) : "—"}</div>
           </div>
         </div>
       </section>

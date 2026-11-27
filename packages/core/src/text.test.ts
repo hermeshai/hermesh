@@ -19,7 +19,6 @@ describe("text", () => {
     const t0 = (ms: number) => new Date(Date.UTC(2026, 9, 26, 8, 0, 0) + ms);
     expect([elapsedSeconds(t0(900), t0(1_999)), elapsedSeconds(t0(100), t0(1_999))]).toEqual([1, 1]);
     expect([elapsedSeconds(t0(900), t0(2_000)), elapsedSeconds(t0(100), t0(2_000))]).toEqual([2, 2]);
-    expect([tokensText(412_000), tokensText(1_800_000), tokensText(12)]).toEqual(["412K", "1.8M", "12"]);
     expect(minutesLeft(at(21 * 60 + 5), now)).toBe("还剩 22 分钟");
   });
 
@@ -50,12 +49,12 @@ describe("text", () => {
     expect(shortTime(new Date(2026, 9, 19, 9, 5), now)).toBe("09:05");
   });
 
-  test("tokens round as printf does", () => {
-    expect([tokensText(1_250_000n), tokensText(1_750_000n), tokensText(1_050_000n), tokensText(999_999)]).toEqual([
-      "1.2M",
-      "1.8M",
-      "1.1M",
-      "999K",
+  test("Chinese token counts promote at the displayed precision", () => {
+    expect([0, 999, 1000, 1500, 9949, 9950, 10_000, 100_000, 412_000, 1_800_000, 10_000_000].map(tokensText)).toEqual([
+      "0", "999", "1千", "1.5千", "9.9千", "1万", "1万", "10万", "41.2万", "180万", "1000万",
+    ]);
+    expect([99_999_499n, 99_999_500n, 1_000_000_000n, 1_000_000_000_000n, 2n ** 64n - 1n].map(tokensText)).toEqual([
+      "9999.9万", "1亿", "10亿", "1万亿", "18446744.1万亿",
     ]);
   });
 

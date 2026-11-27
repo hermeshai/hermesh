@@ -1,4 +1,4 @@
-import { RpcError } from "@hermesh/her-client";
+import { RpcError, tokensText as formatTokens } from "@hermesh/her-client";
 import type { ModelPrice } from "@hermesh/her-protocol";
 import { i18n } from "./i18n.ts";
 import { SignInTimedOut } from "./signin.ts";
@@ -19,11 +19,9 @@ export function agoText(d: Date, now: Date): string {
   return d.toLocaleDateString(i18n.language, { month: "short", day: "numeric" });
 }
 
-/** "200K", "1.5M": a context window. */
+/** A context window in the console's current language. */
 export function tokensText(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  if (n >= 1000) return `${Math.round(n / 1000)}K`;
-  return String(n);
+  return formatTokens(n, i18n.language);
 }
 
 /** "0 B", "820 KB", "4.2 MB", "127 MB": a size on disk, in the units Finder uses (1 KB = 1000 bytes). */

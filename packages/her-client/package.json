@@ -5,6 +5,7 @@
   "description": "Client logic for the her native protocol, free of any platform or UI framework",
   "exports": {
     ".": "./src/index.ts",
+    "./text": "./src/text.ts",
     "./mock": "./src/mock/index.ts"
   },
   "scripts": {

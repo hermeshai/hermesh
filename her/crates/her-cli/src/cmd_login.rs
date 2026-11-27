@@ -485,7 +485,7 @@ pub async fn configure_model(overrides: &[String], args: SetModel) -> anyhow::Re
     if let Some(canonical) = &m.canonical {
         said.push(format!("like {}", canonical.name));
     }
-    said.push(format!("{}k window", m.context_window / 1000));
+    said.push(format!("{} window", her_core::lang::format_tokens(m.context_window, |n| format!("{}k", n / 1000))));
     if m.images {
         said.push("images".into());
     }

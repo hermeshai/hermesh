@@ -134,6 +134,10 @@ async fn a_new_key_brings_the_providers_models_and_the_menu_follows_the_user() {
     let all = env.her(&["models", "--provider", "deepseek", "--all"]).output().await.unwrap();
     assert!(String::from_utf8(all.stdout).unwrap().contains("deepseek/mock-2  mock-2  context 128000  details unknown, hidden"));
 
+    let zh = env.her(&["models", "--provider", "deepseek", "--all"]).env("HER_LANG", "zh-CN").output().await.unwrap();
+    assert!(zh.status.success());
+    assert!(String::from_utf8(zh.stdout).unwrap().contains("deepseek/mock-2  mock-2  context 12.8万"));
+
     // Removing the key takes the models away again.
     client.request("auth/delete", json!({"provider": "deepseek"})).await.unwrap();
     let models = client.request("models/list", json!({})).await.unwrap();

@@ -175,6 +175,10 @@ fn part_name(kind: ContextPartKind) -> &'static str {
 
 /// 950, 12.3k, 1M.
 fn short_tokens(tokens: u64) -> String {
+    crate::lang::format_tokens(tokens, short_tokens_en)
+}
+
+fn short_tokens_en(tokens: u64) -> String {
     let (value, unit) = match tokens {
         0..1_000 => return tokens.to_string(),
         1_000..1_000_000 => (tokens as f64 / 1e3, "k"),
@@ -293,11 +297,12 @@ mod tests {
     #[test]
     fn reads_as_text() {
         let text = text(&report("p/m".into(), usage(400), fixed(), 30, 1.0, true));
-        assert!(text.starts_with("Context · p/m\n40.0% used · 400 / 1k tokens\n"), "{text}");
+        let window = crate::lang::say("1k", "1千");
+        assert!(text.starts_with(&format!("Context · p/m\n40.0% used · 400 / {window} tokens\n")), "{text}");
         assert!(text.contains("  Messages           200   20.0%\n"), "{text}");
         assert!(text.contains("  Free               400   40.0%\n"), "{text}");
-        assert_eq!(short_tokens(212_500), "212.5k");
-        assert_eq!(short_tokens(1_000_000), "1M");
+        assert_eq!(short_tokens_en(212_500), "212.5k");
+        assert_eq!(short_tokens_en(1_000_000), "1M");
     }
 
     #[test]

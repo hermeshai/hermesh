@@ -206,9 +206,9 @@ async fn the_command_line_adds_a_service_the_same_way() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("OpenAI Chat Completions") && stdout.contains("Anthropic Messages"), "{stdout}");
     assert!(stdout.contains("model set to acme/mock-1"), "{stdout}");
-    let set = env.her(&["models", "set", "acme/house-model-7", "--like", "openai/gpt-4o", "--context", "64k"]).output().await.unwrap();
+    let set = env.her(&["models", "set", "acme/house-model-7", "--like", "openai/gpt-4o", "--context", "1500m"]).output().await.unwrap();
     assert!(set.status.success(), "{}", String::from_utf8_lossy(&set.stderr));
-    assert!(String::from_utf8_lossy(&set.stdout).contains("like GPT-4o"), "{}", String::from_utf8_lossy(&set.stdout));
+    assert!(String::from_utf8_lossy(&set.stdout).contains("like GPT-4o, 1.5B window"), "{}", String::from_utf8_lossy(&set.stdout));
     let listed = env.her(&["models", "--provider", "acme", "--all"]).output().await.unwrap();
     let listed = String::from_utf8_lossy(&listed.stdout);
     let line = |id: &str| listed.lines().find(|l| l.trim_start().starts_with(id)).unwrap_or_default().to_string();

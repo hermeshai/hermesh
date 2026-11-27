@@ -11,7 +11,7 @@ import zhYours from "./locales/zh-CN/yours.json" with { type: "json" };
 
 // The console's text, by namespace: console (the frame, Browser), customize (Connectors and
 // Skills), settings (Models, Web search and Storage) and yours (the owner's Chrome, on the Browser page).
-// English holds every key; zh-CN translates them (locales.test.ts). The language is the browser's.
+// English holds every key; zh-CN translates them (locales.test.ts). The host app supplies its language when embedded, otherwise the browser chooses.
 
 export const languages = ["zh-CN", "en"] as const;
 export type Language = (typeof languages)[number];
@@ -46,9 +46,10 @@ export function pickLanguage(preferred: readonly string[]): Language {
   return "en";
 }
 
+const hostLanguage = new URLSearchParams(globalThis.location?.search).get("lang");
 export const i18n = i18next.createInstance();
 i18n.use(initReactI18next).init({
-  lng: pickLanguage(navigator.languages),
+  lng: languages.find((lng) => lng === hostLanguage) ?? pickLanguage(navigator.languages),
   fallbackLng: "en",
   supportedLngs: languages,
   resources,

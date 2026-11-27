@@ -190,7 +190,7 @@ export function Usage({ now, state, onChange }: { now: Date; state: UsageState; 
             values={page.buckets.map((b) => b.tokens)}
             now={page.now}
             label={label}
-            scale={(v) => tokensText(v).replace(".0", "")}
+            scale={tokensText}
             tip={(i) => [when(i), t("usage.tip.tokens", { tokens: tokensText((alone ? alone.buckets[i] : page.buckets[i]).tokens) })]}
             parts={split && { parts, value: (b) => b.tokens, name: partName, text: tokensText, lit, alone }}
           />

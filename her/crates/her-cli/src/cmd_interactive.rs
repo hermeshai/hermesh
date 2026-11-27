@@ -640,7 +640,7 @@ impl App {
         };
         let mut line = format!("{} {what} · {}s", SPINNER[self.frame % SPINNER.len()], started.elapsed().as_secs());
         if self.task_tokens > 0 {
-            line.push_str(&format!(" · {} tokens", self.task_tokens));
+            line.push_str(&format!(" · {} tokens", her_core::lang::token_count(self.task_tokens)));
         }
         if let Some(percent) = self.context_percent {
             line.push_str(&match her_core::lang::current() {

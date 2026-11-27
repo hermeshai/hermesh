@@ -243,9 +243,18 @@ private func kind(_ it: TranscriptItem) -> String {
     #expect(toolObject(call("other", "", name: "Task")) == "Task")
 }
 
+@Test func localizedTokenCounts() {
+    let counts: [UInt64] = [0, 999, 1000, 1500, 9949, 9950, 10_000, 100_000, 412_000, 1_800_000, 10_000_000,
+                            99_999_499, 99_999_500, 1_000_000_000, 1_000_000_000_000, .max]
+    #expect(counts.map { tokensText($0, language: "zh-Hans") } ==
+        ["0", "999", "1千", "1.5千", "9.9千", "1万", "1万", "10万", "41.2万", "180万", "1000万", "9999.9万", "1亿", "10亿", "1万亿", "18446744.1万亿"])
+    #expect([412_345, 1_800_000, 1_250_000, 1_000_000, 12].map { tokensText($0, language: "en") } == ["412K", "1.8M", "1.2M", "1M", "12"])
+    let large: [UInt64] = [999_949_999, 999_950_000, 1_000_000_000, 1_500_000_000, 999_949_999_999, 999_950_000_000, 1_200_000_000_000, .max]
+    #expect(large.map { tokensText($0, language: "en") } == ["999.9M", "1B", "1B", "1.5B", "999.9B", "1T", "1.2T", "18446744.1T"])
+}
+
 @Test func timesAndDurations() {
     #expect(clockText(252) == "4:12" && clockText(3723) == "1:02:03")
-    #expect(tokensText(412_345) == "412K" && tokensText(1_800_000) == "1.8M" && tokensText(12) == "12")
     #expect(durationText(42) == "42s" && durationText(185) == "3m 05s" && durationText(4320) == "1h 12m")
     #expect(agoText(now.addingTimeInterval(-30), now: now, calendar: utc) == "just now")
     #expect(agoText(now.addingTimeInterval(-720), now: now, calendar: utc) == "12 min ago")

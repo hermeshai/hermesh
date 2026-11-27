@@ -234,6 +234,9 @@ importers:
       '@bufbuild/protobuf':
         specifier: 2.16.0
         version: 2.16.0
+      '@hermesh/her-client':
+        specifier: workspace:*
+        version: link:../her-client
       '@hermesh/proto':
         specifier: workspace:*
         version: link:../proto

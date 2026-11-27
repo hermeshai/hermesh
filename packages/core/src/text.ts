@@ -1,6 +1,7 @@
 import { FailureKind, SessionStatus, type Failure, type Session } from "@hermesh/proto/session";
 import { hourMinute, isYesterday, monthDay, pad2, sameDay, weekday, withinWeek } from "./calendar";
-import { t } from "./i18n";
+import { tokensText as formatTokens } from "@hermesh/her-client/text";
+import { language, t } from "./i18n";
 
 /** s without the spaces and tabs at its ends (line breaks stay). */
 export function trimWhitespace(s: string): string {
@@ -49,14 +50,9 @@ export function listTime(d: Date, now: Date): string {
   return sameDay(d, now) ? agoText(d, now) : shortTime(d, now);
 }
 
-/** 412K, 1.8M. */
+/** A token count in the app's current language. */
 export function tokensText(n: number | bigint): string {
-  const v = Number(n);
-  if (v >= 1_000_000) {
-    // As printf's "%.1f": an exact tie (x.25) rounds to even, where toFixed rounds it up.
-    return v % 1_000_000 === 250_000 ? `${Math.trunc(v / 1_000_000)}.2M` : `${(v / 1e6).toFixed(1)}M`;
-  }
-  return v >= 1000 ? `${Math.trunc(v / 1000)}K` : `${v}`;
+  return formatTokens(n, language());
 }
 
 /** "22 min left" until a question expires. */

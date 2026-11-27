@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { i18n, pickLanguage } from "./i18n";
 import { noticeDiff, noticeSnapshots } from "./notices";
 import { stepSummary, turnTimeLine } from "./steps";
-import { agoText, failureAdvice, failureHeadline, failureTitle, minutesLeft, shortTime } from "./text";
+import { agoText, failureAdvice, failureHeadline, failureTitle, minutesLeft, shortTime, tokensText } from "./text";
 import { at, now, progressOf, session } from "./testing";
 
 describe("English", () => {
@@ -33,6 +33,12 @@ describe("English", () => {
     expect(agoText(at(-4 * 86400), now)).toBe("Oct 15");
     expect(shortTime(at(-3 * 86400), now)).toBe("Fri");
     expect(minutesLeft(at(21 * 60 + 5), now)).toBe("22 min left");
+  });
+
+  test("token counts use K, M, B and T in English", () => {
+    expect([1_250_000n, 1_750_000n, 1_050_000n, 999_999n].map(tokensText)).toEqual(["1.2M", "1.8M", "1.1M", "999K"]);
+    expect([999_949_999n, 999_950_000n, 1_000_000_000n, 1_500_000_000n, 999_949_999_999n, 999_950_000_000n, 1_200_000_000_000n, 2n ** 64n - 1n].map(tokensText))
+      .toEqual(["999.9M", "1B", "1B", "1.5B", "999.9B", "1T", "1.2T", "18446744.1T"]);
   });
 
   test("notices", () => {

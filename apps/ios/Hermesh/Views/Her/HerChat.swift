@@ -989,7 +989,7 @@ final class HerChat {
         r.machineID = machineID
         let res: Hermesh_Local_V1_GetHerConsoleResponse = try await api.call("GetHerConsole", r)
         guard let base = URL(string: res.url), base.scheme == "http", base.host == "127.0.0.1", base.port != nil else { throw notConnected }
-        return base
+        return base.appending(queryItems: [URLQueryItem(name: "lang", value: AppLocale.current)])
     }
 
     /// Another way: the sign-in under way stops.

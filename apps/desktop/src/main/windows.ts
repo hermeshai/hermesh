@@ -266,6 +266,7 @@ const consoles = new Map<string, BrowserWindow>();
 export async function showHerConsole(machineId: string, title: string, address: () => Promise<string>, page?: string) {
   const url = consoleURL(await address());
   if (!url) throw new Error(i18n.t("main:herConsoleBad"));
+  url.searchParams.set("lang", language());
   if (page) url.hash = page;
   const open = consoles.get(machineId);
   if (open && !open.isDestroyed()) {

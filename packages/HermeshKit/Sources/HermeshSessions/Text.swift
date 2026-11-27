@@ -49,11 +49,27 @@ public func listTime(_ d: Date, now: Date, calendar: Calendar = .current) -> Str
     calendar.isDate(d, inSameDayAs: now) ? agoText(d, now: now, calendar: calendar) : shortTime(d, now: now, calendar: calendar)
 }
 
-/// 412K, 1.8M.
-public func tokensText(_ n: UInt64) -> String {
-    let v = Double(n)
-    if n >= 1_000_000 { return String(format: "%.1fM", v / 1e6) }
-    return n >= 1000 ? "\(n / 1000)K" : "\(n)"
+/// A token count in the app's display language, independent of its region.
+public func tokensText(_ n: UInt64, language: String = Bundle.main.preferredLocalizations.first ?? "en") -> String {
+    guard n >= 1000 else { return String(n) }
+    let chinese = language.split(separator: "-").first == "zh"
+    if !chinese && n < 1_000_000 { return "\(n / 1000)K" }
+
+    let units: [(UInt64, String)] = chinese
+        ? [(1000, "千"), (10_000, "万"), (100_000_000, "亿"), (1_000_000_000_000, "万亿")]
+        : [(1_000_000, "M"), (1_000_000_000, "B"), (1_000_000_000_000, "T")]
+    var (scale, suffix) = units[0]
+    for (next, unit) in units.dropFirst() {
+        if n < next - scale / 20 { break }
+        (scale, suffix) = (next, unit)
+    }
+    if suffix == "M" {
+        let millions = String(format: "%.1f", Double(n) / 1e6)
+        return (millions.hasSuffix(".0") ? String(millions.dropLast(2)) : millions) + "M"
+    }
+    let step = scale / 10
+    let tenths = n / step + (n % step >= step / 2 ? 1 : 0)
+    return (tenths % 10 == 0 ? "\(tenths / 10)" : "\(tenths / 10).\(tenths % 10)") + suffix
 }
 
 /// "22 min left" until a question expires.

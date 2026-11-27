@@ -196,7 +196,7 @@ pub fn models(
                 "    {}{marker}  {}  context {}{}",
                 m.id,
                 m.name,
-                m.context_window,
+                lang::token_count(m.context_window),
                 if traits.is_empty() { String::new() } else { format!("  {}", traits.join(", ")) }
             )?;
         }
@@ -392,7 +392,7 @@ pub fn status(overrides: &[String], as_json: bool) -> anyhow::Result<u8> {
             "{} ({} in the catalog, about {} tokens)",
             skill_report.set.active().count(),
             skill_report.catalog.listed,
-            skill_report.catalog.tokens
+            lang::token_count(skill_report.catalog.tokens)
         )
     } else {
         "off".to_string()
@@ -777,7 +777,7 @@ pub fn skills(overrides: &[String], dir: Option<PathBuf>, all: bool, as_json: bo
         writeln!(
             out,
             "catalog: {} skills, about {} tokens (budget {})",
-            catalog.listed, catalog.tokens, catalog.budget
+            catalog.listed, lang::token_count(catalog.tokens), lang::token_count(catalog.budget)
         )?;
     }
     if !report.set.not_read.is_empty() {

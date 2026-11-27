@@ -853,6 +853,17 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(app.buttons["start-new"].waitForExistence(timeout: 15))
     }
 
+    func testChineseUsageAtLargeNumbers() {
+        app.terminate()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "en_US", "-DemoBigUsage", "-DemoSessions", "300"]
+        app.launch()
+        enterWorkDemo()
+        view(1)
+        reach("filter-range"); pick("filter-range", "30 天")
+        let big = app.descendants(matching: .any)["usage-tokens-big"].firstMatch
+        XCTAssertTrue(wait { big.label.contains("亿") }, big.label)
+    }
+
     /// The Usage page at a very busy owner's numbers (billions of tokens, hundreds of hours, many agents, long project
     /// names): every legend is uniformly one vertical column, normal names stay one line, and long names wrap cleanly
     /// inside the card with their numbers aligned.
@@ -866,7 +877,7 @@ final class DemoUITests: XCTestCase {
         let any = app.descendants(matching: .any)
         let big = any["usage-tokens-big"].firstMatch
         XCTAssertTrue(big.waitForExistence(timeout: 10))
-        XCTAssertTrue(wait { big.label.contains("M") }, big.label)
+        XCTAssertTrue(wait { big.label.contains("B") }, big.label)
         // Both cards use one vertical column; normal agent names stay on one line with full names.
         for prefix in ["usage-sessions-part-", "usage-tokens-part-"] {
             let cells = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", prefix)).allElementsBoundByIndex
