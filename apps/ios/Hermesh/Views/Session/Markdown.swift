@@ -326,28 +326,60 @@ private func parseCallout(_ blocks: [MarkdownBlock]) -> (CalloutKind, [MarkdownB
     return (kind, tail)
 }
 
+private func appendMarkdownBlock(_ b: MarkdownBlock, to out: inout [MarkdownBlock]) {
+    if case .images(let nextItems, false) = b,
+       case .images(var prevItems, false)? = out.last {
+        for it in nextItems where !prevItems.contains(where: { sameImagePath($0.path, it.path) }) {
+            prevItems.append(it)
+        }
+        out[out.count - 1] = .images(items: prevItems, fromLinks: false)
+    } else {
+        out.append(b)
+    }
+}
+
+private func pureImageListItems(_ items: [MarkdownItem]) -> [ReplyImageItem]? {
+    var out: [ReplyImageItem] = []
+    for it in items {
+        guard it.checked == nil, it.blocks.count == 1,
+              case .images(let sub, false) = it.blocks[0], !sub.isEmpty else { return nil }
+        for img in sub where !out.contains(where: { sameImagePath($0.path, img.path) }) {
+            out.append(img)
+        }
+    }
+    return out.count >= 2 ? out : nil
+}
+
 private func convertChildren(_ children: [BlockMarkup], claimed: inout [String], topLevel: Bool, basePath: String) -> [MarkdownBlock] {
     var out: [MarkdownBlock] = []
     for m in children {
         switch m {
         case let p as Paragraph:
-            out.append(contentsOf: paragraphBlocks(p, basePath: basePath))
+            for pb in paragraphBlocks(p, basePath: basePath) {
+                appendMarkdownBlock(pb, to: &out)
+            }
             if topLevel {
                 let linked = collectLinkedImages(p, claimed: &claimed, basePath: basePath)
                 if !linked.isEmpty { out.append(.images(items: linked, fromLinks: true)) }
             }
         case let l as OrderedList:
-            out.append(.list(ordered: true, start: Int(l.startIndex), items: l.listItems.map { item($0, claimed: &claimed, basePath: basePath) }))
-            if topLevel {
-                let linked = collectLinkedImages(l, claimed: &claimed, basePath: basePath)
-                if !linked.isEmpty { out.append(.images(items: linked, fromLinks: true)) }
+            let mapped: [MarkdownItem] = Array(l.listItems).map { item($0, claimed: &claimed, basePath: basePath) }
+            let linked = topLevel ? collectLinkedImages(l, claimed: &claimed, basePath: basePath) : []
+            if linked.isEmpty, let pure = pureImageListItems(mapped) {
+                appendMarkdownBlock(.images(items: pure, fromLinks: false), to: &out)
+            } else {
+                out.append(.list(ordered: true, start: Int(l.startIndex), items: mapped))
             }
+            if !linked.isEmpty { out.append(.images(items: linked, fromLinks: true)) }
         case let l as UnorderedList:
-            out.append(.list(ordered: false, start: 1, items: l.listItems.map { item($0, claimed: &claimed, basePath: basePath) }))
-            if topLevel {
-                let linked = collectLinkedImages(l, claimed: &claimed, basePath: basePath)
-                if !linked.isEmpty { out.append(.images(items: linked, fromLinks: true)) }
+            let mapped: [MarkdownItem] = Array(l.listItems).map { item($0, claimed: &claimed, basePath: basePath) }
+            let linked = topLevel ? collectLinkedImages(l, claimed: &claimed, basePath: basePath) : []
+            if linked.isEmpty, let pure = pureImageListItems(mapped) {
+                appendMarkdownBlock(.images(items: pure, fromLinks: false), to: &out)
+            } else {
+                out.append(.list(ordered: false, start: 1, items: mapped))
             }
+            if !linked.isEmpty { out.append(.images(items: linked, fromLinks: true)) }
         case let q as BlockQuote:
             let inner = convertChildren(Array(q.blockChildren), claimed: &claimed, topLevel: false, basePath: basePath)
             if let (kind, calloutBlocks) = parseCallout(inner), !calloutBlocks.isEmpty {

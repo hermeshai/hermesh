@@ -75,7 +75,7 @@ func TestToolsAreTheCLIs(t *testing.T) {
 func TestArguments(t *testing.T) {
 	l := testLink(t)
 	start, _ := find("session_start")
-	args, err := l.arguments(start, "Bot 1", "call_7", json.RawMessage(`{"project":"mini/app","prompt":"fix it","agent":"codex","wait":true,"timeout":"1h","as":"someone"}`))
+	args, err := l.arguments(start, "Bot 1", "", "call_7", json.RawMessage(`{"project":"mini/app","prompt":"fix it","agent":"codex","wait":true,"timeout":"1h","as":"someone"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,14 +90,14 @@ func TestArguments(t *testing.T) {
 			t.Errorf("session_start: %q has %q", got, not)
 		}
 	}
-	if _, err := l.arguments(start, "b", "c", json.RawMessage(`{"project":"mini/app","prompt":" "}`)); err == nil {
+	if _, err := l.arguments(start, "b", "", "c", json.RawMessage(`{"project":"mini/app","prompt":" "}`)); err == nil {
 		t.Error("a start without a prompt")
 	}
 
 	// Client UI locale recorded on the link is injected into session_start,
 	// cannot be forged by tool arguments, and persists across restarts.
 	l.SetLocale("zh_CN.UTF-8")
-	args, err = l.arguments(start, "Bot 1", "call_8", json.RawMessage(`{"project":"mini/app","prompt":"fix race","locale":"fr"}`))
+	args, err = l.arguments(start, "Bot 1", "", "call_8", json.RawMessage(`{"project":"mini/app","prompt":"fix race","locale":"fr"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestArguments(t *testing.T) {
 		t.Errorf("session_start locale injection: %q", got)
 	}
 	reloaded := New(machine.HerLinkConfig{DataDir: l.cfg.DataDir}).(*Link)
-	args, err = reloaded.arguments(start, "Bot 1", "call_9", json.RawMessage(`{"project":"mini/app","prompt":"fix race"}`))
+	args, err = reloaded.arguments(start, "Bot 1", "", "call_9", json.RawMessage(`{"project":"mini/app","prompt":"fix race"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestArguments(t *testing.T) {
 	}
 
 	send, _ := find("session_send")
-	args, err = l.arguments(send, "Bot 1", "c", json.RawMessage(`{"session_id":"s_abc","message":"one more test"}`))
+	args, err = l.arguments(send, "Bot 1", "", "c", json.RawMessage(`{"session_id":"s_abc","message":"one more test"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,14 +123,46 @@ func TestArguments(t *testing.T) {
 	}
 	// Sessions only: she doesn't write to agents yet.
 	for _, to := range []string{"Grok Bot", "c_7k3m", ""} {
-		if _, err := l.arguments(send, "b", "c", json.RawMessage(`{"session_id":"`+to+`","message":"hi"}`)); err == nil {
+		if _, err := l.arguments(send, "b", "", "c", json.RawMessage(`{"session_id":"`+to+`","message":"hi"}`)); err == nil {
 			t.Errorf("session_send to %q", to)
 		}
 	}
 	// The name an assistant runs as leads back to it.
-	bot, _, _, ok := l.Render(&inboxv1.Message{To: &inboxv1.Address{Session: "bot-1"}, SessionNews: &inboxv1.SessionNews{Kind: "turn_done"}})
+	bot, _, _, _, ok := l.Render(&inboxv1.Message{To: &inboxv1.Address{Session: "bot-1"}, SessionNews: &inboxv1.SessionNews{Kind: "turn_done"}})
 	if !ok || bot != "Bot 1" {
 		t.Errorf("news for bot-1 goes to %q", bot)
+	}
+}
+
+// Work Her starts from a conversation of hers that is a session names it; she never sees the
+// parameter, and her main conversation names none.
+func TestStartNamesHerConversation(t *testing.T) {
+	l := testLink(t)
+	l.cfg.HerTask = func(conversation string) string {
+		if conversation == "her_c1" {
+			return "s_her_1"
+		}
+		return ""
+	}
+	start, _ := find("session_start")
+	args, err := l.arguments(start, "Bot 1", "her_c1", "call_1", json.RawMessage(`{"project":"mini/app","prompt":"fix it"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(args, " "); !strings.Contains(got, "--her-conversation=s_her_1") {
+		t.Errorf("from a conversation: %q", got)
+	}
+	args, _ = l.arguments(start, "Bot 1", "", "call_2", json.RawMessage(`{"project":"mini/app","prompt":"fix it"}`))
+	if got := strings.Join(args, " "); strings.Contains(got, "her-conversation") {
+		t.Errorf("from the main conversation: %q", got)
+	}
+	for _, tl := range l.Group().Tools {
+		if tl.Name == "session_start" {
+			b, _ := json.Marshal(tl.Parameters)
+			if strings.Contains(string(b), "her_conversation") {
+				t.Errorf("Her sees the parameter: %s", b)
+			}
+		}
 	}
 }
 
@@ -145,7 +177,7 @@ func TestDescribe(t *testing.T) {
 	if summary != "Write to session s_other\n\nhello" || rule != nil {
 		t.Errorf("unknown session: %q %v", summary, rule)
 	}
-	l.remember(json.RawMessage(`{"project":"mini/app"}`), []byte(`{"ok":true,"session":{"session_id":"s_mine","title":"Fix the test","agent":"codex"}}`))
+	l.remember(json.RawMessage(`{"project":"mini/app"}`), []byte(`{"ok":true,"session":{"session_id":"s_mine","title":"Fix the test","agent":"codex"}}`), "")
 	summary, rule = l.Describe(nil, "b", "session_send", json.RawMessage(`{"session_id":"s_mine","message":"hello"}`))
 	if summary != "Write to \"Fix the test\" (Codex, mini/app)\n\nhello" || !slices.Equal(rule, []string{"mesh", "mini/app"}) {
 		t.Errorf("her session: %q %v", summary, rule)
@@ -158,6 +190,33 @@ func TestDescribe(t *testing.T) {
 	again := New(machine.HerLinkConfig{DataDir: l.cfg.DataDir}).(*Link)
 	if _, rule := again.Describe(nil, "b", "session_send", json.RawMessage(`{"session_id":"s_mine","message":"x"}`)); rule == nil {
 		t.Error("the session was forgotten")
+	}
+}
+
+// The news of a session goes back to the conversation of hers that last gave
+// it work: the one that started it, then one that wrote to or answered it.
+// It survives a restart; a session she did not start has none.
+func TestNewsGoesBackToTheConversation(t *testing.T) {
+	l := testLink(t)
+	news := func(l *Link, session string) string {
+		_, conversation, _, _, _ := l.Render(&inboxv1.Message{To: &inboxv1.Address{Session: "bot-1"}, SessionNews: &inboxv1.SessionNews{Kind: "turn_done", SessionId: session}})
+		return conversation
+	}
+	l.remember(json.RawMessage(`{"project":"mini/app"}`), []byte(`{"ok":true,"session":{"session_id":"s_mine","title":"Fix","agent":"codex"}}`), "s_plan")
+	if got := news(l, "s_mine"); got != "s_plan" {
+		t.Errorf("news of the session she started in s_plan goes to %q", got)
+	}
+	l.gaveWork(json.RawMessage(`{"session_id":"m_1/s_mine","message":"more"}`), "s_main")
+	if got := news(l, "s_mine"); got != "s_main" {
+		t.Errorf("after s_main wrote to it, its news goes to %q", got)
+	}
+	again := New(machine.HerLinkConfig{DataDir: l.cfg.DataDir}).(*Link)
+	if got := news(again, "s_mine"); got != "s_main" {
+		t.Errorf("after a restart, its news goes to %q", got)
+	}
+	l.gaveWork(json.RawMessage(`{"session_id":"s_other","message":"hi"}`), "s_plan")
+	if got := news(l, "s_other"); got != "" {
+		t.Errorf("news of a session she did not start goes to %q", got)
 	}
 }
 

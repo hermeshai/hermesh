@@ -203,10 +203,24 @@ public func nextStreamRowEnd(_ text: String, from: String.Index, flushTail: Bool
 }
 
 private let anyFence = #/^ {0,3}(`{3,}|~{3,})(.*)$/#
-private let standaloneImg = #/^!\[[^\]]*\]\([^)\n]+\)$/#
+private let standaloneImg = #/^!\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\]\((?:<[^>\n]+>|(?:[^()\n]|\([^()\n]*\))+)\)$/#
 private let slideMarker = #/<!--\s*slide\s*-->/#.ignoresCase()
 private let localDestPrefix = #/^(?:\/|~\/|\.\.?\/|file:\/\/|[A-Za-z]:[\\\/])/#.ignoresCase()
 private let linkTitleQuote = #/\s+["']/#
+
+private func findClosingParen(_ line: Substring, from start: String.Index) -> String.Index? {
+    var depth = 1
+    var j = start
+    while j < line.endIndex {
+        if line[j] == "(" { depth += 1 }
+        else if line[j] == ")" {
+            depth -= 1
+            if depth == 0 { return j }
+        }
+        j = line.index(after: j)
+    }
+    return nil
+}
 
 private func encodeLocalLinkSpaces(_ line: Substring) -> String {
     guard line.contains("]("), line.contains(" ") else { return String(line) }
@@ -228,7 +242,7 @@ private func encodeLocalLinkSpaces(_ line: Substring) -> String {
             let next = line.index(after: i)
             if next < line.endIndex, line[next] == "(" {
                 let start = line.index(after: next)
-                if let close = line[start...].firstIndex(of: ")"), close > start {
+                if let close = findClosingParen(line, from: start), close > start {
                     let trimmed = line[start ..< close].trimmingCharacters(in: .whitespaces)
                     if trimmed.contains(" "), !trimmed.hasPrefix("<"),
                        trimmed.firstMatch(of: localDestPrefix) != nil,

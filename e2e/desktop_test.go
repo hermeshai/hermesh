@@ -135,7 +135,7 @@ func TestDesktop(t *testing.T) {
 	specs, _ := filepath.Glob(filepath.Join(dir, "e2e", "*.spec.ts"))
 	for _, spec := range specs {
 		name := strings.TrimSuffix(filepath.Base(spec), ".spec.ts")
-		if name == "packaged" || name == "update" || name == "her" || name == "her-notifications" || name == "her-chatgpt" || name == "her-older" || name == "her-before" || name == "her-reply" || name == "progress" || name == "her-deliveries" || name == "her-page" || name == "her-long" || name == "coldstart" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer, TestDesktopHerChatGPT, TestDesktopHerOlder, TestDesktopHerBeforeHer, TestDesktopHerReply, TestDesktopHerProgress, TestDesktopHerDeliveries, TestDesktopHerPage, TestDesktopHerLong, TestDesktopColdStart
+		if name == "packaged" || name == "update" || name == "her" || name == "her-notifications" || name == "her-chatgpt" || name == "her-older" || name == "her-before" || name == "her-reply" || name == "progress" || name == "her-deliveries" || name == "her-page" || name == "her-conversations" || name == "her-long" || name == "coldstart" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer, TestDesktopHerChatGPT, TestDesktopHerOlder, TestDesktopHerBeforeHer, TestDesktopHerReply, TestDesktopHerProgress, TestDesktopHerDeliveries, TestDesktopHerPage, TestDesktopHerLong, TestDesktopColdStart
 			continue
 		}
 		// Windows runs its own spec and those ported to it (docs/windows.md §11).
@@ -294,6 +294,23 @@ func TestDesktopHerPage(t *testing.T) {
 		t.Skip("pnpm not installed")
 	}
 	herSpec(t, desktopHerWorld(t), "her-page.spec.ts")
+}
+
+// TestDesktopHerConversations runs the end-to-end test of conversations with
+// Her besides her main one (apps/desktop/e2e/her-conversations.spec.ts,
+// docs/her-conversations.md) in the same world: a new session given to Her,
+// the coding session she starts nested under it in the task list, and its
+// news back in that conversation.
+//
+//	go test ./e2e -run TestDesktopHerConversations -v -timeout 30m
+func TestDesktopHerConversations(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	if _, err := exec.LookPath("pnpm"); err != nil {
+		t.Skip("pnpm not installed")
+	}
+	herSpec(t, desktopHerWorld(t), "her-conversations.spec.ts")
 }
 
 // TestDesktopHerChatGPT runs apps/desktop/e2e/her-chatgpt.spec.ts: on this
@@ -749,6 +766,18 @@ func otherMacFiles(t *testing.T, f desktopFixture) int {
 		walkSession = firstSession(w.cli(2*time.Minute, "session", "start", "--project", "files-mac/site", "-o", "json", "--agent", "gemini", "--title", "走查预览", "--prompt", walkPrompt, "--wait").stdout)
 		return walkSession.SessionID != ""
 	})
+	stagePaths := make([]string, 4)
+	for i := range stagePaths {
+		p := filepath.Join(brainDir, fmt.Sprintf("stage_%d.png", i+1))
+		if err := os.WriteFile(p, makeE2EPNG(t, 240, 135, uint8(40+i*45), uint8(90+i*25), uint8(210-i*35)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		stagePaths[i] = p
+	}
+	stageTurn := "say 多图舞台：\\n\\n![方案一 [默认收起]：连体抽屉托盘](" + stagePaths[0] + ")\\n\\n![方案二：点击展开完整步骤](" + stagePaths[1] + ")\\n\\n![方案三：浅色模式对比](" + stagePaths[2] + ")\\n\\n![方案四：无框刻度条](" + stagePaths[3] + ")"
+	if sw, r := w.send(2*time.Minute, walkSession.SessionID, stageTurn); sw.Status != "idle" {
+		t.Fatalf("walkthrough stage turn: %+v", r)
+	}
 	f.Sessions["走查预览"] = walkSession.SessionID
 	return daemon.cmd.Process.Pid
 }

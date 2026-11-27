@@ -1006,15 +1006,15 @@ impl Routines {
         Some(her_core::routine::listing(&lines))
     }
 
-    /// The bot's loaded conversation hears the list as it is now.
+    /// The bot's loaded conversations hear the list as it is now.
     async fn tell_model(&self, bot: &str) {
         let Some(text) = self.listing_of(bot) else {
             return;
         };
-        if let Some(server) = self.server()
-            && let Some(hub) = server.bot_hub(bot)
-        {
-            let _ = hub.send(HubCmd::Routines { text }).await;
+        if let Some(server) = self.server() {
+            for hub in server.bot_hubs(bot) {
+                let _ = hub.send(HubCmd::Routines { text: text.clone() }).await;
+            }
         }
     }
 

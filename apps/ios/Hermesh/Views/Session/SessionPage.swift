@@ -1,3 +1,4 @@
+import HermeshHer
 import HermeshKit
 import HermeshProto
 import HermeshSessions
@@ -15,6 +16,7 @@ enum SessionChoices {
         var projectID: String?
         var selection: Data?
         var mode: Int?
+        var worktrees: [String: Bool]?
     }
 
     private struct Kept: Codable {
@@ -37,10 +39,45 @@ enum SessionChoices {
         mine(machine)?.selection.flatMap { try? Hermesh_Session_V1_ModelSelection(serializedBytes: $0) }
     }
 
-    static func remember(machine: String, project: String, selection: Hermesh_Session_V1_ModelSelection, mode: Hermesh_Identity_V1_RuntimeMode) {
+    static func worktree(machine: String, project: String) -> Bool? {
+        guard !machine.isEmpty, !project.isEmpty, project != scratchProject else { return nil }
+        return mine(machine)?.worktrees?[project]
+    }
+
+    static func rememberWorktree(machine: String, project: String, worktree: Bool) {
+        guard !machine.isEmpty, !project.isEmpty, project != scratchProject else { return }
         var k = kept
+        var m = k.byMachine[machine] ?? Mine()
+        var w = m.worktrees ?? [:]
+        w[project] = worktree
+        m.worktrees = w
+        k.byMachine[machine] = m
+        kept = k
+    }
+
+    static func forgetWorktree(machine: String, project: String) {
+        guard !machine.isEmpty, !project.isEmpty else { return }
+        var k = kept
+        guard var m = k.byMachine[machine], var w = m.worktrees, w.removeValue(forKey: project) != nil else { return }
+        m.worktrees = w.isEmpty ? nil : w
+        k.byMachine[machine] = m
+        kept = k
+    }
+
+    static func remember(machine: String, project: String, selection: Hermesh_Session_V1_ModelSelection, mode: Hermesh_Identity_V1_RuntimeMode, worktree: Bool? = nil) {
+        guard !machine.isEmpty else { return }
+        var k = kept
+        var m = k.byMachine[machine] ?? Mine()
+        m.projectID = project
+        m.selection = try? selection.serializedData()
+        m.mode = mode.rawValue
+        if !project.isEmpty, project != scratchProject, let worktree {
+            var w = m.worktrees ?? [:]
+            w[project] = worktree
+            m.worktrees = w
+        }
         k.machineID = machine
-        k.byMachine[machine] = Mine(projectID: project, selection: try? selection.serializedData(), mode: mode.rawValue)
+        k.byMachine[machine] = m
         kept = k
     }
 
@@ -81,6 +118,8 @@ struct SessionPage: View {
     @State private var machineID = ""
     @State private var projectID = scratchProject
     @State private var place = SessionPlace()
+    @State private var placeEdited = false
+    @State private var worktreeTurns: Double = 0
     @State private var branches: SessionBranches?
     @State private var pickingBranch = false
     @State private var selection = Hermesh_Session_V1_ModelSelection()
@@ -118,9 +157,15 @@ struct SessionPage: View {
     @State private var managingRuns: Set<String> = []
     /// A new session's first message, from Send until its machine answers.
     @State private var starting: Starting?
+    /// First-use third-party AI data-sharing disclosure when starting a Her conversation before accepting on Her's page.
+    @State private var aiConsentPrompt: HerAIConsentPrompt?
+    /// Moves when the owner switches between Agent and Her on a new session, animating the prompt in.
+    @State private var rise = false
+    @Environment(\.accessibilityReduceMotion) private var still
     /// Horizontal drag offset when swiping the side panel's leading edge right to put it away.
     @GestureState private var panelDrag: CGFloat = 0
     @State private var questionTyping = false
+    @State private var todoExpanded = false
     @FocusState private var focused: Bool
 
     init(machineID: String, projectID: String) {
@@ -136,6 +181,9 @@ struct SessionPage: View {
     }
 
     private var isNew: Bool { sessionID.isEmpty }
+    private var herEnvs: [HerMachine] { herEnvironments(model.machines) }
+    private var herAt: HerMachine? { herPick(herEnvs, remembered: model.her.machine) }
+    private var who: NewSessionWho { isNew && selection.instanceID == herAgent && herAt != nil ? .her : .agent }
     private var listedSession: Session? { isNew ? nil : model.session(sessionID) }
     private var activeProjection: Hermesh_Session_V1_SessionProjection? {
         projection?.session.sessionID == sessionID ? projection : nil
@@ -204,6 +252,8 @@ struct SessionPage: View {
                 startingPage(starting)
             } else if isNew {
                 newSession.navigationTitle(String(localized: "New Session")).rootToolbar(sync: false)
+            } else if let s = displaySession, s.isHerConversation {
+                HerConversationPage(sessionID: s.sessionID)
             } else if let s = displaySession {
                 session(s)
                     .onChange(of: s.pendingQuestion?.questionID) { _, asked in if asked != nil { Haptic.asks.play() } }
@@ -228,9 +278,16 @@ struct SessionPage: View {
             if reachable && !following { wakeRetry() }
         }
         .task(id: "\(effectiveMachineID)/\(effectiveProjectID)") { await loadProviders() }
-        .onChange(of: model.projects) { SessionChoices.keepProjects(model.projects, machines: model.machines) }
+        .onChange(of: model.projects) {
+            SessionChoices.keepProjects(model.projects, machines: model.machines)
+            if isNew, !placeEdited, let pr = model.projects.first(where: { $0.machineID == machineID && $0.projectID == projectID }) {
+                let want = projectWorktree(pr, remembered: SessionChoices.worktree(machine: machineID, project: projectID))
+                if place.worktree != want { place.worktree = want }
+            }
+        }
         .onChange(of: model.addedProject) {
             guard let added = model.addedProject, added.machineID == machineID else { return }
+            placeEdited = true
             projectID = added.projectID
             place = SessionPlace(worktree: added.worktree)
             model.addedProject = nil
@@ -242,14 +299,31 @@ struct SessionPage: View {
             }
         }
         .sheet(isPresented: $pickingModel) {
-            ModelSheet(providers: providers, selection: Binding(
+            ModelSheet(providers: (!isNew || herAt == nil) ? providers.filter { $0.instanceID != herAgent } : providers,
+                       selection: Binding(
                 get: { selection },
                 set: { next in
+                    if isNew {
+                        let to: NewSessionWho = next.instanceID == herAgent ? .her : .agent
+                        if to != who {
+                            NewSessionWho.remember(to, persistent: !model.isDemo)
+                            rise = true
+                            if to == .her {
+                                if let herAt, !herEnvs.contains(where: { $0.machineID == machineID }) {
+                                    machineID = herAt.machineID
+                                }
+                                projectID = scratchProject
+                            } else {
+                                let list = projects(on: machineID).list
+                                pick(project: projectOnMachine(list, machineID: machineID, current: "", lastUsed: SessionChoices.mine(machineID)?.projectID), in: list)
+                            }
+                        }
+                    }
                     selection = next
                     if !isNew { update { $0.modelSelection = next } }
                 }
             ), stale: providersStale, machineName: machine?.machineName ?? "",
-            projectAgents: projects(on: effectiveMachineID).list.first { $0.projectID == effectiveProjectID }?.agents ?? [],
+            projectAgents: (isNew && who == .her) ? [] : projects(on: effectiveMachineID).list.first { $0.projectID == effectiveProjectID }?.agents ?? [],
             levelTitle: levelTitle) { changed in
                 model.show(String(localized: "\(modelTitle) has no “\(levelTitle(changed.from))” level; thinking is now “\(levelTitle(changed.to))”"))
             }
@@ -262,6 +336,19 @@ struct SessionPage: View {
         }
         .sheet(isPresented: $showingBackgroundTasks) {
             BackgroundTasksSheet(tasks: allBgTasks, onStop: stopBackgroundTask)
+        }
+        .alert("Share data with third-party AI?", isPresented: Binding(
+            get: { aiConsentPrompt != nil },
+            set: { if !$0 { aiConsentPrompt = nil } }
+        ), presenting: aiConsentPrompt) { consent in
+            Button("Allow AI Sharing") { consent.allow() }
+            Button("Don’t Allow", role: .cancel) {}
+        } message: { consent in
+            if let provider = consent.provider, let model = consent.model {
+                Text("Provider: \(provider)\nModel: \(model)\n\nData: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on your computer.\n\nNote: Her sends data through your computer to the AI model service configured there, including any custom provider or gateway.")
+            } else {
+                Text("Data: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on your computer.\n\nNote: Her sends data through your computer to the AI model service configured there, including any custom provider or gateway.")
+            }
         }
         // A new session's project's branches, read from its folder (only the owner's devices can): again as the page
         // opens or the project changes, since a branch switched on the machine isn't sent here.
@@ -298,9 +385,14 @@ struct SessionPage: View {
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.always)
         .scrollDismissesKeyboard(.immediately)
+        .background {
+            if herAt != nil {
+                NewSessionAurora(who: who).ignoresSafeArea()
+            }
+        }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 6) {
-                placeRow
+                if who == .agent { placeRow }
                 box
             }
             .padding(.bottom, 4)
@@ -310,68 +402,107 @@ struct SessionPage: View {
     private var ask: some View {
         let (here, stale) = projects(on: machineID)
         let projectTitle = projectID == scratchProject ? String(localized: "Temporary Workspace") : projectID
-        return VStack(spacing: 18) {
-            VStack(spacing: 2) {
-                Text("What should we build in")
-                HStack(spacing: 0) {
-                    Menu {
-                        Section(stale ? String(localized: "Projects on \(machine?.machineName ?? "") · last known") : String(localized: "Projects on \(machine?.machineName ?? "")")) {
-                            ForEach(here, id: \.projectID) { p in
-                                Button { pick(project: p.projectID, in: here) } label: {
-                                    Label { Text(p.projectID); Text(p.path) } icon: { if p.projectID == projectID { Image(systemName: "checkmark") } }
-                                }
-                                .accessibilityIdentifier("project-\(p.projectID)")
-                            }
-                            Button { pick(project: scratchProject, in: here) } label: {
-                                Label { Text("Temporary Workspace") } icon: { if projectID == scratchProject { Image(systemName: "checkmark") } }
-                            }
-                        }
-                        Button("Add Project…", systemImage: "plus") { model.sheet = .addProject(machineID, forSession: true) }
-                            .disabled(!online)
-                            .accessibilityIdentifier("thread-add-project")
-                    } label: {
-                        Text(verbatim: projectTitle).lineLimit(1).underline(color: .secondary)
+        return VStack(spacing: 14) {
+            if herAt != nil {
+                NewSessionPresence(who: who, onWho: chooseWho)
+            }
+            Group {
+                if who == .her, let herTarget = machine ?? herAt {
+                    HerNewSessionAsk(machine: herTarget, envs: herEnvs, reachable: reachable) { nextMachine in
+                        machineID = nextMachine
+                        model.her.machine = nextMachine
                     }
-                    .tint(.primary)
-                    .accessibilityIdentifier("thread-project")
-                    Text("What should we build in · end")
+                } else {
+                    VStack(spacing: 18) {
+                        VStack(spacing: 2) {
+                            Text("What should we build in")
+                            HStack(spacing: 0) {
+                                Menu {
+                                    Section(stale ? String(localized: "Projects on \(machine?.machineName ?? "") · last known") : String(localized: "Projects on \(machine?.machineName ?? "")")) {
+                                        ForEach(here, id: \.projectID) { p in
+                                            Button { pick(project: p.projectID, in: here) } label: {
+                                                Label { Text(p.projectID); Text(p.path) } icon: { if p.projectID == projectID { Image(systemName: "checkmark") } }
+                                            }
+                                            .accessibilityIdentifier("project-\(p.projectID)")
+                                        }
+                                        Button { pick(project: scratchProject, in: here) } label: {
+                                            Label { Text("Temporary Workspace") } icon: { if projectID == scratchProject { Image(systemName: "checkmark") } }
+                                        }
+                                    }
+                                    Button("Add Project…", systemImage: "plus") { model.sheet = .addProject(machineID, forSession: true) }
+                                        .disabled(!online)
+                                        .accessibilityIdentifier("thread-add-project")
+                                } label: {
+                                    Text(verbatim: projectTitle).lineLimit(1).underline(color: .secondary)
+                                }
+                                .tint(.primary)
+                                .accessibilityIdentifier("thread-project")
+                                Text("What should we build in · end")
+                            }
+                            .accessibilityIdentifier("project-scratch")
+                        }
+                        .font(.title.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("new-session-title")
+                        VStack(spacing: 8) {
+                            Menu {
+                                Section("Environment") {
+                                    ForEach(model.machines, id: \.machineID) { m in
+                                        let note: String? = !m.online && !m.local ? String(localized: "Offline · messages wait until it’s back") : nil
+                                        Button { pick(machine: m.machineID) } label: {
+                                            if let note {
+                                                Label { Text(m.machineName); Text(note) } icon: { if m.machineID == machineID { Image(systemName: "checkmark") } }
+                                            } else {
+                                                Label { Text(m.machineName) } icon: { if m.machineID == machineID { Image(systemName: "checkmark") } }
+                                            }
+                                        }
+                                        .accessibilityIdentifier("machine-\(m.machineName)")
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: m_icon)
+                                    Text(verbatim: machine?.machineName ?? "").lineLimit(1)
+                                    if !online { Circle().fill(.tertiary).frame(width: 6, height: 6) }
+                                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                                }
+                                .font(.subheadline).foregroundStyle(.secondary)
+                            }
+                            .tint(.secondary)
+                            .accessibilityIdentifier("thread-machine")
+                            ConnectionLine(machine: machine, linkUp: reachable, centered: true)
+                                .frame(minHeight: 24)
+                        }
+                    }
                 }
             }
-            .font(.title.weight(.semibold))
-            .multilineTextAlignment(.center)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("new-session-title")
-            VStack(spacing: 8) {
-                Menu {
-                    Section("Environment") {
-                        ForEach(model.machines, id: \.machineID) { m in
-                            let note: String? = !m.online && !m.local ? String(localized: "Offline · messages wait until it’s back") : nil
-                            Button { pick(machine: m.machineID) } label: {
-                                if let note {
-                                    Label { Text(m.machineName); Text(note) } icon: { if m.machineID == machineID { Image(systemName: "checkmark") } }
-                                } else {
-                                    Label { Text(m.machineName) } icon: { if m.machineID == machineID { Image(systemName: "checkmark") } }
-                                }
-                            }
-                            .accessibilityIdentifier("machine-\(m.machineName)")
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: m_icon)
-                        Text(verbatim: machine?.machineName ?? "").lineLimit(1)
-                        if !online { Circle().fill(.tertiary).frame(width: 6, height: 6) }
-                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                    }
-                    .font(.subheadline).foregroundStyle(.secondary)
-                }
-                .tint(.secondary)
-                .accessibilityIdentifier("thread-machine")
-                ConnectionLine(machine: machine, linkUp: reachable, centered: true)
-                    .frame(minHeight: 24)
-            }
+            .id(who)
+            .transition(still || !rise ? .identity : .asymmetric(
+                insertion: .opacity.combined(with: .offset(y: 10)),
+                removal: .opacity
+            ))
         }
+        .animation(still || !rise ? nil : .easeOut(duration: 0.35), value: who)
         .padding(.horizontal, 28)
+    }
+
+    private func chooseWho(_ next: NewSessionWho) {
+        guard isNew, next != who, next != .her || herAt != nil else { return }
+        NewSessionWho.remember(next, persistent: !model.isDemo)
+        rise = true
+        if next == .her, let herAt {
+            machineID = herAt.machineID
+            projectID = scratchProject
+            selection = herSelection(providers: herAt.machineID == effectiveMachineID ? providers : [])
+            return
+        }
+        let known = { (id: String) in !id.isEmpty && model.machines.contains { $0.machineID == id } }
+        let mid = [SessionChoices.lastMachine ?? ""].first(where: known) ?? model.machines.first(where: \.local)?.machineID ?? model.machines.first?.machineID ?? ""
+        machineID = mid
+        let list = projects(on: mid).list
+        pick(project: projectOnMachine(list, machineID: mid, current: "", lastUsed: SessionChoices.mine(mid)?.projectID), in: list)
+        selection = (mid == effectiveMachineID ? agentSelection(providers: providers, machineID: mid) : nil) ?? Hermesh_Session_V1_ModelSelection()
     }
 
     // MARK: A session starting
@@ -400,7 +531,8 @@ struct SessionPage: View {
             box.padding(.bottom, 4)
         }
         .sessionBar(nil, renaming: $renaming, deleting: $deleting,
-                    starting: .init(title: firstLine(text), place: "\(machine?.machineName ?? "")/\(projectID)"))
+                    starting: .init(title: firstLine(text),
+                                    place: st.request.modelSelection.instanceID == herAgent ? "Her · \(machine?.machineName ?? "")" : "\(machine?.machineName ?? "")/\(projectID)"))
         .accessibilityIdentifier("session-starting")
     }
 
@@ -427,6 +559,12 @@ struct SessionPage: View {
             nil
         }
         let hasInlineQuestion = pendingReq?.kind == .userInput || fallbackQuestion != nil
+        let todos = activeTodoSteps(activeProj)
+        let workStatus = sessionWorkStatus(activeProj, steps: steps)
+        let todoWindow = windowTodoSteps(todos, workText: workStatus?.text)
+        let todoEndSummary: TodoEndSummary? = todoWindow.flatMap { w in
+            w.active.first.map { TodoEndSummary(stepNumber: w.stepNumber, total: w.total, text: $0.text, failed: w.hasFailed) }
+        }
         // A wide screen: the side panel beside the conversation (docs/session-files.md §15), or taking the page.
         let panel = model.wide != nil && files.panelOpen
         // Enlarged, the panel covers the conversation, which keeps its width and place underneath. On iPhone Duo
@@ -473,7 +611,10 @@ struct SessionPage: View {
                     }
                     .id(q.questionID)
                 }
-                ConnectionLine(machine: machine, linkUp: s.status == .archived || (following && reachable), work: sessionWorkStatus(activeProj, steps: steps))
+                if let todoWindow {
+                    SessionTodoSpine(window: todoWindow, since: workStatus?.since, hasWork: workStatus != nil, expanded: $todoExpanded)
+                }
+                ConnectionLine(machine: machine, linkUp: s.status == .archived || (following && reachable), work: todoWindow == nil ? workStatus : nil)
                 if let f = sessionFailure(currentSession) {
                     FailedView(session: s, failure: f, grant: grant)
                 }
@@ -483,6 +624,8 @@ struct SessionPage: View {
             .background(ConversationScrollFinder(box: scrollBox))
         }
         .keyboardAwayOnTap()
+        .onChange(of: sessionID) { _, _ in todoExpanded = false }
+        .onChange(of: todos.isEmpty) { _, empty in if empty { todoExpanded = false } }
         .onChange(of: questionTyping) { _, typingNow in
             if typingNow {
                 focused = false
@@ -494,7 +637,7 @@ struct SessionPage: View {
             if !has && questionTyping { questionTyping = false }
         }
         .followsEnd(id: sessionID, ready: historyReady(s), spoken: spoken, waitingAgent: hasInlineQuestion && !questionTyping ? s.agent : nil,
-                    atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
+                    todoSummary: todoEndSummary, atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
             if s.status != .archived {
                 VStack(spacing: 6) {
                     if let req = pendingReq, req.kind != .userInput {
@@ -503,7 +646,6 @@ struct SessionPage: View {
                     }
                     backgroundBar
                     queue(activeProj)
-                    todoCard(activeProj)
                     if !(hasInlineQuestion && questionTyping) {
                         box
                     }
@@ -668,61 +810,6 @@ struct SessionPage: View {
         }
     }
 
-    /// Live checklist floating over the composer while a multi-step turn runs; auto-collapses when all steps complete.
-    @ViewBuilder private func todoCard(_ activeProj: Hermesh_Session_V1_SessionProjection?) -> some View {
-        let todos = activeTodoSteps(activeProj)
-        if !todos.isEmpty {
-            let list = VStack(alignment: .leading, spacing: 7) {
-                ForEach(Array(todos.enumerated()), id: \.offset) { i, step in
-                    HStack(alignment: .firstTextBaseline, spacing: 9) {
-                        todoGlyph(step.status)
-                        Text(verbatim: step.text)
-                            .font(.subheadline)
-                            .foregroundStyle(todoTextStyle(step.status))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .accessibilityIdentifier("thread-todo-step-\(i)")
-                }
-            }
-            Group {
-                if todos.count > 5 {
-                    ScrollView { list }
-                        .frame(maxHeight: 168)
-                } else {
-                    list
-                }
-            }
-            .padding(.horizontal, 14).padding(.vertical, 11)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .padding(.horizontal, 20)
-            .accessibilityIdentifier("thread-todo-card")
-        }
-    }
-
-    @ViewBuilder private func todoGlyph(_ status: TodoStepStatus) -> some View {
-        switch status {
-        case .inProgress:
-            MovingMark(size: 14, motion: .seq)
-                .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.bottom] - 2 }
-        case .completed:
-            Image(systemName: "checkmark").font(.caption.weight(.semibold)).foregroundStyle(.tint)
-        case .skipped:
-            Image(systemName: "minus").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-        case .failed:
-            Image(systemName: "xmark").font(.caption.weight(.semibold)).foregroundStyle(.red)
-        case .pending:
-            Image(systemName: "circle").font(.caption).foregroundStyle(.tertiary)
-        }
-    }
-
-    private func todoTextStyle(_ status: TodoStepStatus) -> HierarchicalShapeStyle {
-        switch status {
-        case .inProgress, .failed: .primary
-        case .pending: .secondary
-        case .completed, .skipped: .tertiary
-        }
-    }
-
     private func sessionWorkStatus(_ activeProj: Hermesh_Session_V1_SessionProjection?, steps: [Step]) -> SessionWorkStatus? {
         switch currentSession?.status {
         case .preparing:
@@ -828,7 +915,7 @@ struct SessionPage: View {
             }
             HStack(alignment: .bottom, spacing: 8) {
                 if !open { plusButton }
-                TextField(isNew && starting == nil ? String(localized: "Describe what to build, debug or plan") : running ? String(localized: "Say more; it goes to the next turn") : String(localized: "Keep going"),
+                TextField(isNew && starting == nil ? (who == .her ? String(localized: "Message Her") : String(localized: "Describe what to build, debug or plan")) : running ? String(localized: "Say more; it goes to the next turn") : String(localized: "Keep going"),
                           text: $draft, axis: .vertical)
                     .font(shellDraft ? .body.monospaced() : .body)
                     .lineLimit(open ? 2 ... 6 : 1 ... 6)
@@ -858,6 +945,13 @@ struct SessionPage: View {
         }
         .padding(6)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            if isNew && herAt != nil && focused {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder((who == .her ? Color(hex: "b3bcf2") : Color.accentColor).opacity(0.45), lineWidth: 1)
+            }
+        }
+        .shadow(color: (isNew && herAt != nil && focused) ? (who == .her ? Color(hex: "b3bcf2") : Color.accentColor).opacity(0.28) : .clear, radius: 14, y: 4)
         .keyboardAwayOnFlickDown()
         .animation(.snappy(duration: 0.22), value: open)
         .padding(.horizontal, 12)
@@ -964,13 +1058,22 @@ struct SessionPage: View {
     }
 
     private var modelButton: some View {
-        Button {
+        let reasoning = reasoningOf(providers, selection)
+        let effortText = reasoning.map { r in levelTitle(r.value, r.choices.first { $0.id == r.value }?.label ?? r.value) }
+        return Button {
             focused = false
             pickingModel = true
         } label: {
             HStack(spacing: 6) {
-                if let inst = providerInstance(providers, selection.instanceID) { AgentLogo(id: inst.instanceID, size: 16) }
+                if let inst = providerInstance(providers, selection.instanceID) {
+                    AgentLogo(id: inst.instanceID, size: 16)
+                } else if selection.instanceID == herAgent {
+                    AgentLogo(id: herAgent, size: 16)
+                }
                 Text(verbatim: modelTitle).lineLimit(1)
+                if let effortText {
+                    Text(verbatim: effortText).foregroundStyle(.secondary).lineLimit(1)
+                }
                 Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
             }
             .font(.subheadline)
@@ -985,18 +1088,36 @@ struct SessionPage: View {
         let project = projects(on: machineID).list.first { $0.projectID == projectID }
         if project?.repo == true || project?.workspace == .worktree {
             HStack(spacing: 6) {
-                Menu {
+                Button {
+                    setWorktree(!place.worktree)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: place.worktree ? "arrow.triangle.branch" : "folder")
+                            .contentTransition(.symbolEffect(.replace))
+                        Text(verbatim: place.worktree ? String(localized: "Separate worktree") : String(localized: "Current checkout"))
+                            .lineLimit(1)
+                        Image(systemName: "arrow.left.arrow.right")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(worktreeTurns * 180))
+                    }
+                    .font(.footnote).foregroundStyle(.primary)
+                    .padding(.horizontal, 10).frame(height: 32)
+                    .background(Palette.fill2, in: Capsule())
+                }
+                .tint(.primary)
+                .sensoryFeedback(.selection, trigger: worktreeTurns)
+                .contextMenu {
                     Section("Working copy") {
-                        Button { place.worktree = false } label: {
-                            Label { Text("Current checkout"); Text("Works on the project’s own folder") } icon: { if !place.worktree { Image(systemName: "checkmark") } }
+                        Button { setWorktree(false) } label: {
+                            Label { Text("Current checkout"); Text("Works on the project’s own folder") } icon: { Image(systemName: !place.worktree ? "checkmark" : "folder") }
                         }
-                        Button { place.worktree = true } label: {
-                            Label { Text("Separate worktree"); Text("A branch of its own; your files are left alone") } icon: { if place.worktree { Image(systemName: "checkmark") } }
+                        Button { setWorktree(true) } label: {
+                            Label { Text("Separate worktree"); Text("A branch of its own; your files are left alone") } icon: { Image(systemName: place.worktree ? "checkmark" : "arrow.triangle.branch") }
                         }
                     }
-                } label: { chip(icon: place.worktree ? "arrow.triangle.branch" : "folder", place.worktree ? String(localized: "Separate worktree") : String(localized: "Current checkout")) }
-                    .tint(.primary)
-                    .accessibilityIdentifier("thread-worktree")
+                }
+                .accessibilityIdentifier("thread-worktree")
                 if let branches {
                     let name = place.chosen(branches)
                     Button {
@@ -1028,18 +1149,21 @@ struct SessionPage: View {
     private var m_icon: String { machine?.local == true ? "laptopcomputer" : "server.rack" }
     private var clamped: Hermesh_Identity_V1_RuntimeMode { clampRuntimeMode(mode, ceiling: ceiling) }
 
-    private func chip(icon: String?, _ title: String) -> some View {
-        HStack(spacing: 4) {
-            if let icon { Image(systemName: icon) }
-            Text(verbatim: title).lineLimit(1)
-            Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+    // MARK: Choosing
+
+    private func setWorktree(_ next: Bool) {
+        placeEdited = true
+        guard place.worktree != next else { return }
+        withAnimation(.spring(duration: 0.3, bounce: 0.25)) {
+            worktreeTurns += 1
+            place.worktree = next
         }
-        .font(.footnote).foregroundStyle(.primary)
-        .padding(.horizontal, 10).frame(height: 32)
-        .background(Palette.fill2, in: Capsule())
+        SessionChoices.rememberWorktree(machine: machineID, project: projectID, worktree: next)
     }
 
-    // MARK: Choosing
+    private func findProject(machine id: String, project pid: String) -> Project? {
+        projects(on: id).list.first { $0.projectID == pid } ?? SessionChoices.lastProjects(id).first { $0.projectID == pid }
+    }
 
     private func pick(machine id: String) {
         machineID = id
@@ -1048,7 +1172,9 @@ struct SessionPage: View {
 
     private func pick(project id: String, in list: [Project]) {
         projectID = id
-        place = SessionPlace(worktree: list.first { $0.projectID == id }?.workspace == .worktree)
+        placeEdited = false
+        let pr = list.first { $0.projectID == id } ?? SessionChoices.lastProjects(machineID).first { $0.projectID == id }
+        place = SessionPlace(worktree: projectWorktree(pr, remembered: SessionChoices.worktree(machine: machineID, project: id)))
     }
 
     private func setMode(_ m: Hermesh_Identity_V1_RuntimeMode) {
@@ -1062,23 +1188,35 @@ struct SessionPage: View {
     private func start() async {
         initialized = false
         atEnd = true
+        rise = false
         if isNew {
             projection = nil
             let known = { (id: String) in !id.isEmpty && model.machines.contains { $0.machineID == id } }
             let mid = [askedMachine, SessionChoices.lastMachine ?? ""].first(where: known) ?? model.machines.first(where: \.local)?.machineID ?? model.machines.first?.machineID ?? ""
-            machineID = mid
             let list = projects(on: mid).list
-            pick(project: askedProject.isEmpty ? projectOnMachine(list, machineID: mid, current: "", lastUsed: SessionChoices.mine(mid)?.projectID) : askedProject, in: list)
+            let pid = (askedProject.isEmpty || askedProject == herSection) ? projectOnMachine(list, machineID: mid, current: "", lastUsed: SessionChoices.mine(mid)?.projectID) : askedProject
+            let wantsHer = askedProject == herSection || (askedMachine.isEmpty && askedProject.isEmpty && NewSessionWho.remembered(persistent: !model.isDemo) == .her)
+            let her = wantsHer ? herAt : nil
+            machineID = her?.machineID ?? mid
+            pick(project: her != nil ? scratchProject : pid, in: projects(on: her?.machineID ?? mid).list)
+            if her != nil {
+                if askedProject == herSection { NewSessionWho.remember(.her, persistent: !model.isDemo) }
+                selection = herSelection()
+            } else if selection.instanceID == herAgent {
+                selection = Hermesh_Session_V1_ModelSelection()
+            }
             if let m = SessionChoices.mine(mid)?.mode, let saved = Hermesh_Identity_V1_RuntimeMode(rawValue: m) { mode = saved }
             SessionChoices.keepProjects(model.projects, machines: model.machines)
             initialized = true
             return
         }
-        if let cached = model.conversations.projection(sessionID) {
-            apply(cached.session)
-            projection = cached
-        } else {
-            projection = nil
+        if projection?.session.sessionID != sessionID {
+            if let cached = model.conversations.projection(sessionID) {
+                apply(cached.session)
+                projection = cached
+            } else {
+                projection = nil
+            }
         }
         initialized = true
     }
@@ -1207,18 +1345,29 @@ struct SessionPage: View {
         providers = res.providers
         if res.maxRuntimeMode != .unspecified { ceiling = res.maxRuntimeMode }
         guard isNew else { return }
-        if let last = SessionChoices.lastSelection(mid), let inst = providerInstance(res.providers, last.instanceID),
-           providerUnusable(inst, projectAgents: []) == nil, inst.models.contains(where: { $0.slug == last.model }) {
-            selection = last
-        } else if providerInstance(res.providers, selection.instanceID).map({ providerUnusable($0, projectAgents: []) != nil }) ?? true,
-                  let first = preferredProvider(res.providers) {
-            selection = defaultSelection(first)
+        // To Her: her model, her default unless one of hers was chosen; else an agent's.
+        if selection.instanceID == herAgent && herAt != nil {
+            selection = herSelection(providers: res.providers, prev: selection)
+        } else if let next = agentSelection(providers: res.providers, machineID: mid, prev: selection) {
+            selection = next
         }
     }
 
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty || !attached.isEmpty, let api = model.api else { return }
+        if isNew && who == .her && !model.isDemo && !model.her.aiConsentAccepted {
+            guard aiConsentPrompt == nil else { return }
+            let entry = modelEntry(providers, selection)
+            let slug = entry?.slug ?? selection.model
+            let providerLabel = slug.split(separator: "/", maxSplits: 1).first.map(String.init)
+            let modelLabel = entry?.name ?? (slug.isEmpty ? nil : slug)
+            aiConsentPrompt = HerAIConsentPrompt(provider: providerLabel, model: modelLabel, allow: {
+                model.her.aiConsentAccepted = true
+                send()
+            })
+            return
+        }
         let files = attached
         if isNew {
             do {
@@ -1340,13 +1489,27 @@ struct SessionPage: View {
         let began = Date.now
         do {
             let res = try await api.startSession(st.request)
-            SessionChoices.remember(machine: st.request.machineID, project: st.request.projectID, selection: selection, mode: clamped)
+            // An agent's choices are kept for the next session; Her's stay hers (NewSessionWho).
+            if st.request.modelSelection.instanceID != herAgent {
+                let pr = findProject(machine: st.request.machineID, project: st.request.projectID)
+                let canWt = pr?.repo == true || pr?.workspace == .worktree
+                SessionChoices.remember(
+                    machine: st.request.machineID,
+                    project: st.request.projectID,
+                    selection: selection,
+                    mode: clamped,
+                    worktree: canWt ? st.request.workspace.mode == .worktree : nil
+                )
+            }
             // "Sending…", once shown (at 400 ms), stays half a second.
             let took = Date.now.timeIntervalSince(began)
             if took > 0.4 && took < 0.9 { try? await Task.sleep(for: .seconds(0.9 - took)) }
             let id = res.session.sessionID
-            model.conversations.keep(id, startedProjection(res, st))
-            model.seededSessions.insert(id)
+            model.noteStarted(res.session)
+            if !res.session.isHerConversation {
+                model.conversations.keep(id, startedProjection(res, st))
+                model.seededSessions.insert(id)
+            }
             starting = nil
             model.open(.session(id))
         } catch {
@@ -1692,7 +1855,9 @@ private struct ModelSheet: View {
     @State private var query = ""
 
     var body: some View {
-        let usable = providers.filter { p in providerUnusable(p, projectAgents: projectAgents).map { $0 == .signedOut } ?? true }
+        let usable = providers
+            .filter { p in providerUnusable(p, projectAgents: p.instanceID == herAgent ? [] : projectAgents).map { $0 == .signedOut } ?? true }
+            .sorted { a, b in (a.instanceID == herAgent) && (b.instanceID != herAgent) }
         let groups: [(provider: Hermesh_Session_V1_ProviderInstance, models: [Hermesh_Session_V1_ModelCatalogEntry])] =
             query.trimmingCharacters(in: .whitespaces).isEmpty ? usable.map { ($0, $0.models) } : findModels(usable, query: query).map { ($0.provider, $0.models) }
         NavigationStack {
@@ -1740,7 +1905,11 @@ private struct ModelSheet: View {
         } label: {
             HStack {
                 Text(m.name)
-                if !m.badge.isEmpty { Text("New").font(.caption2).foregroundStyle(.tint) }
+                if p.instanceID == herAgent && m.isDefault {
+                    Text("Default").font(.caption2).foregroundStyle(.secondary)
+                } else if !m.badge.isEmpty {
+                    Text("New").font(.caption2).foregroundStyle(.tint)
+                }
                 Spacer()
                 if selection.instanceID == p.instanceID && selection.model == m.slug { Image(systemName: "checkmark").foregroundStyle(.tint) }
             }
@@ -1930,5 +2099,301 @@ private struct BackgroundTasksSheet: View {
 
     private static func stripANSI(_ text: String) -> String {
         text.replacingOccurrences(of: #"\u{001B}\[[0-9;]*[A-Za-z]"#, with: "", options: .regularExpression)
+    }
+}
+
+/// Inline B2 live checklist spine at the foot of the conversation: 18pt icon column aligned with `ConnectionLine`,
+/// a 1pt vertical spine connecting nodes, smart 3-row window while collapsed, and deduplicated live sub-focus + timer.
+private struct SessionTodoSpine: View {
+    @Environment(\.scenePhase) private var phase
+    @Environment(\.accessibilityReduceMotion) private var still
+    let window: TodoSpineWindow
+    let since: Date?
+    let hasWork: Bool
+    @Binding var expanded: Bool
+
+    private static let tokenRegex = /`([^`]+)`|(\b[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.\/-]+|\b[a-zA-Z0-9_-]+\.(?:swift|tsx?|jsx?|go|rs|py|css|html|md|json|ya?ml|sql|db|app)\b)/
+
+    private var activeIndexSet: Set<Int> { Set(window.active.map(\.index)) }
+    private var lastActiveIndex: Int? { window.active.last?.index }
+
+    private var spined: Bool {
+        let collapsedRows = (window.foldLeading ? 1 : window.leading.count)
+            + window.active.count
+            + (window.foldUpcoming ? 1 : window.upcoming.count)
+        return (expanded ? window.total + 1 : collapsedRows) >= 2
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if expanded {
+                Button {
+                    withAnimation(still ? nil : .snappy(duration: 0.22)) { expanded = false }
+                } label: {
+                    HStack(alignment: .center, spacing: 8) {
+                        glyphBox { checkCircle }
+                        HStack(spacing: 4) {
+                            Text("Steps · \(window.settledCount)/\(window.total) completed")
+                                .foregroundStyle(.secondary)
+                            Text("·").foregroundStyle(.tertiary)
+                            Text("Hide").foregroundStyle(.tertiary)
+                            Image(systemName: "chevron.up")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .font(.footnote)
+                    }
+                    .padding(.vertical, 3.5)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("thread-todo-toggle")
+
+                ForEach(window.all, id: \.index) { step in
+                    if activeIndexSet.contains(step.index) {
+                        let order = window.active.firstIndex(where: { $0.index == step.index }) ?? 0
+                        activeNode(step, order: order)
+                    } else {
+                        passiveNode(step)
+                    }
+                }
+            } else {
+                if window.foldLeading {
+                    Button {
+                        withAnimation(still ? nil : .snappy(duration: 0.22)) { expanded = true }
+                    } label: {
+                        HStack(alignment: .center, spacing: 8) {
+                            glyphBox { checkCircle }
+                            HStack(spacing: 4) {
+                                Text("Completed \(window.leading.count) · \(window.total) total")
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            .font(.footnote)
+                            .foregroundStyle(.tertiary)
+                        }
+                        .padding(.vertical, 3.5)
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("thread-todo-toggle")
+                } else {
+                    ForEach(window.leading, id: \.index) { passiveNode($0) }
+                }
+
+                ForEach(Array(window.active.enumerated()), id: \.element.index) { order, step in
+                    activeNode(step, order: order)
+                }
+
+                if window.foldUpcoming, let next = window.upcoming.first {
+                    HStack(alignment: .top, spacing: 8) {
+                        glyphBox { stepGlyph(next.status) }
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(next.status == .pending ? String(localized: "Next: \(next.text)") : next.text)
+                                .font(.footnote)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                            Button {
+                                withAnimation(still ? nil : .snappy(duration: 0.22)) { expanded = true }
+                            } label: {
+                                HStack(spacing: 2) {
+                                    Text("+\(window.moreUpcomingCount) more")
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 9.5, weight: .semibold))
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .fixedSize()
+                        }
+                    }
+                    .padding(.vertical, 3.5)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("thread-todo-step-\(next.index)")
+                } else {
+                    ForEach(Array(window.upcoming.enumerated()), id: \.element.index) { idx, step in
+                        if window.foldLeading, idx == 0, step.status == .pending {
+                            HStack(alignment: .top, spacing: 8) {
+                                glyphBox { stepGlyph(step.status) }
+                                Text("Next: \(step.text)")
+                                    .font(.footnote)
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                            }
+                            .padding(.vertical, 3.5)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("thread-todo-step-\(step.index)")
+                        } else {
+                            passiveNode(step)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(alignment: .topLeading) {
+            if spined {
+                Rectangle()
+                    .fill(Palette.separator)
+                    .frame(width: 1)
+                    .padding(.leading, 8.5)
+                    .padding(.vertical, 10)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("thread-todo-card")
+    }
+
+    @ViewBuilder private func activeNode(_ step: IndexedTodoStep, order: Int) -> some View {
+        let isLast = step.index == lastActiveIndex
+        let showSub = isLast && window.subFocus != nil
+        let deduplicatedWork = isLast && window.subFocus == nil && hasWork
+        HStack(alignment: .top, spacing: 8) {
+            glyphBox { stepGlyph(step.status) }
+            VStack(alignment: .leading, spacing: 2.5) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(Self.styledStepText(step.text, meta: order == 0 ? "\(window.stepNumber)/\(window.total)" : nil))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(step.status == .failed ? .red : .primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if order > 0 {
+                        Text("Parallel")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(Color.accentColor)
+                            .padding(.horizontal, 5.5).padding(.vertical, 1.5)
+                            .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            .fixedSize()
+                    } else if !showSub, let since {
+                        HStack(spacing: 3) {
+                            Text("·")
+                            Text(since, style: .timer).monospacedDigit()
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .fixedSize()
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier(deduplicatedWork ? "thread-working" : "thread-todo-active-\(step.index)")
+
+                if showSub, let subFocus = window.subFocus {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(verbatim: subFocus.replacingOccurrences(of: "/", with: "/\u{200B}"))
+                            .font(.footnote)
+                            .foregroundStyle(window.hasFailed ? .red : .secondary)
+                            .lineLimit(2)
+                            .shimmer(!window.hasFailed, paused: phase != .active)
+                        if let since {
+                            HStack(spacing: 3) {
+                                Text("·")
+                                Text(since, style: .timer).monospacedDigit()
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .fixedSize()
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("thread-working")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 4.5)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("thread-todo-step-\(step.index)")
+    }
+
+    @ViewBuilder private func passiveNode(_ step: IndexedTodoStep) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            glyphBox { stepGlyph(step.status) }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(Self.styledStepText(step.text))
+                    .font(.footnote)
+                    .foregroundStyle(step.status == .pending ? .secondary : .tertiary)
+                    .opacity(step.status == .pending ? 0.8 : 1)
+                    .fixedSize(horizontal: false, vertical: true)
+                if step.status == .skipped {
+                    Text("Skipped")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .fixedSize()
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 3.5)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("thread-todo-step-\(step.index)")
+    }
+
+    private func glyphBox<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .frame(width: 18, height: 20)
+            .background(Color(UIColor.systemBackground))
+    }
+
+    private var checkCircle: some View {
+        Image(systemName: "checkmark")
+            .font(.system(size: 8.5, weight: .bold))
+            .foregroundStyle(.green)
+            .frame(width: 14, height: 14)
+            .background(Color.green.opacity(0.14), in: .circle)
+            .overlay(Circle().strokeBorder(Color.green.opacity(0.35), lineWidth: 0.8))
+    }
+
+    @ViewBuilder private func stepGlyph(_ status: TodoStepStatus) -> some View {
+        switch status {
+        case .inProgress:
+            MovingMark(size: 16, motion: .seq)
+        case .completed:
+            Image(systemName: "checkmark")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.tertiary)
+        case .skipped:
+            Image(systemName: "minus")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.tertiary)
+        case .failed:
+            Image(systemName: "xmark")
+                .font(.system(size: 10.5, weight: .bold))
+                .foregroundStyle(.red)
+        case .pending:
+            Circle()
+                .strokeBorder(Color(UIColor.quaternaryLabel), lineWidth: 1.35)
+                .frame(width: 10, height: 10)
+        }
+    }
+
+    private static func styledStepText(_ raw: String, meta: String? = nil) -> AttributedString {
+        var out = AttributedString()
+        var cursor = raw.startIndex
+        for match in raw.matches(of: tokenRegex) {
+            if match.range.lowerBound > cursor {
+                out.append(AttributedString(String(raw[cursor ..< match.range.lowerBound])))
+            }
+            let token = String(match.output.1 ?? match.output.2 ?? match.output.0)
+                .replacingOccurrences(of: "/", with: "/\u{200B}")
+            var codePart = AttributedString(" \(token) ")
+            codePart.font = .footnote.monospaced()
+            codePart.backgroundColor = UIColor.tertiarySystemFill
+            out.append(codePart)
+            cursor = match.range.upperBound
+        }
+        if cursor < raw.endIndex {
+            out.append(AttributedString(String(raw[cursor...])))
+        }
+        if let meta, !meta.isEmpty {
+            var metaPart = AttributedString("  \(meta)")
+            metaPart.font = .caption.monospacedDigit()
+            metaPart.foregroundColor = UIColor.tertiaryLabel
+            out.append(metaPart)
+        }
+        return out
     }
 }

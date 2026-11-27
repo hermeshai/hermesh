@@ -1,12 +1,11 @@
 import { createContext, useEffect, useSyncExternalStore } from "react";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { resolveDocPath, sameImagePath, sessionImageRef } from "@hermesh/her-client";
 import { FileContentKind } from "@hermesh/proto/session";
 import { sessions } from "../../api";
+import { extractPureImageSlice, scanReplyImages, type ReplyImageItem, type ReplyImages } from "../markdown/parse";
 import type { SessionFile } from "./files";
 
-export type ReplyImageItem = { path: string; caption: string };
-export type ReplyImages = { explicit: string[]; gallery: ReplyImageItem[] };
+export { extractPureImageSlice, scanReplyImages, type ReplyImageItem, type ReplyImages };
 
 export const ReplyImagesContext = createContext<ReplyImages | null>(null);
 
@@ -106,25 +105,43 @@ async function loadOne(key: string, file: SessionFile) {
   notify();
 }
 
-export function requestSessionImage(file: SessionFile, retryOffline = false) {
+export function requestSessionImage(file: SessionFile, retryOffline = false, urgent = false) {
   const key = keyOf(file);
   const had = store.get(key);
   if (had) {
     if (had.status === "offline" && retryOffline) {
       store.delete(key);
     } else {
+      if (urgent && queuedKeys.has(key)) {
+        const idx = queue.findIndex((q) => q.key === key);
+        if (idx > 0) {
+          const [picked] = queue.splice(idx, 1);
+          queue.unshift(picked!);
+        }
+      }
       return;
     }
   }
-  if (inFlightKeys.has(key) || queuedKeys.has(key)) return;
+  if (inFlightKeys.has(key)) return;
+  if (queuedKeys.has(key)) {
+    if (urgent) {
+      const idx = queue.findIndex((q) => q.key === key);
+      if (idx > 0) {
+        const [picked] = queue.splice(idx, 1);
+        queue.unshift(picked!);
+      }
+    }
+    return;
+  }
   touchLRU(key, { status: "loading" });
   queuedKeys.add(key);
-  queue.push({ key, file });
+  if (urgent) queue.unshift({ key, file });
+  else queue.push({ key, file });
   notify();
   pump();
 }
 
-export function useSessionImage(file: SessionFile | null, active: boolean, online: boolean): ImageState | undefined {
+export function useSessionImage(file: SessionFile | null, active: boolean, online: boolean, urgent = false): ImageState | undefined {
   const key = file ? keyOf(file) : "";
   const state = useSyncExternalStore(
     (l) => (listeners.add(l), () => listeners.delete(l)),
@@ -132,43 +149,7 @@ export function useSessionImage(file: SessionFile | null, active: boolean, onlin
   );
   useEffect(() => {
     if (!file || !active) return;
-    requestSessionImage(file, state?.status === "offline" && online);
-  }, [key, active, online, state?.status === "offline"]);
+    requestSessionImage(file, state?.status === "offline" && online, urgent);
+  }, [key, active, online, urgent, state?.status === "offline"]);
   return state;
-}
-
-/**
- * Scans settled Markdown text (skipping fenced and inline code) to find `![alt](src)` explicit
- * images and ordered unique gallery items so `[label](path)` never duplicates `![alt](path)`.
- */
-export function scanReplyImages(text: string, basePath = ""): ReplyImages {
-  // Strip fenced code blocks and single-line inline code spans before scanning links/images.
-  const stripped = text
-    .replace(/^(?:`{3,}|~{3,})[\s\S]*?^(?:`{3,}|~{3,})/gm, "")
-    .replace(/`[^`\n]+`/g, "");
-  const found: { bang: boolean; label: string; path: string }[] = [];
-  const re = /(!?)\[([^\]]*)\]\(([^)\n]+)\)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(stripped)) !== null) {
-    let raw = m[3]!.trim();
-    if (raw.startsWith("<") && raw.includes(">")) raw = raw.slice(1, raw.indexOf(">"));
-    else {
-      const titleIdx = raw.search(/\s+["']/);
-      if (titleIdx > 0) raw = raw.slice(0, titleIdx);
-    }
-    const rawPath = sessionImageRef(raw);
-    const path = rawPath ? resolveDocPath(basePath, rawPath) : null;
-    if (path) found.push({ bang: m[1] === "!", label: m[2]!.trim(), path });
-  }
-  const explicit: string[] = [];
-  for (const f of found) {
-    if (f.bang && !explicit.some((p) => sameImagePath(p, f.path))) explicit.push(f.path);
-  }
-  const gallery: ReplyImageItem[] = [];
-  for (const f of found) {
-    if (!f.bang && explicit.some((p) => sameImagePath(p, f.path))) continue;
-    if (gallery.some((g) => sameImagePath(g.path, f.path))) continue;
-    gallery.push({ path: f.path, caption: f.label });
-  }
-  return { explicit, gallery };
 }

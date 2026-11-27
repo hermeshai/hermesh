@@ -127,6 +127,14 @@ extension HermeshUITests {
         let lightSlide = app.buttons["session-image-carousel_light.png"]
         XCTAssertTrue(darkSlide.waitForExistence(timeout: 20) && lightSlide.waitForExistence(timeout: 20), "unwrapped carousel images")
         XCTAssertEqual(darkSlide.frame.minY, lightSlide.frame.minY, accuracy: 8, "2-slide carousel side-by-side")
+        let stageCounter = app.staticTexts["session-image-counter"]
+        XCTAssertTrue(stageCounter.waitForExistence(timeout: 20), "4-image focus stage counter")
+        XCTAssertEqual(stageCounter.label, "1 / 4")
+        let thumb2 = app.buttons["session-image-thumb-2"]
+        XCTAssertTrue(thumb2.waitForExistence(timeout: 10), "filmstrip thumbnail 3")
+        reach(thumb2)
+        thumb2.tap()
+        XCTAssertTrue(waitUntil(timeout: 5) { stageCounter.label == "3 / 4" }, "filmstrip switches active stage slide")
         let walkTag = app.links.containing(NSPredicate(format: "label CONTAINS %@", "walkthrough.md")).firstMatch
         XCTAssertTrue(walkTag.waitForExistence(timeout: 20), "outside artifact walkthrough.md tag")
         reach(walkTag)

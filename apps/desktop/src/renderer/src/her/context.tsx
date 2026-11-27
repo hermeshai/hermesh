@@ -35,6 +35,13 @@ export type HerSheet = null | { kind: "add" } | { kind: "access"; bot: BotSummar
 export type Her = {
   /** The environment shown: a machine Her is on for. */
   machine: Machine;
+  /**
+   * The conversation shown, when it is one of Her's besides her main one: a session of the owner's with Her
+   * (docs/her-conversations.md §3.2). Undefined on her page.
+   */
+  conversation?: string;
+  /** What the page's drafts, outbox and composer are kept by: the environment, and the conversation when there is one. */
+  key: string;
   /** Every environment. */
   envs: Machine[];
   /** Shows another environment. */

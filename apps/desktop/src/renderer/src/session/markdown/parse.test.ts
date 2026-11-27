@@ -6,7 +6,7 @@ import Markdown from "react-markdown";
 import gfm from "remark-gfm";
 import math from "remark-math";
 import directive from "remark-directive";
-import { createMarkdownSlices, pendingText, unwrapCarousels } from "./parse.ts";
+import { createMarkdownSlices, extractPureImageSlice, pendingText, scanReplyImages, unwrapCarousels } from "./parse.ts";
 
 const render = (text: string) => renderToStaticMarkup(createElement(Markdown, { remarkPlugins: [gfm, [math, { singleDollarTextMath: false }], directive], children: text })).replace(/>\s+</g, "><");
 const cases = [
@@ -96,4 +96,52 @@ test("unwrapCarousels merges pure-image slides and separates mixed slides withou
     unwrapCarousels(spaced),
     "See ![shot](/Users/me/Library/Application%20Support/Hermesh/shot.png) and `[raw](/Application Support/x.png)`",
   );
+
+  const nested = "````carousel\n![方案 A [推荐 1]](/Users/me/Library/Application Support/demo (1).png)\n<!-- slide -->\n![方案 B [推荐 2]](/tmp/demo (2).png)\n````";
+  assert.equal(
+    unwrapCarousels(nested),
+    "![方案 A [推荐 1]](/Users/me/Library/Application%20Support/demo%20(1).png)\n![方案 B [推荐 2]](/tmp/demo%20(2).png)",
+  );
+});
+
+test("extractPureImageSlice recognizes standalone image blocks and pure image lists without false positives", () => {
+  assert.deepEqual(extractPureImageSlice("![One [1/2]](/tmp/shot (1).png)\n"), {
+    fromList: false,
+    items: [{ path: "/tmp/shot (1).png", caption: "One [1/2]" }],
+  });
+  assert.deepEqual(extractPureImageSlice("- ![A](imgs/a.png)\n- ![B](file:///tmp/b.webp)", "/work/docs"), {
+    fromList: true,
+    items: [
+      { path: "/work/docs/imgs/a.png", caption: "A" },
+      { path: "/tmp/b.webp", caption: "B" },
+    ],
+  });
+  assert.deepEqual(extractPureImageSlice("1. ![First](/tmp/1.jpg)\n2. ![Second](/tmp/2.gif)"), {
+    fromList: true,
+    items: [
+      { path: "/tmp/1.jpg", caption: "First" },
+      { path: "/tmp/2.gif", caption: "Second" },
+    ],
+  });
+
+  // False-positive guards: external URLs, SVGs, line refs, task lists, quotes, indented code, mixed prose.
+  for (const nope of [
+    "![CI](https://example.com/badge.png)",
+    "![Icon](assets/logo.svg)",
+    "[Code](src/app.ts:12)",
+    "- [x] ![Done](/tmp/a.png)\n- [ ] ![Todo](/tmp/b.png)",
+    "> ![Quoted](/tmp/a.png)",
+    "    ![IndentedCode](/tmp/a.png)",
+    "先看这张图 ![Inline](/tmp/a.png)",
+    "- 方案说明文字\n- ![OnlySecond](/tmp/b.png)",
+  ]) {
+    assert.equal(extractPureImageSlice(nope), null, nope);
+  }
+
+  const scanned = scanReplyImages("![主图 [1/2]](/tmp/a (1).png)\n\n对比 [文件](/tmp/a (1).png) 与 [另一张](/tmp/b.png)");
+  assert.deepEqual(scanned.explicit, ["/tmp/a (1).png"]);
+  assert.deepEqual(scanned.gallery, [
+    { path: "/tmp/a (1).png", caption: "主图 [1/2]" },
+    { path: "/tmp/b.png", caption: "另一张" },
+  ]);
 });

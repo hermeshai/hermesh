@@ -3,14 +3,14 @@ import { useTranslation } from "react-i18next";
 import type { Machine } from "@hermesh/proto/local";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import { displayTitle, isActive, needsAttention } from "@hermesh/core";
-import { grantColor, Mark, type GrantLook } from "@hermesh/ui";
+import { agentName, grantColor, Mark, type GrantLook } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
 import { grantFace } from "../components";
 import { Icon } from "../icons";
 import { machineName, senderLine } from "../Sidebar";
 import { useStore, type Store } from "../store";
 import { FinishedRow, RunningRow, useTeam } from "../team";
-import { sessionKeys } from "./Map";
+import { OWNER_ID, sessionKeys } from "./Map";
 
 /**
  * "In Progress": a row per session at work (those that wait for the owner or
@@ -80,8 +80,18 @@ function Condition({ pick, count, onClear }: { pick: string; count: number; onCl
 function describe(st: Store, pick: string): { icon: ReactNode; text: string } {
   const id = pick.slice(2);
   if (pick.startsWith("g:")) {
+    if (id === OWNER_ID) {
+      return {
+        icon: (
+          <span className="av you" style={{ width: 16, height: 16 }} aria-hidden="true">
+            <Icon name="person" />
+          </span>
+        ),
+        text: i18n.t("overview:working.byYou"),
+      };
+    }
     const c = st.clients.find((x) => x.clientId === id);
-    const label = c?.label ?? i18n.t("overview:working.disconnected");
+    const label = c ? agentName(c.label) : i18n.t("overview:working.disconnected");
     return { icon: <GrantIcon c={c ?? { label }} size={16} />, text: i18n.t("overview:working.byGrant", { label }) };
   }
   if (pick.startsWith("m:")) {

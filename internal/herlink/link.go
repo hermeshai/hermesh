@@ -38,6 +38,9 @@ type session struct {
 	Title   string    `json:"title"`
 	Agent   string    `json:"agent"`
 	At      time.Time `json:"at"`
+	// Conversation is the conversation of hers that last gave it work,
+	// which its news goes back to; empty: her main one.
+	Conversation string `json:"conversation,omitempty"`
 }
 
 // state is what the link keeps on disk.
@@ -173,7 +176,7 @@ func failure(kind, message string) string {
 }
 
 // arguments are the command-line arguments of one call of a tool of hers.
-func (l *Link) arguments(t tool, bot, callID string, raw json.RawMessage) ([]string, error) {
+func (l *Link) arguments(t tool, bot, conversation, callID string, raw json.RawMessage) ([]string, error) {
 	values := map[string]any{}
 	if len(raw) > 0 && string(raw) != "null" {
 		if err := json.Unmarshal(raw, &values); err != nil {
@@ -203,6 +206,12 @@ func (l *Link) arguments(t tool, bot, callID string, raw json.RawMessage) ([]str
 		if loc != "" {
 			values["locale"] = loc
 		}
+		// Sent from a conversation with Her that is a session: the work names it (docs/her-conversations.md).
+		if l.cfg.HerTask != nil {
+			if task := l.cfg.HerTask(conversation); task != "" {
+				values["her_conversation"] = task
+			}
+		}
 	}
 	if as := l.asName(bot); as != "" {
 		values["as"] = as
@@ -221,12 +230,12 @@ func isSession(to string) bool {
 
 // Call runs one of her tools and returns the command's JSON document, and
 // what the apps read of it (docs/her-team.md §6.2).
-func (l *Link) Call(ctx context.Context, bot, callID, name string, raw json.RawMessage) (string, any, bool) {
+func (l *Link) Call(ctx context.Context, bot, conversation, callID, name string, raw json.RawMessage) (string, any, bool) {
 	t, ok := find(name)
 	if !ok {
 		return failure("usage", "no tool "+name), nil, true
 	}
-	args, err := l.arguments(t, bot, callID, raw)
+	args, err := l.arguments(t, bot, conversation, callID, raw)
 	if err != nil {
 		return failure("usage", err.Error()), nil, true
 	}
@@ -235,8 +244,13 @@ func (l *Link) Call(ctx context.Context, bot, callID, name string, raw json.RawM
 		return failure("revoked", "Her has no access to the user's computers now"), nil, true
 	}
 	doc, code := cli.Exec(ctx, opts, args)
-	if code == 0 && t.name == "session_start" {
-		l.remember(raw, doc)
+	if code == 0 {
+		switch t.name {
+		case "session_start":
+			l.remember(raw, doc, conversation)
+		case "session_send", "session_answer":
+			l.gaveWork(raw, conversation)
+		}
 	}
 	if code != 0 && errorKind(doc) == "revoked" {
 		l.cfg.Revoked()
@@ -289,8 +303,9 @@ func errorKind(doc []byte) string {
 	return d.Error.Kind
 }
 
-// remember keeps the session a session_start made.
-func (l *Link) remember(raw json.RawMessage, doc []byte) {
+// remember keeps the session a session_start made, and the conversation
+// that made it.
+func (l *Link) remember(raw json.RawMessage, doc []byte, conversation string) {
 	var args struct {
 		Project string `json:"project"`
 	}
@@ -316,8 +331,33 @@ func (l *Link) remember(raw json.RawMessage, doc []byte) {
 		}
 		delete(l.st.Sessions, oldest)
 	}
-	l.st.Sessions[d.Session.ID] = session{Project: args.Project, Title: d.Session.Title, Agent: d.Session.Agent, At: time.Now()}
+	l.st.Sessions[d.Session.ID] = session{Project: args.Project, Title: d.Session.Title, Agent: d.Session.Agent, At: time.Now(), Conversation: conversation}
 	l.saveLocked()
+}
+
+// gaveWork notes that conversation wrote to or answered one of her
+// sessions: its news goes back there from now on.
+func (l *Link) gaveWork(raw json.RawMessage, conversation string) {
+	var a struct {
+		SessionID string `json:"session_id"`
+	}
+	json.Unmarshal(raw, &a)
+	id := bareSession(a.SessionID)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if s, ok := l.st.Sessions[id]; ok && s.Conversation != conversation {
+		s.Conversation = conversation
+		l.st.Sessions[id] = s
+		l.saveLocked()
+	}
+}
+
+// bareSession is a session's id without its machine: s_… of m_…/s_….
+func bareSession(id string) string {
+	if _, s, ok := strings.Cut(id, "/"); ok {
+		return s
+	}
+	return id
 }
 
 // Describe says what a call that writes would do, for the owner's
@@ -339,12 +379,8 @@ func (l *Link) Describe(_ context.Context, _, name string, raw json.RawMessage) 
 	if name == "session_start" {
 		return fmt.Sprintf("Start %s in %s\n\n%s", agentName(a.Agent), a.Project, a.Prompt), rule(a.Project)
 	}
-	_, id, ok := strings.Cut(a.SessionID, "/")
-	if !ok {
-		id = a.SessionID
-	}
 	l.mu.Lock()
-	s, known := l.st.Sessions[id]
+	s, known := l.st.Sessions[bareSession(a.SessionID)]
 	l.mu.Unlock()
 	where := "session " + a.SessionID
 	var words []string
@@ -370,21 +406,23 @@ func rule(project string) []string {
 	return []string{"mesh", project}
 }
 
-// Render is the news of one of her sessions as her reads it, and the
-// assistant it is for.
-func (l *Link) Render(m *inboxv1.Message) (bot, from, text string, ok bool) {
+// Render is the news of one of her sessions as her reads it, the
+// assistant it is for, and the conversation of hers that gave the session
+// work (empty: her main one).
+func (l *Link) Render(m *inboxv1.Message) (bot, conversation, from, text string, ok bool) {
 	if m.GetSessionNews() == nil {
-		return "", "", "", false
+		return "", "", "", "", false
 	}
 	as := m.GetTo().GetSession()
 	l.mu.Lock()
 	bot = l.st.Names[as]
+	conversation = l.st.Sessions[bareSession(m.GetSessionNews().GetSessionId())].Conversation
 	l.mu.Unlock()
 	if bot == "" {
 		bot = as
 	}
 	from, text = newsText(m, time.Now())
-	return bot, from, text, true
+	return bot, conversation, from, text, true
 }
 
 // Run follows her inbox until ctx ends or her grant is revoked: the news

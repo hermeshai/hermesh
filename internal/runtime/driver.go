@@ -40,6 +40,9 @@ type ProbeResult struct {
 // ToolGateRequest is raised synchronously by a live session when the agent
 // wants to execute a tool, ask questions, propose a plan, or request a secret.
 type ToolGateRequest struct {
+	// Delegated: the agent has already decided that the owner must answer (Her's own approval
+	// policy did), so the machine's policy and allow rules never answer in the owner's place.
+	Delegated bool
 	Kind      sessionv1.RuntimeRequestKind
 	Approval  *sessionv1.ToolApprovalPayload
 	UserInput *sessionv1.UserInputPayload
@@ -85,6 +88,9 @@ const (
 	EventTurnCompleted
 	EventTurnInterrupted
 	EventTurnFailed
+	// EventQuestionAsked: the agent asked the owner something (Question) and ends its turn on it.
+	// When the turn completes, the session waits on the question; the answer starts the next turn.
+	EventQuestionAsked
 )
 
 type Event struct {
@@ -119,6 +125,7 @@ type Event struct {
 	BackgroundAwaited   bool
 	ErrorCode           string
 	ErrorMessage        string
+	Question            *sessionv1.UserInputPayload
 }
 
 // NormalizeTodoStatus maps provider-specific checklist step states onto Hermesh's canonical set.
@@ -228,6 +235,12 @@ type TitleGeneratorEnabled interface {
 // the provider's native thread list (e.g. Codex app-server thread/archive).
 type Archiver interface {
 	Archive(ctx context.Context, ref string, archived bool) error
+}
+
+// Deleter is implemented by a Driver whose provider keeps the session's conversation itself
+// (Her's), so that deleting the session deletes it there too.
+type Deleter interface {
+	Delete(ctx context.Context, ref string) error
 }
 
 // BackgroundController is optionally implemented by Sessions that can stop a

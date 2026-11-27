@@ -232,6 +232,29 @@ export type BotAvatarResult = {
   data: string;
 };
 
+/** Parameters of `bots/conversation_new`: the bot, and the model and thinking this conversation runs with; none: those of the bot's main conversation. */
+export type BotConversationNewParams = {
+  bot_id: string;
+  model?: string | null;
+  thinking?: ThinkingLevel | null;
+};
+
+/** The result of `bots/conversation_new`: the conversation it started. */
+export type BotConversationNewResult = {
+  session_id: string;
+};
+
+/** One of a bot's conversations besides its main one. */
+export type BotConversationParams = {
+  bot_id: string;
+  session_id: string;
+};
+
+/** The result of `bots/conversations`: the bot's conversations besides its main one, newest first. */
+export type BotConversationsResult = {
+  conversations: SessionSummary[];
+};
+
 export type BotCreateParams = {
   avatar: AvatarInput;
   /** The model its conversation starts with; the configured one without it. */
@@ -271,6 +294,8 @@ export type BotOpenParams = {
   /** Client's last applied event sequence number. */
   after_seq?: number | null;
   bot_id: string;
+  /** Another of the bot's conversations to open (`bots/conversation_new`); none: its main one. */
+  conversation?: string | null;
   events?: EventFilter;
   history_limit?: number | null;
   /** Server-issued epoch from the previous `bots/open` reply, preventing sequence collisions across `her` restarts or session unloads. */
@@ -3378,6 +3403,8 @@ export type MeshCallParams = {
   bot: string;
   /** The model's tool call. */
   call_id: string;
+  /** That conversation's session. The host gives it back with the news of what the call started, for the news to reach the same conversation (`mesh/news`). */
+  conversation?: string | null;
   /** The tool. */
   name: string;
 };
@@ -3423,6 +3450,8 @@ export type MeshHostParams = {
 export type MeshNewsParams = {
   /** The bot whose conversation takes the news. */
   bot: string;
+  /** The bot's conversation that takes it, as `mesh/call` named it; none, or one that is no longer the bot's: its main conversation. */
+  conversation?: string | null;
   /** Who the news is from. */
   from: AgentRef;
   /** The news' id: one that already waits in the conversation is not added again. */
@@ -5162,6 +5191,9 @@ export interface Methods {
   "auth/set": [AuthSetParams, AuthSetResult];
   "bots/avatar": [BotIdParams, BotAvatarResult];
   "bots/clear": [BotIdParams, Empty];
+  "bots/conversation_delete": [BotConversationParams, Empty];
+  "bots/conversation_new": [BotConversationNewParams, BotConversationNewResult];
+  "bots/conversations": [BotIdParams, BotConversationsResult];
   "bots/create": [BotCreateParams, BotResult];
   "bots/delete": [BotIdParams, Empty];
   "bots/memory": [BotIdParams, BotMemoryResult];

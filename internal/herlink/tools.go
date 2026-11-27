@@ -64,7 +64,7 @@ var tools = []tool{
 // hidden are the CLI's parameters she doesn't see: hermeshd sets `as` and
 // the idempotency key, she never waits, and the rest are for messages to
 // agents.
-var hidden = []string{"as", "idempotency_key", "wait", "timeout", "subject", "reply_to", "locale"}
+var hidden = []string{"as", "idempotency_key", "wait", "timeout", "subject", "reply_to", "locale", "her_conversation"}
 
 // params are the descriptions that differ from the CLI's help.
 var params = map[string]string{

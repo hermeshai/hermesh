@@ -47,6 +47,10 @@ type Config struct {
 	OnDefaultBotChanged func(botID string, botRaw []byte)
 	// Mesh is what serves her's mesh tools now (mesh.go); nil: none.
 	Mesh func() Mesh
+	// Prompting is told of a message the owner's device sends to a conversation of Her's (session/op,
+	// a prompt), before it goes: a conversation that is a session is followed again, so that its turn
+	// is seen (docs/her-conversations.md §5.3).
+	Prompting func(session string)
 }
 
 // Host keeps one her running while Her is on.

@@ -121,16 +121,8 @@
     },
     "her": {
       "displayName": "Her",
-      "defaultModel": "her-default",
-      "models": [
-        {
-          "slug": "her-default",
-          "name": "Her Personal Assistant",
-          "shortName": "Her",
-          "isDefault": true,
-          "options": []
-        }
-      ]
+      "defaultModel": "",
+      "models": []
     },
     "scripted": {
       "displayName": "Scripted Agent",

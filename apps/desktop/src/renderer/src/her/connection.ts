@@ -137,12 +137,13 @@ export type Conversation = {
  * An assistant's conversation while its page shows it: opened with `bots/open` in the connection's setup, then
  * every event after it, applied once a frame. Earlier history comes a page
  * at a time when asked for. A cleared conversation is a new session: the page
- * opens that one.
+ * opens that one. `conversation`: another of the assistant's conversations than its main one (docs/her-conversations.md
+ * §3.2), opened by its id.
  */
-export function useConversation(machine: Machine, bot: BotSummary | undefined, show: (text: string) => void): Conversation {
+export function useConversation(machine: Machine, bot: BotSummary | undefined, show: (text: string) => void, conversation?: string): Conversation {
   const id = machine.machineId;
   const botId = bot?.id ?? "";
-  const key = `${id}\0${botId}`;
+  const key = `${id}\0${botId}\0${conversation ?? ""}`;
   const live = reachable(machine);
   const running = !!machine.her?.running;
   const modelReady = !!machine.her?.modelReady;
@@ -160,7 +161,7 @@ export function useConversation(machine: Machine, bot: BotSummary | undefined, s
   // A conversation cleared, or detached by her, is opened again.
   const [generation, setGeneration] = useState(0);
   const attached = got.key === key ? got.session : null;
-  const sessionNow = bot?.session_id ?? null;
+  const sessionNow = conversation ?? bot?.session_id ?? null;
   useEffect(() => {
     if (sessionNow && attached && sessionNow !== attached) setGeneration((g) => g + 1);
   }, [sessionNow]);
@@ -201,7 +202,7 @@ export function useConversation(machine: Machine, bot: BotSummary | undefined, s
       publish();
     };
     const transport = openCallTransport(herAdapter(local, id), {
-      setup: [{ method: "bots/open", params: { bot_id: botId, events: notStreamed } }],
+      setup: [{ method: "bots/open", params: { bot_id: botId, events: notStreamed, ...(conversation && { conversation }) } }],
       onOpened: ([r], opened) => {
         if (!r || "error" in r) {
           const kind = r && "error" in r ? new RpcError(r.error as never).kind : "";
@@ -287,7 +288,7 @@ export function useConversation(machine: Machine, bot: BotSummary | undefined, s
       transport.close();
       setGot((g) => (g.key === key && g.rpc === client ? { ...g, rpc: null, connectionId: null } : g));
     };
-  }, [id, botId, live, running, generation, attempt]);
+  }, [id, botId, conversation, live, running, generation, attempt]);
 
   const loadEarlier = useCallback(() => earlier.current(), []);
   const loadAgentEarlier = useCallback((agentId: string) => agentEarlier.current(agentId), []);

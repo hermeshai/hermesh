@@ -562,7 +562,7 @@ function reduceChainProgress(proj: SessionProjection, chain: Set<string>): { ste
 }
 
 /**
- * Steps for the floating live checklist above the composer while the session is working.
+ * Steps for the inline live checklist at the foot of the conversation while the session is working.
  * Automatically returns [] once the turn settles or all steps are completed/skipped.
  */
 export function activeTodoSteps(proj: SessionProjection | null | undefined): TodoStepView[] {
@@ -574,6 +574,65 @@ export function activeTodoSteps(proj: SessionProjection | null | undefined): Tod
     return [];
   }
   return steps;
+}
+
+export type IndexedTodoStep = TodoStepView & { index: number };
+
+export type TodoSpineWindow = {
+  total: number;
+  settledCount: number;
+  stepNumber: number;
+  hasFailed: boolean;
+  all: IndexedTodoStep[];
+  leading: IndexedTodoStep[];
+  foldLeading: boolean;
+  active: IndexedTodoStep[];
+  upcoming: IndexedTodoStep[];
+  foldUpcoming: boolean;
+  moreUpcomingCount: number;
+  subFocus?: string;
+};
+
+/**
+ * Computes the B2 three-row smart window over an active checklist:
+ * - Lists of <= 3 steps render directly without fold chrome.
+ * - Lists of >= 4 steps fold completed/skipped leading steps into one summary row and cap trailing upcoming steps
+ *   at one preview row + "+N more".
+ * - Deduplicates `workText` when it repeats an active step's title verbatim.
+ */
+export function windowTodoSteps(steps: readonly TodoStepView[], workText?: string): TodoSpineWindow | undefined {
+  if (steps.length === 0) return undefined;
+  const all: IndexedTodoStep[] = steps.map((s, index) => ({ index, text: s.text, status: s.status }));
+  let active = all.filter((s) => s.status === "in_progress" || s.status === "failed");
+  if (active.length === 0) {
+    const fallback = all.find((s) => s.status === "pending") ?? all[all.length - 1]!;
+    active = [fallback];
+  }
+  const firstActive = active[0]!.index;
+  const activeSet = new Set(active.map((s) => s.index));
+  const leading = all.slice(0, firstActive);
+  const upcoming = all.filter((s) => s.index > firstActive && !activeSet.has(s.index));
+  const settledCount = all.filter((s) => s.status === "completed" || s.status === "skipped").length;
+  const foldLeading = all.length >= 4 && leading.length >= 1;
+  const foldUpcoming = all.length >= 4 && upcoming.length >= 2;
+  const moreUpcomingCount = foldUpcoming ? upcoming.length - 1 : 0;
+  const w = workText?.trim() ?? "";
+  const subFocus = w && !active.some((a) => a.text.trim() === w) ? w : undefined;
+
+  return {
+    total: all.length,
+    settledCount,
+    stepNumber: firstActive + 1,
+    hasFailed: all.some((s) => s.status === "failed"),
+    all,
+    leading,
+    foldLeading,
+    active,
+    upcoming,
+    foldUpcoming,
+    moreUpcomingCount,
+    subFocus,
+  };
 }
 
 /**

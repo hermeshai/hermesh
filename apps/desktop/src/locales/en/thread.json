@@ -28,7 +28,16 @@
     "ask": "What should we build in <project/>?",
     "workingCopy": "Working copy",
     "checkout": "Current checkout",
-    "checkoutHint": "Works on the project's own folder"
+    "checkoutHint": "Works on the project's own folder",
+    "roleAgent": "Agent",
+    "roleHer": "Her",
+    "toHer": "Give it to Her · {{keys}}",
+    "toAgent": "Give it to an agent · {{keys}}",
+    "herAsk": "What should Her do?",
+    "herWhere": "Her on {{machine}}",
+    "defaultModel": "Default",
+    "switchToWorktree": "Click to switch to separate worktree",
+    "switchToCheckout": "Click to switch to current checkout"
   },
   "header": {
     "archive": "Archive",
@@ -43,7 +52,14 @@
     "working": "Working…"
   },
   "todo": {
-    "label": "Steps"
+    "label": "Steps",
+    "completedFold": "Completed {{done}} · {{total}} total",
+    "expandedHeader": "Steps · {{done}}/{{total}} completed",
+    "hide": "Hide",
+    "next": "Next: {{text}}",
+    "moreSteps": "+{{count}} more",
+    "parallel": "Parallel",
+    "skipped": "Skipped"
   },
   "mode": {
     "code": "Code",

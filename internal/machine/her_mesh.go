@@ -69,6 +69,9 @@ type HerLinkConfig struct {
 	Revoked func()
 	// News takes the news of one of her sessions; false: try again later.
 	News func(*inboxv1.Message) bool
+	// HerTask is the session that is a conversation of Her's (docs/her-conversations.md), by her
+	// session id; "" for her main conversation or one that is no session.
+	HerTask func(conversation string) string
 }
 
 // HerLink is Her as an agent: the tools her is offered and what runs them,
@@ -78,10 +81,11 @@ type HerLink interface {
 	// SetLocale records the UI locale of the client talking to Her so sessions
 	// she starts generate titles in the user's selected UI language.
 	SetLocale(locale string)
-	// Render is news as her reads it: the assistant it is for, who it is
+	// Render is news as her reads it: the assistant it is for, the
+	// conversation of hers that takes it (empty: her main one), who it is
 	// from, and the text. ok is false for a message that is not the news of
 	// a session.
-	Render(m *inboxv1.Message) (bot, from, text string, ok bool)
+	Render(m *inboxv1.Message) (bot, conversation, from, text string, ok bool)
 	// Run follows her inbox until ctx ends or her grant is revoked.
 	Run(ctx context.Context)
 	// Close drops her connections.
@@ -90,11 +94,14 @@ type HerLink interface {
 
 // herNews is one piece of news waiting for her.
 type herNews struct {
-	ID       string `json:"id"`
-	Bot      string `json:"bot"`
-	FromID   string `json:"from_id"`
-	FromName string `json:"from_name"`
-	Text     string `json:"text"`
+	ID  string `json:"id"`
+	Bot string `json:"bot"`
+	// Conversation is the conversation of hers that takes it; empty: her
+	// main one.
+	Conversation string `json:"conversation,omitempty"`
+	FromID       string `json:"from_id"`
+	FromName     string `json:"from_name"`
+	Text         string `json:"text"`
 }
 
 // herMesh is the machine's state of Her as an agent.
@@ -130,7 +137,8 @@ func (n *Machine) openHerMesh() {
 	n.mesh.key, n.mesh.inbox = key, inbox
 	if n.cfg.NewHerLink != nil {
 		n.mesh.link = n.cfg.NewHerLink(HerLinkConfig{DataDir: n.cfg.DataDir, HTTPClient: n.cfg.HTTPClient, Logger: n.log,
-			Credentials: n.herCredentials, Adopted: n.herAdopted, Revoked: func() { n.dropHerGrant("the owner revoked it") }, News: n.takeHerNews})
+			Credentials: n.herCredentials, Adopted: n.herAdopted, Revoked: func() { n.dropHerGrant("the owner revoked it") }, News: n.takeHerNews,
+			HerTask: n.herTask})
 	}
 }
 
@@ -454,7 +462,7 @@ func (n *Machine) herTakes(m *inboxv1.Message) bool {
 // takeHerNews queues the news of one of Her's sessions for her
 // conversation. false: it could not be kept, and waits where it is.
 func (n *Machine) takeHerNews(m *inboxv1.Message) bool {
-	bot, from, text, ok := n.mesh.link.Render(m)
+	bot, conversation, from, text, ok := n.mesh.link.Render(m)
 	if !ok {
 		return true // nothing she reads
 	}
@@ -469,7 +477,7 @@ func (n *Machine) takeHerNews(m *inboxv1.Message) bool {
 			return true
 		}
 	}
-	queue = append(queue, herNews{ID: m.MessageId, Bot: bot, FromID: m.GetFrom().GetSession(), FromName: from, Text: text})
+	queue = append(queue, herNews{ID: m.MessageId, Bot: bot, Conversation: conversation, FromID: m.GetFrom().GetSession(), FromName: from, Text: text})
 	if err := n.setHerNewsLocked(queue); err != nil {
 		n.log.Warn("keeping news for Her", "err", err)
 		return false
@@ -479,6 +487,24 @@ func (n *Machine) takeHerNews(m *inboxv1.Message) bool {
 	default:
 	}
 	return true
+}
+
+// herPrompting follows a conversation of Her's that is a session again before the owner's message
+// reaches it from her own chat, so that its turn is seen (docs/her-conversations.md §5.3).
+func (n *Machine) herPrompting(conversation string) {
+	if task := n.herTask(conversation); task != "" {
+		if err := n.sessions.Wake(context.Background(), task); err != nil {
+			n.log.Info("following Her's conversation again", "session", task, "err", err)
+		}
+	}
+}
+
+// herTask is the session that is Her's conversation conversation; "" for none.
+func (n *Machine) herTask(conversation string) string {
+	if conversation == "" || n.sessions == nil {
+		return ""
+	}
+	return n.sessions.SessionOfNative("her", conversation)
 }
 
 func (n *Machine) herNewsLocked() []herNews {
@@ -515,7 +541,14 @@ func (n *Machine) deliverHerNews(ctx context.Context) {
 			continue
 		}
 		q := queue[0]
-		err := n.her.News(ctx, q.Bot, q.ID, q.FromID, q.FromName, q.Text)
+		// The news wakes Her in that conversation: its session follows her again, so that what she
+		// does is seen (docs/her-conversations.md §5.3).
+		if task := n.herTask(q.Conversation); task != "" {
+			if err := n.sessions.Wake(ctx, task); err != nil {
+				n.log.Info("following Her's conversation again", "session", task, "err", err)
+			}
+		}
+		err := n.her.News(ctx, q.Bot, q.Conversation, q.ID, q.FromID, q.FromName, q.Text)
 		if err != nil && !errors.Is(err, herhost.ErrRefused) {
 			if ctx.Err() == nil {
 				n.log.Info("her did not take news yet", "news", q.ID, "err", err)

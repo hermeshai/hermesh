@@ -31,6 +31,7 @@ import { Workspace } from "@hermesh/proto/identity";
 import { groupSteps, replyEnds, stepSummary } from "./steps";
 import {
   activeTodoSteps,
+  windowTodoSteps,
   interrupter,
   isInterruption,
   resolutionTitle,
@@ -424,4 +425,45 @@ test("activeTodoSteps and sessionFocusText track live turns, background continua
     }),
   );
   expect(activeTodoSteps(p)).toEqual([]);
+});
+
+test("windowTodoSteps builds 3-row smart window, handles parallel steps, and deduplicates focus text", () => {
+  expect(windowTodoSteps([])).toBeUndefined();
+
+  // <= 3 steps: direct display without fold chrome, and verbatim workText deduplicated:
+  const short = windowTodoSteps(
+    [
+      { text: "Check motion constraints", status: "completed" },
+      { text: "Rewrite CALayer halo", status: "in_progress" },
+      { text: "Verify GPU usage", status: "pending" },
+    ],
+    "Rewrite CALayer halo",
+  )!;
+  expect(short.foldLeading).toBe(false);
+  expect(short.foldUpcoming).toBe(false);
+  expect(short.stepNumber).toBe(2);
+  expect(short.settledCount).toBe(1);
+  expect(short.subFocus).toBeUndefined();
+
+  // >= 4 steps with parallel in_progress steps and distinct tool focus:
+  const long = windowTodoSteps(
+    [
+      { text: "Sync main", status: "completed" },
+      { text: "Backup SQLite", status: "completed" },
+      { text: "Clean cache", status: "skipped" },
+      { text: "Subagent 1: Desktop E2E", status: "in_progress" },
+      { text: "Subagent 2: iOS XCUITest", status: "in_progress" },
+      { text: "Bundle Hermesh.app", status: "pending" },
+      { text: "Update docs", status: "pending" },
+    ],
+    "Running Playwright and Simulator suites",
+  )!;
+  expect(long.foldLeading).toBe(true);
+  expect(long.leading).toHaveLength(3);
+  expect(long.settledCount).toBe(3);
+  expect(long.stepNumber).toBe(4);
+  expect(long.active.map((a) => a.index)).toEqual([3, 4]);
+  expect(long.foldUpcoming).toBe(true);
+  expect(long.moreUpcomingCount).toBe(1);
+  expect(long.subFocus).toBe("Running Playwright and Simulator suites");
 });

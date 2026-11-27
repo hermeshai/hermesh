@@ -61,11 +61,17 @@ extension HermeshUITests {
         XCTAssertTrue(checkedOut.waitForExistence(timeout: 10) && checkedOut.label.contains("当前"), checkedOut.label)
         shot("composer-branches")
         tap("branch-done")
+        // One tap toggles the working copy directly, and remembers what was chosen for this project.
         tap("thread-worktree")
-        menuItem("当前目录").tap()
+        XCTAssertTrue(chip("thread-worktree", contains: "当前目录"), app.buttons["thread-worktree"].label)
         XCTAssertTrue(waitUntil(timeout: 10) { !self.app.buttons["thread-branch"].label.contains("基于") }, "in the folder: just its branch")
+        tap("thread-project")
+        tap("project-scratch")
+        tap("thread-project")
+        tap("project-fresh-app")
+        XCTAssertTrue(chip("thread-worktree", contains: "当前目录"), "remembered for fresh-app: \(app.buttons["thread-worktree"].label)")
         tap("thread-worktree")
-        menuItem("独立 worktree").tap()
+        XCTAssertTrue(chip("thread-worktree", contains: "独立 worktree"), app.buttons["thread-worktree"].label)
         XCTAssertTrue(chip("thread-branch", contains: "基于"), app.buttons["thread-branch"].label)
 
         // The box is one line until it is tapped: then the model is along its bottom.

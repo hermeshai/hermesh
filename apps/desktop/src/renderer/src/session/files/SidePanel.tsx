@@ -7,14 +7,15 @@ import { useStore } from "../../store";
 import { FilesHomeContext, FilesRunContext, sizeText, type FilesHome } from "./files";
 import { AttachmentBody, Card, fileError, Loading, PageBody, PdfBody, TextBody, VersionBar } from "./FileView";
 import { fileMenu } from "./open";
-import { activate, closeTab, openProject, refreshTree, setMax, setPreview, setTree, switchRun, usePanel, type Panel, type Tab } from "./panel";
+import { activate, closeTab, openProject, refreshTree, setMax, setOpen, setPreview, setTree, switchRun, usePanel, type Panel, type Tab } from "./panel";
 import { usePanelWidth } from "./panelWidth";
 import { Tree } from "./Tree";
 
 // The side panel (docs/session-files.md §3.4): the session's right, as tabs, each of a kind. A files
 // tab is a file with the folder's tree beside it, shown or not (with no file, the tree alone: 项目文件);
-// a page tab is a .html running. The strip: the tabs, ＋ for a new one, ⤢ to take the window. Under
-// it, the tab's own bar; at its foot, the version bar of a reply's file. The toolbar's button shows it.
+// a page tab is a .html running. The strip: the tabs, ＋ for a new one, ⤢ to take the window, and the
+// panel's toggle at its right end to put it away. Under it, the tab's own bar; at its foot, the version
+// bar of a reply's file. The toolbar's button shows it while closed.
 
 /** What the conversation keeps beside the panel at least. */
 const conversationRoom = () => 160;
@@ -86,6 +87,16 @@ export function SidePanel({ home, running }: { home: FilesHome; running: boolean
         <span className="sfp-fill" />
         <button className="tb" aria-label={p.max ? t("files.restore") : t("files.maximize")} title={p.max ? t("files.restore") : t("files.maximize")} onClick={() => setMax(p, !p.max)}>
           <Icon name={p.max ? "shrink" : "expand"} />
+        </button>
+        <button
+          className="tb on"
+          title={t("page.hidePanel")}
+          aria-label={t("panel.title")}
+          aria-pressed
+          data-testid="toolbar-panel-btn"
+          onClick={() => setOpen(p, false)}
+        >
+          <Icon name="panelRight" />
         </button>
       </div>
       {tab && <Bar home={home} p={p} tab={tab} />}

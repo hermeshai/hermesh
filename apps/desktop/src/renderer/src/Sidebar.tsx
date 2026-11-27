@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { GitState, SessionStatus, type Session } from "@hermesh/proto/session";
 import {
-  bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, diffBarBlocks, displayTitle, isActive, isArchivable, isFailed, listTime, needsAttention, reorderIds,
+  bucketTitle, childrenOf, clockText, HER_SECTION, isHerConversation, isTreeArchivable, sliceChildren, treeMark, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, diffBarBlocks, displayTitle, isActive, isArchivable, isFailed, listTime, naturalSectionKey, needsAttention,
   SECTION_EXPAND_STEP, SECTION_INITIAL_LIMIT, sessionGitMark, sessionSections, sessionsNeedingGitRefresh, sliceSectionSessions, statusTitle, teamState, updatedDate, type SessionBucket, type SessionSection, type SessionView,
   SCRATCH_PROJECT,
 } from "@hermesh/core";
@@ -50,24 +50,43 @@ export function machineName(st: Store, id: string): string {
 const setSessionArchived = (id: string, archived: boolean) => sessionApi.updateSession({ sessionId: id, hasArchived: true, archived });
 const setSessionPinned = (id: string, pinned: boolean) => sessionApi.updateSession({ sessionId: id, hasPinned: true, pinned });
 
+function insertAt(otherIds: readonly string[], movedId: string, slot: number): string[] {
+  const next = otherIds.filter((x) => x !== movedId);
+  next.splice(Math.max(0, Math.min(next.length, slot)), 0, movedId);
+  return next;
+}
+
 export function togglePin(st: Store, s: Session, slot?: number) {
   const next = !s.pinned;
-  const curPinned = st.sessions.filter((x) => x.pinned && x.status !== SessionStatus.ARCHIVED).map((x) => x.sessionId);
-  const base = st.pinnedOrder.filter((id) => curPinned.includes(id));
-  for (const id of curPinned) if (!base.includes(id)) base.push(id);
-  const pinnedOrder = next ? reorderIds(base, s.sessionId, slot ?? 0) : st.pinnedOrder.filter((id) => id !== s.sessionId);
+  const curPinned = listSections(st, new Date()).find((x) => x.grouping === "pinned")?.sessions.map((x) => x.sessionId) ?? [];
+  const pinnedOrder = next ? insertAt(curPinned, s.sessionId, slot ?? 0) : st.pinnedOrder.filter((id) => id !== s.sessionId);
   st.set({ pinnedOrder });
   void st.run(() => setSessionPinned(s.sessionId, next));
 }
 
+/** The work a conversation with Her sent, nested in the list or not: it is archived with it (docs/her-conversations.md D14). */
+function sentFrom(st: Pick<Store, "sessions">, s: Session): Session[] {
+  return isHerConversation(s) ? (childrenOf(st.sessions, { nest: true }).get(s.sessionId) ?? []) : [];
+}
+
+/** Whether a session can be archived now: a conversation with Her only once all it sent has stopped too. */
+export function canArchive(st: Pick<Store, "sessions">, s: Session): boolean {
+  return isTreeArchivable(s, sentFrom(st, s));
+}
+
 export function archive(st: Store, s: Session) {
   let kept = false;
+  const tree = [s, ...sentFrom(st, s)];
   st.run(async () => {
-    const res = await setSessionArchived(s.sessionId, true);
-    kept = res.transitionApplied === "workspace_kept";
+    const res = await Promise.all(tree.map((x) => setSessionArchived(x.sessionId, true)));
+    kept = res[0]!.transitionApplied === "workspace_kept";
   }).then((ok) => {
-    if (ok) st.show(i18n.t(kept ? "common:sidebar.archivedKept" : "common:sidebar.archived", { title: displayTitle(s) }), () => unarchive(st, s));
+    if (ok) st.show(i18n.t(kept ? "common:sidebar.archivedKept" : "common:sidebar.archived", { title: displayTitle(s) }), () => unarchiveAll(st, tree));
   });
+}
+
+function unarchiveAll(st: Store, tree: Session[]) {
+  return st.run(() => Promise.all(tree.map((x) => setSessionArchived(x.sessionId, false))));
 }
 
 export function unarchive(st: Store, s: Session, done?: string) {
@@ -80,6 +99,7 @@ export function confirmDelete(st: Store, s: Session) {
   const message = [
     i18n.t(s.branch ? "common:sessionMenu.deleteMessage" : "common:sessionMenu.deleteMessageNoBranch", { branch: s.branch }),
     isActive(s) ? i18n.t("common:sessionMenu.deleteRunning") : "",
+    sentFrom(st, s).length > 0 ? i18n.t("common:sessionMenu.deleteKeepsChildren") : "",
   ].filter(Boolean).join(" ");
   st.set({
     sheet: {
@@ -102,7 +122,7 @@ export function confirmDelete(st: Store, s: Session) {
  * running group stays while nothing runs, empty, so it is always there to look at (docs/her-team.md §16).
  */
 export function listSections(
-  st: Pick<Store, "sessions" | "view" | "archived" | "machines" | "clients"> & Partial<Pick<Store, "pinnedOrder" | "activeOrder">>,
+  st: Pick<Store, "sessions" | "view" | "archived" | "machines" | "clients"> & Partial<Pick<Store, "pinnedOrder" | "activeOrder" | "sectionOrder">>,
   now: Date,
 ): SessionSection[] {
   const machines = [...st.machines].sort((a, b) => Number(b.local) - Number(a.local) || a.machineName.localeCompare(b.machineName)).map((m) => m.machineId);
@@ -114,10 +134,12 @@ export function listSections(
     alwaysActive: true,
     pinnedOrder: st.pinnedOrder,
     activeOrder: st.activeOrder,
+    sectionOrder: st.sectionOrder,
   });
 }
 
 export function sectionTitle(st: Store, sec: SessionSection): string {
+  if (sec.grouping === "project" && sec.key === HER_SECTION) return i18n.t("common:sidebar.herSection");
   if (sec.grouping === "project") return sec.key === SCRATCH_PROJECT ? i18n.t("thread:launch.scratch") : sec.key;
   if (sec.grouping === "agent") return codingAgentTitle(sec.key);
   if (sec.grouping === "machine") return st.machines.find((m) => m.machineId === sec.key)?.local ? i18n.t("overview:thisMac") : machineName(st, sec.key);
@@ -241,10 +263,10 @@ function NewInProject({ sec }: { sec: SessionSection }) {
 function Sessions({ now }: { now: Date }) {
   const st = useStore();
   const { t } = useTranslation("common");
-  const { sessions, view, archived, machines, clients, pinnedOrder, activeOrder } = st;
+  const { sessions, view, archived, machines, clients, pinnedOrder, activeOrder, sectionOrder } = st;
   const sections = useMemo(
-    () => listSections({ sessions, view, archived, machines, clients, pinnedOrder, activeOrder }, now),
-    [sessions, view, archived, machines, clients, pinnedOrder, activeOrder, now],
+    () => listSections({ sessions, view, archived, machines, clients, pinnedOrder, activeOrder, sectionOrder }, now),
+    [sessions, view, archived, machines, clients, pinnedOrder, activeOrder, sectionOrder, now],
   );
   const total = sections.reduce((n, x) => n + x.sessions.length, 0);
   const [expanded, setExpanded] = useState<{ group: SessionView["group"]; limits: Record<string, number> }>({ group: view.group, limits: {} });
@@ -263,6 +285,51 @@ function Sessions({ now }: { now: Date }) {
     [sections, st.collapsed, limits, selectedId],
   );
   const anyTruncated = rendered.some((r) => r.slice.hiddenCount > 0);
+  // The work under each conversation with Her while the view nests it; each tree open unless the owner closed it.
+  const trees = useMemo(() => childrenOf(archived ? sessions : sessions.filter((x) => x.status !== SessionStatus.ARCHIVED), view), [sessions, archived, view]);
+  const [allKids, setAllKids] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleTree = (id: string) => {
+    const key = `tree:${id}`;
+    const cur = latest.current;
+    cur.set({ collapsed: cur.collapsed.includes(key) ? cur.collapsed.filter((c) => c !== key) : [...cur.collapsed, key] });
+  };
+  const row = (s: Session, _sec: SessionSection, tree?: { kids: Session[]; shut: boolean }, child?: boolean) => (
+    <SessionRow
+      key={s.sessionId}
+      s={s}
+      sel={sel.kind === "session" && sel.id === s.sessionId}
+      sender={senderName(st, s.createdBy)}
+      meta={view.metadata}
+      renaming={st.renaming === s.sessionId}
+      store={latest}
+      hover={hoverCtrl}
+      child={child}
+      twist={tree ? (tree.shut ? "shut" : "open") : undefined}
+      treeMark={tree?.shut ? treeMark(s, tree.kids) : undefined}
+      onTwist={tree ? toggleTree : undefined}
+    />
+  );
+  const withTree = (s: Session, sec: SessionSection) => {
+    const kids = trees.get(s.sessionId);
+    if (!kids?.length) return row(s, sec);
+    const shut = st.collapsed.includes(`tree:${s.sessionId}`);
+    const shown = sliceChildren(kids, allKids.has(s.sessionId), selectedId);
+    return (
+      <div key={s.sessionId} className="stree">
+        {row(s, sec, { kids, shut })}
+        {!shut && (
+          <div className="kids" role="group" aria-label={displayTitle(s)}>
+            {shown.visible.map((k) => row(k, sec, undefined, true))}
+            {shown.hiddenCount > 0 && (
+              <button className="grp-more" onClick={() => setAllKids((m) => new Set(m).add(s.sessionId))}>
+                {t("sidebar.showMore", { count: shown.hiddenCount })}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
   const list = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
   // The rows get the store as of a click, so a change elsewhere doesn't render them again.
@@ -279,7 +346,7 @@ function Sessions({ now }: { now: Date }) {
       const delay = hoveredRef.current ? 30 : 180;
       hoverTimer.current = setTimeout(() => {
         const cur = latest.current;
-        if (cur.renaming || cur.searching || cur.sheet) return;
+        if (cur.renaming || cur.searching || cur.sheet || document.body.classList.contains("is-dragging")) return;
         const sideRect = rowEl.closest(".side")?.getBoundingClientRect();
         const rowRect = rowEl.getBoundingClientRect();
         if (rowRect.width === 0 && rowRect.height === 0) return;
@@ -379,37 +446,158 @@ function Sessions({ now }: { now: Date }) {
     const rowEl = (e.target as Element).closest<HTMLElement>(".srow[data-session-id]");
     const listEl = list.current;
     const container = rowEl?.closest<HTMLElement>(".side-sessions");
-    if (!rowEl || !listEl || !container || rowEl.classList.contains("arch") || rowEl.classList.contains("renaming")) return;
+    if (!rowEl || !listEl || !container || rowEl.classList.contains("arch") || rowEl.classList.contains("renaming") || rowEl.dataset.child) return;
+    // A conversation with Her is dragged with the work under it (docs/her-conversations.md §3.7).
+    const dragEl = rowEl.parentElement?.classList.contains("stree") ? rowEl.parentElement : rowEl;
     const id = rowEl.dataset.sessionId!;
-    const origZone = rowEl.dataset.zone ?? "";
     const sObj = latest.current.sessions.find((x) => x.sessionId === id);
     if (!sObj) return;
 
     const startX = e.clientX;
     const startY = e.clientY;
-    const rect = rowEl.getBoundingClientRect();
+    const rect = dragEl.getBoundingClientRect();
+    let lastClientY = startY;
     let started = false;
+    let scrollRaf = 0;
     let ghost: HTMLElement | null = null;
     let dropLine: HTMLElement | null = null;
     let pinDropEl: HTMLElement | null = null;
-    let targetZone: "pin-dropzone" | "pinned" | "active" | "unpin" | "none" = "none";
-    let targetSlot = 0;
+    type DropTarget =
+      | { kind: "pin-dropzone" }
+      | { kind: "unpin" }
+      | { kind: "section"; secId: string; slot: number }
+      | null;
+    let target: DropTarget = null;
+
+    const hideIndicators = () => {
+      if (dropLine) dropLine.style.display = "none";
+      pinDropEl?.classList.remove("over");
+      target = null;
+    };
+
+    const showLineAt = (viewportY: number, listRect: DOMRect) => {
+      if (!dropLine) return;
+      dropLine.style.top = `${viewportY - listRect.top + listEl.scrollTop}px`;
+      dropLine.style.display = "block";
+    };
+
+    const updateTarget = (clientY: number) => {
+      if (!started || !ghost || !dropLine) return;
+      ghost.style.top = `${rect.top + (clientY - startY)}px`;
+
+      const listRect = listEl.getBoundingClientRect();
+      if (pinDropEl) {
+        const pr = pinDropEl.getBoundingClientRect();
+        if (clientY >= listRect.top - 12 && clientY <= pr.bottom) {
+          pinDropEl.classList.add("over");
+          dropLine.style.display = "none";
+          target = { kind: "pin-dropzone" };
+          return;
+        }
+        pinDropEl.classList.remove("over");
+      }
+
+      const blockOf = (r: HTMLElement) => (r.parentElement?.classList.contains("stree") ? r.parentElement : r);
+      const placeInSection = (groupEl: HTMLElement, secId: string) => {
+        const rows = [...groupEl.querySelectorAll<HTMLElement>(".srow[data-session-id]:not([data-child])")];
+        const origIdx = rows.findIndex((r) => r.dataset.sessionId === id);
+        if (rows.length === 0) {
+          if (origIdx !== -1) return hideIndicators();
+          const hRect = (groupEl.querySelector(".grp-hrow") ?? groupEl).getBoundingClientRect();
+          showLineAt(hRect.bottom + 2, listRect);
+          target = { kind: "section", secId, slot: 0 };
+          return;
+        }
+        if (origIdx !== -1 && rows.length <= 1) return hideIndicators();
+
+        const otherRows = origIdx === -1 ? rows : rows.filter((_, i) => i !== origIdx);
+        let slot = otherRows.length;
+        for (let i = 0; i < otherRows.length; i++) {
+          const cr = blockOf(otherRows[i]).getBoundingClientRect();
+          // Require crossing 35% into an adjacent row when reordering within the same section; use 50% when entering from another section.
+          const ratio = origIdx === -1 ? 0.5 : i < origIdx ? 0.65 : 0.35;
+          if (clientY < cr.top + cr.height * ratio) {
+            slot = i;
+            break;
+          }
+        }
+        if (origIdx !== -1 && slot === origIdx) return hideIndicators();
+
+        const lineViewportY =
+          slot === 0
+            ? blockOf(otherRows[0]).getBoundingClientRect().top - 1
+            : slot === otherRows.length
+              ? blockOf(otherRows[otherRows.length - 1]).getBoundingClientRect().bottom + 1
+              : (blockOf(otherRows[slot - 1]).getBoundingClientRect().bottom + blockOf(otherRows[slot]).getBoundingClientRect().top) / 2;
+        showLineAt(lineViewportY, listRect);
+        target = { kind: "section", secId, slot };
+      };
+
+      const pinnedGroup = container.querySelector<HTMLElement>('[data-sec-id="pinned:pinned"]');
+      if (pinnedGroup) {
+        const pRect = pinnedGroup.getBoundingClientRect();
+        if (clientY <= pRect.bottom + 8) {
+          placeInSection(pinnedGroup, "pinned:pinned");
+          return;
+        }
+      }
+
+      const curKids = childrenOf(latest.current.sessions, latest.current.view).get(sObj.sessionId) ?? [];
+      const natSecId = naturalSectionKey(latest.current.view, sObj, new Date(), curKids);
+      const natGroup = container.querySelector<HTMLElement>(`[data-sec-id="${CSS.escape(natSecId)}"]`);
+      if (natGroup && !natGroup.querySelector(".grp-h.shut")) {
+        const gRect = natGroup.getBoundingClientRect();
+        if (clientY >= gRect.top - 6 && clientY <= gRect.bottom + 32) {
+          placeInSection(natGroup, natSecId);
+          return;
+        }
+      }
+
+      if (sObj.pinned && pinnedGroup) {
+        showLineAt(pinnedGroup.getBoundingClientRect().bottom + 6, listRect);
+        target = { kind: "unpin" };
+        return;
+      }
+
+      hideIndicators();
+    };
+
+    const tickAutoScroll = () => {
+      scrollRaf = 0;
+      if (!started) return;
+      const lr = listEl.getBoundingClientRect();
+      const edge = 34;
+      let delta = 0;
+      if (lastClientY < lr.top + edge && listEl.scrollTop > 0) {
+        delta = -Math.ceil(((lr.top + edge - lastClientY) / edge) * 9);
+      } else if (lastClientY > lr.bottom - edge && listEl.scrollTop < listEl.scrollHeight - listEl.clientHeight) {
+        delta = Math.ceil(((lastClientY - (lr.bottom - edge)) / edge) * 9);
+      }
+      if (delta !== 0) {
+        const prev = listEl.scrollTop;
+        listEl.scrollTop += delta;
+        if (listEl.scrollTop !== prev) updateTarget(lastClientY);
+        scrollRaf = requestAnimationFrame(tickAutoScroll);
+      }
+    };
 
     const onMove = (ev: PointerEvent) => {
+      lastClientY = ev.clientY;
       if (!started) {
         if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 5) return;
         started = true;
         hoverCtrl.current.dismiss();
         document.body.classList.add("is-dragging");
-        rowEl.classList.add("dragging-src");
-        if (!sObj.pinned && !container.querySelector('[data-sec-key="pinned"]')) {
+        dragEl.classList.add("dragging-src");
+        if (!sObj.pinned && !container.querySelector('[data-sec-id="pinned:pinned"]')) {
           pinDropEl = document.createElement("div");
           pinDropEl.className = "pin-dropzone";
           pinDropEl.textContent = i18n.t("common:sidebar.pinDrop");
-          container.prepend(pinDropEl);
+          listEl.appendChild(pinDropEl);
         }
-        ghost = rowEl.cloneNode(true) as HTMLElement;
-        ghost.classList.remove("dragging-src");
+        ghost = dragEl.cloneNode(true) as HTMLElement;
+        ghost.classList.remove("dragging-src", "menu-open", "sel");
+        ghost.querySelectorAll(".rowacts").forEach((el) => el.remove());
         ghost.classList.add("drag-ghost");
         ghost.style.width = `${rect.width}px`;
         ghost.style.left = `${rect.left}px`;
@@ -422,73 +610,43 @@ function Sessions({ now }: { now: Date }) {
         listEl.appendChild(dropLine);
       }
 
-      ghost!.style.top = `${rect.top + (ev.clientY - startY)}px`;
+      updateTarget(ev.clientY);
+      if (!scrollRaf) scrollRaf = requestAnimationFrame(tickAutoScroll);
+    };
 
-      if (pinDropEl) {
-        const pr = pinDropEl.getBoundingClientRect();
-        if (ev.clientY <= pr.bottom + 8) {
-          pinDropEl.classList.add("over");
-          dropLine!.style.display = "none";
-          targetZone = "pin-dropzone";
-          targetSlot = 0;
-          return;
-        }
-        pinDropEl.classList.remove("over");
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("keydown", onKeyDown, true);
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+      if (!started) return;
+      document.body.classList.remove("is-dragging");
+      dragEl.classList.remove("dragging-src");
+      ghost?.remove();
+      dropLine?.remove();
+      pinDropEl?.remove();
+    };
+
+    const cancel = () => {
+      target = null;
+      cleanup();
+    };
+
+    const onKeyDown = (ke: KeyboardEvent) => {
+      if (ke.key === "Escape" && started) {
+        ke.preventDefault();
+        ke.stopPropagation();
+        cancel();
       }
-
-      const listRect = listEl.getBoundingClientRect();
-      const pinnedGroup = container.querySelector<HTMLElement>('[data-sec-key="pinned"]');
-      const pinnedRows = pinnedGroup ? [...pinnedGroup.querySelectorAll<HTMLElement>(".srow[data-session-id]")] : [];
-      const activeGroup = container.querySelector<HTMLElement>('[data-sec-key="active"]');
-      const activeRows = activeGroup ? [...activeGroup.querySelectorAll<HTMLElement>(".srow[data-session-id]")] : [];
-      const canReorderActive = isActive(sObj) && !needsAttention(sObj) && activeRows.length > 0;
-
-      const placeInRows = (rows: HTMLElement[], zone: "pinned" | "active") => {
-        let slot = rows.length;
-        let lineY = rows[rows.length - 1].getBoundingClientRect().bottom - listRect.top + listEl.scrollTop + 1;
-        for (let i = 0; i < rows.length; i++) {
-          const cr = rows[i].getBoundingClientRect();
-          if (ev.clientY < cr.top + cr.height / 2) {
-            slot = i;
-            lineY = cr.top - listRect.top + listEl.scrollTop - 1;
-            break;
-          }
-        }
-        dropLine!.style.top = `${lineY}px`;
-        dropLine!.style.display = "block";
-        targetZone = zone;
-        targetSlot = slot;
-      };
-
-      if (pinnedRows.length > 0) {
-        const pinBottom = pinnedRows[pinnedRows.length - 1].getBoundingClientRect().bottom;
-        if (ev.clientY <= pinBottom + 12) {
-          placeInRows(pinnedRows, "pinned");
-          return;
-        }
-        if (origZone === "pinned" && !canReorderActive) {
-          dropLine!.style.top = `${pinBottom - listRect.top + listEl.scrollTop + 6}px`;
-          dropLine!.style.display = "block";
-          targetZone = "unpin";
-          targetSlot = 0;
-          return;
-        }
-      }
-
-      if (canReorderActive) {
-        placeInRows(activeRows, "active");
-        return;
-      }
-
-      dropLine!.style.display = "none";
-      targetZone = "none";
     };
 
     const finish = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", finish);
-      window.removeEventListener("pointercancel", finish);
-      if (!started) return;
+      const wasStarted = started;
+      const chosen = target;
+      cleanup();
+      if (!wasStarted) return;
       const swallowClick = (ce: MouseEvent) => {
         ce.stopPropagation();
         ce.preventDefault();
@@ -496,47 +654,54 @@ function Sessions({ now }: { now: Date }) {
       window.addEventListener("click", swallowClick, true);
       setTimeout(() => window.removeEventListener("click", swallowClick, true), 0);
 
-      document.body.classList.remove("is-dragging");
-      rowEl.classList.remove("dragging-src");
-      ghost?.remove();
-      dropLine?.remove();
-      pinDropEl?.remove();
-
       const curSt = latest.current;
       const curSess = curSt.sessions.find((x) => x.sessionId === id);
-      if (!curSess || targetZone === "none") return;
+      if (!curSess || !chosen) return;
 
       const curSections = listSections(curSt, new Date());
-      if (targetZone === "pin-dropzone") {
+      if (chosen.kind === "pin-dropzone") {
         if (!curSess.pinned) togglePin(curSt, curSess, 0);
-      } else if (targetZone === "pinned") {
-        const curPinnedIds = curSections.find((x) => x.grouping === "pinned")?.sessions.map((x) => x.sessionId) ?? [];
-        const nextPinnedOrder = reorderIds(curPinnedIds, id, targetSlot);
-        curSt.set({ pinnedOrder: nextPinnedOrder });
-        if (!curSess.pinned) void curSt.run(() => setSessionPinned(id, true));
-      } else if (targetZone === "unpin") {
+      } else if (chosen.kind === "unpin") {
         if (curSess.pinned) togglePin(curSt, curSess);
-      } else if (targetZone === "active") {
-        const curActiveIds = curSections.find((x) => x.grouping === "status" && x.key === "active")?.sessions.map((x) => x.sessionId) ?? [];
-        const nextActiveOrder = reorderIds(curActiveIds, id, targetSlot);
+      } else if (chosen.kind === "section" && chosen.secId === "pinned:pinned") {
+        const curPinnedIds = curSections.find((x) => x.grouping === "pinned")?.sessions.map((x) => x.sessionId) ?? [];
+        const nextPinnedOrder = insertAt(curPinnedIds, id, chosen.slot);
+        const collapsed = curSt.collapsed.filter((c) => c !== "pinned:pinned");
+        curSt.set({ pinnedOrder: nextPinnedOrder, collapsed });
+        if (!curSess.pinned) void curSt.run(() => setSessionPinned(id, true));
+      } else if (chosen.kind === "section") {
+        const domGroup = container.querySelector<HTMLElement>(`[data-sec-id="${CSS.escape(chosen.secId)}"]`);
+        const visibleIds = domGroup
+          ? [...domGroup.querySelectorAll<HTMLElement>(".srow[data-session-id]:not([data-child])")].map((r) => r.dataset.sessionId!)
+          : [];
+        const sec = curSections.find((x) => `${x.grouping}:${x.key}` === chosen.secId);
+        const allSecIds = sec?.sessions.map((x) => x.sessionId) ?? [];
+        const reorderedVisible = insertAt(visibleIds, id, chosen.slot);
+        const hiddenIds = allSecIds.filter((x) => x !== id && !reorderedVisible.includes(x));
+        const nextOrder = [...reorderedVisible, ...hiddenIds];
+        const nextSectionOrder = { ...curSt.sectionOrder, [chosen.secId]: nextOrder };
+        const patch: Partial<Store> = { sectionOrder: nextSectionOrder };
+        if (chosen.secId === "status:active") patch.activeOrder = nextOrder;
         if (curSess.pinned) {
-          curSt.set({ activeOrder: nextActiveOrder, pinnedOrder: curSt.pinnedOrder.filter((x) => x !== id) });
+          patch.pinnedOrder = curSt.pinnedOrder.filter((x) => x !== id);
+          curSt.set(patch);
           void curSt.run(() => setSessionPinned(id, false));
         } else {
-          curSt.set({ activeOrder: nextActiveOrder });
+          curSt.set(patch);
         }
       }
     };
 
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", finish);
-    window.addEventListener("pointercancel", finish);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("keydown", onKeyDown, true);
   };
   return (
     <div className="side-list" ref={list} onScroll={() => hoverCtrl.current.dismiss()}>
       <div className="side-sessions" role="list" aria-label={t("sidebar.sessions")} onPointerDown={onRowPointerDown}>
         {rendered.map(({ sec, id, open, limit, slice }) => (
-          <div key={id} role="group" aria-label={sectionTitle(st, sec)} data-sec-key={sec.grouping === "pinned" ? "pinned" : sec.key}>
+          <div key={id} role="group" aria-label={sectionTitle(st, sec)} data-sec-id={id}>
             <div className="grp-hrow">
               <button
                 className={`grp-h ${open ? "" : "shut"}`}
@@ -549,19 +714,7 @@ function Sessions({ now }: { now: Date }) {
               {sec.grouping === "project" && <NewInProject sec={sec} />}
             </div>
             {open && sec.sessions.length === 0 && <div className="side-none">{t("sidebar.noneNow")}</div>}
-            {open && slice.visible.map((s) => (
-              <SessionRow
-                key={s.sessionId}
-                s={s}
-                zone={sec.grouping === "pinned" ? "pinned" : sec.key}
-                sel={sel.kind === "session" && sel.id === s.sessionId}
-                sender={senderName(st, s.createdBy)}
-                meta={view.metadata}
-                renaming={st.renaming === s.sessionId}
-                store={latest}
-                hover={hoverCtrl}
-              />
-            ))}
+            {open && slice.visible.map((s) => withTree(s, sec))}
             {open && slice.hiddenCount > 0 && (
               <button className="grp-more" onClick={() => showMore(id, limit, slice.hiddenCount)}>
                 {t("sidebar.showMore", { count: slice.hiddenCount })}
@@ -705,10 +858,16 @@ type RowHoverController = {
  * A session in the sidebar (docs/her-team.md §16): the coding agent's logo (with a brand-blue orbit while it runs),
  * the title (shimmering while it runs), and one mark (an orange dot while it waits for the owner, a red one when it
  * failed, or a delivered Git icon when pushed/merged); with metadata, who sent the work
- * to which agent, the project and the time. ⋯ in the mark's place on hover; right-click for the native menu.
+ * to which agent, the project and the time. Quick archive/unarchive (when applicable) and ⋯ in the mark's place on hover; right-click for the native menu.
  */
-export const SessionRow = memo(function SessionRow({ s, zone, sel, sender, meta, renaming, store, hover }: {
-  s: Session; zone: string; sel: boolean; sender: string; meta: boolean; renaming: boolean; store: RefObject<Store>; hover?: RefObject<RowHoverController>;
+export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renaming, store, hover, child, twist, treeMark, onTwist }: {
+  s: Session; sel: boolean; sender: string; meta: boolean; renaming: boolean; store: RefObject<Store>; hover?: RefObject<RowHoverController>;
+  /** Work under a conversation with Her: no pin of its own, and it goes where the conversation goes. */
+  child?: boolean;
+  /** A conversation with work under it: open or shut, with the tree's most urgent mark while shut (D12). */
+  twist?: "open" | "shut";
+  treeMark?: "waiting" | "failed";
+  onTwist?: (id: string) => void;
 }) {
   const { t } = useTranslation("common");
   const archived = s.status === SessionStatus.ARCHIVED;
@@ -720,10 +879,10 @@ export const SessionRow = memo(function SessionRow({ s, zone, sel, sender, meta,
   const shownTitle = pendingTitle ?? displayTitle(s);
   return (
     <div
-      className={`srow ${renaming ? "renaming" : "has-act"} ${sel ? "sel" : ""} ${menu ? "menu-open" : ""} ${archived ? "arch" : ""}`}
+      className={`srow ${renaming ? "renaming" : "has-act"} ${sel ? "sel" : ""} ${menu ? "menu-open" : ""} ${archived ? "arch" : ""} ${twist ? "tree" : ""}`}
       role="listitem"
       data-session-id={s.sessionId}
-      data-zone={zone}
+      data-child={child || undefined}
       aria-current={sel || undefined}
       tabIndex={0}
       onMouseEnter={(e) => !renaming && !menu && hover?.current.enter(s.sessionId, e.currentTarget)}
@@ -744,6 +903,21 @@ export const SessionRow = memo(function SessionRow({ s, zone, sel, sender, meta,
         sessionMenu(store.current, s);
       }}
     >
+      {twist && (
+        <button
+          className={`twist ${twist}`}
+          title={t(twist === "shut" ? "sidebar.expand" : "sidebar.collapse")}
+          aria-label={t(twist === "shut" ? "sidebar.expand" : "sidebar.collapse")}
+          aria-expanded={twist === "open"}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onTwist?.(s.sessionId);
+          }}
+        >
+          <Icon name="chevD" className="sm" />
+        </button>
+      )}
       <span className={`slogo ${running ? "run" : ""}`} role={runLabel ? "img" : undefined} aria-label={runLabel}>
         {running && <i className="slogo-orbit" aria-hidden="true" />}
         <AgentLogo agent={s.agent} size={16} />
@@ -765,23 +939,23 @@ export const SessionRow = memo(function SessionRow({ s, zone, sel, sender, meta,
           ) : (
             <RowTitle s={s} title={shownTitle} />
           )}
-          {!renaming && <span className="smeta"><RowMark s={s} /></span>}
+          {!renaming && <span className="smeta">{treeMark ? <TreeMark mark={treeMark} /> : <RowMark s={s} />}</span>}
           {!renaming && (
             <span className="rowacts">
-              {!archived && (
+              {(archived || canArchive(store.current, s)) && (
                 <button
-                  className={`rowact ${s.pinned ? "pinned" : ""}`}
-                  title={t(s.pinned ? "sessionMenu.unpin" : "sessionMenu.pin")}
-                  aria-label={t(s.pinned ? "sessionMenu.unpin" : "sessionMenu.pin")}
-                  aria-pressed={s.pinned}
+                  className="rowact"
+                  title={t(archived ? "sessionMenu.unarchive" : "sessionMenu.archive")}
+                  aria-label={t(archived ? "sessionMenu.unarchive" : "sessionMenu.archive")}
                   onDoubleClick={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
                     hover?.current.dismiss();
-                    togglePin(store.current, s);
+                    if (archived) void unarchive(store.current, s);
+                    else archive(store.current, s);
                   }}
                 >
-                  <Icon name={s.pinned ? "pinFill" : "pin"} className="sm" />
+                  <Icon name={archived ? "unarchive" : "archive"} />
                 </button>
               )}
               <button
@@ -798,7 +972,7 @@ export const SessionRow = memo(function SessionRow({ s, zone, sel, sender, meta,
                   setMenu(menu ? null : { x: r.right, y: r.bottom + 4, key: e.detail === 0 });
                 }}
               >
-                <Icon name="more" className="sm" />
+                <Icon name="more" />
               </button>
             </span>
           )}
@@ -806,7 +980,9 @@ export const SessionRow = memo(function SessionRow({ s, zone, sel, sender, meta,
         </div>
         {meta && (
           <div className="sl2">
-            <span className="sl2t">{sender} → {codingAgentShort(s.agent)} · {s.projectId}</span>
+            <span className="sl2t">
+              {isHerConversation(s) ? t("sidebar.sentToHer") : child ? `${codingAgentShort(s.agent)} · ${s.projectId}` : `${sender} → ${codingAgentShort(s.agent)} · ${s.projectId}`}
+            </span>
             <RowTime s={s} />
           </div>
         )}
@@ -818,12 +994,13 @@ export const SessionRow = memo(function SessionRow({ s, zone, sel, sender, meta,
 /** The session's context menu (native): open, pin, rename, archive, copy its id, delete. */
 async function sessionMenu(st: Store, s: Session) {
   const archived = s.status === SessionStatus.ARCHIVED;
+  const child = !!st.view.nest && [...childrenOf(st.sessions, st.view).values()].some((kids) => kids.includes(s));
   const id = await window.hermesh?.popupMenu([
     { id: "open", label: i18n.t("common:sessionMenu.open") },
     { separator: true },
-    ...(!archived ? [{ id: s.pinned ? "unpin" : "pin", label: i18n.t(s.pinned ? "common:sessionMenu.unpin" : "common:sessionMenu.pin") }] : []),
+    ...(!archived && !child ? [{ id: s.pinned ? "unpin" : "pin", label: i18n.t(s.pinned ? "common:sessionMenu.unpin" : "common:sessionMenu.pin") }] : []),
     { id: "rename", label: i18n.t("common:sessionMenu.rename") },
-    { id: archived ? "unarchive" : "archive", label: i18n.t(archived ? "common:sessionMenu.unarchive" : "common:sessionMenu.archive"), enabled: archived || isArchivable(s) },
+    { id: archived ? "unarchive" : "archive", label: i18n.t(archived ? "common:sessionMenu.unarchive" : "common:sessionMenu.archive"), enabled: archived || canArchive(st, s) },
     { separator: true },
     { id: "copy", label: i18n.t("common:sessionMenu.copyId") },
     { separator: true },
@@ -858,18 +1035,22 @@ function RowMenu({ s, at, store, onClose }: { s: Session; at: { x: number; y: nu
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: -9999, top: at.y });
   const archived = s.status === SessionStatus.ARCHIVED;
-  const items: ({ id: string; label: string; run: () => void; disabled?: boolean; danger?: boolean } | null)[] = [
-    ...(!archived ? [{ id: s.pinned ? "unpin" : "pin", label: t(s.pinned ? "sessionMenu.unpin" : "sessionMenu.pin"), run: () => togglePin(store.current, s) }] : []),
+  const st = store.current;
+  const child = !!st.view.nest && [...childrenOf(st.sessions, st.view).values()].some((kids) => kids.includes(s));
+  // A conversation with Her waits for what it sent to stop (D14).
+  const waits = !archived && isArchivable(s) && !canArchive(st, s);
+  const items: ({ id: string; label: string; run: () => void; disabled?: boolean; danger?: boolean; title?: string } | null)[] = [
+    ...(!archived && !child ? [{ id: s.pinned ? "unpin" : "pin", label: t(s.pinned ? "sessionMenu.unpin" : "sessionMenu.pin"), run: () => togglePin(store.current, s) }] : []),
     { id: "rename", label: t("sessionMenu.rename"), run: () => store.current.set({ renaming: s.sessionId }) },
     archived
       ? { id: "unarchive", label: t("sessionMenu.unarchive"), run: () => unarchive(store.current, s) }
-      : { id: "archive", label: t("sessionMenu.archive"), run: () => archive(store.current, s), disabled: !isArchivable(s) },
+      : { id: "archive", label: t("sessionMenu.archive"), run: () => archive(store.current, s), disabled: !canArchive(st, s), title: waits ? t("sessionMenu.stillRunning") : undefined },
     null,
     { id: "delete", label: t("sessionMenu.delete"), run: () => confirmDelete(store.current, s), danger: true },
   ];
   useLayoutEffect(() => {
     const el = ref.current!;
-    const top = at.y + el.offsetHeight > innerHeight - 8 ? at.y - el.offsetHeight - 30 : at.y;
+    const top = at.y + el.offsetHeight > innerHeight - 8 ? at.y - el.offsetHeight - 32 : at.y;
     setPos({ left: Math.max(8, at.x - el.offsetWidth), top });
     (at.key ? el.querySelector<HTMLElement>("[role=menuitem]:not(:disabled)") : el)?.focus();
   }, [at]);
@@ -906,6 +1087,7 @@ function RowMenu({ s, at, store, onClose }: { s: Session; at: { x: number; y: nu
             role="menuitem"
             tabIndex={-1}
             disabled={it.disabled}
+            title={it.title}
             onMouseMove={(e) => e.currentTarget.focus()}
             onClick={() => (onClose(), it.run())}
           >
@@ -979,6 +1161,12 @@ export function TitleInput({
       onBlur={() => finish(true)}
     />
   );
+}
+
+/** A shut tree's most urgent mark: something in it waits for the owner, or failed. */
+function TreeMark({ mark }: { mark: "waiting" | "failed" }) {
+  const { t } = useTranslation("common");
+  return mark === "waiting" ? <span className="dot-w" role="img" aria-label={t("status.waiting")} /> : <span className="dot-r" role="img" aria-label={t("status.failed")} />;
 }
 
 /** A row's one mark, its state in words for screen readers; settled pushed/merged sessions show their Git mark. */
@@ -1187,9 +1375,9 @@ export function ListViewMenu() {
   const panes: { id: ViewPane; label: string; value: string }[] = [
     { id: "group", label: t("listView.group"), value: groups[v.group] },
     { id: "sort", label: t("listView.sort"), value: t(v.newestFirst ? "listView.newestFirst" : "listView.oldestFirst") },
-    { id: "show", label: t("listView.show"), value: t(v.metadata ? "listView.metadata" : "listView.titleOnly") },
+    { id: "show", label: t("listView.show"), value: t(v.metadata ? (v.nest ? "listView.metadataNested" : "listView.metadata") : v.nest ? "listView.nestedOnly" : "listView.titleOnly") },
   ];
-  const hasCustomOrder = st.activeOrder.length > 0 || st.pinnedOrder.length > 0;
+  const hasCustomOrder = st.activeOrder.length > 0 || st.pinnedOrder.length > 0 || Object.keys(st.sectionOrder).length > 0;
   const choices: Record<ViewPane, ViewChoice[]> = {
     group: (Object.keys(groups) as SessionView["group"][]).map((g) => ({ label: groups[g], on: v.group === g, role: "menuitemradio", patch: { group: g } })),
     sort: [
@@ -1207,14 +1395,17 @@ export function ListViewMenu() {
               on: false,
               role: "menuitem" as const,
               run: () => {
-                st.set({ activeOrder: [], pinnedOrder: [] });
+                st.set({ activeOrder: [], pinnedOrder: [], sectionOrder: {} });
                 close(true);
               },
             },
           ]
         : []),
     ],
-    show: [{ label: t("listView.metadata"), on: v.metadata, role: "menuitemcheckbox", patch: { metadata: !v.metadata } }],
+    show: [
+      { label: t("listView.metadata"), on: v.metadata, role: "menuitemcheckbox", patch: { metadata: !v.metadata } },
+      { label: t("listView.nest"), on: v.nest, role: "menuitemcheckbox", patch: { nest: !v.nest } },
+    ],
   };
   const move = (e: ReactKeyboardEvent, box: HTMLElement | null) => {
     const all = [...(box?.querySelectorAll<HTMLElement>("[role^=menuitem]") ?? [])];

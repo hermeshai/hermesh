@@ -8278,7 +8278,11 @@ type HerSendRequest struct {
 	// What the message replies to (docs/her-reply.md).
 	Reply *HerReply `protobuf:"bytes,9,opt,name=reply,proto3" json:"reply,omitempty"`
 	// The app's UI language (BCP 47, e.g. "zh-CN", "en") when the message was sent.
-	Locale        string `protobuf:"bytes,10,opt,name=locale,proto3" json:"locale,omitempty"`
+	Locale string `protobuf:"bytes,10,opt,name=locale,proto3" json:"locale,omitempty"`
+	// A conversation of the assistant's besides its main one (her's session id,
+	// docs/her-conversations.md): the message goes there, also when it waits
+	// for the machine. Empty: the main conversation.
+	Conversation  string `protobuf:"bytes,11,opt,name=conversation,proto3" json:"conversation,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8379,6 +8383,13 @@ func (x *HerSendRequest) GetReply() *HerReply {
 func (x *HerSendRequest) GetLocale() string {
 	if x != nil {
 		return x.Locale
+	}
+	return ""
+}
+
+func (x *HerSendRequest) GetConversation() string {
+	if x != nil {
+		return x.Conversation
 	}
 	return ""
 }
@@ -8762,9 +8773,11 @@ type HerWaiting struct {
 	LocalPaths []string               `protobuf:"bytes,5,rep,name=local_paths,json=localPaths,proto3" json:"local_paths,omitempty"`
 	CreatedAt  *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// Why the last try failed, when one did.
-	Error         string    `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
-	Reply         *HerReply `protobuf:"bytes,8,opt,name=reply,proto3" json:"reply,omitempty"`
-	Locale        string    `protobuf:"bytes,9,opt,name=locale,proto3" json:"locale,omitempty"`
+	Error  string    `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
+	Reply  *HerReply `protobuf:"bytes,8,opt,name=reply,proto3" json:"reply,omitempty"`
+	Locale string    `protobuf:"bytes,9,opt,name=locale,proto3" json:"locale,omitempty"`
+	// The conversation it goes to, when it is not the main one (HerSendRequest.conversation).
+	Conversation  string `protobuf:"bytes,10,opt,name=conversation,proto3" json:"conversation,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8858,6 +8871,13 @@ func (x *HerWaiting) GetReply() *HerReply {
 func (x *HerWaiting) GetLocale() string {
 	if x != nil {
 		return x.Locale
+	}
+	return ""
+}
+
+func (x *HerWaiting) GetConversation() string {
+	if x != nil {
+		return x.Conversation
 	}
 	return ""
 }
@@ -10140,7 +10160,7 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x0eHerCallRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12/\n" +
-	"\x04call\x18\x02 \x01(\v2\x1b.hermesh.her.v1.CallRequestR\x04call\"\xd3\x02\n" +
+	"\x04call\x18\x02 \x01(\v2\x1b.hermesh.her.v1.CallRequestR\x04call\"\xf7\x02\n" +
 	"\x0eHerSendRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x15\n" +
@@ -10155,7 +10175,8 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"session_id\x18\b \x01(\tR\tsessionId\x120\n" +
 	"\x05reply\x18\t \x01(\v2\x1a.hermesh.local.v1.HerReplyR\x05reply\x12\x16\n" +
 	"\x06locale\x18\n" +
-	" \x01(\tR\x06locale\"\\\n" +
+	" \x01(\tR\x06locale\x12\"\n" +
+	"\fconversation\x18\v \x01(\tR\fconversation\"\\\n" +
 	"\bHerReply\x12\x10\n" +
 	"\x03ref\x18\x01 \x01(\tR\x03ref\x12\x10\n" +
 	"\x03own\x18\x02 \x01(\bR\x03own\x12\x12\n" +
@@ -10178,7 +10199,7 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\"\x1a\n" +
-	"\x18DeleteHerWaitingResponse\"\xa2\x02\n" +
+	"\x18DeleteHerWaitingResponse\"\xc6\x02\n" +
 	"\n" +
 	"HerWaiting\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
@@ -10192,7 +10213,9 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x14\n" +
 	"\x05error\x18\a \x01(\tR\x05error\x120\n" +
 	"\x05reply\x18\b \x01(\v2\x1a.hermesh.local.v1.HerReplyR\x05reply\x12\x16\n" +
-	"\x06locale\x18\t \x01(\tR\x06locale\":\n" +
+	"\x06locale\x18\t \x01(\tR\x06locale\x12\"\n" +
+	"\fconversation\x18\n" +
+	" \x01(\tR\fconversation\":\n" +
 	"\x19GetHerConversationRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\"j\n" +

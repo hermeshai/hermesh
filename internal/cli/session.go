@@ -240,9 +240,17 @@ func parseInteractionModeFlag(s string) sessionv1.InteractionMode {
 	return sessionv1.InteractionMode_INTERACTION_MODE_UNSPECIFIED
 }
 
+// herRelationship is how work sent from a conversation with Her relates to it: "her" when there is one.
+func herRelationship(conversation string) string {
+	if conversation == "" {
+		return ""
+	}
+	return "her"
+}
+
 func (a *app) startCmd() *cobra.Command {
 	var project, agent, base, model, effort, prompt, promptFile, title, locale, idem string
-	var socket, runtimeMode, interactionMode, workspaceMode, branch string
+	var socket, runtimeMode, interactionMode, workspaceMode, branch, herConversation string
 	var options []string
 	var questionTimeout time.Duration
 	var files []string
@@ -312,6 +320,8 @@ func (a *app) startCmd() *cobra.Command {
 					Attachments:            attRefs,
 					QuestionTimeoutSeconds: qt,
 					Conversation:           a.as,
+					ParentSessionId:        herConversation,
+					ParentRelationship:     herRelationship(herConversation),
 				})
 				if sErr != nil {
 					return sErr
@@ -346,6 +356,8 @@ func (a *app) startCmd() *cobra.Command {
 					Attachments:            attRefs,
 					QuestionTimeoutSeconds: qt,
 					Conversation:           a.as,
+					ParentSessionId:        herConversation,
+					ParentRelationship:     herRelationship(herConversation),
 				})
 				if connect.CodeOf(err) == connect.CodeNotFound {
 					return &exitError{code: exitUsage, kind: "not_found", err: err, hint: "see `hermesh project list`"}
@@ -383,6 +395,7 @@ func (a *app) startCmd() *cobra.Command {
 	f.StringVar(&interactionMode, "mode", "", "interaction mode (default, plan)")
 	f.StringVar(&workspaceMode, "workspace", "", "workspace mode (worktree, in_place)")
 	f.StringVar(&branch, "branch", "", "custom worktree branch")
+	f.StringVar(&herConversation, "her-conversation", "", "the session of the owner's conversation with Her this work is sent from (set by hermeshd for Her)")
 	f.StringArrayVar(&options, "option", nil, "provider option key=val")
 	for _, hidden := range []string{"socket", "runtime-mode", "mode", "workspace", "branch", "option"} {
 		_ = f.MarkHidden(hidden)

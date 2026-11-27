@@ -933,6 +933,9 @@ message StartSessionRequest {
   optional uint32 question_timeout_seconds = 12;
   string conversation = 13;
   string locale = 14;
+  // How the session relates to parent_session_id: empty, a sub-agent of it; "her", work that Her
+  // sent from that conversation of hers (docs/her-conversations.md), which may be on another machine.
+  string parent_relationship = 15;
 }
 
 message StartSessionResponse {

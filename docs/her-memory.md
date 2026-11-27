@@ -223,7 +223,7 @@ reply sent again. `tools/bench/bot_memory.mjs` runs those cases.
 
 | Who | Reads | Writes | How |
 |---|---|---|---|
-| The assistant's main session | Yes | Yes, without asking in every permission mode | `protected::memory`: its own `memory/` is allowed before anything else is judged |
+| The assistant's conversations: its main one and the others ([her-conversations.md](her-conversations.md)) | Yes | Yes, without asking in every permission mode | `protected::memory`: its own `memory/` is allowed before anything else is judged |
 | Its sub-agents and its routines' runs | Yes | No, in every mode | The same check: a path in any assistant's `memory/` that is not the session's own is denied, full access included. The refusal tells the agent to say in its report what the assistant should know |
 | The owner | Yes | Through the assistant, or by clearing it all | Her's settings show it and clear it (§7); the files are on the Her Server |
 

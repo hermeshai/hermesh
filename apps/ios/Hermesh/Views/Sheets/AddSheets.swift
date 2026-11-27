@@ -751,7 +751,7 @@ struct AddProjectSheet: View {
             defer { busy = false }
             do {
                 if let existing, forSession {
-                    model.addedProject = AddedProject(machineID: machineID, projectID: existing.projectID, worktree: existing.workspace == .worktree)
+                    model.addedProject = AddedProject(machineID: machineID, projectID: existing.projectID, worktree: projectWorktree(existing, remembered: SessionChoices.worktree(machine: machineID, project: existing.projectID)))
                 } else {
                     var r = Hermesh_Local_V1_AddProjectRequest()
                     r.machineID = machineID

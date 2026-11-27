@@ -66,7 +66,7 @@ public func herStillSending(_ sending: [HerOutgoing], said: [HerItem], lost: (He
 /// key from one to the next. It is in the conversation when a message there has its id; one that her gave an id of her
 /// own (an older her) when a message there has the same words, sent at or after it was written (less a minute, for
 /// the clocks).
-public func herOutbox(sending: [HerOutgoing] = [], waiting list: [Hermesh_Local_V1_HerWaiting], botID: String, said: [HerItem]) -> [HerItem] {
+public func herOutbox(sending: [HerOutgoing] = [], waiting list: [Hermesh_Local_V1_HerWaiting], botID: String, conversation: String = "", said: [HerItem]) -> [HerItem] {
     let ids = Set(said.map(\.key))
     var left: [(text: String, ts: Double)] = said.compactMap {
         guard !$0.key.hasPrefix("hw_"), case .user(let text, _, _, _) = $0.kind else { return nil }
@@ -80,7 +80,7 @@ public func herOutbox(sending: [HerOutgoing] = [], waiting list: [Hermesh_Local_
         return true
     }
     var out: [HerItem] = []
-    let kept = list.filter { $0.botID == botID }.sorted { millis($0) < millis($1) }
+    let kept = list.filter { $0.botID == botID && $0.conversation == conversation }.sorted { millis($0) < millis($1) }
     for w in kept where !shown(w.id, w.text, millis(w)) {
         out.append(HerItem(key: w.id, ts: millis(w), kind: .waiting(id: w.id, text: w.text, files: w.localPaths.map(baseName), error: w.error),
                            reply: w.hasReply ? HerReply(w.reply) : nil))

@@ -396,7 +396,37 @@ test("a row's ⋯ menu renames in place, archives, and deletes once confirmed, i
     return page.getByRole("menu", { name: "更多操作" });
   };
 
-  // ⋯ in place of the archive button: pin, rename, archive, then delete after a line.
+  // Hovering an archivable row reveals quick archive + ⋯ (24×24) without shifting row height; pin stays in ⋯.
+  const idleRow = row("改个名字");
+  const idleBefore = (await idleRow.boundingBox())!;
+  await idleRow.hover();
+  const quickArchive = idleRow.getByRole("button", { name: "归档" });
+  const quickMore = idleRow.getByRole("button", { name: "更多操作" });
+  await expect(quickArchive).toBeVisible();
+  await expect(quickMore).toBeVisible();
+  await expect(idleRow.getByRole("button", { name: "置顶" })).toHaveCount(0);
+  const idleHover = (await idleRow.boundingBox())!;
+  const archiveBox = (await quickArchive.boundingBox())!;
+  expect(idleHover.height).toBe(idleBefore.height);
+  expect(Math.round(archiveBox.width)).toBe(24);
+  expect(Math.round(archiveBox.height)).toBe(24);
+  await quickArchive.hover();
+  await snap(page, "row-hover-archive");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await snap(page, "row-hover-archive-dark");
+  await page.emulateMedia({ colorScheme: "light" });
+
+  // Quick archive moves the row out; showing archived reveals quick unarchive to restore it.
+  await quickArchive.click();
+  await expect(idleRow).toHaveCount(0);
+  await list.getByRole("button", { name: "显示已归档" }).click();
+  await expect(idleRow).toBeVisible();
+  await idleRow.hover();
+  await idleRow.getByRole("button", { name: "取消归档" }).click();
+  await list.getByRole("button", { name: "隐藏已归档" }).click();
+  await expect(idleRow).toBeVisible();
+
+  // ⋯ menu: pin, rename, archive, then delete after a line.
   let menu = await more("改个名字");
   await expect(menu.getByRole("menuitem")).toHaveText(["置顶", "重命名", "归档", "删除…"]);
   await snap(page, "row-menu");
@@ -459,8 +489,10 @@ test("a row's ⋯ menu renames in place, archives, and deletes once confirmed, i
   await expect(page.getByText("已删除「新的名字」")).toBeVisible();
   await expect(row("新的名字")).toHaveCount(0);
 
-  // A running session can't be archived from here, but deleting it interrupts its turn first.
+  // A running session hides the quick archive button and disables archive in ⋯, while deleting interrupts its turn first.
   await expect(row("还在跑的")).toBeVisible();
+  await row("还在跑的").hover();
+  await expect(row("还在跑的").getByRole("button", { name: "归档" })).toHaveCount(0);
   menu = await more("还在跑的");
   await expect(menu.getByRole("menuitem", { name: "归档" })).toBeDisabled();
   await menu.getByRole("menuitem", { name: "删除…" }).click();

@@ -6866,8 +6866,11 @@ type StartSessionRequest struct {
 	QuestionTimeoutSeconds *uint32                `protobuf:"varint,12,opt,name=question_timeout_seconds,json=questionTimeoutSeconds,proto3,oneof" json:"question_timeout_seconds,omitempty"`
 	Conversation           string                 `protobuf:"bytes,13,opt,name=conversation,proto3" json:"conversation,omitempty"`
 	Locale                 string                 `protobuf:"bytes,14,opt,name=locale,proto3" json:"locale,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// How the session relates to parent_session_id: empty, a sub-agent of it; "her", work that Her
+	// sent from that conversation of hers (docs/her-conversations.md), which may be on another machine.
+	ParentRelationship string `protobuf:"bytes,15,opt,name=parent_relationship,json=parentRelationship,proto3" json:"parent_relationship,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *StartSessionRequest) Reset() {
@@ -6994,6 +6997,13 @@ func (x *StartSessionRequest) GetConversation() string {
 func (x *StartSessionRequest) GetLocale() string {
 	if x != nil {
 		return x.Locale
+	}
+	return ""
+}
+
+func (x *StartSessionRequest) GetParentRelationship() string {
+	if x != nil {
+		return x.ParentRelationship
 	}
 	return ""
 }
@@ -11288,7 +11298,7 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x1f\n" +
 	"\vinstance_id\x18\x02 \x01(\tR\n" +
 	"instanceId\" \n" +
-	"\x1eRemoveProviderInstanceResponse\"\xdf\x05\n" +
+	"\x1eRemoveProviderInstanceResponse\"\x90\x06\n" +
 	"\x13StartSessionRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1d\n" +
@@ -11307,7 +11317,8 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\x11parent_session_id\x18\v \x01(\tR\x0fparentSessionId\x12=\n" +
 	"\x18question_timeout_seconds\x18\f \x01(\rH\x00R\x16questionTimeoutSeconds\x88\x01\x01\x12\"\n" +
 	"\fconversation\x18\r \x01(\tR\fconversation\x12\x16\n" +
-	"\x06locale\x18\x0e \x01(\tR\x06localeB\x1b\n" +
+	"\x06locale\x18\x0e \x01(\tR\x06locale\x12/\n" +
+	"\x13parent_relationship\x18\x0f \x01(\tR\x12parentRelationshipB\x1b\n" +
 	"\x19_question_timeout_seconds\"\xae\x01\n" +
 	"\x14StartSessionResponse\x125\n" +
 	"\asession\x18\x01 \x01(\v2\x1b.hermesh.session.v1.SessionR\asession\x128\n" +

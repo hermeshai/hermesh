@@ -28,7 +28,16 @@
     "ask": "要在 <project/> 里做什么？",
     "workingCopy": "工作目录",
     "checkout": "当前目录",
-    "checkoutHint": "直接在项目目录里修改"
+    "checkoutHint": "直接在项目目录里修改",
+    "roleAgent": "Agent",
+    "roleHer": "Her",
+    "toHer": "交给 Her · {{keys}}",
+    "toAgent": "交给 Agent · {{keys}}",
+    "herAsk": "要 Her 做什么？",
+    "herWhere": "Her 在 {{machine}}",
+    "defaultModel": "默认",
+    "switchToWorktree": "点击切为独立 worktree",
+    "switchToCheckout": "点击切为当前目录"
   },
   "header": {
     "archive": "归档",
@@ -43,7 +52,14 @@
     "working": "工作中"
   },
   "todo": {
-    "label": "步骤进展"
+    "label": "步骤进展",
+    "completedFold": "已完成前 {{done}} 步 · 共 {{total}} 步",
+    "expandedHeader": "步骤进展 · 已完成 {{done}}/{{total}}",
+    "hide": "收起",
+    "next": "下一步：{{text}}",
+    "moreSteps": "+{{count}} 步",
+    "parallel": "并行",
+    "skipped": "跳过"
   },
   "mode": {
     "code": "编码",

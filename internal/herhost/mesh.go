@@ -23,7 +23,9 @@ type Mesh interface {
 	Describe(ctx context.Context, bot, name string, args json.RawMessage) (summary string, rule []string)
 	// Call runs one tool and returns its JSON document, and what the apps
 	// read of the result beside it (nil: nothing; docs/her-team.md §6.2).
-	Call(ctx context.Context, bot, callID, name string, args json.RawMessage) (output string, details any, isError bool)
+	// conversation is the conversation of the bot's that calls (empty:
+	// unknown), which the news of what the call started goes back to.
+	Call(ctx context.Context, bot, conversation, callID, name string, args json.RawMessage) (output string, details any, isError bool)
 }
 
 // MeshGroup is the params of `mesh/host`.
@@ -79,16 +81,21 @@ func (h *Host) MeshChanged() {
 }
 
 // News puts news into an assistant's conversation and wakes her
-// (`mesh/news`). It returns once her has it in the conversation, which may
-// take as long as the step she is in.
-func (h *Host) News(ctx context.Context, bot, id, fromID, fromName, text string) error {
+// (`mesh/news`): the one conversation names, or her main one when it is
+// empty or no longer hers. It returns once her has it in the conversation,
+// which may take as long as the step she is in.
+func (h *Host) News(ctx context.Context, bot, conversation, id, fromID, fromName, text string) error {
 	h.mu.Lock()
 	mon := h.mon
 	h.mu.Unlock()
 	if mon == nil {
 		return errOff
 	}
-	params, _ := json.Marshal(map[string]any{"bot": bot, "id": id, "from": map[string]string{"id": fromID, "name": fromName}, "text": text})
+	p := map[string]any{"bot": bot, "id": id, "from": map[string]string{"id": fromID, "name": fromName}, "text": text}
+	if conversation != "" {
+		p["conversation"] = conversation
+	}
+	params, _ := json.Marshal(p)
 	res, err := mon.call(ctx, "mesh/news", params)
 	if err != nil {
 		return err
@@ -132,10 +139,11 @@ func (h *Host) serveMesh(ctx context.Context, method string, params json.RawMess
 		return nil, errors.New("Her has no access to the mesh")
 	}
 	var p struct {
-		Bot       string          `json:"bot"`
-		CallID    string          `json:"call_id"`
-		Name      string          `json:"name"`
-		Arguments json.RawMessage `json:"arguments"`
+		Bot          string          `json:"bot"`
+		Conversation string          `json:"conversation"`
+		CallID       string          `json:"call_id"`
+		Name         string          `json:"name"`
+		Arguments    json.RawMessage `json:"arguments"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, err
@@ -145,7 +153,7 @@ func (h *Host) serveMesh(ctx context.Context, method string, params json.RawMess
 		summary, rule := m.Describe(ctx, p.Bot, p.Name, p.Arguments)
 		return map[string]any{"summary": summary, "rule": rule}, nil
 	case "mesh/call":
-		out, details, isErr := m.Call(ctx, p.Bot, p.CallID, p.Name, p.Arguments)
+		out, details, isErr := m.Call(ctx, p.Bot, p.Conversation, p.CallID, p.Name, p.Arguments)
 		res := map[string]any{"output": out, "is_error": isErr}
 		if details != nil {
 			res["details"] = details
