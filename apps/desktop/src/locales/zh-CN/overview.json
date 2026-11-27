@@ -66,6 +66,7 @@
     "showAll": "显示全部",
     "disconnected": "已断开的 Agent",
     "byGrant": "{{label}} 发起的任务",
+    "byYou": "你发起的任务",
     "onMachine": "{{machine}} 上的任务",
     "inProject": "{{project}} 项目的任务",
     "waiting": "等你回答",
