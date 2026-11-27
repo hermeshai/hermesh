@@ -1151,7 +1151,6 @@ const state = {
   preferredLight: "light", // "light" | "soft"
   preferredDark: "dark",   // "dark"  | "black"
   osScheme: "light",       // "light" | "dark"
-  peekAppearance: null,
 };
 
 function resolvePalette(appearance) {
@@ -1199,12 +1198,8 @@ function mountControls() {
 }
 
 function syncUI() {
-  const effectiveApp = state.peekAppearance ?? state.appearance;
-  const activePalette = resolvePalette(effectiveApp);
+  const activePalette = resolvePalette(state.appearance);
   const glass = isGlassPalette(activePalette);
-
-  const dayPair = effectiveApp === "light" || effectiveApp === "soft" ? effectiveApp : state.preferredLight;
-  const nightPair = effectiveApp === "dark" || effectiveApp === "black" ? effectiveApp : state.preferredDark;
 
   document.querySelectorAll("#look-grid .look-card").forEach((btn) => {
     const id = btn.dataset.look;
@@ -1221,9 +1216,9 @@ function syncUI() {
       const dayWin = btn.querySelector(".sys-win.day");
       const nightWin = btn.querySelector(".sys-win.night");
       dayWin.classList.remove(...PALETTES);
-      dayWin.classList.add(`m-${dayPair}`);
+      dayWin.classList.add(`m-${state.preferredLight}`);
       nightWin.classList.remove(...PALETTES);
-      nightWin.classList.add(`m-${nightPair}`);
+      nightWin.classList.add(`m-${state.preferredDark}`);
     }
   });
 
@@ -1236,25 +1231,21 @@ function syncUI() {
 
   const names = { light: "浅色", soft: "柔白", dark: "深色", black: "暗黑" };
   const matText = glass ? "液态玻璃" : "实色";
-  const peeking = state.peekAppearance !== null;
-  const modeText = effectiveApp === "system"
+  const modeText = state.appearance === "system"
     ? `跟随系统（${names[activePalette]} · ${matText}）`
     : `${names[activePalette]}（${matText}）`;
-  document.getElementById("menubar-status").textContent = `${peeking ? "预览中：" : "当前生效："}${modeText}`;
+  document.getElementById("menubar-status").textContent = `当前生效：${modeText}`;
 }
 
 mountControls();
 syncUI();
 
 const lookGrid = document.getElementById("look-grid");
-let hoverTimer = 0;
 
 function selectLook(next, focus = false) {
   state.appearance = next;
   if (next === "light" || next === "soft") state.preferredLight = next;
   if (next === "dark"  || next === "black") state.preferredDark = next;
-  state.peekAppearance = null;
-  clearTimeout(hoverTimer);
   syncUI();
   if (focus) lookGrid.querySelector(`[data-look="${next}"]`)?.focus();
 }
@@ -1270,23 +1261,6 @@ lookGrid.addEventListener("keydown", (e) => {
   const idx = LOOKS.findIndex((x) => x.id === state.appearance);
   const next = LOOKS[(idx + (e.key === "ArrowRight" ? 1 : LOOKS.length - 1)) % LOOKS.length].id;
   selectLook(next, true);
-});
-
-lookGrid.addEventListener("pointerover", (e) => {
-  const btn = e.target.closest("[data-look]");
-  if (!btn) return;
-  const val = btn.dataset.look;
-  clearTimeout(hoverTimer);
-  hoverTimer = setTimeout(() => {
-    state.peekAppearance = val;
-    syncUI();
-  }, 110);
-});
-
-lookGrid.addEventListener("pointerleave", () => {
-  clearTimeout(hoverTimer);
-  state.peekAppearance = null;
-  syncUI();
 });
 
 const stage = document.getElementById("stage");

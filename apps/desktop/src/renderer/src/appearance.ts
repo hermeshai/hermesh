@@ -5,7 +5,6 @@ import {
   isLightPalette,
   resolvePalette,
   usesSidebarMaterial,
-  type Appearance,
   type AppearancePrefs,
   type DarkPalette,
   type LightPalette,
@@ -18,7 +17,6 @@ let prefs: AppearancePrefs = {
   preferredLight: isLightPalette(window.hermesh?.preferredLight) ? window.hermesh!.preferredLight : "light",
   preferredDark: isDarkPalette(window.hermesh?.preferredDark) ? window.hermesh!.preferredDark : "dark",
 };
-let preview: Appearance | null = null;
 let initializedFromIPC = false;
 const listeners = new Set<() => void>();
 
@@ -26,19 +24,17 @@ const darkMedia = () => (typeof window !== "undefined" ? window.matchMedia("(pre
 const isDarkNow = () => darkMedia()?.matches ?? false;
 
 function currentLightStyle(): LightPalette {
-  const effective = preview && isAppearance(preview) ? preview : prefs.appearance;
-  if (isLightPalette(effective)) return effective;
+  if (isLightPalette(prefs.appearance)) return prefs.appearance;
   return prefs.preferredLight ?? "light";
 }
 
 function currentDarkStyle(): DarkPalette {
-  const effective = preview && isAppearance(preview) ? preview : prefs.appearance;
-  if (isDarkPalette(effective)) return effective;
+  if (isDarkPalette(prefs.appearance)) return prefs.appearance;
   return prefs.preferredDark ?? "dark";
 }
 
 export function currentPalette(): Palette {
-  return resolvePalette(prefs, isDarkNow(), preview);
+  return resolvePalette(prefs, isDarkNow());
 }
 
 function applyRootDatasets() {
@@ -62,11 +58,6 @@ export function initAppearance(): void {
       preferredLight: p.preferredLight ?? (isLightPalette(p.appearance) ? p.appearance : prefs.preferredLight),
       preferredDark: p.preferredDark ?? (isDarkPalette(p.appearance) ? p.appearance : prefs.preferredDark),
     };
-    preview = null;
-    applyRootDatasets();
-  });
-  window.hermesh?.onAppearancePreview?.((a) => {
-    preview = isAppearance(a) ? a : null;
     applyRootDatasets();
   });
   window.hermesh

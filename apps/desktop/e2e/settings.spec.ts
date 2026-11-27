@@ -571,7 +571,7 @@ test("settings 账号与设备 shows the account, the devices and, folded, the a
   await app.close();
 });
 
-test("通用's 外观 follows the system (remembering the chosen light and dark pair), previews on hover, and keeps glass vs solid styles across launches", async () => {
+test("通用's 外观 follows the system (remembering the chosen light and dark pair) and keeps glass vs solid styles across launches without switching on hover", async () => {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
   let { app, page } = await launch(undefined, { profile, systemColors: true });
   const dark = (p: Page) => p.evaluate(() => matchMedia("(prefers-color-scheme: dark)").matches);
@@ -586,14 +586,11 @@ test("通用's 外观 follows the system (remembering the chosen light and dark 
   await expect(appearance().getByRole("button", { name: "跟随系统" })).toHaveAttribute("aria-pressed", "true");
   expect(await source()).toBe("system");
 
-  // Hovering previews across both windows without committing, and leaving restores the saved choice.
-  await appearance().getByRole("button", { name: "柔白" }).hover();
-  await expect.poll(() => lightStyle(page)).toBe("soft");
-  await expect.poll(() => vibrant(page)).toBe(false);
-  await expect(settings.locator(".set-main")).toHaveCSS("background-color", "rgb(244, 245, 247)");
-  await expect(appearance().getByRole("button", { name: "跟随系统" })).toHaveAttribute("aria-pressed", "true");
-  await settings.mouse.move(4, 4);
-  await expect.poll(source).toBe("system");
+  // Hovering a card never triggers an expensive live theme switch across windows; only clicking commits.
+  await appearance().getByRole("button", { name: "暗黑" }).hover();
+  await page.waitForTimeout(200);
+  expect(await source()).toBe("system");
+  expect(await darkStyle(page)).toBe("dark");
 
   await appearance().getByRole("button", { name: "深色" }).click();
   await expect(appearance().getByRole("button", { name: "深色" })).toHaveAttribute("aria-pressed", "true");

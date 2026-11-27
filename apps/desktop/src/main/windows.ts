@@ -6,7 +6,7 @@ import path from "node:path";
 import { usesSidebarMaterial, windowBackgroundOf } from "../shared/appearance";
 import { consoleURL, inConsole, opensOutside } from "../shared/herConsole";
 import { i18n } from "../shared/i18n";
-import { activePalette, clearAppearancePreview, preferences } from "./notify";
+import { activePalette, preferences } from "./notify";
 import { platform } from "./platform";
 
 export const origin = "app://hermesh";
@@ -227,10 +227,7 @@ export function showSettings(tab?: string) {
   });
   secure(settings);
   settings.once("ready-to-show", () => settings?.show());
-  settings.on("closed", () => {
-    settings = undefined;
-    clearAppearancePreview();
-  });
+  settings.on("closed", () => (settings = undefined));
   settings.loadURL(page(`#settings${tab ? "/" + tab : ""}`));
 }
 
