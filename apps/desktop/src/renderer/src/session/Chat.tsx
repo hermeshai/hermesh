@@ -33,7 +33,7 @@ import { useVirtualRows, type VirtualRow } from "./useVirtualRows";
  * it grows (or `follow` changes) unless the person scrolled up; scrolled well up, a button takes them back down.
  * `control`, while a turn is live, sits over its bottom edge.
  */
-export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, head, foot, unread, control, follow, spoken = 0 }: {
+export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, head, foot, unread, control, follow, spoken = 0, onUnderTop }: {
   rows: R[];
   initial: Record<string, number>;
   label: string;
@@ -44,6 +44,7 @@ export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, hea
   control?: (onHeight: (h: number) => void) => ReactNode;
   follow?: unknown;
   spoken?: number;
+  onUnderTop?: (under: boolean) => void;
 }) {
   const { t } = useTranslation("session");
   const live = control !== undefined;
@@ -63,6 +64,21 @@ export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, hea
   const atEnd = useRef(true);
   const goingToEnd = useRef(false);
   const lastTop = useRef(0);
+  const empty = unread !== undefined;
+  const underTop = useRef<boolean | null>(null);
+  const onUnderTopRef = useRef(onUnderTop);
+  onUnderTopRef.current = onUnderTop;
+  const syncUnderTop = () => {
+    const cb = onUnderTopRef.current;
+    if (!cb) return;
+    const el = scroll.current;
+    // .spage .dbody has 65px top padding over a 44px bar: until scrollTop > 16, only flat --win lies behind the bar.
+    const next = !empty && !!el && el.scrollTop > 16;
+    if (underTop.current !== next) {
+      underTop.current = next;
+      cb(next);
+    }
+  };
   // When the person last acted on the conversation itself. A held pointer (the scrollbar) counts until it lets go.
   const touched = useRef(-Infinity);
   const touch = () => {
@@ -80,7 +96,8 @@ export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, hea
     const el = scroll.current;
     if (el && atEnd.current && !goingToEnd.current) el.scrollTop = el.scrollHeight;
     if (el) lastTop.current = el.scrollTop;
-  }, [rows, ctlHeight, follow]);
+    syncUnderTop();
+  }, [rows, ctlHeight, follow, empty]);
   // Fonts, formulas, diagrams and tables can resize without a new event. Reading above the end, the row at the top
   // of the view stays where it is; at the end, the end stays in view.
   const anchor = useRef<{ key: string; top: number } | null>(null);
@@ -96,6 +113,7 @@ export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, hea
       el.scrollTop = el.scrollHeight;
       lastTop.current = el.scrollTop;
     }
+    syncUnderTop();
   }, [spoken]);
   const rememberAnchor = () => {
     const el = scroll.current;
@@ -109,7 +127,6 @@ export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, hea
     const row = [...el.querySelectorAll<HTMLElement>("[data-step-key]")].find((node) => node.getBoundingClientRect().bottom > top);
     anchor.current = row ? { key: row.dataset.stepKey!, top: row.getBoundingClientRect().top - top } : null;
   };
-  const empty = unread !== undefined;
   useEffect(() => {
     const el = scroll.current;
     const body = el?.firstElementChild;
@@ -122,6 +139,7 @@ export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, hea
           el.scrollTop = el.scrollHeight;
           lastTop.current = el.scrollTop;
         }
+        syncUnderTop();
         return;
       }
       cancelAnimationFrame(frame);
@@ -131,6 +149,7 @@ export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, hea
           if (row) el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - anchor.current.top;
         }
         lastTop.current = el.scrollTop;
+        syncUnderTop();
         rememberAnchor();
       });
     });
@@ -156,6 +175,7 @@ export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, hea
       el.scrollTop = el.scrollHeight;
     }
     lastTop.current = el.scrollTop;
+    syncUnderTop();
     setAway(!atEnd.current && below > 240);
     rememberAnchor();
   };

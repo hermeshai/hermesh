@@ -239,13 +239,15 @@ export const fx = {
     run();
   },
   /** 108 dots fly in from around the mark and settle along its three beams (§5.3). */
-  assemble(mark: SVGSVGElement | null) {
+  assemble(mark: Element | null) {
     if (!mark || still() || !root) return;
-    const beams = [...mark.querySelectorAll<SVGPathElement>("path.hm-beam:not(.hm-glint)")];
-    const [cx, cy] = at(mark);
-    const box = mark.getBoundingClientRect();
+    const host = mark.closest(".hm-mark") ?? mark;
+    const svg = mark instanceof SVGSVGElement ? mark : host.querySelector("svg");
+    const beams = [...host.querySelectorAll<SVGPathElement>("path.hm-beam:not(.hm-glint)")];
+    const [cx, cy] = at(host);
+    const box = host.getBoundingClientRect();
     const b = root.getBoundingClientRect();
-    const m = mark.getScreenCTM();
+    const m = svg?.getScreenCTM() ?? null;
     const col = aurora();
     beams.forEach((beam, i) => {
       const len = beam.getTotalLength();

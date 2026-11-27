@@ -25,6 +25,23 @@ type procInfo struct {
 	start     int64
 }
 
+type procSnap struct {
+	procs    []procInfo
+	children map[int][]procInfo
+	alive    map[int]int64
+}
+
+func scanProcs() *procSnap {
+	procs := listProcs()
+	alive := make(map[int]int64, len(procs))
+	children := make(map[int][]procInfo, max(16, len(procs)/4))
+	for _, p := range procs {
+		children[p.ppid] = append(children[p.ppid], p)
+		alive[p.pid] = p.start
+	}
+	return &procSnap{procs: procs, children: children, alive: alive}
+}
+
 type tracked struct {
 	root     procInfo
 	known    map[int]int64 // pid → start time
@@ -75,27 +92,21 @@ func trackLoop() {
 		}
 		tracker.mu.Unlock()
 		mProcTableScans.Inc()
-		procs := listProcs()
+		snap := scanProcs()
 		for _, t := range ts {
-			t.update(procs)
+			t.update(snap)
 		}
 	}
 }
 
 // update adds the current descendants of the root and of every known
 // descendant that is still the same process.
-func (t *tracked) update(procs []procInfo) {
-	children := map[int][]procInfo{}
-	alive := map[int]int64{}
-	for _, p := range procs {
-		children[p.ppid] = append(children[p.ppid], p)
-		alive[p.pid] = p.start
-	}
+func (t *tracked) update(snap *procSnap) {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
 	queue := []int{t.root.pid}
 	for pid, st := range t.known {
-		if alive[pid] == st {
+		if snap.alive[pid] == st {
 			queue = append(queue, pid)
 		} else {
 			delete(t.known, pid)
@@ -104,7 +115,7 @@ func (t *tracked) update(procs []procInfo) {
 	for len(queue) > 0 {
 		pid := queue[0]
 		queue = queue[1:]
-		for _, c := range children[pid] {
+		for _, c := range snap.children[pid] {
 			if c.pid == t.root.pid {
 				continue
 			}
@@ -119,16 +130,12 @@ func (t *tracked) update(procs []procInfo) {
 // running returns the arguments of the non-baseline descendants alive now,
 // the newest first.
 func (t *tracked) running() [][]string {
-	procs := listProcs()
-	t.update(procs)
-	alive := map[int]int64{}
-	for _, p := range procs {
-		alive[p.pid] = p.start
-	}
+	snap := scanProcs()
+	t.update(snap)
 	var live []procInfo
 	tracker.mu.Lock()
 	for pid, st := range t.known {
-		if alive[pid] == st && t.baseline[pid] != st {
+		if snap.alive[pid] == st && t.baseline[pid] != st {
 			live = append(live, procInfo{pid: pid, start: st})
 		}
 	}
@@ -147,23 +154,19 @@ func (t *tracked) running() [][]string {
 // session's standing baseline (MCP servers, language servers, or promoted
 // daemon processes) so HasActiveDescendants ignores them.
 func (t *tracked) snapshotBaseline() {
-	procs := listProcs()
-	t.update(procs)
-	alive := map[int]int64{}
-	for _, p := range procs {
-		alive[p.pid] = p.start
-	}
+	snap := scanProcs()
+	t.update(snap)
 	tracker.mu.Lock()
 	if t.baseline == nil {
 		t.baseline = map[int]int64{}
 	}
 	for pid, st := range t.known {
-		if alive[pid] == st {
+		if snap.alive[pid] == st {
 			t.baseline[pid] = st
 		}
 	}
 	for pid, st := range t.baseline {
-		if alive[pid] != st {
+		if snap.alive[pid] != st {
 			delete(t.baseline, pid)
 		}
 	}
@@ -173,16 +176,12 @@ func (t *tracked) snapshotBaseline() {
 // hasActiveDescendants reports whether any non-baseline descendant process of
 // the agent is currently alive.
 func (t *tracked) hasActiveDescendants() bool {
-	procs := listProcs()
-	t.update(procs)
-	alive := map[int]int64{}
-	for _, p := range procs {
-		alive[p.pid] = p.start
-	}
+	snap := scanProcs()
+	t.update(snap)
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
 	for pid, st := range t.known {
-		if alive[pid] == st && t.baseline[pid] != st {
+		if snap.alive[pid] == st && t.baseline[pid] != st {
 			return true
 		}
 	}
@@ -227,16 +226,12 @@ func (t *tracked) stop() int {
 	tracker.mu.Unlock()
 	killed := 0
 	for i := 0; i < 3; i++ { // catch processes forked meanwhile
-		procs := listProcs()
-		t.update(procs)
-		alive := map[int]int64{}
-		for _, p := range procs {
-			alive[p.pid] = p.start
-		}
+		snap := scanProcs()
+		t.update(snap)
 		n := 0
 		tracker.mu.Lock()
 		for pid, st := range t.known {
-			if alive[pid] == st && syscall.Kill(pid, syscall.SIGKILL) == nil {
+			if snap.alive[pid] == st && syscall.Kill(pid, syscall.SIGKILL) == nil {
 				n++
 			}
 		}
@@ -258,13 +253,13 @@ func KillTree(pgid int) {
 		return
 	}
 	t := &tracked{root: procInfo{pid: pgid}, known: map[int]int64{}}
-	procs := listProcs()
-	for _, p := range procs {
+	snap := scanProcs()
+	for _, p := range snap.procs {
 		if p.pid == pgid {
 			t.root = p
 		}
 	}
-	t.update(procs)
+	t.update(snap)
 	KillGroup(pgid)
 	t.stop()
 }

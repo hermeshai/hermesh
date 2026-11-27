@@ -166,11 +166,15 @@ async function readPageDiagnostics(wc: WebContents): Promise<{ route: string; vi
       running++;
       const timing = a.effect && typeof a.effect.getComputedTiming === "function" ? a.effect.getComputedTiming() : null;
       if (timing && timing.iterations === Infinity) infinite++;
+      const el = a.effect && "target" in a.effect ? a.effect.target : null;
+      const isSvgChild = typeof SVGElement !== "undefined" && el instanceof SVGElement && el.tagName.toLowerCase() !== "svg";
       const kfs = a.effect && typeof a.effect.getKeyframes === "function" ? a.effect.getKeyframes() : [];
       const nonComp = new Set();
       for (const kf of kfs) {
         for (const k of Object.keys(kf)) {
+          if (k === "offset" || k === "computedOffset" || k === "easing" || k === "composite") continue;
           if (!compositor.has(k)) nonComp.add(k);
+          else if (isSvgChild) nonComp.add("svg:" + k);
         }
       }
       if (nonComp.size === 0) {
@@ -178,7 +182,6 @@ async function readPageDiagnostics(wc: WebContents): Promise<{ route: string; vi
       } else {
         mainThreadCount++;
         if (mainThreadSamples.length < 16) {
-          const el = a.effect && "target" in a.effect ? a.effect.target : null;
           const cls = el && el.classList && el.classList.length ? "." + Array.from(el.classList).slice(0, 2).join(".") : "";
           const target = el && el.tagName ? el.tagName.toLowerCase() + cls : "unknown";
           mainThreadSamples.push({ target, props: Array.from(nonComp) });

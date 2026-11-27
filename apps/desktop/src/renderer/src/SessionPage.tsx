@@ -220,6 +220,12 @@ export function SessionPage() {
   const [starting, setStarting] = useState<Starting | null>(null);
   const [stopRequestedRun, setStopRequestedRun] = useState<string>("");
   const [spoken, setSpoken] = useState<number>(0);
+  const [underState, setUnderState] = useState<{ id: string | undefined; under: boolean }>({ id: undefined, under: false });
+  const underBar = Boolean(activeSessionId && underState.id === activeSessionId && underState.under);
+  const handleUnderTop = useCallback(
+    (under: boolean) => setUnderState((prev) => (prev.id === activeSessionId && prev.under === under ? prev : { id: activeSessionId, under })),
+    [activeSessionId],
+  );
 
   const draftKey = activeSessionId
     ? sessionDraftKey(activeSessionId)
@@ -1231,7 +1237,7 @@ export function SessionPage() {
   return (
     <div className={`spage ${filesOpen ? "bgopen" : ""}`}>
       <div className="scol">
-        <GlassBar className="ctool drag">{header}</GlassBar>
+        <GlassBar className="ctool drag" flat={!activeSessionId || !underBar}>{header}</GlassBar>
         {!activeSessionId && starting ? (
           // From Send until the machine answers, as the session's page will be: the owner's message, faded, with where it
           // is under it ("Sending…" once that takes 400 ms), or why it was not sent, with Try Again and Edit.
@@ -1289,6 +1295,7 @@ export function SessionPage() {
                   label={ts("chat.log")}
                   follow={currentSession?.status}
                   spoken={spoken}
+                  onUnderTop={handleUnderTop}
                   unread={unread && session ? <Unread s={session} /> : undefined}
                   row={(r) =>
                     currentSession?.offlineQueued && r.it.kind === "user" ? (

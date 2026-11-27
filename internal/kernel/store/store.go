@@ -231,6 +231,11 @@ type Store struct {
 	summaryMu    sync.Mutex
 	summaryAtGen uint64
 	summaryCache SessionSummary
+
+	turnItemsMu    sync.Mutex
+	turnItemsGen   uint64
+	turnItemsCache map[string][]*sessionv1.TurnItem
+	turnItemsOrder []string
 }
 
 // Steps is what the moves into this store did when it opened: those done
@@ -280,6 +285,8 @@ func Open(dbPath string) (*Store, error) {
 		return nil, err
 	}
 	st.summaryGen.Store(1)
+	st.turnItemsGen = 1
+	st.turnItemsCache = make(map[string][]*sessionv1.TurnItem, maxCachedTurnItemSessions)
 	return st, nil
 }
 
@@ -408,9 +415,20 @@ func (s *Store) Close() error {
 
 // Tx wraps an atomic SQLite write transaction plus staged SessionEvents.
 type Tx struct {
-	tx           *sql.Tx
-	events       []*sessionv1.SessionEvent
-	summaryDirty bool
+	tx             *sql.Tx
+	events         []*sessionv1.SessionEvent
+	summaryDirty   bool
+	turnItemsDirty map[string]struct{}
+}
+
+func (tx *Tx) markTurnItemsDirty(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	if tx.turnItemsDirty == nil {
+		tx.turnItemsDirty = map[string]struct{}{}
+	}
+	tx.turnItemsDirty[sessionID] = struct{}{}
 }
 
 func (s *Store) Mutate(fn func(tx *Tx) error) ([]*sessionv1.SessionEvent, error) {
@@ -431,6 +449,9 @@ func (s *Store) Mutate(fn func(tx *Tx) error) ([]*sessionv1.SessionEvent, error)
 	}
 	if tx.summaryDirty {
 		s.summaryGen.Add(1)
+	}
+	if len(tx.turnItemsDirty) > 0 {
+		s.invalidateTurnItems(tx.turnItemsDirty)
 	}
 	return tx.events, nil
 }
@@ -682,6 +703,7 @@ func (tx *Tx) DeleteSession(sessionID string) error {
 	)
 	if err == nil {
 		tx.summaryDirty = true
+		tx.markTurnItemsDirty(sessionID)
 	}
 	return err
 }
@@ -1085,6 +1107,9 @@ func (tx *Tx) PutTurnItem(it *sessionv1.TurnItem) error {
 		   payload=excluded.payload`,
 		it.SessionId, it.ItemId, it.RunId, it.Seq, int32(it.Kind), b,
 	)
+	if err == nil {
+		tx.markTurnItemsDirty(it.SessionId)
+	}
 	return err
 }
 
@@ -1206,6 +1231,9 @@ func (tx *Tx) DeleteTurnItemsAfterRunIds(sessionID string, removedRunIDs map[str
 		if _, err := tx.tx.Exec(`DELETE FROM background_tasks WHERE session_id = ? AND run_id = ?`, sessionID, runID); err != nil {
 			return err
 		}
+	}
+	if len(removedRunIDs) > 0 {
+		tx.markTurnItemsDirty(sessionID)
 	}
 	return nil
 }
@@ -1388,7 +1416,44 @@ func (s *Store) BackgroundTasks(sessionID string) ([]*sessionv1.BackgroundTask, 
 	return out, rows.Err()
 }
 
+const maxCachedTurnItemSessions = 24
+
+func (s *Store) invalidateTurnItems(dirty map[string]struct{}) {
+	s.turnItemsMu.Lock()
+	defer s.turnItemsMu.Unlock()
+	s.turnItemsGen++
+	for id := range dirty {
+		if _, ok := s.turnItemsCache[id]; !ok {
+			continue
+		}
+		delete(s.turnItemsCache, id)
+		if idx := slices.Index(s.turnItemsOrder, id); idx >= 0 {
+			s.turnItemsOrder = slices.Delete(s.turnItemsOrder, idx, idx+1)
+		}
+	}
+}
+
+func (s *Store) touchTurnItemsOrderLocked(sessionID string) {
+	if idx := slices.Index(s.turnItemsOrder, sessionID); idx >= 0 {
+		if idx == len(s.turnItemsOrder)-1 {
+			return
+		}
+		s.turnItemsOrder = slices.Delete(s.turnItemsOrder, idx, idx+1)
+	}
+	s.turnItemsOrder = append(s.turnItemsOrder, sessionID)
+}
+
 func (s *Store) TurnItems(sessionID string) ([]*sessionv1.TurnItem, error) {
+	s.turnItemsMu.Lock()
+	if cached, ok := s.turnItemsCache[sessionID]; ok {
+		s.touchTurnItemsOrderLocked(sessionID)
+		out := slices.Clone(cached)
+		s.turnItemsMu.Unlock()
+		return out, nil
+	}
+	gen := s.turnItemsGen
+	s.turnItemsMu.Unlock()
+
 	rows, err := s.reader.Query(`SELECT payload FROM turn_items WHERE session_id = ? ORDER BY seq ASC`, sessionID)
 	if err != nil {
 		return nil, err
@@ -1406,7 +1471,25 @@ func (s *Store) TurnItems(sessionID string) ([]*sessionv1.TurnItem, error) {
 		}
 		out = append(out, it)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	s.turnItemsMu.Lock()
+	if s.turnItemsGen == gen && s.turnItemsCache != nil {
+		if _, exists := s.turnItemsCache[sessionID]; !exists && len(s.turnItemsOrder) >= maxCachedTurnItemSessions {
+			evict := s.turnItemsOrder[0]
+			s.turnItemsOrder = s.turnItemsOrder[1:]
+			delete(s.turnItemsCache, evict)
+		}
+		s.turnItemsCache[sessionID] = out
+		s.touchTurnItemsOrderLocked(sessionID)
+		ret := slices.Clone(out)
+		s.turnItemsMu.Unlock()
+		return ret, nil
+	}
+	s.turnItemsMu.Unlock()
+	return out, nil
 }
 
 func (tx *Tx) PutRuntimeRequest(req *sessionv1.RuntimeRequest) error {

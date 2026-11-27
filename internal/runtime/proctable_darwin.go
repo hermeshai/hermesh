@@ -65,7 +65,7 @@ func listProcs() []procInfo {
 		return nil
 	}
 	uid := uint32(os.Getuid())
-	ps := make([]procInfo, 0, len(kps))
+	ps := make([]procInfo, 0, max(16, len(kps)/2))
 	for _, kp := range kps {
 		if kp.Eproc.Ucred.Uid != uid {
 			continue

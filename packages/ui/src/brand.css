@@ -83,6 +83,28 @@
   --danger: #ff6670;
 }
 
+.hm-mark {
+  position: relative;
+  display: inline-block;
+  isolation: isolate;
+  flex: none;
+}
+.hm-mark > .hm-bg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  mix-blend-mode: var(--beam-blend);
+}
+.hm-mark.hm-mono > .hm-bg {
+  mix-blend-mode: normal;
+}
+.hm-mark > .hm-bg > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
 .hm-beam {
   opacity: var(--beam-opacity);
   mix-blend-mode: var(--beam-blend);
@@ -122,6 +144,24 @@
 }
 .hm-seq .hm-b2 {
   animation-delay: 0.8s;
+}
+.hm-mark.hm-seq > .hm-bg {
+  opacity: 0.28;
+  mix-blend-mode: normal;
+  will-change: opacity;
+  animation: hm-seq 1.2s linear infinite;
+}
+.hm-mark.hm-seq > .hm-s1 {
+  animation-delay: 0.4s;
+}
+.hm-mark.hm-seq > .hm-s2 {
+  animation-delay: 0.8s;
+}
+.hm-mark.hm-seq .hm-beam {
+  opacity: 1;
+  mix-blend-mode: normal;
+  will-change: auto;
+  animation: none;
 }
 @keyframes hm-seq {
   0%,
@@ -189,6 +229,7 @@
 .hm-wait .hm-bg {
   transform: translate(var(--dx), var(--dy));
   opacity: 0.6;
+  will-change: transform, opacity;
   animation: hm-breathe 2.4s var(--ease-in-out) infinite alternate;
 }
 @keyframes hm-breathe {
@@ -207,9 +248,13 @@
 /* Reduce Motion: nothing moves; things fade instead. */
 @media (prefers-reduced-motion: reduce) {
   .hm-pulse .hm-glint,
-  .hm-seq .hm-beam {
+  .hm-seq .hm-beam,
+  .hm-mark.hm-seq > .hm-bg {
     stroke-dasharray: none;
     animation: hm-fade 2s var(--ease-in-out) infinite alternate;
+  }
+  .hm-mark.hm-seq .hm-beam {
+    animation: none;
   }
   .hm-reveal .hm-beam,
   .hm-draw .hm-beam {

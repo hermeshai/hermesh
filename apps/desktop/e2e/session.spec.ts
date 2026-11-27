@@ -381,9 +381,17 @@ test("the session title bar floats over the conversation as liquid glass, resizi
     await expect(card).toBeVisible();
     expect((await card.boundingBox())!.y).toBeGreaterThanOrEqual(44 + 20);
 
+    // At the very top (only solid --win behind the 44px bar), backdrop-filter steps aside without removing glass-defs.
+    await scroller.hover();
+    await page.mouse.wheel(0, -2000);
+    await expect(bar).toHaveClass(/\bflat\b/);
+    expect(await bar.evaluate((el) => getComputedStyle(el).backdropFilter)).toBe("none");
+
     await scroller.evaluate((el) => {
       el.scrollTop = 180;
     });
+    await expect(bar).not.toHaveClass(/\bflat\b/);
+    expect(await bar.evaluate((el) => getComputedStyle(el).backdropFilter)).toContain(`#${filterInfo.filterId}`);
     await expect.poll(async () =>
       scroller.evaluate((el) => {
         const body = el.querySelector(".dbody")!.getBoundingClientRect();

@@ -52,9 +52,20 @@ function Gradients({ id }: { id: string }) {
   );
 }
 
-// The beams, each in a group that the waiting motion moves along the beam's
-// normal (--dx, --dy). pathLength 100 is the unit of the dashes that draw
-// them in and run the pulse along them.
+function BeamGradient({ id, index }: { id: string; index: number }) {
+  const b = BEAMS[index]!;
+  return (
+    <defs>
+      <linearGradient id={`${id}-${index}`} gradientUnits="userSpaceOnUse" x1={b.p0[0]} y1={b.p0[1]} x2={b.p1[0]} y2={b.p1[1]}>
+        {STOPS.map((k) => (
+          <stop key={k} offset={k / 8} style={{ stopColor: `var(--aurora-g${k})` }} />
+        ))}
+      </linearGradient>
+    </defs>
+  );
+}
+
+// The beams for the static/reveal wordmark lockup.
 function Beams({ id, mono, pulse }: { id: string; mono?: boolean; pulse?: boolean }) {
   return (
     <g style={{ isolation: "isolate" }}>
@@ -78,16 +89,40 @@ function Beams({ id, mono, pulse }: { id: string; mono?: boolean; pulse?: boolea
  * the other side), "lock" locks them back in (done), "fail" drifts them off
  * grey; "draw" draws them in slower, from delay (ms), for the first run. mono draws it in the current colour. pad (viewBox units) leaves room
  * around the mark, for the waiting motion.
+ *
+ * Each beam sits in its own HTML layer so "seq" and "wait" run entirely on
+ * the GPU compositor without main-thread SVG style/layout invalidation.
  */
 export function Mark({ size = 20, variant, mono, pad = 0, className, delay }: { size?: number; variant?: "reveal" | "draw" | "seq" | "pulse" | "wait" | "lock" | "fail"; mono?: boolean; pad?: number; className?: string; delay?: number }) {
   const id = useId();
   const cls = ["hm-mark", variant && `hm-${variant}`, mono && "hm-mono", className].filter(Boolean).join(" ");
-  const style = delay ? ({ "--hm-delay": `${delay}ms` } as CSSProperties) : undefined;
+  const vb = viewBox(pad);
+  const span = Math.max(BOX.w, BOX.h) + 2 * pad;
+  const pulse = variant === "pulse";
+  const style: CSSProperties = {
+    width: size,
+    height: size,
+    ...(delay ? ({ "--hm-delay": `${delay}ms` } as CSSProperties) : undefined),
+  };
   return (
-    <svg viewBox={viewBox(pad)} width={size} height={size} aria-hidden="true" className={cls} style={style}>
-      {!mono && <Gradients id={id} />}
-      <Beams id={id} mono={mono} pulse={variant === "pulse"} />
-    </svg>
+    <span aria-hidden="true" className={cls} style={style}>
+      {BEAMS.map((b, i) => {
+        const stroke = mono ? "currentColor" : `url(#${id}-${i})`;
+        return (
+          <span
+            key={i}
+            className={`hm-bg hm-s${i}`}
+            style={{ "--dx": `${f((b.n[0] * 9 * 100) / span)}%`, "--dy": `${f((b.n[1] * 9 * 100) / span)}%` } as CSSProperties}
+          >
+            <svg viewBox={vb} width="100%" height="100%" aria-hidden="true">
+              {!mono && <BeamGradient id={id} index={i} />}
+              <path d={line(b)} pathLength={100} className={`hm-beam hm-b${i}`} stroke={stroke} strokeWidth={WIDTH} strokeLinecap="round" fill="none" />
+              {pulse && <path d={line(b)} pathLength={100} className="hm-beam hm-glint" stroke={stroke} strokeWidth={WIDTH} strokeLinecap="round" fill="none" />}
+            </svg>
+          </span>
+        );
+      })}
+    </span>
   );
 }
 

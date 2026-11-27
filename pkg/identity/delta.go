@@ -12,11 +12,16 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"sync"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 )
+
+var gzipWriterPool = sync.Pool{
+	New: func() any { return gzip.NewWriter(io.Discard) },
+}
 
 // Encrypted delta mailbox envelopes (zero-knowledge relay):
 // A machine compresses a state delta, encrypts it once with a fresh random
@@ -68,12 +73,17 @@ func SealDelta(signer Signer, ownerID, machineID, streamID string, machineSeq ui
 		return nil, fmt.Errorf("delta plaintext exceeds %d bytes", maxDeltaPlaintext)
 	}
 	var gzBuf bytes.Buffer
-	gz := gzip.NewWriter(&gzBuf)
-	if _, err := gz.Write(plaintext); err != nil {
-		return nil, err
+	gz := gzipWriterPool.Get().(*gzip.Writer)
+	gz.Reset(&gzBuf)
+	_, wErr := gz.Write(plaintext)
+	cErr := gz.Close()
+	gz.Reset(io.Discard)
+	gzipWriterPool.Put(gz)
+	if wErr != nil {
+		return nil, wErr
 	}
-	if err := gz.Close(); err != nil {
-		return nil, err
+	if cErr != nil {
+		return nil, cErr
 	}
 
 	dek := make([]byte, 32)

@@ -41,8 +41,8 @@ function Channel({ scale, keep }: { scale: number; keep: "r" | "g" | "b" }) {
   );
 }
 
-/** A bar of liquid glass: its own backdrop filter once measured (frosted until then, by its CSS). */
-export function GlassBar({ children, className = "" }: { children: ReactNode; className?: string }) {
+/** A bar of liquid glass: its own backdrop filter once measured (frosted until then, by its CSS), or flat while nothing lies under it. */
+export function GlassBar({ children, className = "", flat = false }: { children: ReactNode; className?: string; flat?: boolean }) {
   const id = "lg" + useId().replace(/[^a-zA-Z0-9]/g, "");
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -60,7 +60,7 @@ export function GlassBar({ children, className = "" }: { children: ReactNode; cl
     return () => ro.disconnect();
   }, []);
   return (
-    <div ref={ref} className={`glassbar ${className}`} style={size ? { backdropFilter: `url(#${id})` } : undefined}>
+    <div ref={ref} className={`glassbar ${flat ? "flat " : ""}${className}`} style={size && !flat ? { backdropFilter: `url(#${id})` } : undefined}>
       {size && (
         <svg className="glass-defs" aria-hidden width="0" height="0">
           <filter id={id} x="0" y="0" width={size.w} height={size.h} filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
