@@ -10,8 +10,6 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
-
-	"github.com/hermeshai/hermesh/internal/spawn"
 )
 
 // Each agent runs in a job object of its own (docs/windows.md §4.3). It
@@ -88,6 +86,6 @@ func startSpawn(bin string, args []string, dir string, env []string) (*Proc, err
 	return nil, errors.ErrUnsupported
 }
 
-func runSpawned(ctx context.Context, hs []*spawn.Helper, bin string, args []string, dir string, env []string) (stdout, stderr []byte, err error) {
+func runSpawned(ctx context.Context, bin string, args []string, dir string, env []string) (stdout, stderr []byte, err error) {
 	return nil, nil, errors.ErrUnsupported
 }

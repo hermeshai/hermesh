@@ -35,6 +35,7 @@ const bridge: Bridge = {
   openSettings: (tab?: string) => ipcRenderer.send("open-settings", tab),
   onSettingsTab: (cb: (tab: string) => void) => listen("settings-tab", cb),
   onWindowFocus: (cb: (focused: boolean) => void) => listen("window-focus", cb),
+  onWindowVisible: (cb: (visible: boolean) => void) => listen("window-visible", cb),
   showInMain: (filter: { grant: string } | { machine: string }) => ipcRenderer.send("show-in-main", filter),
   showUpgrade: () => ipcRenderer.send("show-upgrade"),
   showAppMenu: (x: number, y: number) => ipcRenderer.send("app-menu", x, y),

@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -11,6 +13,7 @@ import (
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	"github.com/hermeshai/hermesh/internal/sqlitedb"
 	"github.com/hermeshai/hermesh/pkg/identity"
+	"github.com/hermeshai/hermesh/pkg/metrics"
 )
 
 var migrations = []sqlitedb.Migration{
@@ -33,7 +36,19 @@ CREATE TABLE grants (
 	{Version: 7, Description: "create_session_caches_and_files", SQL: sessionStoreMigrations + "\n" + sessionFilesMigrations},
 }
 
-type store struct{ db *sql.DB }
+type store struct {
+	db *sql.DB
+
+	cacheMu     sync.Mutex
+	kvCache     map[string][]byte
+	grantsCache []*grantRow
+	grantsValid bool
+}
+
+var (
+	ownerDBOnce sync.Once
+	ownerDBPath atomic.Pointer[string]
+)
 
 func openStore(path string) (*store, error) {
 	if err := migrateDevOwnerStore(path); err != nil {
@@ -43,7 +58,33 @@ func openStore(path string) (*store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &store{db: db}, nil
+	p := path
+	ownerDBPath.Store(&p)
+	ownerDBOnce.Do(func() {
+		metrics.Default.GaugeFunc("hermesh_owner_db_bytes", func() int64 {
+			cur := ownerDBPath.Load()
+			if cur == nil {
+				return 0
+			}
+			st, err := os.Stat(*cur)
+			if err != nil {
+				return 0
+			}
+			return st.Size()
+		})
+		metrics.Default.GaugeFunc("hermesh_owner_wal_bytes", func() int64 {
+			cur := ownerDBPath.Load()
+			if cur == nil {
+				return 0
+			}
+			st, err := os.Stat(*cur + "-wal")
+			if err != nil {
+				return 0
+			}
+			return st.Size()
+		})
+	})
+	return &store{db: db, kvCache: map[string][]byte{}}, nil
 }
 
 // migrateDevOwnerStore collapses pre-release owner.db schemas (7..9, before
@@ -90,16 +131,48 @@ func migrateDevOwnerStore(path string) error {
 }
 
 func (s *store) get(key string) ([]byte, error) {
+	s.cacheMu.Lock()
+	if b, ok := s.kvCache[key]; ok {
+		s.cacheMu.Unlock()
+		if b == nil {
+			return nil, nil
+		}
+		out := make([]byte, len(b))
+		copy(out, b)
+		return out, nil
+	}
+	s.cacheMu.Unlock()
+
 	var v []byte
 	err := s.db.QueryRow(`SELECT value FROM kv WHERE key=?`, key).Scan(&v)
 	if errors.Is(err, sql.ErrNoRows) {
+		s.cacheMu.Lock()
+		s.kvCache[key] = nil
+		s.cacheMu.Unlock()
 		return nil, nil
 	}
-	return v, err
+	if err != nil {
+		return nil, err
+	}
+	s.cacheMu.Lock()
+	cached := make([]byte, len(v))
+	copy(cached, v)
+	s.kvCache[key] = cached
+	s.cacheMu.Unlock()
+	return v, nil
 }
 
 func (s *store) set(key string, v []byte) error {
 	_, err := s.db.Exec(`INSERT INTO kv(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, v)
+	s.cacheMu.Lock()
+	if err == nil {
+		cached := make([]byte, len(v))
+		copy(cached, v)
+		s.kvCache[key] = cached
+	} else {
+		delete(s.kvCache, key)
+	}
+	s.cacheMu.Unlock()
 	return err
 }
 
@@ -136,12 +209,21 @@ func (s *store) putGrant(signed *identityv1.Signed, revoked bool) error {
 	_, err := s.db.Exec(`INSERT INTO grants(grant_id,client_id,version,signed,revoked,updated_at) VALUES(?,?,?,?,?,?)
 		ON CONFLICT(grant_id) DO UPDATE SET version=excluded.version, signed=excluded.signed, revoked=excluded.revoked, updated_at=excluded.updated_at
 		WHERE excluded.version >= grants.version`, g.GrantId, g.ClientId, g.Version, b, rv, time.Now().Unix())
+	s.invalidateGrants()
 	return err
+}
+
+func (s *store) invalidateGrants() {
+	s.cacheMu.Lock()
+	s.grantsCache = nil
+	s.grantsValid = false
+	s.cacheMu.Unlock()
 }
 
 // clearGrants forgets the grants of an owner this device left.
 func (s *store) clearGrants() error {
 	_, err := s.db.Exec(`DELETE FROM grants`)
+	s.invalidateGrants()
 	return err
 }
 
@@ -186,15 +268,27 @@ func (s *store) clearRemoteAccountData(oldLocalID, newLocalID string) error {
 			}
 		}
 	}
-	return tx.Commit()
+	err = tx.Commit()
+	s.invalidateGrants()
+	return err
 }
 
 func (s *store) setRevoked(grantID string) error {
 	_, err := s.db.Exec(`UPDATE grants SET revoked=1, updated_at=? WHERE grant_id=?`, time.Now().Unix(), grantID)
+	s.invalidateGrants()
 	return err
 }
 
 func (s *store) grants() ([]*grantRow, error) {
+	s.cacheMu.Lock()
+	if s.grantsValid {
+		out := make([]*grantRow, len(s.grantsCache))
+		copy(out, s.grantsCache)
+		s.cacheMu.Unlock()
+		return out, nil
+	}
+	s.cacheMu.Unlock()
+
 	rows, err := s.db.Query(`SELECT signed, revoked FROM grants ORDER BY updated_at DESC`)
 	if err != nil {
 		return nil, err
@@ -213,7 +307,15 @@ func (s *store) grants() ([]*grantRow, error) {
 		}
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	s.cacheMu.Lock()
+	s.grantsCache = make([]*grantRow, len(out))
+	copy(s.grantsCache, out)
+	s.grantsValid = true
+	s.cacheMu.Unlock()
+	return out, nil
 }
 
 func (s *store) grant(id string) (*grantRow, error) {

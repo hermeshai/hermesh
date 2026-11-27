@@ -28,6 +28,12 @@ import (
 	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/internal/peer"
 	"github.com/hermeshai/hermesh/internal/runtime"
+	"github.com/hermeshai/hermesh/pkg/metrics"
+)
+
+var (
+	mOutboxPolls = metrics.Default.Counter("hermesh_owner_outbox_polls_total")
+	mOutboxItems = metrics.Default.Counter("hermesh_owner_outbox_items_total")
 )
 
 const sessionStoreMigrations = `
@@ -410,18 +416,32 @@ func (o *Owner) syncBlobsToRemote(ctx context.Context, pm *peer.Machine, refs []
 }
 
 // flushSessionOutboxLoop drains durable offline commands in FIFO order per machine
-// whenever connectivity returns.
+// whenever connectivity returns. While the outbox is empty it sleeps without a
+// periodic timer; the retry ticker runs only while undelivered rows remain.
 func (o *Owner) flushSessionOutboxLoop(ctx context.Context) {
-	ticker := time.NewTicker(1500 * time.Millisecond)
-	defer ticker.Stop()
+	pending := o.flushSessionOutboxOnce(ctx)
+	var ticker *time.Ticker
+	var tickC <-chan time.Time
+	defer func() {
+		if ticker != nil {
+			ticker.Stop()
+		}
+	}()
 	for {
+		if pending && ticker == nil {
+			ticker = time.NewTicker(1500 * time.Millisecond)
+			tickC = ticker.C
+		} else if !pending && ticker != nil {
+			ticker.Stop()
+			ticker, tickC = nil, nil
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-o.sessionWake:
-		case <-ticker.C:
+		case <-tickC:
 		}
-		o.flushSessionOutboxOnce(ctx)
+		pending = o.flushSessionOutboxOnce(ctx)
 	}
 }
 
@@ -434,10 +454,11 @@ type outboxRow struct {
 	payload   []byte
 }
 
-func (o *Owner) flushSessionOutboxOnce(ctx context.Context) {
+func (o *Owner) flushSessionOutboxOnce(ctx context.Context) bool {
+	mOutboxPolls.Inc()
 	rows, err := o.st.db.Query(`SELECT seq, command_id, machine_id, session_id, method, req_payload FROM sessions_outbox ORDER BY seq ASC`)
 	if err != nil {
-		return
+		return true
 	}
 	var list []outboxRow
 	for rows.Next() {
@@ -448,17 +469,21 @@ func (o *Owner) flushSessionOutboxOnce(ctx context.Context) {
 	}
 	rows.Close()
 	if len(list) == 0 {
-		return
+		return false
 	}
+	mOutboxItems.Add(int64(len(list)))
 
+	remaining := false
 	skipMachine := map[string]bool{}
 	for _, item := range list {
 		if skipMachine[item.machineID] {
+			remaining = true
 			continue
 		}
 		pm, err := o.dialRemoteSessionMachine(ctx, item.machineID)
 		if err != nil {
 			skipMachine[item.machineID] = true
+			remaining = true
 			continue
 		}
 		if o.st.db.QueryRow(`SELECT session_id, req_payload FROM sessions_outbox WHERE seq = ?`, item.seq).Scan(&item.sessionID, &item.payload) != nil {
@@ -472,11 +497,13 @@ func (o *Owner) flushSessionOutboxOnce(ctx context.Context) {
 		_, _ = o.st.db.Exec(`UPDATE sessions_outbox SET attempts = attempts + 1, last_error = ? WHERE seq = ?`, err.Error(), item.seq)
 		if isOfflineErr(err) {
 			skipMachine[item.machineID] = true
+			remaining = true
 		} else {
 			o.recordOutboxFailure(ctx, pm, item, err)
 			_, _ = o.st.db.Exec(`DELETE FROM sessions_outbox WHERE seq = ?`, item.seq)
 		}
 	}
+	return remaining
 }
 
 func (o *Owner) recordOutboxFailure(ctx context.Context, pm *peer.Machine, item outboxRow, err error) {

@@ -251,9 +251,16 @@ func (r *Registry) WritePrometheus(w io.Writer) {
 var runtimeSamples = []string{
 	"/sched/goroutines:goroutines",
 	"/memory/classes/heap/objects:bytes",
+	"/memory/classes/heap/unused:bytes",
+	"/memory/classes/heap/released:bytes",
+	"/memory/classes/os-stacks:bytes",
+	"/memory/classes/metadata/other:bytes",
 	"/memory/classes/total:bytes",
+	"/gc/heap/allocs:bytes",
+	"/gc/heap/frees:bytes",
 	"/gc/cycles/total:gc-cycles",
 	"/cpu/classes/total:cpu-seconds",
+	"/cpu/classes/idle:cpu-seconds",
 	"/cpu/classes/gc/total:cpu-seconds",
 }
 
@@ -272,6 +279,7 @@ func writeRuntime(w io.Writer) {
 			fmt.Fprintf(w, "%s %g\n", name, x.Value.Float64())
 		}
 	}
+	fmt.Fprintf(w, "process_pid %d\n", os.Getpid())
 	fmt.Fprintf(w, "process_open_fds %d\n", openFDs())
 	fmt.Fprintf(w, "go_gomaxprocs %d\n", runtime.GOMAXPROCS(0))
 }
@@ -287,9 +295,8 @@ func openFDs() int {
 	return -1
 }
 
-// Handler serves /metrics and /debug/pprof/*.
-func Handler(r *Registry) http.Handler {
-	mux := http.NewServeMux()
+// Mount registers /metrics and /debug/pprof/* on mux.
+func Mount(mux *http.ServeMux, r *Registry) {
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		r.WritePrometheus(w)
@@ -298,6 +305,22 @@ func Handler(r *Registry) http.Handler {
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	mux.HandleFunc("POST /debug/pprof/blocking", func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Query().Get("enable") == "1" {
+			runtime.SetMutexProfileFraction(5)
+			runtime.SetBlockProfileRate(int(time.Millisecond))
+		} else {
+			runtime.SetMutexProfileFraction(0)
+			runtime.SetBlockProfileRate(0)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+}
+
+// Handler serves /metrics and /debug/pprof/*.
+func Handler(r *Registry) http.Handler {
+	mux := http.NewServeMux()
+	Mount(mux, r)
 	return mux
 }
 

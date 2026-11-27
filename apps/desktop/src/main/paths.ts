@@ -1,4 +1,5 @@
 import { app } from "electron";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -25,6 +26,24 @@ export function socketPath(): string {
   if (process.env.HERMESH_SOCKET && !app.isPackaged) return process.env.HERMESH_SOCKET;
   const p = path.join(dataDir(), "run", "hermeshd.sock");
   if (Buffer.byteLength(p) > 100) return path.join(os.tmpdir(), `hermesh-${process.getuid?.() ?? 0}`, "hermeshd.sock");
+  return p;
+}
+
+/** Local-user-only diagnostic endpoint path, mirroring paths.DesktopPerf in Go. */
+export function perfEndpointPath(): string {
+  if (!app.isPackaged && process.env.HERMESH_PERF_SOCKET) return process.env.HERMESH_PERF_SOCKET;
+  if (!app.isPackaged && process.env.HERMESH_USER_DATA && !process.env.HERMESH_DATA_DIR) {
+    const ext = process.platform === "win32" ? "pipe" : "sock";
+    const p = path.join(process.env.HERMESH_USER_DATA, `desktop-perf.${ext}`);
+    if (process.platform !== "win32" && Buffer.byteLength(p) > 100) {
+      const h = crypto.createHash("sha256").update(process.env.HERMESH_USER_DATA).digest("hex").slice(0, 16);
+      return path.join(os.tmpdir(), `hermesh-perf-${process.getuid?.() ?? 0}-${h}.sock`);
+    }
+    return p;
+  }
+  if (process.platform === "win32") return path.join(dataDir(), "run", "desktop-perf.pipe");
+  const p = path.join(dataDir(), "run", "desktop-perf.sock");
+  if (Buffer.byteLength(p) > 100) return path.join(os.tmpdir(), `hermesh-${process.getuid?.() ?? 0}`, "desktop-perf.sock");
   return p;
 }
 

@@ -120,6 +120,7 @@ input,textarea,.sel-text{user-select:text;-webkit-user-select:text}
 :where(.sel-text) :is(button,summary){cursor:default}
 :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 @keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+html.win-hidden *,html.win-hidden *::before,html.win-hidden *::after{animation-play-state:paused!important}
 .fadein{animation:fadein .35s cubic-bezier(.2,0,0,1)}
 /* A soft band sweeping left to right over anything in progress in the conversation (a step, the working line),
    driven on the compositor by transform only. */
@@ -275,10 +276,10 @@ html.vibrant .grp-hrow{position:static;background:transparent}
 .srow{display:flex;gap:8px;padding:6px 9px;border-radius:8px;align-items:flex-start;border:0;background:none;width:100%;text-align:left;font-size:14px;color:var(--side-fg)}
 .slogo{position:relative;display:flex;align-items:center;justify-content:center;width:16px;height:16px;flex:none;margin-top:2px}
 .slogo.run>:not(.slogo-orbit){transform:scale(.78);border-radius:3.5px}
-.slogo-orbit{position:absolute;inset:-2px;border-radius:6px;padding:1.5px;pointer-events:none;background:var(--l4);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;overflow:hidden}
-.slogo-orbit::before{content:"";position:absolute;inset:-55%;background:conic-gradient(from 0deg,transparent 0deg,transparent 205deg,var(--accent) 275deg,color-mix(in srgb,var(--accent) 62%,#fff) 325deg,var(--accent) 355deg,transparent 360deg);animation:slogo-orbit 1.35s linear infinite}
-@keyframes slogo-orbit{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.slogo-orbit{background:var(--accent)}.slogo-orbit::before{display:none}}
+.slogo-orbit{position:absolute;inset:-2px;pointer-events:none;overflow:hidden;contain:strict}
+.slogo-orbit::before{content:"";position:absolute;top:0;left:0;width:720px;height:20px;background:var(--slogo-orbit-strip) 0 0/720px 20px no-repeat;will-change:transform;animation:slogo-orbit 1.35s steps(36,end) infinite}
+@keyframes slogo-orbit{to{transform:translate3d(-720px,0,0)}}
+@media (prefers-reduced-motion:reduce){.slogo-orbit{border-radius:6px;box-shadow:inset 0 0 0 1.5px var(--accent)}.slogo-orbit::before{display:none;animation:none}}
 .srow:hover{background:var(--fill)}
 .srow.sel{background:var(--side-sel);color:var(--side-sel-fg);font-weight:500}
 .srow.arch .stitle{color:var(--l2)}
@@ -309,19 +310,15 @@ body.is-dragging,body.is-dragging *{cursor:grabbing !important}
 .smain{min-width:0;flex:1}
 .sl1{display:flex;gap:8px;align-items:center;line-height:20px}
 .stitle{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* Running: a fainter band crosses the title left to right in 3s, then rests 0.2s, as the iPhone's shimmer does. The
-   title itself is transparent (it keeps the row's layout and its words); two copies draw it, one in its colour seen
-   through a mask with a soft hole, one in --l3 seen only through that hole. The masks (three titles wide) slide across
-   while the copies slide back by as much, so the copies stay on the title: transforms only, which the compositor
-   runs, and translucent colours, so the band fades into any background. */
+/* Running: a fainter band crosses the title left to right in ~3s, then rests, as the iPhone's shimmer does. The
+   title itself is transparent (it keeps the row's layout and its words); grapheme chunks in .shine fade with pure
+   compositor opacity (no CSS mask, so macOS CoreAnimation promotes every layer directly). */
 .stitle.run{position:relative;color:transparent}
-.stitle .shine{position:absolute;top:0;bottom:0;left:-100%;width:300%;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,#000 38%,transparent 50%,#000 62%);mask-image:linear-gradient(90deg,#000 38%,transparent 50%,#000 62%);animation:stitle-run 3.2s ease-in-out infinite}
-.stitle .shine.band{-webkit-mask-image:linear-gradient(90deg,transparent 38%,#000 50%,transparent 62%);mask-image:linear-gradient(90deg,transparent 38%,#000 50%,transparent 62%)}
-.stitle .shine::before{content:attr(data-t);position:absolute;top:0;bottom:0;left:calc(100% / 3);width:calc(100% / 3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--side-fg);animation:stitle-run-back 3.2s ease-in-out infinite}
-.srow.sel .stitle .shine::before{color:var(--side-sel-fg)}
-.stitle .shine.band::before{color:var(--l3)}
-@keyframes stitle-run{0%{transform:translateX(-33.3333%)}93.75%,100%{transform:translateX(33.3333%)}}
-@keyframes stitle-run-back{0%{transform:translateX(100%)}93.75%,100%{transform:translateX(-100%)}}
+.stitle .shine{position:absolute;inset:0;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--side-fg);contain:layout style paint}
+.srow.sel .stitle .shine{color:var(--side-sel-fg)}
+.stitle .shine>i{display:inline-block;font-style:normal;white-space:pre;will-change:opacity;animation:stitle-run 3.2s ease-in-out calc((var(--i) - 1) * 1.1s) infinite}
+.stitle .shine>i::before{content:attr(data-t)}
+@keyframes stitle-run{0%,56%,100%{opacity:1}26%{opacity:.36}}
 @media (prefers-reduced-motion:reduce){.stitle.run{color:inherit}.stitle .shine{display:none}}
 .smeta{display:inline-flex;align-items:center;gap:5px;font-size:12px;line-height:16px;color:var(--l2);flex:none;font-variant-numeric:tabular-nums}
 .gmark{display:inline-flex;align-items:center;justify-content:center;flex:none;opacity:.74}

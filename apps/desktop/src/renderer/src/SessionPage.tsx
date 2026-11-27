@@ -1073,12 +1073,14 @@ function TodoStepGlyph({ status }: { status: TodoStepStatus }) {
   switch (status) {
     case "in_progress":
       return (
-        <svg className="th-todo-ic th-todo-spin" viewBox="0 0 14 14" aria-hidden="true">
-          <circle cx="4.6" cy="4.6" r="1.35" fill="currentColor" />
-          <circle cx="9.4" cy="4.6" r="1.35" fill="currentColor" opacity="0.55" />
-          <circle cx="9.4" cy="9.4" r="1.35" fill="currentColor" />
-          <circle cx="4.6" cy="9.4" r="1.35" fill="currentColor" opacity="0.55" />
-        </svg>
+        <span className="th-todo-ic th-todo-spin" aria-hidden="true">
+          <svg viewBox="0 0 14 14" width="14" height="14">
+            <circle cx="4.6" cy="4.6" r="1.35" fill="currentColor" />
+            <circle cx="9.4" cy="4.6" r="1.35" fill="currentColor" opacity="0.55" />
+            <circle cx="9.4" cy="9.4" r="1.35" fill="currentColor" />
+            <circle cx="4.6" cy="9.4" r="1.35" fill="currentColor" opacity="0.55" />
+          </svg>
+        </span>
       );
     case "completed":
       return <Icon name="check" className="th-todo-ic" />;

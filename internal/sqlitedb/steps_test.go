@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -500,5 +501,44 @@ func TestInvalidMigrationDefinitionsRejected(t *testing.T) {
 		if _, err := Open(path, tc); !errors.Is(err, ErrInvalidMigration) {
 			t.Fatalf("case %d: expected ErrInvalidMigration, got %v", i, err)
 		}
+	}
+}
+
+func TestCheckpointerIdlesWithoutWrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "idle.db")
+	db, err := Open(path, []Migration{
+		{Version: 1, Description: "init", SQL: `CREATE TABLE t (k TEXT PRIMARY KEY)`},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	var runs atomic.Int64
+	ckpt, err := StartCheckpointer(path, db, 40*time.Millisecond, func(time.Duration) {
+		runs.Add(1)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ckpt.Close()
+
+	// After migrations settled, an idle DB must not keep executing checkpoints on every tick.
+	before := runs.Load()
+	time.Sleep(350 * time.Millisecond)
+	if got := runs.Load() - before; got > 1 {
+		t.Fatalf("idle database ran %d checkpoints in 350ms; want <= 1", got)
+	}
+
+	// A write wakes checkpointing again.
+	if _, err := db.Exec(`INSERT INTO t(k) VALUES('a')`); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for runs.Load() == before {
+		if time.Now().After(deadline) {
+			t.Fatal("checkpointer did not checkpoint after write")
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
 }

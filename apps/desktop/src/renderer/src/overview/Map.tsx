@@ -10,6 +10,7 @@ import { problemShort, problemsOf, severe } from "../health";
 import { Icon } from "../icons";
 import { hostOf } from "../sheets/Pairing";
 import { useStore, type Store } from "../store";
+import { isWindowHidden, onWindowHiddenChange } from "../visibility";
 
 // "Connections": who may use this computer (grants: a personal agent connects only
 // while it runs a command, so they are never drawn offline), Hermesh in the middle, the
@@ -250,7 +251,7 @@ export function LinkMap({ pick, onPick, now }: { pick: string; onPick: (key: str
   useEffect(() => {
     if (!comets.current) return;
     const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const anims: Animation[] = [];
+    const anims: { a: Animation; offsetMs: number }[] = [];
     const now = new Map<string, Track>();
     comets.current.querySelectorAll<HTMLElement>("[data-i]").forEach((g) => {
       const d = L.paths[Number(g.dataset.i)].d;
@@ -273,12 +274,27 @@ export function LinkMap({ pick, onPick, now }: { pick: string; onPick: (key: str
         frames.push({ offset: 1, transform: at(1 - lag), opacity: 0 });
         for (const [offset, opacity] of [[0.1, base], [0.9, base]]) frames.splice(frames.findIndex((f) => (f.offset as number) > offset), 0, { offset, opacity });
         const a = c.animate(frames, { duration: dur, iterations: Infinity });
-        a.startTime = -o * dur; // u = (t / dur + o) % 1
-        anims.push(a);
+        const offsetMs = -o * dur;
+        a.startTime = offsetMs; // u = (t / dur + o) % 1
+        if (isWindowHidden()) a.pause();
+        anims.push({ a, offsetMs });
       });
     });
     tracks = now;
-    return () => anims.forEach((a) => a.cancel());
+    const offVis = onWindowHiddenChange((hidden) => {
+      if (hidden) {
+        anims.forEach(({ a }) => a.pause());
+      } else {
+        anims.forEach(({ a, offsetMs }) => {
+          a.play();
+          a.startTime = offsetMs;
+        });
+      }
+    });
+    return () => {
+      offVis();
+      anims.forEach(({ a }) => a.cancel());
+    };
   }, [flights]);
 
   // The card floats over the map and what follows it, under its grant (the
