@@ -400,11 +400,10 @@ final class LiveProgressUITests: XCTestCase {
         XCTAssertTrue(composer.waitForExistence(timeout: 8), "composer")
         XCTAssertLessThanOrEqual(todoCard.frame.maxY, composer.frame.minY + 4, "checklist sits above composer")
 
-        // Smart 3-row window folds leading 2 completed steps, highlights active step 3/5, and previews Next step:
-        let toggle = app.buttons["thread-todo-toggle"].firstMatch
-        XCTAssertTrue(toggle.waitForExistence(timeout: 4), "fold toggle")
-        XCTAssertTrue(toggle.label.contains("Completed 2"), "fold label: \(toggle.label)")
-        XCTAssertFalse(app.descendants(matching: .any)["thread-todo-step-0"].exists, "completed step folded by default")
+        // All 5 steps render directly inline in order with no fold toggle, highlighting active step 3/5:
+        XCTAssertFalse(app.buttons["thread-todo-toggle"].exists, "no fold toggle")
+        XCTAssertTrue(app.descendants(matching: .any)["thread-todo-step-0"].exists, "completed step 0 visible")
+        XCTAssertTrue(app.descendants(matching: .any)["thread-todo-step-4"].exists, "pending step 4 visible")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Rewrite CALayer halo")).firstMatch.exists)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Verify GPU usage")).firstMatch.exists)
 
@@ -413,11 +412,6 @@ final class LiveProgressUITests: XCTestCase {
         XCTAssertTrue(working.waitForExistence(timeout: 5), "live working sub-focus")
         XCTAssertTrue(working.label.contains("Run HermeshKit tests and iOS Simulator UI tests"), "untruncated focus label: \(working.label)")
         XCTAssertFalse(app.staticTexts["Run update_steps"].exists, "Run update_steps must not leak into chat log")
-
-        // Tapping fold toggle expands all 5 steps inline:
-        toggle.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["thread-todo-step-0"].waitForExistence(timeout: 3), "expanded step 0")
-        XCTAssertTrue(app.descendants(matching: .any)["thread-todo-step-4"].exists, "expanded step 4")
 
         // 3. Background continuation wake line "<task> finished" is visible and tappable:
         let wakeLine = app.buttons["thread-wake-line"].firstMatch

@@ -493,23 +493,16 @@ public struct IndexedTodoStep: Equatable, Sendable {
 
 public struct TodoSpineWindow: Equatable, Sendable {
     public var total: Int
-    public var settledCount: Int
     public var stepNumber: Int
     public var hasFailed: Bool
     public var all: [IndexedTodoStep]
-    public var leading: [IndexedTodoStep]
-    public var foldLeading: Bool
     public var active: [IndexedTodoStep]
-    public var upcoming: [IndexedTodoStep]
-    public var foldUpcoming: Bool
-    public var moreUpcomingCount: Int
     public var subFocus: String?
 }
 
-/// Computes the B2 three-row smart window over an active checklist:
-/// - Lists of <= 3 steps render directly without fold chrome.
-/// - Lists of >= 4 steps fold completed/skipped leading steps into one summary row and cap trailing upcoming steps
-///   at one preview row + "+N more".
+/// Computes the inline editorial spine view over an active checklist:
+/// - Shows all steps in order without folding so completed progress stays visible.
+/// - Highlights active (`in_progress` / `failed`, or fallback first `pending`) step(s).
 /// - Deduplicates `workText` when it repeats an active step's title verbatim.
 public func windowTodoSteps(_ steps: [TodoStepView], workText: String? = nil) -> TodoSpineWindow? {
     guard !steps.isEmpty else { return nil }
@@ -519,28 +512,15 @@ public func windowTodoSteps(_ steps: [TodoStepView], workText: String? = nil) ->
         active = [fallback]
     }
     let firstActive = active[0].index
-    let activeSet = Set(active.map(\.index))
-    let leading = Array(all.prefix(firstActive))
-    let upcoming = all.filter { $0.index > firstActive && !activeSet.contains($0.index) }
-    let settledCount = all.filter { $0.status == .completed || $0.status == .skipped }.count
-    let foldLeading = all.count >= 4 && !leading.isEmpty
-    let foldUpcoming = all.count >= 4 && upcoming.count >= 2
-    let moreUpcomingCount = foldUpcoming ? upcoming.count - 1 : 0
     let w = workText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     let subFocus = (!w.isEmpty && !active.contains { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) == w }) ? w : nil
 
     return TodoSpineWindow(
         total: all.count,
-        settledCount: settledCount,
         stepNumber: firstActive + 1,
         hasFailed: all.contains { $0.status == .failed },
         all: all,
-        leading: leading,
-        foldLeading: foldLeading,
         active: active,
-        upcoming: upcoming,
-        foldUpcoming: foldUpcoming,
-        moreUpcomingCount: moreUpcomingCount,
         subFocus: subFocus
     )
 }
