@@ -28,10 +28,12 @@ import {
   applySessionEvent,
   backgroundTasksOf,
   clampRuntimeMode,
+  clockText,
   cycleReasoningSelection,
   dateOf,
   defaultModelSelectionFor,
   displayTitle,
+  elapsedSeconds,
   findProviderInstance,
   groupSteps,
   isSessionRunningOrWaiting,
@@ -49,8 +51,12 @@ import {
   sessionTranscript,
   statusTitle,
   updatedDate,
+  windowTodoSteps,
+  type IndexedTodoStep,
   type TodoStepStatus,
+  type TodoStepView,
 } from "@hermesh/core";
+import { Mark } from "@hermesh/ui";
 import { local, sessions as sessionApi } from "./api";
 import { ConnectionLine } from "./ConnectionCapsule";
 import { GlassBar } from "./glass";
@@ -58,7 +64,7 @@ import { Icon } from "./icons";
 import { layoutOf, setCard } from "./layout";
 import { keys, ownKeys } from "./platform";
 import { TitleInput, grantLabel, unarchive } from "./Sidebar";
-import { errorText, useStore } from "./store";
+import { errorText, useNow, useStore } from "./store";
 import { Background, BackgroundLine } from "./session/Background";
 import { ChatFrame, Failed, PromptNote, Row, Stale, Unread, UserBubble, rowHeights, rowsOf, type ChatRow } from "./session/Chat";
 import { keepAttachmentBlob } from "./session/attachments";
@@ -827,18 +833,6 @@ export function SessionPage() {
     },
     [allBgTasks, filePanel, st],
   );
-  const todoCard = activeSessionId && todoSteps.length > 0 && (
-    <div className="knote th-todo" role="region" aria-label={t("todo.label")} data-testid="thread-todo-card">
-      <div className="th-todo-list">
-        {todoSteps.map((step, idx) => (
-          <div key={`${idx}:${step.text}`} className={`th-todo-row ${step.status}`} data-status={step.status} data-testid={`thread-todo-step-${idx}`}>
-            <TodoStepGlyph status={step.status} />
-            <span className="th-todo-text">{step.text}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
   const writing = useMemo(() => sessionLiveReplies(activeProjection), [activeProjection]);
   // Whose files the replies' links are (docs/session-files.md §3): the session's machine, this Mac or another.
   const sessionMachine = currentSession?.machineId ?? "";
@@ -1119,7 +1113,10 @@ export function SessionPage() {
                   foot={
                     session && (
                       <>
-                        <ConnectionLine machine={targetMachine} linkUp={archived || (following && reachable)} work={work} />
+                        {todoSteps.length > 0 && (
+                          <TodoSpine steps={todoSteps} work={work} sessionKey={activeSessionId ?? ""} />
+                        )}
+                        <ConnectionLine machine={targetMachine} linkUp={archived || (following && reachable)} work={todoSteps.length > 0 ? undefined : work} />
                         <BackgroundLine tasks={activeBgTasks} />
                         <Stale s={session} behind={behind} />
                         {failure && <Failed s={session} failure={failure} grant={grant} />}
@@ -1130,7 +1127,6 @@ export function SessionPage() {
                     <ComposerZone onHeight={onHeight}>
                       {requestCard}
                       {queueCard}
-                      {todoCard}
                       {slashRow}
                       <ThreadComposer
                         {...composerProps}
@@ -1172,19 +1168,50 @@ function startingRow(st: Starting): ChatRow {
   return { key: "starting", kind: "user", it, end: false, live: false, previous: undefined };
 }
 
+const STEP_TOKEN_RE = /`([^`]+)`|(\b[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_./-]+|\b[a-zA-Z0-9_-]+\.(?:swift|tsx?|jsx?|go|rs|py|css|html|md|json|ya?ml|sql|db|app)\b)/g;
+
+function withSlashBreaks(raw: string): ReactNode[] {
+  const parts = raw.split("/");
+  const out: ReactNode[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (i > 0) out.push("/", <wbr key={`w:${i}`} />);
+    if (parts[i]) out.push(parts[i]);
+  }
+  return out;
+}
+
+function renderStepText(text: string): ReactNode {
+  const nodes: ReactNode[] = [];
+  let last = 0;
+  for (const m of text.matchAll(STEP_TOKEN_RE)) {
+    const at = m.index ?? 0;
+    if (at > last) nodes.push(text.slice(last, at));
+    const token = m[1] ?? m[2] ?? m[0];
+    nodes.push(
+      <code key={`c:${at}`} className="th-todo-code">
+        {withSlashBreaks(token)}
+      </code>,
+    );
+    last = at + m[0].length;
+  }
+  if (last === 0) return text;
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+function TodoCheckCircle() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.5" fill="var(--green-bg)" stroke="var(--green)" strokeOpacity="0.35" strokeWidth="1" />
+      <path d="M5.1 8.2l2 2 3.9-4.1" stroke="var(--green)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function TodoStepGlyph({ status }: { status: TodoStepStatus }) {
   switch (status) {
     case "in_progress":
-      return (
-        <span className="th-todo-ic th-todo-spin" aria-hidden="true">
-          <svg viewBox="0 0 14 14" width="14" height="14">
-            <circle cx="4.6" cy="4.6" r="1.35" fill="currentColor" />
-            <circle cx="9.4" cy="4.6" r="1.35" fill="currentColor" opacity="0.55" />
-            <circle cx="9.4" cy="9.4" r="1.35" fill="currentColor" />
-            <circle cx="4.6" cy="9.4" r="1.35" fill="currentColor" opacity="0.55" />
-          </svg>
-        </span>
-      );
+      return <Mark size={17} variant="seq" />;
     case "completed":
       return <Icon name="check" className="th-todo-ic" />;
     case "skipped":
@@ -1193,11 +1220,193 @@ function TodoStepGlyph({ status }: { status: TodoStepStatus }) {
       return <Icon name="x" className="th-todo-ic" />;
     default:
       return (
-        <svg className="th-todo-ic" viewBox="0 0 14 14" aria-hidden="true">
-          <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+        <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <circle cx="7" cy="7" r="4.6" stroke="var(--l4)" strokeWidth="1.35" />
         </svg>
       );
   }
+}
+
+function TodoSpine({
+  steps,
+  work,
+  sessionKey,
+}: {
+  steps: TodoStepView[];
+  work?: { text: string; since?: Date };
+  sessionKey: string;
+}) {
+  const { t } = useTranslation("thread");
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    setExpanded(false);
+  }, [sessionKey]);
+
+  const now = useNow(work?.since ? 1000 : 60_000);
+  const elapsed = work?.since ? clockText(elapsedSeconds(work.since, now)) : undefined;
+  const win = useMemo(() => windowTodoSteps(steps, work?.text), [steps, work?.text]);
+  if (!win) return null;
+
+  const activeIndexSet = new Set(win.active.map((a) => a.index));
+  const lastActiveIdx = win.active[win.active.length - 1]?.index;
+  const collapsedRowCount =
+    (win.foldLeading ? 1 : win.leading.length) + win.active.length + (win.foldUpcoming ? 1 : win.upcoming.length);
+  const spined = (expanded ? win.total + 1 : collapsedRowCount) >= 2;
+
+  const renderActiveNode = (step: IndexedTodoStep, activeOrder: number) => {
+    const isLastActive = step.index === lastActiveIdx;
+    const showSub = isLastActive && !!win.subFocus;
+    const deduplicatedWork = isLastActive && !win.subFocus && !!work;
+    return (
+      <div
+        key={`${step.index}:${step.text}`}
+        className={`th-todo-node active ${step.status}`}
+        data-status={step.status}
+        data-testid={`thread-todo-step-${step.index}`}
+      >
+        <span className="th-todo-g">
+          <TodoStepGlyph status={step.status} />
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div className="th-todo-main" data-testid={deduplicatedWork ? "thread-working" : undefined}>
+            <span className={deduplicatedWork ? "th-work-t" : undefined}>{renderStepText(step.text)}</span>
+            <span className="th-todo-meta">
+              {activeOrder === 0 ? (
+                `${win.stepNumber}/${win.total}${!win.subFocus && elapsed ? ` · ${elapsed}` : ""}`
+              ) : (
+                <span className="th-todo-chip run">{t("todo.parallel")}</span>
+              )}
+            </span>
+          </div>
+          {showSub && (
+            <div className="th-todo-sub" data-testid="thread-working">
+              <span className="th-work-t shimmer" title={win.subFocus}>
+                {withSlashBreaks(win.subFocus!)}
+              </span>
+              {elapsed && <span className="el">· {elapsed}</span>}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderPassiveNode = (step: IndexedTodoStep) => (
+    <div
+      key={`${step.index}:${step.text}`}
+      className={`th-todo-node ${step.status}`}
+      data-status={step.status}
+      data-testid={`thread-todo-step-${step.index}`}
+    >
+      <span className="th-todo-g">
+        <TodoStepGlyph status={step.status} />
+      </span>
+      <div className="th-todo-row-txt">
+        {renderStepText(step.text)}
+        {step.status === "skipped" && <span className="th-todo-chip skip">{t("todo.skipped")}</span>}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className={`th-todo ${spined ? "spined" : ""}`} role="region" aria-label={t("todo.label")} data-testid="thread-todo-card">
+      {expanded ? (
+        <>
+          <button
+            type="button"
+            className="th-todo-fold open"
+            data-testid="thread-todo-toggle"
+            aria-expanded="true"
+            onClick={() => setExpanded(false)}
+          >
+            <span className="th-todo-g">
+              <TodoCheckCircle />
+            </span>
+            <span className="th-todo-fold-lbl">
+              <span>{t("todo.expandedHeader", { done: win.settledCount, total: win.total })}</span>
+              <span>· {t("todo.hide")}</span>
+              <Icon name="chevD" className="chev flip" />
+            </span>
+          </button>
+          {win.all.map((step) =>
+            activeIndexSet.has(step.index)
+              ? renderActiveNode(step, win.active.findIndex((a) => a.index === step.index))
+              : renderPassiveNode(step),
+          )}
+        </>
+      ) : (
+        <>
+          {win.foldLeading ? (
+            <button
+              type="button"
+              className="th-todo-fold"
+              data-testid="thread-todo-toggle"
+              aria-expanded="false"
+              onClick={() => setExpanded(true)}
+            >
+              <span className="th-todo-g">
+                <TodoCheckCircle />
+              </span>
+              <span className="th-todo-fold-lbl">
+                <span>{t("todo.completedFold", { done: win.leading.length, total: win.total })}</span>
+                <Icon name="chevR" className="chev" />
+              </span>
+            </button>
+          ) : (
+            win.leading.map(renderPassiveNode)
+          )}
+
+          {win.active.map((act, idx) => renderActiveNode(act, idx))}
+
+          {win.foldUpcoming ? (
+            win.upcoming[0] && (
+              <div
+                key={`${win.upcoming[0].index}:${win.upcoming[0].text}`}
+                className={`th-todo-node ${win.upcoming[0].status}`}
+                data-status={win.upcoming[0].status}
+                data-testid={`thread-todo-step-${win.upcoming[0].index}`}
+              >
+                <span className="th-todo-g">
+                  <TodoStepGlyph status={win.upcoming[0].status} />
+                </span>
+                <div className="th-todo-next">
+                  <span className="th-todo-next-t">
+                    {win.upcoming[0].status === "pending"
+                      ? t("todo.next", { text: win.upcoming[0].text })
+                      : win.upcoming[0].text}
+                  </span>
+                  <button type="button" className="th-todo-more" onClick={() => setExpanded(true)}>
+                    <span>{t("todo.moreSteps", { count: win.moreUpcomingCount })}</span>
+                    <Icon name="chevR" className="chev" />
+                  </button>
+                </div>
+              </div>
+            )
+          ) : (
+            win.upcoming.map((step, idx) =>
+              win.foldLeading && idx === 0 && step.status === "pending" ? (
+                <div
+                  key={`${step.index}:${step.text}`}
+                  className={`th-todo-node ${step.status}`}
+                  data-status={step.status}
+                  data-testid={`thread-todo-step-${step.index}`}
+                >
+                  <span className="th-todo-g">
+                    <TodoStepGlyph status={step.status} />
+                  </span>
+                  <div className="th-todo-next">
+                    <span className="th-todo-next-t">{t("todo.next", { text: step.text })}</span>
+                  </div>
+                </div>
+              ) : (
+                renderPassiveNode(step)
+              ),
+            )
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 /** The box at the bottom of the conversation, as Her's (her.css .cmp-zone), telling the conversation how much of it it covers. */
