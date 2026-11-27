@@ -231,12 +231,15 @@ final class AppModel {
     @ObservationIgnored private var startSettled = false
     /// "Not Now" on Her's first run: Work is the first page until a machine runs her. Kept on this iPhone.
     var herLater = false { didSet { save(herLater, "herLater") } }
-    var path: [Route] = []
+    var path: [Route] = [] {
+        didSet { if path != oldValue { hideKeyboard() } }
+    }
     /// The root page scrolled far enough that its title is small.
     var rootTitleSmall = false
     var drawerOpen = false {
         didSet {
             if drawerOpen && !oldValue {
+                hideKeyboard()
                 Task { await refreshGitStatus() }
             }
         }
@@ -248,7 +251,12 @@ final class AppModel {
     var menuBeside: Bool { wide != nil }
     /// The owner shrank the menu that stands beside the page to its rail, and how wide they dragged it; kept
     /// on this iPhone.
-    var menuRail = false { didSet { save(menuRail, "menuRail") } }
+    var menuRail = false {
+        didSet {
+            if menuRail != oldValue { hideKeyboard() }
+            save(menuRail, "menuRail")
+        }
+    }
     var menuWidth: Double = 322 { didSet { save(menuWidth, "menuWidth") } }
     /// The expanded menu in view beside the page.
     var menuInView: Bool { wide.map { !$0.rail } ?? false }
@@ -258,9 +266,16 @@ final class AppModel {
         if case .session(let id) = root { return id }
         return nil
     }
-    var accountPresented = false { didSet { if !accountPresented { accountPath = [] } } }
+    var accountPresented = false {
+        didSet {
+            if accountPresented && !oldValue { hideKeyboard() }
+            if !accountPresented { accountPath = [] }
+        }
+    }
     var accountPath: [Route] = []
-    var sheet: SheetKind?
+    var sheet: SheetKind? {
+        didSet { if sheet != nil && sheet != oldValue { hideKeyboard() } }
+    }
     /// How the session list is laid out, whether it shows archived sessions,
     /// and its collapsed sections ("grouping:key"); kept on this iPhone.
     var listView = SessionListLayout() { didSet { save(listView, "listView") } }
@@ -1005,6 +1020,7 @@ final class AppModel {
     // MARK: Navigation
 
     func open(_ r: Root) {
+        hideKeyboard()
         accountPresented = false
         root = r
         path = []
@@ -1012,6 +1028,7 @@ final class AppModel {
     }
 
     func openSession(_ id: String) {
+        hideKeyboard()
         accountPresented = false
         if case .session(let cur) = root, cur == id, path.isEmpty { return }
         if path.last == .session(id) { return }

@@ -147,8 +147,10 @@ extension HermeshUITests {
         XCTAssertTrue(app.staticTexts["收到"].waitForExistence(timeout: 60), "her reply")
         for i in 1...3 { herSend("[[mock:send:第 \(i) 段回复，写得长一些，好让对话长过一屏，往上滚的时候能看到顶部怎么处理。第 \(i) 段回复，写得长一些，再长一些。]] 第 \(i) 条") }
         XCTAssertTrue(text("第 3 段回复").waitForExistence(timeout: 60), "the last reply")
+        XCTAssertTrue(waitUntil { self.app.keyboards.count == 0 }, "sent: the keyboard goes")
         // Typing does not resize or move the header.
-        XCTAssertTrue(app.keyboards.count > 0, "the keyboard up")
+        app.descendants(matching: .any)["her-composer"].firstMatch.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "the keyboard up")
         XCTAssertEqual(avatar.frame.height, avatarFrame.height, accuracy: 1)
         XCTAssertEqual(avatar.frame.midY, avatarFrame.midY, accuracy: 1)
         XCTAssertEqual(tag.frame.midY, tagFrame.midY, accuracy: 1)

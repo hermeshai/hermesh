@@ -238,6 +238,78 @@ final class SidebarUITests: XCTestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.12)).tap()
     }
 
+    /// Keyboard dismissal across compact drawer (standard iPhone) and cover (iPhone Duo closed):
+    /// opening the sidebar by button or swipe, opening Session Info, and sending a message all dismiss the keyboard.
+    func testKeyboardDismissesOnSidebarAndSend() {
+        launchDemo(["-DemoSessions", "6"])
+        let keyboard = app.keyboards.firstMatch
+
+        // 1. Her conversation: menu button, horizontal swipe to open sidebar, and Send all dismiss the keyboard.
+        let herComposer = app.descendants(matching: .any)["her-composer"].firstMatch
+        XCTAssertTrue(herComposer.waitForExistence(timeout: 15), "Her composer")
+        herComposer.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "keyboard up in Her")
+        openDrawer()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), "menu button dismisses Her keyboard")
+        closeDrawer()
+
+        herComposer.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "keyboard up in Her before swipe")
+        swipeOpenDrawer()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), "swiping sidebar open dismisses Her keyboard")
+
+        // 2. Session page: menu button, swipe to open sidebar, Session Info sheet, and Send all dismiss the keyboard.
+        let sessionRow = app.buttons["session-Sidebar Task 1"]
+        XCTAssertTrue(sessionRow.waitForExistence(timeout: 10), "session row in drawer")
+        sessionRow.tap()
+
+        let composer = app.descendants(matching: .any)["thread-composer"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 10), "session composer")
+        composer.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "keyboard up in session")
+        openDrawer()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), "menu button dismisses session keyboard")
+        closeDrawer()
+
+        composer.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "keyboard up before swipe")
+        swipeOpenDrawer()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), "swiping sidebar open dismisses session keyboard")
+        closeDrawer()
+
+        composer.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "keyboard up before Session Info")
+        app.buttons["session-info"].tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), "opening Session Info sheet dismisses keyboard")
+        app.buttons["close"].tap()
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertFalse(keyboard.exists, "closing Session Info does not re-open keyboard")
+
+        composer.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "keyboard up before send")
+        composer.typeText("Dismiss on send check")
+        app.buttons["thread-send"].tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), "sending message dismisses keyboard")
+    }
+
+    private func closeDrawer() {
+        let close = app.buttons["menu-close"]
+        let dim = app.descendants(matching: .any)["drawer-dim"].firstMatch
+        if close.exists && close.isHittable {
+            close.tap()
+        } else if dim.waitForExistence(timeout: 5) {
+            dim.tap()
+        }
+        XCTAssertTrue(app.buttons["menu"].waitForExistence(timeout: 5), "page back in front")
+    }
+
+    private func swipeOpenDrawer() {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.28))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.88, dy: 0.28))
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: 400, thenHoldForDuration: 0.05)
+        XCTAssertTrue(app.descendants(matching: .any)["drawer"].firstMatch.waitForExistence(timeout: 5), "drawer swiped open")
+    }
+
     private func verifyLongSidebar(mode: String) {
         let drawer = app.descendants(matching: .any)["drawer"].firstMatch
         let account = app.buttons["account"]

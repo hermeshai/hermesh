@@ -186,6 +186,10 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     private let divider = UIView() // between the menu and the page, side by side
     private let grip = UIView() // over the divider: drags the menu wider or narrower
     private let scrim = UIView() // fades the page back under the menu shown over it; a tap puts the menu away
+    private let menuTap = UITapGestureRecognizer()
+    private let railTap = UITapGestureRecognizer()
+    private let menuPan = UIPanGestureRecognizer()
+    private let railPan = UIPanGestureRecognizer()
     /// The menu's width beside the page; whether the owner shrank it to its rail there; and how the screen is
     /// shared, as last worked out.
     private var besideWidth: CGFloat = 322
@@ -274,6 +278,22 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         let back = UISwipeGestureRecognizer(target: self, action: #selector(swipeMenu))
         back.direction = .left
         menu.view.addGestureRecognizer(back)
+        for (tap, host) in [(menuTap, menu.view!), (railTap, rail.view!)] {
+            tap.addTarget(self, action: #selector(dismissKeyboardFromMenu))
+            tap.cancelsTouchesInView = false
+            tap.delaysTouchesBegan = false
+            tap.delaysTouchesEnded = false
+            tap.delegate = self
+            host.addGestureRecognizer(tap)
+        }
+        for (pan, host) in [(menuPan, menu.view!), (railPan, rail.view!)] {
+            pan.addTarget(self, action: #selector(panMenu(_:)))
+            pan.cancelsTouchesInView = false
+            pan.delaysTouchesBegan = false
+            pan.delaysTouchesEnded = false
+            pan.delegate = self
+            host.addGestureRecognizer(pan)
+        }
         // Closed, the shadow falls off the screen's left edge.
         card.layer.shadowColor = UIColor.black.cgColor
         card.layer.shadowRadius = 12
@@ -376,12 +396,13 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     func set(open: Bool) {
         guard arrangement != .beside else {
             if !open {
-                if peek { peek = false; slide() }
+                if peek { hideKeyboard(); peek = false; slide() }
             } else if let layout, layout.rail, !layout.menuFits {
-                if !peek { peek = true; slide() }
+                if !peek { hideKeyboard(); peek = true; slide() }
             } else {
                 // After the update this is called in: these write the app's state.
                 let railed = layout?.rail == true
+                if railed { hideKeyboard() }
                 DispatchQueue.main.async { [self] in
                     onChange(false)
                     if railed { onRail(false) }
@@ -390,12 +411,14 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
             return
         }
         guard open != isOpen else { return }
+        hideKeyboard()
         animate(open: open, velocity: 0)
     }
 
     /// The owner's choice of the menu beside the page, expanded or its rail: the page slides to its new place.
     func set(rail: Bool) {
         guard rail != railChosen else { return }
+        hideKeyboard()
         railChosen = rail
         slide()
     }
@@ -420,6 +443,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
 
     @objc private func closePeek() {
         guard peek else { return }
+        hideKeyboard()
         peek = false
         slide()
         onChange(false)
@@ -427,12 +451,22 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
 
     @objc private func swipeRail() {
         guard arrangement == .beside else { return }
+        hideKeyboard()
         onChange(true) // as the rail's own button
     }
 
     @objc private func swipeMenu() {
         guard arrangement == .beside else { return }
+        hideKeyboard()
         if peek { closePeek() } else { onRail(true) }
+    }
+
+    @objc private func dismissKeyboardFromMenu() {
+        hideKeyboard()
+    }
+
+    @objc private func panMenu(_ g: UIPanGestureRecognizer) {
+        if g.state == .began { hideKeyboard() }
     }
 
     /// The menu's width beside the page, as the owner left it; not while they drag it.
@@ -446,6 +480,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     @objc private func resize(_ g: UIPanGestureRecognizer) {
         switch g.state {
         case .began:
+            hideKeyboard()
             gripStart = besideWidth
         case .changed:
             guard let start = gripStart else { return }
@@ -558,6 +593,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     }
 
     @objc private func closeFromDim() {
+        hideKeyboard()
         animate(open: false, velocity: 0)
         onChange(false)
     }
@@ -565,6 +601,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     @objc private func pan(_ g: UIPanGestureRecognizer) {
         switch g.state {
         case .began:
+            hideKeyboard()
             generation += 1
             startMoving()
             standUp() // before the card stops where it is: its model value is at rest, or the page is up already
@@ -586,6 +623,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     }
 
     func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        if g === menuPan || g === railPan { return true }
         guard let pan = g as? UIPanGestureRecognizer else { return true }
         guard arrangement != .beside else { return false }
         let v = pan.velocity(in: view)
@@ -609,7 +647,8 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     /// Alongside the page's scrolling, but not a row's tap: the page follows
     /// the finger, so it lifts on the row it went down on, which would open.
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-        other is UIPanGestureRecognizer
+        if [menuTap, railTap, menuPan, railPan].contains(where: { $0 === g || $0 === other }) { return true }
+        return other is UIPanGestureRecognizer
     }
 }
 

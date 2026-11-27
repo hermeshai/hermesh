@@ -350,6 +350,8 @@ struct SessionPage: View {
                 Text("Data: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on your computer.\n\nNote: Her sends data through your computer to the AI model service configured there, including any custom provider or gateway.")
             }
         }
+        .onChange(of: model.path) { focused = false }
+        .onChange(of: showingBackgroundTasks || deleting) { _, on in if on { focused = false; hideKeyboard() } }
         // A new session's project's branches, read from its folder (only the owner's devices can): again as the page
         // opens or the project changes, since a branch switched on the machine isn't sent here.
         .task(id: "\(machineID)/\(projectID)/\(isNew)") { await loadBranches() }
@@ -385,6 +387,7 @@ struct SessionPage: View {
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.always)
         .scrollDismissesKeyboard(.immediately)
+        .keyboardAwayOnTap()
         .background {
             if herAt != nil {
                 NewSessionAurora(who: who).ignoresSafeArea()
@@ -526,6 +529,7 @@ struct SessionPage: View {
             .padding(.top, 13).padding(.bottom, 21)
         }
         .defaultScrollAnchor(.bottom, for: .initialOffset)
+        .scrollDismissesKeyboard(.interactively)
         .keyboardAwayOnTap()
         .safeAreaInset(edge: .bottom) {
             box.padding(.bottom, 4)
@@ -669,6 +673,7 @@ struct SessionPage: View {
         .fullScreenCover(item: Binding(get: { files.lightbox }, set: { files.lightbox = $0 })) {
             SessionImageLightbox(presentation: $0)
         }
+        .onChange(of: files.sharing != nil || files.lightbox != nil) { _, on in if on { focused = false; hideKeyboard() } }
     }
 
     private func sidePanelWidth(_ geo: GeometryProxy) -> CGFloat {
@@ -696,6 +701,7 @@ struct SessionPage: View {
                     .gesture(
                         DragGesture(minimumDistance: 8, coordinateSpace: .global)
                             .updating($panelDrag) { v, s, _ in s = max(0, v.translation.width) }
+                            .onChanged { _ in hideKeyboard() }
                             .onEnded { v in
                                 if v.translation.width > 72 || v.predictedEndTranslation.width > 140 {
                                     withAnimation(.snappy(duration: 0.28)) {
@@ -1354,6 +1360,18 @@ struct SessionPage: View {
     }
 
     private func send() {
+        if focused, let field = UIResponder.herFirst, (field as? UITextInput)?.markedTextRange != nil {
+            focused = false
+            _ = field.resignFirstResponder()
+            Task { @MainActor in sendCommitted() }
+            return
+        }
+        focused = false
+        hideKeyboard()
+        sendCommitted()
+    }
+
+    private func sendCommitted() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty || !attached.isEmpty, let api = model.api else { return }
         if isNew && who == .her && !model.isDemo && !model.her.aiConsentAccepted {
@@ -1667,6 +1685,8 @@ extension SessionPage {
     /// A file in the box, before it is sent: a picture large, with the box's other pictures; a page, Markdown or code on
     /// its page. Its bytes are on this iPhone already.
     fileprivate func openAttached(_ a: Attached) {
+        focused = false
+        hideKeyboard()
         if a.picture != nil {
             let pictures = attached.filter { $0.picture != nil }
             boxLightbox = SessionLightboxPresentation(sessionID: sessionID, machineID: effectiveMachineID, run: "", items: pictures.map { .attachment($0.ref) },

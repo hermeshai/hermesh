@@ -93,6 +93,79 @@ final class WideUITests: XCTestCase {
         shot("5-upright-session")
     }
 
+    /// On a wide screen (iPhone Duo unfolded landscape / Pro Max landscape), scrolling or tapping the standing
+    /// sidebar, shrinking/expanding its rail, opening the right side panel, and sending all dismiss the keyboard.
+    func testKeyboardDismissesAcrossBesideSidebarRailSidePanelAndSend() throws {
+        XCUIDevice.shared.orientation = .portrait
+        app.launchArguments += ["-DemoSessions", "24"]
+        app.launch()
+        tap("try-demo")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        sleep(2)
+        let drawer = element("drawer"), rail = element("rail"), keyboard = app.keyboards.firstMatch
+        guard drawer.waitForExistence(timeout: 5) else { throw XCTSkip("no regular width on its side here") }
+
+        let rows = drawer.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session-"))
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 10))
+        let currentRow = visibleRow(rows)
+        currentRow.tap()
+
+        let composer = element("thread-composer")
+        XCTAssertTrue(composer.waitForExistence(timeout: 10), "session composer beside menu")
+
+        // 1. Scrolling the sidebar list dismisses the keyboard.
+        composer.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "keyboard up beside sidebar")
+        let startY = min(drawer.frame.maxY - 24, keyboard.frame.minY - 24)
+        let endY = max(drawer.frame.minY + 72, startY - 90)
+        let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: drawer.frame.midX, dy: startY))
+        let end = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: drawer.frame.midX, dy: endY))
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .default, thenHoldForDuration: 0)
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), "scrolling beside sidebar dismisses keyboard")
+
+        // 2. Tapping the already-open session row or sidebar controls dismisses the keyboard.
+        composer.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "keyboard up before tapping sidebar")
+        visibleRow(rows).tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), "tapping sidebar row dismisses keyboard")
+
+        // 3. Collapsing to rail and expanding from rail both dismiss the keyboard.
+        composer.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "keyboard up before menu-hide")
+        tap("menu-hide")
+        XCTAssertTrue(rail.waitForExistence(timeout: 5))
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), "collapsing sidebar to rail dismisses keyboard")
+
+        composer.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "keyboard up beside rail")
+        tap("rail-expand")
+        XCTAssertTrue(drawer.waitForExistence(timeout: 5))
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), "expanding rail dismisses keyboard")
+
+        // 4. Opening and tapping inside the right-hand side panel dismisses the keyboard.
+        if app.buttons["session-side-panel"].exists {
+            composer.tap()
+            XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "keyboard up before opening side panel")
+            tap("session-side-panel")
+            let panel = element("side-panel")
+            XCTAssertTrue(panel.waitForExistence(timeout: 5))
+            XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), "opening side panel dismisses keyboard")
+
+            composer.tap()
+            XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "keyboard up with side panel open")
+            panel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
+            XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), "tapping side panel dismisses keyboard")
+            tap("session-side-panel")
+        }
+
+        // 5. Sending dismisses the keyboard on wide screen too.
+        composer.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "keyboard up before send")
+        composer.typeText("Wide screen send check")
+        tap("thread-send")
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), "sending dismisses keyboard on wide screen")
+    }
+
     /// A session row the list shows whole (it scrolls under the menu's top band, and keeps where it was left).
     private func visibleRow(_ rows: XCUIElementQuery) -> XCUIElement {
         let band = element("search").frame.maxY + 16

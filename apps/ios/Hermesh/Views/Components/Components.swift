@@ -567,7 +567,7 @@ private struct DismissKeyboardTapGesture: UIGestureRecognizerRepresentable {
 
     func handleUIGestureRecognizerAction(_ recognizer: UITapGestureRecognizer, context: Context) {
         if recognizer.state == .ended {
-            DispatchQueue.main.async { hideKeyboard() }
+            hideKeyboard()
         }
     }
 
@@ -589,8 +589,22 @@ private struct DismissKeyboardTapGesture: UIGestureRecognizerRepresentable {
     }
 }
 
-private func hideKeyboard() {
-    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+func hideKeyboard() {
+    guard let first = UIResponder.herFirst, first is UIKeyInput else { return }
+    _ = first.resignFirstResponder()
+}
+
+extension UIResponder {
+    private static weak var found: UIResponder?
+
+    /// The view the keyboard types into, if any.
+    static var herFirst: UIResponder? {
+        found = nil
+        UIApplication.shared.sendAction(#selector(herFind), to: nil, from: nil, for: nil)
+        return found
+    }
+
+    @objc private func herFind() { UIResponder.found = self }
 }
 
 /// Inline "Recommended" badge rendered directly inside a SwiftUI Text run so multi-line option text wraps cleanly

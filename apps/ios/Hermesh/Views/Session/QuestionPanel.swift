@@ -379,6 +379,7 @@ struct QuestionPanel: View {
     private func send(decline: Bool) {
         advanceTask?.cancel()
         typing = false
+        hideKeyboard()
         sending = true
         let answers: [Answer] = decline ? [] : question.items.filter { isQuestionItemAnswered($0, picked: picked, text: text) }.map { it in
             var a = Answer()

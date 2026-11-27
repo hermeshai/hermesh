@@ -103,6 +103,8 @@ struct HerComposer: View {
                             // The connectors' switches, and managing them, a sheet of their own.
                             Button {
                                 adding = false
+                                focused = false
+                                hideKeyboard()
                                 connectors = true
                             } label: {
                                 Label("Connectors", systemImage: "powerplug").frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 12).contentShape(.rect)
@@ -197,6 +199,8 @@ struct HerComposer: View {
     /// Closes the popover, then opens a picker once it has gone (one presentation at a time).
     private func add(photos: Bool) {
         adding = false
+        focused = false
+        hideKeyboard()
         Task {
             try? await Task.sleep(for: .milliseconds(400))
             if photos { pickingPhotos = true } else { pickingFiles = true }
@@ -204,17 +208,19 @@ struct HerComposer: View {
     }
 
     /// What the keyboard is composing (pinyin not yet chosen, say) goes with the message. Emptied while it composes,
-    /// the field would get it back from the keyboard, which keeps it: the field lets go of the keyboard first, which
-    /// commits it, then the message goes and the field takes the keyboard again.
+    /// the field would get it back from the keyboard, which keeps it: letting go of the keyboard first commits it,
+    /// then the message goes and the keyboard stays away so the reply has the screen.
     private func send() {
         guard focused, let field = UIResponder.herFirst, (field as? UITextInput)?.markedTextRange != nil else {
+            focused = false
+            hideKeyboard()
             if canSend { chat.send() }
             return
         }
+        focused = false
         _ = field.resignFirstResponder()
         Task { @MainActor in
             if canSend { chat.send() }
-            focused = true
         }
     }
 
@@ -381,17 +387,4 @@ struct HerApprovalPanel: View {
             busy = false
         }
     }
-}
-
-extension UIResponder {
-    private static weak var found: UIResponder?
-
-    /// The view the keyboard types into, if any.
-    static var herFirst: UIResponder? {
-        found = nil
-        UIApplication.shared.sendAction(#selector(herFind), to: nil, from: nil, for: nil)
-        return found
-    }
-
-    @objc private func herFind() { UIResponder.found = self }
 }

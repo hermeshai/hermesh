@@ -604,7 +604,7 @@ extension HermeshUITests {
         XCTAssertTrue(went.firstMatch.label.lowercased().contains("ni"), "with what was composed: \(went.firstMatch.label)")
         sleep(2)
         XCTAssertTrue(typed().isEmpty, "the keyboard wrote nothing back: \(typed())")
-        XCTAssertTrue(waitUntil(timeout: 5) { app.keyboards.count > 0 }, "the field has the keyboard again")
+        XCTAssertTrue(waitUntil(timeout: 5) { app.keyboards.count == 0 }, "sent: the keyboard goes")
         herShot("Her: sent while Pinyin composed")
 
         // The connection gone: the message shows at once, waits, and goes once the relay is back.

@@ -26,6 +26,7 @@ struct SearchSheet: View {
                 }
             }
             .listStyle(.plain)
+            .scrollDismissesKeyboard(.immediately)
             .accessibilityIdentifier("session-search")
             .navigationTitle("Search")
             .searchable(text: $query, tokens: $tokens, isPresented: $searching, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search sessions") { t in

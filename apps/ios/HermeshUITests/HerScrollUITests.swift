@@ -84,6 +84,7 @@ final class HerScrollUITests: XCTestCase {
         composer.typeText("from up here")
         XCTAssertTrue(app.buttons["to-end"].exists, "writing moves nothing")
         tap("her-send")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "sent: the keyboard goes")
         let sent = app.staticTexts["from up here"].firstMatch
         XCTAssertTrue(waitUntil { sent.exists && sent.isHittable && sent.frame.maxY < self.composer.frame.minY }, "the message, at the end")
         XCTAssertTrue(app.buttons["to-end"].waitForNonExistence(timeout: 5), "at the end")
