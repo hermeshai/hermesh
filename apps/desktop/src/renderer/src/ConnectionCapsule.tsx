@@ -53,14 +53,17 @@ export function useConnectionNotice(machine: Machine | undefined, linkUp: boolea
     });
   }, []);
 
+  const needsTimer = !online || !relayUp || (!local && (!machineOnline || unreachable)) || !linkUp || shown !== null;
+
   useEffect(() => {
     tick();
   }, [tick, online, relayUp, local, machineOnline, unreachable, linkUp]);
 
   useEffect(() => {
+    if (!needsTimer) return;
     const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
-  }, [tick]);
+  }, [tick, needsTimer]);
 
   return shown?.notice ?? null;
 }

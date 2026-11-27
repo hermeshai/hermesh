@@ -124,10 +124,10 @@ test("long titles are cut, each row is the agent's logo, its title and one mark,
   await expect(list.getByRole("listitem").filter({ hasText: "写 hello" }).locator(".slogo-orbit")).toHaveCount(0);
   await expect(list.getByRole("listitem").filter({ hasText: "选颜色" }).locator(".slogo")).not.toHaveClass(/\brun\b/);
   await expect(mark("写 hello")).toHaveCount(0);
-  // The running title shimmers, as on the iPhone: two moving copies over it, which screen readers skip; the title still reads as written.
+  // The running title shimmers, as on the iPhone: a moving fainter wave over it, which screen readers skip; the title still reads as written.
   await expect(running.locator(".stitle")).toHaveClass(/\brun\b/);
-  await expect(running.locator(".stitle .shine[aria-hidden=true]")).toHaveCount(2);
-  expect(await running.locator(".stitle .shine").first().evaluate((e) => getComputedStyle(e).animationName)).toBe("stitle-run");
+  await expect(running.locator(".stitle .shine[aria-hidden=true]")).toHaveCount(1);
+  expect(await running.locator(".stitle .shine > i").first().evaluate((e) => getComputedStyle(e).animationName)).toBe("stitle-run");
   await expect(running.locator(".stitle")).toHaveText((await running.locator(".stitle").getAttribute("title"))!);
   await expect(list.getByRole("listitem").filter({ hasText: "写 hello" }).locator(".stitle .shine")).toHaveCount(0);
   // The overview does not turn while sessions run (each row shows its own work); its one mark is the waiting dot.
