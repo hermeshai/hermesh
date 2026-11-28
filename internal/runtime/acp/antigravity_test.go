@@ -888,7 +888,7 @@ func TestInProgressAsyncLaunchPollsTaskLogImmediately(t *testing.T) {
 	}
 }
 
-func TestAntigravityReadLimitsOnDemandAndCooldown(t *testing.T) {
+func TestAntigravityReadLimitsDisabled(t *testing.T) {
 	_, _, _ = isolateAntigravityEnv(t)
 	usage, err := os.ReadFile(filepath.Join("testdata", "agy-1.5.16-usage.json"))
 	if err != nil {
@@ -901,11 +901,9 @@ func TestAntigravityReadLimitsOnDemandAndCooldown(t *testing.T) {
 	t.Setenv("FAKE_ACP_ARGS_LOG", argsLog)
 	t.Setenv("FAKE_ACP_STATE", t.TempDir())
 
-	now := time.Date(2026, 11, 27, 12, 0, 0, 0, time.UTC)
 	p := &Provider{
 		Agent:   antigravityAgent(goruntime.GOOS),
 		PathEnv: binDir,
-		now:     func() time.Time { return now },
 	}
 	countUsageCalls := func() int {
 		t.Helper()
@@ -918,50 +916,14 @@ func TestAntigravityReadLimitsOnDemandAndCooldown(t *testing.T) {
 		return n
 	}
 
-	// Routine Discover must NOT run `agy -p /usage`.
 	info := p.Discover(context.Background())
 	if !info.Available || !info.LoggedIn || info.Limits != nil {
 		t.Fatalf("Discover should not populate Limits: %+v", info)
 	}
+	if lim := p.ReadLimits(context.Background()); lim != nil {
+		t.Fatalf("ReadLimits should be disabled (nil), got %+v", lim)
+	}
 	if n := countUsageCalls(); n != 0 {
-		t.Fatalf("Discover invoked `agy -p /usage` %d times, want 0", n)
-	}
-
-	// Explicit ReadLimits runs `agy -p /usage` once and parses all 4 windows.
-	lim := p.ReadLimits(context.Background())
-	if lim == nil || len(lim.Windows) != 4 {
-		t.Fatalf("first ReadLimits: %+v", lim)
-	}
-	if n := countUsageCalls(); n != 1 {
-		t.Fatalf("after first ReadLimits, usage calls = %d, want 1", n)
-	}
-
-	// Within the 60s cooldown, ReadLimits does not re-run `agy`.
-	now = now.Add(30 * time.Second)
-	if again := p.ReadLimits(context.Background()); again != nil {
-		t.Fatalf("within cooldown, expected nil, got %+v", again)
-	}
-	if n := countUsageCalls(); n != 1 {
-		t.Fatalf("within cooldown, usage calls = %d, want 1", n)
-	}
-
-	// Past the 60s cooldown, ReadLimits runs `agy -p /usage` again.
-	now = now.Add(31 * time.Second)
-	if fresh := p.ReadLimits(context.Background()); fresh == nil || len(fresh.Windows) != 4 {
-		t.Fatalf("after cooldown, ReadLimits = %+v", fresh)
-	}
-	if n := countUsageCalls(); n != 2 {
-		t.Fatalf("after cooldown, usage calls = %d, want 2", n)
-	}
-
-	// Non-antigravity and standalone ACP servers never invoke `-p /usage`.
-	other := &Provider{Agent: Agent{Name: "gemini", Command: "gemini", Args: []string{"--acp"}}, PathEnv: binDir}
-	if l := other.ReadLimits(context.Background()); l != nil {
-		t.Fatalf("non-antigravity ReadLimits: %+v", l)
-	}
-	standalone := installFakeBinary(t, t.TempDir(), standaloneExeName(), "", "1.4.5")
-	pStandalone := &Provider{Agent: antigravityAgent(goruntime.GOOS), Binary: standalone}
-	if l := pStandalone.ReadLimits(context.Background()); l != nil {
-		t.Fatalf("standalone ReadLimits: %+v", l)
+		t.Fatalf("`agy -p /usage` invoked %d times, want 0", n)
 	}
 }

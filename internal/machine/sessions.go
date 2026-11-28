@@ -73,8 +73,8 @@ type AgentDiscoverer interface {
 }
 
 // LimitsReader is optionally implemented by an AgentDiscoverer whose account
-// rate limits are queried separately from routine agent discovery (e.g.
-// Antigravity's `agy -p /usage`), only when the owner views Limits.
+// rate limits are queried separately from routine agent discovery, only when
+// the owner views Limits.
 type LimitsReader interface {
 	ReadLimits(ctx context.Context) *rt.Limits
 }

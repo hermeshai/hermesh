@@ -66,8 +66,6 @@ func antigravityReady(info runtime.Info) bool {
 	return info.Available && info.LoggedIn && info.ModelsState != runtime.ModelsError
 }
 
-const agyUsageCooldown = time.Minute
-
 func (p *Provider) discoverAntigravity(ctx context.Context) runtime.Info {
 	candidates := p.antigravityCandidates(ctx)
 	env := runtime.ProbeEnv(p.PathEnv)
@@ -75,61 +73,11 @@ func (p *Provider) discoverAntigravity(ctx context.Context) runtime.Info {
 	return info
 }
 
-func (p *Provider) usageNow() time.Time {
-	if p.now != nil {
-		return p.now()
-	}
-	return time.Now()
-}
-
-func (p *Provider) usageWait() time.Duration {
-	if p.usageCooldown > 0 {
-		return p.usageCooldown
-	}
-	return agyUsageCooldown
-}
-
-// ReadLimits asks the official agy CLI for its account's quota (`agy -p /usage
-// --output-format json`), only when the owner is viewing Limits. Concurrent
-// calls serialize and repeated calls within agyUsageCooldown return nil so the
-// machine keeps its recent snapshot without re-running the CLI. Non-Antigravity
-// agents and the standalone ACP archive return nil.
-func (p *Provider) ReadLimits(ctx context.Context) *runtime.Limits {
-	if p.Name() != "antigravity" {
-		return nil
-	}
-	env := runtime.ProbeEnv(p.PathEnv)
-	chosen := p.resolveAntigravityStart(ctx, env)
-	if chosen.mode != antigravityCLI || chosen.bin == "" || chosen.probeErr != nil {
-		return nil
-	}
-	probeEnv := append(env[:len(env):len(env)], chosen.env...)
-	key := modelContext(chosen.bin, probeEnv)
-
-	p.usageMu.Lock()
-	defer p.usageMu.Unlock()
-	if p.usageKey == key && !p.usageAt.IsZero() && p.usageNow().Sub(p.usageAt) < p.usageWait() {
-		return nil
-	}
-	lim := agyUsage(ctx, probeEnv, chosen.bin)
-	if ctx.Err() == nil {
-		p.usageKey = key
-		p.usageAt = p.usageNow()
-	}
-	return lim
-}
-
-// agyUsage asks agy its account's quota, as its own /usage says it without
-// a turn (`agy -p /usage --output-format json`); nil when it says none (an
-// API key: it exits 2) or fails.
-func agyUsage(ctx context.Context, env []string, bin string) *runtime.Limits {
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-	out, problem, _ := runtime.Probe(ctx, env, bin, "-p", "/usage", "--output-format", "json")
-	if problem != runtime.ProblemNone {
-		return nil
-	}
-	return usageFrom(out)
+// ReadLimits returns nil: programmatic `agy -p /usage --output-format json`
+// queries are temporarily disabled until Google offers an official compliant
+// quota query API.
+func (p *Provider) ReadLimits(context.Context) *runtime.Limits {
+	return nil
 }
 
 // usageWindows are the windows /usage names, by their length; one it names
@@ -262,10 +210,6 @@ func (p *Provider) clearChosen() {
 	p.chosenStamp = ""
 	p.chosenLaunch = launch{}
 	p.acpMu.Unlock()
-	p.usageMu.Lock()
-	p.usageKey = ""
-	p.usageAt = time.Time{}
-	p.usageMu.Unlock()
 }
 
 func antigravityCandidatesStamp(candidates []launch, env []string) string {

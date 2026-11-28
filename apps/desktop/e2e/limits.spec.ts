@@ -3,8 +3,8 @@ import { cli, launch, snap } from "./app";
 
 // 额度, the overview's third view (docs/overview-usage.md §7.4): what each coding agent last said of its account's
 // rate limits. The fixture's limits-mac ran a session in which its agent (the fake, as gemini) said five hours 86%
-// used and a week 52%, on Pro; agy-mac's Antigravity (as the agy CLI) was asked its quota, two groups of models,
-// none low; the others never said any.
+// used and a week 52%, on Pro; agy-mac's Antigravity is not queried (`agy -p /usage` disabled) and shows that Google's
+// harnesses have no official compliant quota query support yet; Codex has not said any yet.
 test("额度 shows what each agent last said, the least left first; a low window puts a dot on the 额度 tab that clears on click", async () => {
   const { app, page } = await launch();
   try {
@@ -44,21 +44,15 @@ test("额度 shows what each agent last said, the least left first; a low window
     // The allowance's ticks light what is left; the time's line, what is left of the window (all of it, just started).
     expect(await five.locator(".lim-ticks u").evaluate((el) => el.getBoundingClientRect().width / el.parentElement!.getBoundingClientRect().width)).toBeCloseTo(0.14, 2);
     expect(await week.locator(".lim-time u").evaluate((el) => el.getBoundingClientRect().width / el.parentElement!.getBoundingClientRect().width)).toBeGreaterThan(0.98);
-    // Antigravity counts groups of models apart: each group's name over its windows, in the order agy gave them.
+    // Google's harnesses have no official compliant quota query API (`agy -p /usage` is disabled).
     const agy = limits.getByRole("group", { name: "Antigravity", exact: true });
-    await expect(agy.locator(".lim-tx")).toContainText(/agy-mac 上报 · (刚刚|\d+ 分钟前)/);
-    await expect(agy.locator(".lim-gname")).toHaveText(["Gemini Models", "Claude and GPT models"]);
-    const gem = agy.getByRole("group", { name: "Gemini Models" });
-    await expect(gem.getByRole("group", { name: "5 小时窗口" }).locator(".lim-left")).toHaveText("97%剩余");
-    await expect(gem.getByRole("group", { name: "每周窗口" }).locator(".lim-left")).toHaveText("83%剩余");
-    const third = agy.getByRole("group", { name: "Claude and GPT models" });
-    // Not started (agy says it resets in 1970): all of it left, and it counts from its first use.
-    await expect(third.getByRole("group", { name: "5 小时窗口" }).locator(".lim-left")).toHaveText("100%剩余");
-    await expect(third.getByRole("group", { name: "5 小时窗口" }).locator(".lim-reset")).toHaveText("使用后开始计时");
-    await expect(third.getByRole("group", { name: "每周窗口" }).locator(".lim-left")).toHaveText("35%剩余");
-    await expect(agy.locator(".lim-badge")).toHaveCount(0); // agy says no plan
+    await expect(agy.locator(".lim-none")).toHaveText("暂无官方合规余量查询支持");
+    await expect(agy.locator(".lim-gname")).toHaveCount(0);
+    await expect(agy.locator(".lim-badge")).toHaveCount(0);
+    await expect(agy.locator(".lim-tx")).not.toContainText("上报");
     // An agent that reports its limits and has not yet: it says so.
     await expect(limits.getByRole("group", { name: "Codex" })).toContainText("还没有读到，用订阅账号登录后显示");
+    await expect(limits).toContainText("Claude Code 和 Codex 查询");
     await expect(limits).toContainText("Hermesh 只转述，不读取账号");
     await snap(page, "overview-limits");
 

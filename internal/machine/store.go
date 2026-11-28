@@ -261,6 +261,11 @@ func (s *Store) Set(key string, v []byte) error {
 	return err
 }
 
+func (s *Store) Delete(key string) error {
+	_, err := s.db.Exec(`DELETE FROM kv WHERE key=?`, key)
+	return err
+}
+
 func (s *Store) GetProto(key string, m proto.Message) (bool, error) {
 	b, err := s.Get(key)
 	if err != nil || b == nil {

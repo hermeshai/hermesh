@@ -202,9 +202,9 @@ esac
 	eventually(t, 30*time.Second, "the five hours at 52%", func() bool { return windows(agentLimits(t, w.app.client)["claude"]) == "max 300:52,10080:64" })
 }
 
-// TestRealLimitsAsked: the Claude Code and Codex installed here, and agy
-// when it is, answer their accounts' limits when checked (HERMESH_REAL_CLI=1;
-// no turn, no tokens).
+// TestRealLimitsAsked: the Claude Code and Codex installed here answer their
+// accounts' limits when checked (HERMESH_REAL_CLI=1; no turn, no tokens);
+// Antigravity is not queried.
 func TestRealLimitsAsked(t *testing.T) {
 	if testing.Short() || os.Getenv("HERMESH_REAL_CLI") != "1" {
 		t.Skip("real Claude Code and Codex only: HERMESH_REAL_CLI=1")
@@ -214,31 +214,31 @@ func TestRealLimitsAsked(t *testing.T) {
 			t.Skipf("%s not installed", bin)
 		}
 	}
-	_, agy := exec.LookPath("agy")
 	w := newOwnerMac(t, []string{"PATH=" + os.Getenv("PATH")}, &localv1.GrantSpec{})
-	if agy == nil {
-		if _, err := w.app.client.CheckAgents(context.Background(), &localv1.CheckAgentsRequest{Limits: true}); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := w.app.client.CheckAgents(context.Background(), &localv1.CheckAgentsRequest{Limits: true}); err != nil {
+		t.Fatal(err)
 	}
 	var got map[string]*machinev1.AgentLimits
 	eventually(t, 90*time.Second, "the agents' limits", func() bool {
 		got = agentLimits(t, w.app.client)
-		return got["claude"] != nil && got["codex"] != nil && (agy != nil || got["antigravity"] != nil)
+		return got["claude"] != nil && got["codex"] != nil
 	})
+	if l := got["antigravity"]; l != nil {
+		t.Fatalf("antigravity limits should not be queried, got %v", l)
+	}
 	for name, l := range got {
-		if len(l.Windows) == 0 || (l.Plan == "") != (name == "antigravity") || !l.Windows[0].ResetsAt.AsTime().After(time.Now()) {
+		if len(l.Windows) == 0 || l.Plan == "" || !l.Windows[0].ResetsAt.AsTime().After(time.Now()) {
 			t.Fatalf("%s: %v", name, l)
 		}
 		t.Logf("%s: %s", name, windows(l))
 	}
 }
 
-// TestAntigravityLimitsAsked (docs/overview-usage.md §7): Antigravity, as
-// the agy CLI, is NOT asked its quota during startup or routine agent checks
-// (settings, login polling). Only an explicit Limits check (`limits: true`)
-// runs `agy -p /usage`, and repeated calls within its cooldown do not re-run it.
-func TestAntigravityLimitsAsked(t *testing.T) {
+// TestAntigravityLimitsDisabled (docs/overview-usage.md §7): Antigravity's
+// `agy -p /usage --output-format json` is disabled for usage-policy compliance,
+// so neither routine agent checks nor explicit Limits checks (`limits: true`)
+// invoke `agy -p /usage`.
+func TestAntigravityLimitsDisabled(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
 	}
@@ -252,8 +252,6 @@ func TestAntigravityLimitsAsked(t *testing.T) {
 	w := newOwnerMac(t, env, &localv1.GrantSpec{Agents: []string{"antigravity"}})
 	ctx := context.Background()
 
-	// Wait for the initial agent check to finish: Antigravity is ready, yet
-	// `/usage` must not have been called.
 	waitChecked := func() {
 		t.Helper()
 		eventually(t, time.Minute, "antigravity checked", func() bool {
@@ -274,53 +272,14 @@ func TestAntigravityLimitsAsked(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitChecked()
-	if l := agentLimits(t, w.app.client)["antigravity"]; l != nil {
-		t.Fatalf("Antigravity limits populated before Limits view asked: %v", l)
-	}
-	if b, _ := os.ReadFile(usageLog); len(bytes.TrimSpace(b)) != 0 {
-		t.Fatalf("agy -p /usage ran during routine CheckAgents: %q", b)
-	}
-
-	// Opening Limits asks with limits=true: runs `agy -p /usage` once and reports all 4 windows.
-	if _, err := w.app.client.CheckAgents(ctx, &localv1.CheckAgentsRequest{Limits: true}); err != nil {
-		t.Fatal(err)
-	}
-	var l *machinev1.AgentLimits
-	eventually(t, time.Minute, "Antigravity's quota after Limits check", func() bool {
-		l = agentLimits(t, w.app.client)["antigravity"]
-		return l != nil
-	})
-	var got []string
-	for _, w := range l.Windows {
-		got = append(got, fmt.Sprintf("%s %d:%d %s", w.Group, w.Minutes, w.UsedPercent, w.ResetsAt.AsTime().Format(time.RFC3339)))
-	}
-	want := []string{
-		"Gemini Models 300:3 2026-11-24T22:18:29Z",
-		"Gemini Models 10080:17 2026-11-30T20:03:19Z",
-		"Claude and GPT models 300:0 2026-11-24T22:37:18Z",
-		"Claude and GPT models 10080:88 2026-11-25T12:22:09Z",
-	}
-	if strings.Join(got, "\n") != strings.Join(want, "\n") || l.Plan != "" {
-		t.Fatalf("windows:\n%s", strings.Join(got, "\n"))
-	}
-	calls := func() int {
-		b, _ := os.ReadFile(usageLog)
-		s := strings.TrimSpace(string(b))
-		if s == "" {
-			return 0
-		}
-		return len(strings.Split(s, "\n"))
-	}
-	if n := calls(); n != 1 {
-		t.Fatalf("agy -p /usage calls = %d, want 1", n)
-	}
-
-	// Asking again immediately (e.g. toggling tabs) hits cooldown and does not re-run agy.
 	if _, err := w.app.client.CheckAgents(ctx, &localv1.CheckAgentsRequest{Limits: true}); err != nil {
 		t.Fatal(err)
 	}
 	waitChecked()
-	if n := calls(); n != 1 {
-		t.Fatalf("agy -p /usage re-ran within cooldown: calls = %d, want 1", n)
+	if l := agentLimits(t, w.app.client)["antigravity"]; l != nil {
+		t.Fatalf("Antigravity limits populated while /usage is disabled: %v", l)
+	}
+	if b, _ := os.ReadFile(usageLog); len(bytes.TrimSpace(b)) != 0 {
+		t.Fatalf("agy -p /usage ran while disabled: %q", b)
 	}
 }

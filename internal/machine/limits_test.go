@@ -21,7 +21,7 @@ func TestAgentLimits(t *testing.T) {
 			t.Fatal(err)
 		}
 		n.mu.Lock()
-		n.infos = map[string]rt.Info{"codex": {Available: true}, "claude": {Available: true}}
+		n.infos = map[string]rt.Info{"codex": {Available: true}, "claude": {Available: true}, "antigravity": {Available: true}}
 		n.mu.Unlock()
 		return n
 	}
@@ -72,12 +72,20 @@ func TestAgentLimits(t *testing.T) {
 	if at := limitsOf(n.Status(), "codex").ObservedAt.AsTime(); !at.After(old) {
 		t.Fatalf("a minute on: kept at %v", at)
 	}
+	// A stale Antigravity snapshot from before `/usage` was disabled is cleared on restart.
+	n.noteLimits("antigravity", rt.Limits{Windows: []rt.LimitWindow{{Minutes: 300, UsedPercent: 3, ResetsAt: resets, Group: "Gemini Models"}}})
 	n.Close()
 
-	// After a restart: what it last kept.
+	// After a restart: what it last kept (except Antigravity's, which is purged).
 	n = open()
 	defer n.Close()
 	if l := limitsOf(n.Status(), "codex"); l == nil || len(l.Windows) != 2 || l.Windows[0].UsedPercent != 84 || l.Plan != "pro" {
 		t.Fatalf("after a restart: %v", l)
+	}
+	if l := limitsOf(n.Status(), "antigravity"); l != nil {
+		t.Fatalf("antigravity limits should be cleared on restart, got %v", l)
+	}
+	if b, _ := n.st.Get(kLimits + "antigravity"); len(b) != 0 {
+		t.Fatalf("antigravity limits key still in store: %d bytes", len(b))
 	}
 }

@@ -1079,11 +1079,11 @@ final class HermeshUITests: XCTestCase {
         app.swipeUp()
         XCTAssertTrue(app.descendants(matching: .any)["usage-weeks"].firstMatch.exists && text("活跃天数").exists, "the weeks")
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "输入含各提供方的缓存读写")).firstMatch.exists)
-        // Limits: a card an agent; Gemini CLI says none.
+        // Limits: a card an agent; Google harnesses say no official compliant quota query is supported yet.
         views.buttons["额度"].tap()
         let limits = app.descendants(matching: .any)["limits-gemini"].firstMatch
         XCTAssertTrue(limits.waitForExistence(timeout: 10), "Gemini CLI's card")
-        XCTAssertTrue(text("它没有提供额度信息").exists)
+        XCTAssertTrue(text("暂无官方合规余量查询支持").exists)
         views.buttons["实时"].tap()
         // The account sheet no longer has usage: it is Usage's last card.
         openMenu()

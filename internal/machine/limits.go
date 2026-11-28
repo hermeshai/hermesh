@@ -30,6 +30,12 @@ const limitsEvery = time.Minute
 func (n *Machine) loadLimits() {
 	n.limits = map[string]*machinev1.AgentLimits{}
 	for _, name := range append(AgentNames(), "fake") {
+		if name == "antigravity" {
+			// Clear any snapshot previously fetched via `agy -p /usage --output-format json`,
+			// which is disabled pending an official compliant quota query API.
+			_ = n.st.Delete(kLimits + name)
+			continue
+		}
 		if b, _ := n.st.Get(kLimits + name); len(b) > 0 {
 			l := &machinev1.AgentLimits{}
 			if proto.Unmarshal(b, l) == nil {

@@ -13,7 +13,10 @@ import { useStore, type Store } from "../store";
 // answer for their limits.
 
 /** The agents that report their limits (the others never will). */
-const reporting = new Set(["claude", "codex", "antigravity"]);
+const reporting = new Set(["claude", "codex"]);
+
+/** Google harnesses currently have no official compliant quota query API. */
+const googleHarnesses = new Set(["antigravity", "gemini"]);
 
 /** "5-Hour Window", "Weekly Window". */
 function windowName(minutes: number): string {
@@ -63,14 +66,15 @@ export function Limits({ now }: { now: Date }) {
 function Card({ c, now }: { c: AgentLimitsCard; now: Date }) {
   const { t } = useTranslation("overview");
   const st = useStore();
-  const empty = c.stale ? t("limits.stale") : reporting.has(c.agent) ? t("limits.notYet") : t("limits.none");
+  const empty = googleHarnesses.has(c.agent) ? t("limits.noCompliantQuery") : c.stale ? t("limits.stale") : reporting.has(c.agent) ? t("limits.notYet") : t("limits.none");
+  const showReported = c.observedAt && (!googleHarnesses.has(c.agent) || c.windows.length > 0);
   return (
     <div className="card tint lim" role="group" aria-label={codingAgentTitle(c.agent)}>
       <div className="lim-id">
         <span className="lim-logo"><AgentLogo agent={c.agent} size={40} /></span>
         <div className="lim-tx">
           <b>{codingAgentTitle(c.agent)}</b>
-          {c.observedAt && <small>{reportedText(st, c, now)}</small>}
+          {showReported && <small>{reportedText(st, c, now)}</small>}
           {/* What the account is, always: a window running low is said by its own row, as it may be one of several. */}
           {c.plan && <span className="lim-badge">{c.plan.charAt(0).toUpperCase() + c.plan.slice(1)}</span>}
         </div>
