@@ -345,6 +345,37 @@ async fn an_open_card_is_taken_back_after_a_restart() {
     assert!(kernel.cards("c_unknown").unwrap().get("c_unknown").is_none());
 }
 
+#[tokio::test]
+async fn an_expired_card_when_idle_stays_silent_until_next_turn() {
+    let mut h = her().await;
+    let result = h.kernel.run(prompt(&format!("connect notion {URL}"))).await.unwrap();
+    let id = shown(&result.events)["card"]["id"].as_str().unwrap().to_string();
+    assert_eq!(h.api.requests().len(), 2);
+
+    let cards = h.kernel.cards(&id).expect("cards");
+    cards.set(&id, &[CardState::Open], CardState::Expired, Some("Timed out waiting for sign-in.".into())).unwrap();
+    let _ = until(&mut h.kernel, |m| matches!(m, EventMsg::CardChanged { state: CardState::Expired, .. })).await;
+    tokio::time::sleep(Duration::from_millis(80)).await;
+    assert_eq!(h.api.requests().len(), 2, "an expired card while idle with no busy sub-agents must not wake Her");
+
+    let ended = h.kernel.transcript().into_iter().find_map(|item| match item {
+        TranscriptItem::CardResolved { card_id, outcome, note } => Some((card_id, outcome, note)),
+        _ => None,
+    });
+    assert_eq!(ended, Some((id.clone(), CardState::Expired, "Timed out waiting for sign-in.".into())));
+
+    h.api.push(send_last("c_after_exp", "好的，下次需要再连。"));
+    let next = h.kernel.run(prompt("今天有什么安排")).await.unwrap();
+    assert!(next.events.iter().any(|e| matches!(&e.msg, EventMsg::ToolStarted { name, .. } if name == "send_to_user")));
+    let last_req = h.api.requests().last().unwrap().clone();
+    assert!(
+        last_req.messages.iter().any(|m| text_of(m) == format!("<card id=\"{id}\" kind=\"connect\" outcome=\"expired\">Timed out waiting for sign-in.</card>")),
+        "next user turn receives the expired card context: {:?}",
+        last_req.messages
+    );
+    h.kernel.shutdown().await;
+}
+
 /// Real isolated headless Chromium end-to-end defensive test for `site_login` secure cards using
 /// purely synthetic dummy credentials against a harmless local loopback fixture.
 #[tokio::test]

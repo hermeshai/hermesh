@@ -20,6 +20,7 @@ import (
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/kernel"
 	rt "github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
@@ -188,7 +189,7 @@ func (n *Machine) sessionNews(sess *sessionv1.Session, ev *sessionv1.SessionEven
 	}
 
 	to := []*inboxv1.Address{{Inbox: asker, Session: askerConv}}
-	if createdBy != "" && createdBy != asker {
+	if createdBy != "" && createdBy != asker && strings.HasPrefix(asker, "c_") {
 		to = append(to, &inboxv1.Address{Inbox: createdBy, Session: creatorConv})
 	}
 	for _, a := range to {
@@ -240,7 +241,23 @@ func (n *Machine) newsMessage(to *inboxv1.Address, sess *sessionv1.Session, ev *
 		news.Kind = "turn_done"
 		news.Turn = cmp.Or(ev.GetRun().GetOrdinal(), sess.GetProgress().GetTurnCount())
 		news.DiffStat = sess.GetProgress().GetDiffStat()
+		news.Branch = sess.GetBranch()
 		news.Result, news.ResultTruncated = rt.Truncate(sess.GetResult(), newsResultChars)
+		if news.DiffStat.GetFilesChanged() > 0 && n.sessions != nil {
+			dctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			if diff, err := n.sessions.GetDiff(dctx, kernel.OwnerPrincipal("owner", "Owner"), &sessionv1.GetDiffRequest{SessionId: sess.SessionId, StatOnly: true}); err == nil {
+				const maxNewsFiles = 15
+				files := diff.GetFiles()
+				for i, f := range files {
+					if i >= maxNewsFiles {
+						news.ChangedFiles = append(news.ChangedFiles, fmt.Sprintf("… and %d more files", len(files)-maxNewsFiles))
+						break
+					}
+					news.ChangedFiles = append(news.ChangedFiles, fmt.Sprintf("%s (+%d -%d)", f.GetPath(), f.GetAdditions(), f.GetDeletions()))
+				}
+			}
+			cancel()
+		}
 	case "run.failed":
 		f := sess.GetProgress().GetLastFailure()
 		if f != nil && f.Kind == sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED {

@@ -53,6 +53,9 @@ message SessionNews {
   // kind "failure".
   hermesh.session.v1.FailureKind failure = 12;
   string failure_message = 13;
+  // kind "turn_done": branch and up to 15 modified file summaries so Her can report in one turn.
+  string branch = 14;
+  repeated string changed_files = 15;
 }
 
 // SignedMessage is what a recipient opens: the message, signed by its

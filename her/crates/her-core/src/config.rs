@@ -475,6 +475,11 @@ pub struct CompactionFile {
     pub token_limit: Option<u64>,
     pub keep_user_tokens: Option<u64>,
     pub keep_skill_tokens: Option<u64>,
+    pub bot_idle_message_tokens: Option<u64>,
+    pub bot_active_message_tokens: Option<u64>,
+    pub bot_keep_user_tokens: Option<u64>,
+    pub bot_keep_skill_tokens: Option<u64>,
+    pub bot_idle_delay_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -497,6 +502,16 @@ pub struct CompactionSettings {
     pub keep_user_tokens: u64,
     /// Budget for the instructions of skills in use, before the 10% cap.
     pub keep_skill_tokens: u64,
+    /// Dynamic message watermark at which a bot's idle conversation pre-compacts while its cache is warm.
+    pub bot_idle_message_tokens: u64,
+    /// Dynamic message soft limit for an active bot conversation (0 disables the bot-specific cap).
+    pub bot_active_message_tokens: u64,
+    /// Budget for user messages kept word for word when compacting a bot conversation.
+    pub bot_keep_user_tokens: u64,
+    /// Budget for skill instructions kept when compacting a bot conversation.
+    pub bot_keep_skill_tokens: u64,
+    /// Quiet delay after `Idle` before warm-cache pre-compaction starts.
+    pub bot_idle_delay: Duration,
 }
 
 #[derive(Debug, Clone)]
@@ -655,6 +670,17 @@ impl Config {
                 token_limit: compaction.token_limit.unwrap_or(0),
                 keep_user_tokens: compaction.keep_user_tokens.unwrap_or(20_000),
                 keep_skill_tokens: compaction.keep_skill_tokens.unwrap_or(20_000),
+                bot_idle_message_tokens: compaction.bot_idle_message_tokens.unwrap_or(35_000),
+                bot_active_message_tokens: compaction.bot_active_message_tokens.unwrap_or(48_000),
+                bot_keep_user_tokens: compaction
+                    .bot_keep_user_tokens
+                    .or(compaction.keep_user_tokens)
+                    .unwrap_or(8_000),
+                bot_keep_skill_tokens: compaction
+                    .bot_keep_skill_tokens
+                    .or(compaction.keep_skill_tokens)
+                    .unwrap_or(3_000),
+                bot_idle_delay: Duration::from_secs(compaction.bot_idle_delay_secs.unwrap_or(90).max(1)),
             },
             llm_max_retries: llm.max_retries,
             llm_retry_window: Duration::from_secs(llm.retry_window_secs.unwrap_or(600)),

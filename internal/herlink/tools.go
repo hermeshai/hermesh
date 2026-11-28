@@ -25,7 +25,7 @@ var Guidelines = []string{
 	"After session_start, tell the user in one line that it has started, then end your turn. Never wait for a session or check on it: a <session_news> message wakes you when its turn ends, asks a question or fails.",
 	"One job, one session. A follow-up, a correction or a retry of that job goes to the same session with session_send. A separate job gets a session of its own.",
 	"When a session asks a question, answer it with session_answer if what the user asked for already settles it. Otherwise ask the user and pass their answer on. The question waits only until the time its news says.",
-	"A session's result is the coding agent's own account. Before you tell the user that something changed, look at session_diff with stat. Say where the work is: a session in a worktree project leaves it on its own branch.",
+	"Say where the work is: a session in a worktree project leaves it on its own branch. When <session_news> already gives the branch and changed files in <changes>, tell the user directly without calling session_diff; look at session_diff (start with stat) when <changes> has no file list or when the user asks to review the changes.",
 	"A request to stop covers the sessions you started for that work: session_interrupt each, besides stop_agents. Say a session stopped only once the result shows it.",
 	"Before you say a session is still working, look at session_get. Archive a session only when the user asks.",
 	"A computer that is off is not an error: tell the user which one, and that the work can start when it is back.",

@@ -1387,6 +1387,9 @@ async fn submission_loop(
     }
     let handle = {
         let mut state = session.state.lock();
+        if let Some(idle_timer) = state.idle_compact.take() {
+            idle_timer.cancel();
+        }
         // A resend still waiting does not go ahead: no new task starts as the session closes.
         state.pending_resend = None;
         state.active_task.as_mut().and_then(|task| {

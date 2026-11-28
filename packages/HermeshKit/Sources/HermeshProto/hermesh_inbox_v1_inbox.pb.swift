@@ -184,6 +184,17 @@ public nonisolated struct Hermesh_Inbox_V1_SessionNews: @unchecked Sendable {
     set {_uniqueStorage()._failureMessage = newValue}
   }
 
+  /// kind "turn_done": branch and up to 15 modified file summaries so Her can report in one turn.
+  public var branch: String {
+    get {_storage._branch}
+    set {_uniqueStorage()._branch = newValue}
+  }
+
+  public var changedFiles: [String] {
+    get {_storage._changedFiles}
+    set {_uniqueStorage()._changedFiles = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -334,7 +345,7 @@ nonisolated extension Hermesh_Inbox_V1_Message: SwiftProtobuf.Message, SwiftProt
 
 nonisolated extension Hermesh_Inbox_V1_SessionNews: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SessionNews"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{3}session_id\0\u{1}title\0\u{1}turn\0\u{1}machine\0\u{1}project\0\u{1}agent\0\u{1}result\0\u{3}result_truncated\0\u{3}diff_stat\0\u{1}question\0\u{1}failure\0\u{3}failure_message\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{3}session_id\0\u{1}title\0\u{1}turn\0\u{1}machine\0\u{1}project\0\u{1}agent\0\u{1}result\0\u{3}result_truncated\0\u{3}diff_stat\0\u{1}question\0\u{1}failure\0\u{3}failure_message\0\u{1}branch\0\u{3}changed_files\0")
 
   fileprivate class _StorageClass {
     var _kind: String = String()
@@ -350,6 +361,8 @@ nonisolated extension Hermesh_Inbox_V1_SessionNews: SwiftProtobuf.Message, Swift
     var _question: Hermesh_Session_V1_Question? = nil
     var _failure: Hermesh_Session_V1_FailureKind = .unspecified
     var _failureMessage: String = String()
+    var _branch: String = String()
+    var _changedFiles: [String] = []
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -373,6 +386,8 @@ nonisolated extension Hermesh_Inbox_V1_SessionNews: SwiftProtobuf.Message, Swift
       _question = source._question
       _failure = source._failure
       _failureMessage = source._failureMessage
+      _branch = source._branch
+      _changedFiles = source._changedFiles
     }
   }
 
@@ -404,6 +419,8 @@ nonisolated extension Hermesh_Inbox_V1_SessionNews: SwiftProtobuf.Message, Swift
         case 11: try { try decoder.decodeSingularMessageField(value: &_storage._question) }()
         case 12: try { try decoder.decodeSingularEnumField(value: &_storage._failure) }()
         case 13: try { try decoder.decodeSingularStringField(value: &_storage._failureMessage) }()
+        case 14: try { try decoder.decodeSingularStringField(value: &_storage._branch) }()
+        case 15: try { try decoder.decodeRepeatedStringField(value: &_storage._changedFiles) }()
         default: break
         }
       }
@@ -455,6 +472,12 @@ nonisolated extension Hermesh_Inbox_V1_SessionNews: SwiftProtobuf.Message, Swift
       if !_storage._failureMessage.isEmpty {
         try visitor.visitSingularStringField(value: _storage._failureMessage, fieldNumber: 13)
       }
+      if !_storage._branch.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._branch, fieldNumber: 14)
+      }
+      if !_storage._changedFiles.isEmpty {
+        try visitor.visitRepeatedStringField(value: _storage._changedFiles, fieldNumber: 15)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -477,6 +500,8 @@ nonisolated extension Hermesh_Inbox_V1_SessionNews: SwiftProtobuf.Message, Swift
         if _storage._question != rhs_storage._question {return false}
         if _storage._failure != rhs_storage._failure {return false}
         if _storage._failureMessage != rhs_storage._failureMessage {return false}
+        if _storage._branch != rhs_storage._branch {return false}
+        if _storage._changedFiles != rhs_storage._changedFiles {return false}
         return true
       }
       if !storagesAreEqual {return false}

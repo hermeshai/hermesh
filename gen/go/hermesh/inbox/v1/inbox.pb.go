@@ -204,8 +204,11 @@ type SessionNews struct {
 	// kind "failure".
 	Failure        v1.FailureKind `protobuf:"varint,12,opt,name=failure,proto3,enum=hermesh.session.v1.FailureKind" json:"failure,omitempty"`
 	FailureMessage string         `protobuf:"bytes,13,opt,name=failure_message,json=failureMessage,proto3" json:"failure_message,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// kind "turn_done": branch and up to 15 modified file summaries so Her can report in one turn.
+	Branch        string   `protobuf:"bytes,14,opt,name=branch,proto3" json:"branch,omitempty"`
+	ChangedFiles  []string `protobuf:"bytes,15,rep,name=changed_files,json=changedFiles,proto3" json:"changed_files,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SessionNews) Reset() {
@@ -329,6 +332,20 @@ func (x *SessionNews) GetFailureMessage() string {
 	return ""
 }
 
+func (x *SessionNews) GetBranch() string {
+	if x != nil {
+		return x.Branch
+	}
+	return ""
+}
+
+func (x *SessionNews) GetChangedFiles() []string {
+	if x != nil {
+		return x.ChangedFiles
+	}
+	return nil
+}
+
 // SignedMessage is what a recipient opens: the message, signed by its
 // sender's identity key, and who the sender is.
 type SignedMessage struct {
@@ -400,7 +417,7 @@ const file_hermesh_inbox_v1_inbox_proto_rawDesc = "" +
 	"\vin_reply_to\x18\x05 \x01(\tR\tinReplyTo\x12\x18\n" +
 	"\asubject\x18\x06 \x01(\tR\asubject\x12\x12\n" +
 	"\x04text\x18\a \x01(\tR\x04text\x12@\n" +
-	"\fsession_news\x18\b \x01(\v2\x1d.hermesh.inbox.v1.SessionNewsR\vsessionNews\"\xd0\x03\n" +
+	"\fsession_news\x18\b \x01(\v2\x1d.hermesh.inbox.v1.SessionNewsR\vsessionNews\"\x8d\x04\n" +
 	"\vSessionNews\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x1d\n" +
 	"\n" +
@@ -416,7 +433,9 @@ const file_hermesh_inbox_v1_inbox_proto_rawDesc = "" +
 	" \x01(\v2\x1c.hermesh.session.v1.DiffStatR\bdiffStat\x128\n" +
 	"\bquestion\x18\v \x01(\v2\x1c.hermesh.session.v1.QuestionR\bquestion\x129\n" +
 	"\afailure\x18\f \x01(\x0e2\x1f.hermesh.session.v1.FailureKindR\afailure\x12'\n" +
-	"\x0ffailure_message\x18\r \x01(\tR\x0efailureMessage\"|\n" +
+	"\x0ffailure_message\x18\r \x01(\tR\x0efailureMessage\x12\x16\n" +
+	"\x06branch\x18\x0e \x01(\tR\x06branch\x12#\n" +
+	"\rchanged_files\x18\x0f \x03(\tR\fchangedFiles\"|\n" +
 	"\rSignedMessage\x125\n" +
 	"\amessage\x18\x01 \x01(\v2\x1b.hermesh.identity.v1.SignedR\amessage\x124\n" +
 	"\x06sender\x18\x02 \x01(\v2\x1c.hermesh.identity.v1.ContactR\x06senderB\xc2\x01\n" +

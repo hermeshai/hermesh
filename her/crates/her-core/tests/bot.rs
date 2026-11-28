@@ -1560,3 +1560,304 @@ async fn the_tools_parameters_are_flat_with_a_plain_enum() {
     let text = schema.to_string();
     assert!(!text.contains("oneOf") && !text.contains("anyOf") && !text.contains("$ref"), "{text}");
 }
+
+#[tokio::test]
+async fn cold_wakeup_anchors_context_trim_and_keeps_warm_requests_byte_identical() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HerHome::new(dunce::canonicalize(dir.path()).unwrap().join("home"));
+    home.ensure().unwrap();
+    let folder = home.bot_files_dir("b1");
+    std::fs::create_dir_all(&folder).unwrap();
+    let folder = dunce::canonicalize(folder).unwrap();
+
+    // Seed a bot session log whose last response was 30 minutes ago (cache expired: quiet() == true),
+    // with 1 old task holding > 1,500 tokens of settled tool output and 3 recent completed tasks.
+    let store = JsonlStore::new(home.sessions_dir());
+    let mut header = SessionHeader::new("s_trim".into(), folder.clone());
+    header.bot = Some(her_core::store::BotRef {
+        id: "b1".into(),
+        name: "Her".into(),
+    });
+    let created = store.create(&header).unwrap();
+    let session_file = created.location.clone();
+    let writer = created.writer;
+    let closed = writer.closed();
+
+    let old_ts = her_llm::now_ms() - 30 * 60 * 1_000;
+    let mut parent: Option<String> = None;
+    let mut push = |id: &str, ts: i64, kind: EntryKind| {
+        let e = Entry {
+            id: id.into(),
+            parent: parent.clone(),
+            ts,
+            kind,
+        };
+        parent = Some(id.into());
+        writer.append(e);
+    };
+
+    // Task 0 (old): user message + bulky read tool call (> 8,000 chars => > 2,000 tokens) + send_to_user
+    push(
+        "t0_s",
+        old_ts,
+        EntryKind::Task {
+            task_id: "t0".into(),
+            status: her_core::store::TaskStatus::Completed,
+            error: None,
+            reason: None,
+            usage: None,
+        },
+    );
+    push("u0", old_ts + 1, EntryKind::message(Message::from(her_llm::UserMessage::text("最早的任务提问原文"))));
+    push(
+        "a0",
+        old_ts + 2,
+        EntryKind::message(Message::from(her_llm::AssistantMessage {
+            content: vec![
+                her_llm::AssistantContent::ToolCall(her_llm::ToolCall {
+                    id: "call_big".into(),
+                    name: "bash".into(),
+                    arguments: json!({"command": "cat huge.json"}).into(),
+                    arguments_error: None,
+                    provider_data: None,
+                }),
+                her_llm::AssistantContent::ToolCall(her_llm::ToolCall {
+                    id: "call_send0".into(),
+                    name: "send_to_user".into(),
+                    arguments: json!({"text": "已读完大文件结论", "end_turn": true}).into(),
+                    arguments_error: None,
+                    provider_data: None,
+                }),
+            ],
+            provider: "test".into(),
+            api: "scripted".into(),
+            model: "scripted".into(),
+            response_id: None,
+            usage: her_llm::Usage::default(),
+            stop_reason: her_llm::StopReason::ToolUse,
+            error: None,
+            ts: old_ts + 2,
+            duration_ms: None,
+        })),
+    );
+    push(
+        "tr_big",
+        old_ts + 3,
+        EntryKind::message(Message::from(her_llm::ToolResultMessage {
+            call_id: "call_big".into(),
+            tool_name: "bash".into(),
+            content: vec![UserContent::Text {
+                text: "HUGE_PAYLOAD_LINE\n".repeat(500),
+            }],
+            is_error: false,
+            details: None,
+            ts: old_ts + 3,
+            duration_ms: None,
+        })),
+    );
+    push(
+        "tr_send0",
+        old_ts + 4,
+        EntryKind::message(Message::from(her_llm::ToolResultMessage {
+            call_id: "call_send0".into(),
+            tool_name: "send_to_user".into(),
+            content: vec![UserContent::Text { text: "Sent.".into() }],
+            is_error: false,
+            details: None,
+            ts: old_ts + 4,
+            duration_ms: None,
+        })),
+    );
+    push(
+        "t0_e",
+        old_ts + 5,
+        EntryKind::Task {
+            task_id: "t0".into(),
+            status: her_core::store::TaskStatus::Completed,
+            error: None,
+            reason: None,
+            usage: None,
+        },
+    );
+
+    // 3 recent completed tasks (must stay completely unfolded)
+    for idx in 1..=3 {
+        let base = old_ts + idx * 100;
+        push(
+            &format!("u{idx}"),
+            base,
+            EntryKind::message(Message::from(her_llm::UserMessage::text(format!("近期提问 {idx}")))),
+        );
+        push(
+            &format!("a{idx}"),
+            base + 1,
+            EntryKind::message(Message::from(her_llm::AssistantMessage {
+                content: vec![her_llm::AssistantContent::ToolCall(her_llm::ToolCall {
+                    id: format!("cs{idx}"),
+                    name: "send_to_user".into(),
+                    arguments: json!({"text": format!("近期回复 {idx}"), "end_turn": true}).into(),
+                    arguments_error: None,
+                    provider_data: None,
+                })],
+                provider: "test".into(),
+                api: "scripted".into(),
+                model: "scripted".into(),
+                response_id: None,
+                usage: her_llm::Usage::default(),
+                stop_reason: her_llm::StopReason::ToolUse,
+                error: None,
+                ts: base + 1,
+                duration_ms: None,
+            })),
+        );
+        push(
+            &format!("trs{idx}"),
+            base + 2,
+            EntryKind::message(Message::from(her_llm::ToolResultMessage {
+                call_id: format!("cs{idx}"),
+                tool_name: "send_to_user".into(),
+                content: vec![UserContent::Text { text: "Sent.".into() }],
+                is_error: false,
+                details: None,
+                ts: base + 2,
+                duration_ms: None,
+            })),
+        );
+        push(
+            &format!("t{idx}_e"),
+            base + 3,
+            EntryKind::Task {
+                task_id: format!("t{idx}"),
+                status: her_core::store::TaskStatus::Completed,
+                error: None,
+                reason: None,
+                usage: None,
+            },
+        );
+    }
+    drop(push);
+    writer.sync().await.unwrap();
+    drop(writer);
+    closed.wait().await;
+
+    let api = ScriptedApi::new();
+    api.push(send_last("w1", "冷唤醒首轮回复"));
+    api.push(send_last("w2", "5秒后热追问回复"));
+    let mut kernel = Kernel::resume(
+        ResumeOptions {
+            session: SessionRef::Path(session_file.clone()),
+            model: Some("test/scripted".into()),
+            thinking: Some(ThinkingLevel::Off),
+            permission_mode: Some(PermissionMode::BypassPermissions),
+            home: home.clone(),
+            config: Arc::new(Config::default()),
+            project_root: None,
+            trusted: true,
+            interactive_approvals: false,
+            bot_name: Some("Her".into()),
+        },
+        deps(&api, &folder, &home),
+    )
+    .await
+    .unwrap();
+
+    // 1. Cold wakeup turn triggers ContextTrim once.
+    kernel.run(prompt("冷唤醒第一句")).await.unwrap();
+    // 2. Immediate warm follow-up does NOT add a second ContextTrim and keeps prefix byte-identical!
+    kernel.run(prompt("紧接着热追问第二句")).await.unwrap();
+    kernel.shutdown().await;
+
+    let requests = api.requests();
+    assert_eq!(requests.len(), 2);
+    let prefix_len = requests[0].messages.len() - 2; // exclude "冷唤醒第一句" + reply_nudge
+    assert_eq!(
+        serde_json::to_string(&requests[0].messages[..prefix_len]).unwrap(),
+        serde_json::to_string(&requests[1].messages[..prefix_len]).unwrap(),
+        "warm turn must keep 100% byte-identical historical prefix"
+    );
+    let first_req_json = serde_json::to_string(&requests[0].messages).unwrap();
+    assert!(first_req_json.contains("folded after idle"), "old bulky bash output folded");
+    assert!(first_req_json.contains("最早的任务提问原文"), "old user message kept verbatim");
+
+    let saved_log = std::fs::read_to_string(&session_file).unwrap();
+    let trim_count = saved_log
+        .lines()
+        .skip(1)
+        .filter(|l| serde_json::from_str::<Entry>(l).is_ok_and(|e| matches!(e.kind, EntryKind::ContextTrim { .. })))
+        .count();
+    assert_eq!(trim_count, 1, "exactly one ContextTrim anchor recorded across cold + warm turns");
+}
+
+#[tokio::test]
+async fn warm_idle_pre_compaction_uses_bot_handoff_and_cancels_when_busy() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HerHome::new(dunce::canonicalize(dir.path()).unwrap().join("home"));
+    home.ensure().unwrap();
+    let folder = home.bot_files_dir("b1");
+    std::fs::create_dir_all(&folder).unwrap();
+    let folder = dunce::canonicalize(folder).unwrap();
+
+    let api = ScriptedApi::new();
+    api.push(send_last("c1", "第一轮回复"));
+    api.push(send_last("c2", "第二轮打断预压缩的回复"));
+    api.push(Script::text("## 1. In-Flight Work\nNone\n\n## 3. Key Facts\n- 用户测试闲时预压缩"));
+
+    let mut cfg = Config::default();
+    cfg.compaction.bot_idle_message_tokens = 20; // cross idle watermark after 1 message
+    cfg.compaction.bot_active_message_tokens = 48_000; // do NOT compact during active chat
+    cfg.compaction.bot_idle_delay = Duration::from_millis(250);
+
+    let mut kernel = Kernel::start(
+        StartOptions {
+            model: "test/scripted".into(),
+            thinking: ThinkingLevel::Off,
+            permission_mode: PermissionMode::Manual,
+            cwd: folder.clone(),
+            home: home.clone(),
+            config: Arc::new(cfg),
+            project_root: None,
+            trusted: false,
+            interactive_approvals: false,
+            bot: Some(BotIdentity {
+                id: "b1".into(),
+                name: "Her".into(),
+            }),
+        },
+        deps(&api, &folder, &home),
+    )
+    .await
+    .unwrap();
+
+    // Send first prompt; then within 40ms (before the 250ms idle delay) send a second prompt!
+    kernel.run(prompt("帮我记一下测试事项 A，这段话足够超过二十个动态 token")).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(40)).await;
+    kernel.run(prompt("紧接着补充一句，打断上一次闲时定时器")).await.unwrap();
+    assert_eq!(api.requests().len(), 2, "active conversation was not interrupted by compaction");
+
+    // Now leave the bot idle so the 250ms warm-cache pre-compaction fires!
+    let events = until(&mut kernel, |msg| {
+        matches!(
+            msg,
+            EventMsg::CompactionCompleted {
+                reason: her_protocol::CompactionReason::Idle,
+                ..
+            }
+        )
+    })
+    .await;
+    assert!(events.iter().any(|e| matches!(
+        e.msg,
+        EventMsg::CompactionCompleted {
+            reason: her_protocol::CompactionReason::Idle,
+            ..
+        }
+    )));
+    let requests = api.requests();
+    assert_eq!(requests.len(), 3, "the third request was the warm-cache idle summary");
+    let last_msg = serde_json::to_string(requests[2].messages.last().unwrap()).unwrap();
+    assert!(
+        last_msg.contains("In-Flight Work (Exact IDs)") && last_msg.contains("Structured deliverables"),
+        "bot compaction must use bot_handoff.md: {last_msg}"
+    );
+    kernel.shutdown().await;
+}

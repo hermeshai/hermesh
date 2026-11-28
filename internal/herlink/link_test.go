@@ -240,6 +240,20 @@ func TestNewsText(t *testing.T) {
 		t.Errorf("the result closed the tag:\n%s", text)
 	}
 
+	m.SessionNews = &inboxv1.SessionNews{
+		Kind: "turn_done", SessionId: "s_2", Title: "Fix relay leak", Machine: "mac", Project: "hermesh", Agent: "claude",
+		Branch: "hermesh/s_2", Result: "fixed WatchInbox leak",
+		DiffStat:     &sessionv1.DiffStat{FilesChanged: 2, Insertions: 31, Deletions: 9},
+		ChangedFiles: []string{"internal/machine/letters.go (+19 -7)", "internal/machine/letters_test.go (+12 -2)"},
+	}
+	_, text = newsText(m, now)
+	for _, want := range []string{`<changes branch="hermesh/s_2">`, "2 files changed, 31 insertions(+), 9 deletions(-)",
+		"- internal/machine/letters.go (+19 -7)", "- internal/machine/letters_test.go (+12 -2)", "report directly without calling session_diff"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("enriched turn_done lacks %q:\n%s", want, text)
+		}
+	}
+
 	m.SessionNews = &inboxv1.SessionNews{Kind: "question", SessionId: "s_1", Agent: "claude", Project: "app", Question: &sessionv1.Question{QuestionId: "q_1",
 		ExpiresAt: timestamppb.New(now.Add(27 * time.Minute)), Items: []*sessionv1.QuestionItem{{Id: "i1", Header: "Branch", Text: "Which branch?",
 			Options: []*sessionv1.QuestionOption{{Label: "main"}, {Label: "dev", Description: "the next release"}}}}}}

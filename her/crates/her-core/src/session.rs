@@ -131,6 +131,8 @@ pub(crate) struct SessionState {
     pub(crate) hold: bool,
     /// `Idle` was sent and nothing has started since.
     pub(crate) idle: bool,
+    /// Cancels a pending warm-cache idle pre-compaction timer when new work arrives.
+    pub(crate) idle_compact: Option<CancellationToken>,
     /// The name given with `set_title`, and whether the session is archived.
     pub(crate) title: Option<String>,
     pub(crate) archived: bool,
@@ -198,6 +200,7 @@ impl SessionState {
             told: Vec::new(),
             hold: false,
             idle: false,
+            idle_compact: None,
             title: None,
             archived: false,
             bot: None,
@@ -222,7 +225,7 @@ impl SessionState {
     pub(crate) fn has_waking_mail(&self) -> bool {
         self.inbox.iter().any(|delivery| match delivery {
             Delivery::Mail(mail) => mail.wake && (!self.hold || mail.info.kind == MailKind::Routine),
-            Delivery::Card(_) => true,
+            Delivery::Card { wake, .. } => *wake && !self.hold,
         })
     }
 
@@ -255,7 +258,10 @@ fn is_user_message(entry: &Entry) -> bool {
 /// What waits in a session's inbox: a sub-agent's or a routine run's mail, or how a card ended.
 pub(crate) enum Delivery {
     Mail(Mail),
-    Card(Box<CardResolvedEntry>),
+    Card {
+        card: Box<CardResolvedEntry>,
+        wake: bool,
+    },
 }
 
 /// Messages from inside the process, handled by the submission loop in order with the ops.
@@ -523,12 +529,24 @@ impl Session {
         self.record_system_prompt();
     }
 
+    /// Whether this session belongs to a persistent bot conversation.
+    pub(crate) fn is_bot(&self) -> bool {
+        self.state.lock().bot.is_some()
+    }
+
     /// Whether the model last answered long enough ago for a provider's prompt cache to be gone,
     /// or never did: changing the system prompt now costs nothing.
     pub(crate) fn quiet(&self) -> bool {
         let state = self.state.lock();
         let last = state.history.branch_back().find(|entry| matches!(&entry.kind, EntryKind::Message { message: Message::Assistant(_), .. }));
         last.is_none_or(|entry| now_ms().saturating_sub(entry.ts) >= crate::bot_memory::QUIET.as_millis() as i64)
+    }
+
+    /// Whether the model answered recently enough for the provider's prompt cache to still hold.
+    pub(crate) fn cache_warm(&self, max_age: std::time::Duration) -> bool {
+        let state = self.state.lock();
+        let last = state.history.branch_back().find(|entry| matches!(&entry.kind, EntryKind::Message { message: Message::Assistant(_), .. }));
+        last.is_some_and(|entry| entry.ts > 0 && now_ms().saturating_sub(entry.ts) < max_age.as_millis() as i64)
     }
 
     /// A sub-agent told the user something: they have it from now on, and no task starts for it.
@@ -563,11 +581,24 @@ impl Session {
         self.writer.append(entry);
     }
 
-    /// What sub-agents told the user joins the history: at a boundary, or as a task ends.
+    /// What sub-agents told the user, and any non-waking card resolution, joins the history: at a
+    /// boundary, or as a task ends.
     pub(crate) fn write_all_told(&self, state: &mut SessionState) {
         for told in std::mem::take(&mut state.told) {
             self.write_told(state, told);
         }
+        let mut rest = VecDeque::with_capacity(state.inbox.len());
+        for delivery in state.inbox.drain(..) {
+            match delivery {
+                Delivery::Card { card, wake: false } => {
+                    let id = state.history.new_id();
+                    let entry = state.history.append(id, EntryKind::CardResolved(card), now_ms());
+                    self.writer.append(entry);
+                }
+                other => rest.push_back(other),
+            }
+        }
+        state.inbox = rest;
     }
 
     /// Writes what sub-agents told the user and the waiting reports, messages and cards' ends into
@@ -581,12 +612,12 @@ impl Session {
         };
         let new = deliveries.iter().any(|delivery| match delivery {
             Delivery::Mail(mail) => mail.info.kind == MailKind::Routine,
-            Delivery::Card(_) => true,
+            Delivery::Card { .. } => true,
         });
         for delivery in deliveries {
             let mail = match delivery {
                 Delivery::Mail(mail) => mail,
-                Delivery::Card(card) => {
+                Delivery::Card { card, .. } => {
                     self.record(EntryKind::CardResolved(card));
                     continue;
                 }
