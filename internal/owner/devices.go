@@ -404,16 +404,48 @@ func (o *Owner) ListDevices(ctx context.Context) ([]*localv1.Device, error) {
 	return o.devicesForMachines(machines), nil
 }
 
+type cachedRootDevice struct {
+	keyID    string
+	label    string
+	platform string
+}
+
 func (o *Owner) devicesForMachines(machines []*localv1.Machine) []*localv1.Device {
 	own := o.Status().DeviceKeyId
-	var out []*localv1.Device
-	for _, rk := range o.trust.Root().GetRootKeys() {
-		pub, err := identity.ParsePublicKey(rk.PublicKey)
-		if err != nil {
-			continue
+	root := o.trust.Root()
+	var parsed []cachedRootDevice
+	o.devCacheMu.Lock()
+	if root != nil && o.devCacheRoot == root {
+		parsed = o.devCacheList
+	}
+	o.devCacheMu.Unlock()
+	if parsed == nil && root != nil {
+		rks := root.GetRootKeys()
+		parsed = make([]cachedRootDevice, 0, len(rks))
+		for _, rk := range rks {
+			pub, err := identity.ParsePublicKey(rk.PublicKey)
+			if err != nil {
+				continue
+			}
+			parsed = append(parsed, cachedRootDevice{
+				keyID:    identity.KeyID(pub),
+				label:    rk.Label,
+				platform: rk.Platform,
+			})
 		}
-		d := &localv1.Device{KeyId: identity.KeyID(pub), Label: rk.Label, Platform: rk.Platform}
-		d.ThisDevice = d.KeyId == own
+		o.devCacheMu.Lock()
+		o.devCacheRoot = root
+		o.devCacheList = parsed
+		o.devCacheMu.Unlock()
+	}
+	out := make([]*localv1.Device, 0, len(parsed))
+	for _, rk := range parsed {
+		d := &localv1.Device{
+			KeyId:      rk.keyID,
+			Label:      rk.label,
+			Platform:   rk.platform,
+			ThisDevice: rk.keyID == own,
+		}
 		for _, m := range machines {
 			if m.DeviceKeyId == d.KeyId {
 				d.MachineId, d.MachineOnline = m.MachineId, m.Online

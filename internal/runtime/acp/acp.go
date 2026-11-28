@@ -3069,6 +3069,10 @@ func (s *session) Diagnose() runtime.Diagnosis {
 	return s.proc.Diagnose()
 }
 
+func (s *session) SampleLiveness() (time.Time, uint64, bool) {
+	return s.proc.SampleLiveness()
+}
+
 func (s *session) Close() error {
 	s.alive.Store(false)
 	s.mu.Lock()

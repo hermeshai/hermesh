@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -217,5 +218,28 @@ func TestEngineGitStatusTurnSettleAndRefreshPreservesOrder(t *testing.T) {
 			t.Fatalf("expected async remote sync to transition PUSHED -> MERGED, stuck at %+v", p.Session.GetGitStatus())
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+
+	// Verify concurrent full-machine RefreshGitStatus(nil) bursts coalesce cleanly and preserve per-principal filtering.
+	var wg sync.WaitGroup
+	errs := make([]error, 6)
+	counts := make([]int, 6)
+	for i := range 6 {
+		wg.Go(func() {
+			res, rErr := eng.RefreshGitStatus(ctx, owner, nil)
+			errs[i] = rErr
+			if res != nil {
+				counts[i] = len(res.Sessions)
+			}
+		})
+	}
+	wg.Wait()
+	for i, rErr := range errs {
+		if rErr != nil {
+			t.Fatalf("concurrent RefreshGitStatus[%d]: %v", i, rErr)
+		}
+		if counts[i] < 4 {
+			t.Fatalf("concurrent RefreshGitStatus[%d] returned %d sessions, want >= 4", i, counts[i])
+		}
 	}
 }

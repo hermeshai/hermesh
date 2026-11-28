@@ -180,6 +180,14 @@ type providerState struct {
 	Pending map[string]string
 	Jobs    []*mv.ProviderOperation
 }
+type cachedPrefix struct {
+	binary  string
+	version string
+	prior   string
+	prefix  string
+	at      time.Time
+}
+
 type providerManager struct {
 	mu        sync.Mutex
 	state     providerState
@@ -189,6 +197,7 @@ type providerManager struct {
 	account   string
 	writable  bool
 	cancelJob map[string]context.CancelFunc
+	prefixes  map[string]cachedPrefix
 }
 
 func providerPlatform() bool {
@@ -212,6 +221,7 @@ func (n *Machine) openProviderManager() error {
 	m.ctx, m.stop = context.WithCancel(context.Background())
 	m.writable = providerPlatform() && providerLocalDisk(n.cfg.DataDir)
 	m.cancelJob = make(map[string]context.CancelFunc)
+	m.prefixes = make(map[string]cachedPrefix)
 	if u, err := user.Current(); err == nil {
 		m.account = u.Username
 		m.writable = m.writable && u.Uid != "0"
@@ -293,8 +303,11 @@ func (n *Machine) saveProviders() error {
 	return n.st.Set("provider_maintenance", b)
 }
 
+const providerPrefixCacheTTL = 30 * time.Second
+
 // managedInstall resolves the active npm-managed version and prefix for id,
 // recognizing both Hermesh-installed packages and user-writable npm global installs.
+// Caller must hold m.mu.
 func (n *Machine) managedInstall(id string, infos map[string]rt.Info) (version, prefix string) {
 	r, ok := providerRecipes[id]
 	if !ok {
@@ -303,14 +316,36 @@ func (n *Machine) managedInstall(id string, infos map[string]rt.Info) (version, 
 	m := &n.maintenance
 	info, hasInfo := infos[id]
 	if hasInfo && info.Available && info.Version != "" {
-		if p := npmPackagePrefix(info.Binary, r.pkg); p != "" {
-			return info.Version, p
+		prior := m.state.Paths[id]
+		now := time.Now()
+		if c, ok := m.prefixes[id]; ok &&
+			c.binary == info.Binary &&
+			c.version == info.Version &&
+			c.prior == prior &&
+			now.Sub(c.at) < providerPrefixCacheTTL {
+			if c.prefix == "" {
+				return "", ""
+			}
+			return info.Version, c.prefix
 		}
-		if prior := m.state.Paths[id]; prior != "" && sameExecutable(info.Binary, prior) {
+		resolved := npmPackagePrefix(info.Binary, r.pkg)
+		if resolved == "" && prior != "" && sameExecutable(info.Binary, prior) {
 			p := filepath.Dir(filepath.Dir(prior))
 			if prefixAccessWritable(p) {
-				return info.Version, p
+				resolved = p
 			}
+		}
+		if m.prefixes != nil {
+			m.prefixes[id] = cachedPrefix{
+				binary:  info.Binary,
+				version: info.Version,
+				prior:   prior,
+				prefix:  resolved,
+				at:      now,
+			}
+		}
+		if resolved != "" {
+			return info.Version, resolved
 		}
 		return "", ""
 	}
@@ -655,6 +690,7 @@ func (n *Machine) runProviderOperation(parent context.Context, job *mv.ProviderO
 	m.state.Managed[id] = r.version
 	m.state.Paths[id] = bin
 	delete(m.state.Pending, id)
+	clear(m.prefixes)
 	err = n.saveProviders()
 	m.mu.Unlock()
 	if err != nil {

@@ -527,9 +527,10 @@ func (s *session) gateCtx() context.Context {
 	return s.sessionCtx
 }
 
-func (s *session) Events() <-chan runtime.Event { return s.events }
-func (s *session) Alive() bool                  { return s.alive.Load() }
-func (s *session) Diagnose() runtime.Diagnosis  { return s.proc.Diagnose() }
+func (s *session) Events() <-chan runtime.Event                { return s.events }
+func (s *session) Alive() bool                                 { return s.alive.Load() }
+func (s *session) Diagnose() runtime.Diagnosis                 { return s.proc.Diagnose() }
+func (s *session) SampleLiveness() (time.Time, uint64, bool)   { return s.proc.SampleLiveness() }
 
 func (s *session) writeJSON(v any) error {
 	b, err := json.Marshal(v)

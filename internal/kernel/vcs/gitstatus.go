@@ -3,15 +3,103 @@ package vcs
 import (
 	"cmp"
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/shellenv"
 )
+
+type targetBranchCacheKey struct {
+	isWorktree bool
+	repo       string
+	baseRef    string
+}
+
+type targetBranchCacheEntry struct {
+	display    string
+	candidates []string
+	oids       map[string]string
+}
+
+// BatchCache memoizes read-only repository probes across a single
+// RefreshGitStatus pass so sessions sharing a repository do not repeatedly
+// spawn identical git rev-parse / symbolic-ref / for-each-ref subprocesses.
+// It must never be retained across separate RPC calls.
+type BatchCache struct {
+	mu      sync.Mutex
+	repos   map[string]bool
+	targets map[targetBranchCacheKey]targetBranchCacheEntry
+}
+
+func NewBatchCache() *BatchCache {
+	return &BatchCache{
+		repos:   make(map[string]bool),
+		targets: make(map[targetBranchCacheKey]targetBranchCacheEntry),
+	}
+}
+
+func (b *BatchCache) isGitRepo(ctx context.Context, dir string) bool {
+	if b == nil {
+		return IsGitRepo(ctx, dir)
+	}
+	b.mu.Lock()
+	if ok, exists := b.repos[dir]; exists {
+		b.mu.Unlock()
+		return ok
+	}
+	b.mu.Unlock()
+	ok := IsGitRepo(ctx, dir)
+	b.mu.Lock()
+	b.repos[dir] = ok
+	b.mu.Unlock()
+	return ok
+}
+
+func (b *BatchCache) IsRepo(ctx context.Context, dir string) bool {
+	return b.isGitRepo(ctx, dir)
+}
+
+func (b *BatchCache) resolveTarget(ctx context.Context, gitDir, repoPath, baseRef string) (string, []string, map[string]string) {
+	if b == nil {
+		return resolveTargetBranchWithOIDs(ctx, gitDir, repoPath, baseRef)
+	}
+	sharedRepo := gitDir
+	if repoPath != "" && dirExists(repoPath) && b.isGitRepo(ctx, repoPath) {
+		sharedRepo = repoPath
+	}
+	key := targetBranchCacheKey{
+		isWorktree: gitDir != repoPath,
+		repo:       sharedRepo,
+		baseRef:    strings.TrimSpace(baseRef),
+	}
+	b.mu.Lock()
+	if e, exists := b.targets[key]; exists {
+		b.mu.Unlock()
+		return e.display, slices.Clone(e.candidates), maps.Clone(e.oids)
+	}
+	b.mu.Unlock()
+
+	probeDir := gitDir
+	if sharedRepo == repoPath {
+		probeDir = repoPath
+	}
+	display, candidates, oids := resolveTargetBranchWithOIDs(ctx, probeDir, repoPath, baseRef)
+	b.mu.Lock()
+	b.targets[key] = targetBranchCacheEntry{
+		display:    display,
+		candidates: slices.Clone(candidates),
+		oids:       maps.Clone(oids),
+	}
+	b.mu.Unlock()
+	return display, candidates, oids
+}
 
 // GitStatusInput describes the session workspace and baseline references needed
 // to classify a session's local Git working tree and branch delivery state
@@ -26,6 +114,7 @@ type GitStatusInput struct {
 	PreExistingDirty  map[string]bool
 	LockSessionBranch bool
 	HasChangesHint    bool
+	Batch             *BatchCache
 }
 
 // SyncRemoteTargetBranch checks whether origin's target branch moved ahead of
@@ -75,7 +164,7 @@ func (m *Manager) SyncRemoteTargetBranch(ctx context.Context, repoPath, baseRef 
 // worktree (or its surviving branch in RepoPath after worktree release).
 // It returns nil when neither Workdir nor RepoPath is a Git repository.
 func (m *Manager) InspectGitStatus(ctx context.Context, in GitStatusInput) *sessionv1.GitStatus {
-	hasWorktree := dirExists(in.Workdir) && IsGitRepo(ctx, in.Workdir)
+	hasWorktree := dirExists(in.Workdir) && in.Batch.isGitRepo(ctx, in.Workdir)
 	if hasWorktree && in.LockSessionBranch && in.SessionBranch != "" {
 		if cur := CurrentBranch(ctx, in.Workdir); cur != "" && cur != in.SessionBranch {
 			hasWorktree = false
@@ -83,7 +172,7 @@ func (m *Manager) InspectGitStatus(ctx context.Context, in GitStatusInput) *sess
 	}
 	gitDir := in.Workdir
 	if !hasWorktree {
-		if in.SessionBranch == "" || !dirExists(in.RepoPath) || !IsGitRepo(ctx, in.RepoPath) {
+		if in.SessionBranch == "" || !dirExists(in.RepoPath) || !in.Batch.isGitRepo(ctx, in.RepoPath) {
 			return nil
 		}
 		gitDir = in.RepoPath
@@ -162,7 +251,7 @@ func (m *Manager) InspectGitStatus(ctx context.Context, in GitStatusInput) *sess
 		}
 	}
 
-	targetDisplay, targetCandidates, targetOIDs := resolveTargetBranchWithOIDs(ctx, gitDir, in.RepoPath, in.BaseRef)
+	targetDisplay, targetCandidates, targetOIDs := in.Batch.resolveTarget(ctx, gitDir, in.RepoPath, in.BaseRef)
 
 	if headOID == "" {
 		if dirtyFiles > 0 {

@@ -381,6 +381,16 @@ func (p *Proc) Diagnose() Diagnosis {
 	return d
 }
 
+// SampleLiveness reads the process's last output timestamp and cumulative CPU
+// counters without scanning the OS process table or redacting stderr.
+func (p *Proc) SampleLiveness() (time.Time, uint64, bool) {
+	if p == nil {
+		return time.Time{}, 0, false
+	}
+	ticks, hasCPU := p.tree.cpuTicks(p.pid)
+	return p.LastOutput(), ticks, hasCPU
+}
+
 // SnapshotBaseline records the agent's current descendant processes as its
 // standing baseline (e.g. MCP stdio servers or detached daemons) so
 // HasActiveDescendants only reports newly-spawned tool commands.

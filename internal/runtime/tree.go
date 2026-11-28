@@ -26,26 +26,31 @@ type procInfo struct {
 }
 
 type procSnap struct {
-	procs    []procInfo
-	children map[int][]procInfo
-	alive    map[int]int64
+	procs []procInfo // sorted by pid
+}
+
+func (s *procSnap) startOf(pid int) (int64, bool) {
+	i, ok := slices.BinarySearchFunc(s.procs, pid, func(p procInfo, target int) int {
+		return cmp.Compare(p.pid, target)
+	})
+	if !ok {
+		return 0, false
+	}
+	return s.procs[i].start, true
 }
 
 func scanProcs() *procSnap {
 	procs := listProcs()
-	alive := make(map[int]int64, len(procs))
-	children := make(map[int][]procInfo, max(16, len(procs)/4))
-	for _, p := range procs {
-		children[p.ppid] = append(children[p.ppid], p)
-		alive[p.pid] = p.start
-	}
-	return &procSnap{procs: procs, children: children, alive: alive}
+	slices.SortFunc(procs, func(a, b procInfo) int { return cmp.Compare(a.pid, b.pid) })
+	return &procSnap{procs: procs}
 }
 
 type tracked struct {
-	root     procInfo
-	known    map[int]int64 // pid → start time
-	baseline map[int]int64 // pid → start time of long-lived sidecars/daemons
+	root       procInfo
+	known      map[int]int64 // pid → start time
+	baseline   map[int]int64 // pid → start time of long-lived sidecars/daemons
+	seeded     bool
+	lastAllCPU uint64
 }
 
 var tracker struct {
@@ -78,6 +83,11 @@ func track(pid int) *tracked {
 }
 
 func trackLoop() {
+	type sample struct {
+		t   *tracked
+		cpu uint64
+		ok  bool
+	}
 	for {
 		time.Sleep(trackEvery)
 		tracker.mu.Lock()
@@ -91,40 +101,98 @@ func trackLoop() {
 			ts = append(ts, t)
 		}
 		tracker.mu.Unlock()
+
+		samples := make([]sample, len(ts))
+		needScan := !procCPUNanosecondExact
+		for i, t := range ts {
+			cpu, ok := t.allCPUTicks()
+			samples[i] = sample{t: t, cpu: cpu, ok: ok}
+			tracker.mu.Lock()
+			quiescent := procCPUNanosecondExact && ok && t.seeded && cpu == t.lastAllCPU
+			tracker.mu.Unlock()
+			if !quiescent {
+				needScan = true
+			}
+		}
+		if !needScan {
+			continue
+		}
+
 		mProcTableScans.Inc()
 		snap := scanProcs()
-		for _, t := range ts {
-			t.update(snap)
+		for _, s := range samples {
+			changed := s.t.update(snap)
+			tracker.mu.Lock()
+			if procCPUNanosecondExact && s.ok && !changed {
+				s.t.lastAllCPU = s.cpu
+				s.t.seeded = true
+			} else {
+				s.t.seeded = false
+			}
+			tracker.mu.Unlock()
 		}
 	}
 }
 
+// allCPUTicks sums cumulative CPU counters across the root process and every
+// currently remembered descendant (including baseline sidecars). It returns
+// ok=false if any remembered PID's CPU counter cannot be read (e.g. exited).
+func (t *tracked) allCPUTicks() (uint64, bool) {
+	if !procCPUNanosecondExact || t == nil || t.root.pid <= 0 {
+		return 0, false
+	}
+	total, ok := procCPU(t.root.pid)
+	if !ok {
+		return 0, false
+	}
+	tracker.mu.Lock()
+	pids := make([]int, 0, len(t.known))
+	for pid := range t.known {
+		if pid != t.root.pid {
+			pids = append(pids, pid)
+		}
+	}
+	tracker.mu.Unlock()
+	for _, pid := range pids {
+		v, pOK := procCPU(pid)
+		if !pOK {
+			return 0, false
+		}
+		total += v
+	}
+	return total, true
+}
+
 // update adds the current descendants of the root and of every known
-// descendant that is still the same process.
-func (t *tracked) update(snap *procSnap) {
+// descendant that is still the same process, reporting whether t.known changed.
+func (t *tracked) update(snap *procSnap) bool {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
+	changed := false
 	queue := []int{t.root.pid}
 	for pid, st := range t.known {
-		if snap.alive[pid] == st {
+		if cur, ok := snap.startOf(pid); ok && cur == st {
 			queue = append(queue, pid)
 		} else {
 			delete(t.known, pid)
+			changed = true
 		}
 	}
 	for len(queue) > 0 {
 		pid := queue[0]
 		queue = queue[1:]
-		for _, c := range snap.children[pid] {
-			if c.pid == t.root.pid {
+		for _, c := range snap.procs {
+			if c.ppid != pid || c.pid == t.root.pid {
 				continue
 			}
 			if _, ok := t.known[c.pid]; !ok && c.start >= t.root.start {
 				t.known[c.pid] = c.start
 				queue = append(queue, c.pid)
+				changed = true
 			}
 		}
 	}
+	return changed
 }
 
 // running returns the arguments of the non-baseline descendants alive now,
@@ -135,7 +203,7 @@ func (t *tracked) running() [][]string {
 	var live []procInfo
 	tracker.mu.Lock()
 	for pid, st := range t.known {
-		if snap.alive[pid] == st && t.baseline[pid] != st {
+		if cur, ok := snap.startOf(pid); ok && cur == st && t.baseline[pid] != st {
 			live = append(live, procInfo{pid: pid, start: st})
 		}
 	}
@@ -161,12 +229,12 @@ func (t *tracked) snapshotBaseline() {
 		t.baseline = map[int]int64{}
 	}
 	for pid, st := range t.known {
-		if snap.alive[pid] == st {
+		if cur, ok := snap.startOf(pid); ok && cur == st {
 			t.baseline[pid] = st
 		}
 	}
 	for pid, st := range t.baseline {
-		if snap.alive[pid] != st {
+		if cur, ok := snap.startOf(pid); !ok || cur != st {
 			delete(t.baseline, pid)
 		}
 	}
@@ -181,7 +249,7 @@ func (t *tracked) hasActiveDescendants() bool {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
 	for pid, st := range t.known {
-		if snap.alive[pid] == st && t.baseline[pid] != st {
+		if cur, ok := snap.startOf(pid); ok && cur == st && t.baseline[pid] != st {
 			return true
 		}
 	}
@@ -231,7 +299,7 @@ func (t *tracked) stop() int {
 		n := 0
 		tracker.mu.Lock()
 		for pid, st := range t.known {
-			if snap.alive[pid] == st && syscall.Kill(pid, syscall.SIGKILL) == nil {
+			if cur, ok := snap.startOf(pid); ok && cur == st && syscall.Kill(pid, syscall.SIGKILL) == nil {
 				n++
 			}
 		}

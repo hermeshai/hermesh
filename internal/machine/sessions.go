@@ -506,11 +506,7 @@ func (n *Machine) GetSessionFor(ctx context.Context, p *Principal, id string) (*
 	if n.sessions == nil {
 		return nil, cerr(connect.CodeNotFound, "session not found")
 	}
-	proj, err := n.sessions.GetSession(ctx, toKernelPrincipal(p), id)
-	if err != nil {
-		return nil, err
-	}
-	return proj.GetSession(), nil
+	return n.sessions.GetSessionRecord(ctx, toKernelPrincipal(p), id)
 }
 
 func (n *Machine) Running() int {
