@@ -952,6 +952,9 @@ message GetSessionRequest {
   string session_id = 2;
   // Return immediately from local SQLite cache without dialing remote machines.
   bool cached_only = 3;
+  // Omit settled reasoning text and folded tool input/output/diff bodies from
+  // the projection; tool details are fetched on demand via DownloadBlob.
+  bool compact = 4;
 }
 
 message GetSessionResponse {

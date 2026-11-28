@@ -230,8 +230,9 @@ struct ToolRow: View {
         let call = item.call
         let denied = call.decision == "deny"
         let failed = denied || item.result?.isError == true
+        let deferred = partialIn || (!denied && partial)
         ToolLine(verb: toolVerb(call, running: item.running), object: toolSummary(toolObject(call), sessionID: sessionID), shell: call.kind == "shell",
-                 running: item.running || readingIn || reading, failed: failed, input: inputText, output: output(denied: denied), inCard: inCard, open: $open)
+                 running: item.running, loadingBody: readingIn || reading, failed: failed, input: inputText, output: output(denied: denied), hasDeferredBody: deferred, inCard: inCard, open: $open)
             .task(id: open) {
                 if open {
                     async let a: Void = readWholeInput()
@@ -253,7 +254,9 @@ struct ToolRow: View {
     private var inputText: String {
         let c = item.call
         let text = partialIn ? (doneIn.flatMap { $0.text.isEmpty ? nil : $0.text } ?? c.input) : c.input
-        if text.isEmpty { return "" }
+        if text.isEmpty {
+            return doneIn?.failed == true ? String(localized: "… (the rest can’t be read now)") : ""
+        }
         let note = doneIn?.failed == true ? String(localized: "… (the rest can’t be read now)")
             : !partialIn && c.inputTruncated ? String(localized: "… (truncated)") : ""
         return note.isEmpty ? text : "\(text)\n\(note)"
@@ -265,7 +268,9 @@ struct ToolRow: View {
         if denied { return item.call.reason }
         guard let r = item.result else { return "" }
         let text = partial ? (done.flatMap { $0.text.isEmpty ? nil : $0.text } ?? r.summary) : r.summary
-        if text.isEmpty { return "" }
+        if text.isEmpty {
+            return done?.failed == true ? String(localized: "… (the rest can’t be read now)") : ""
+        }
         // A machine from before whole outputs kept only their start.
         let note = done?.failed == true ? String(localized: "… (the rest can’t be read now)")
             : !partial && r.truncated ? String(localized: "… (truncated)") : ""
@@ -308,13 +313,15 @@ struct ToolLine: View {
     let object: String
     let shell: Bool
     let running: Bool
+    var loadingBody = false
     let failed: Bool
     var input = ""
     let output: String
+    var hasDeferredBody = false
     var inCard = false
     @Binding var open: Bool
 
-    private var expandable: Bool { !input.isEmpty || !output.isEmpty }
+    private var expandable: Bool { !input.isEmpty || !output.isEmpty || hasDeferredBody }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -346,7 +353,7 @@ struct ToolLine: View {
             .accessibilityValue(!expandable ? Text("") : open ? Text("Expanded") : Text("Collapsed"))
             if open, expandable {
                 // In a card, less high: one output does not fill the card.
-                OutputText(input: input, text: output, running: running, maxHeight: inCard ? 160 : 320)
+                OutputText(input: input, text: output, running: running || loadingBody, maxHeight: inCard ? 160 : 320)
                     .padding(.horizontal, inCard ? 13 : 10).padding(.top, inCard ? 0 : 8).padding(.bottom, inCard ? 10 : 8)
                     .background(inCard ? Palette.fill : Palette.code, in: RoundedRectangle(cornerRadius: inCard ? 0 : 8, style: .continuous))
                     .padding(.top, inCard ? 0 : 4).padding(.bottom, inCard ? 0 : 6)
@@ -484,6 +491,13 @@ struct OutputText: UIViewRepresentable {
         c.lastRunning = running
         c.lastDark = dark
         if input.isEmpty {
+            if text.isEmpty && running {
+                let emptyFont = UIFontMetrics(forTextStyle: .caption1).scaledFont(for: .systemFont(ofSize: 12, weight: .regular))
+                v.attributedText = NSAttributedString(string: String(localized: "Waiting for output…"), attributes: [
+                    .font: emptyFont, .foregroundColor: UIColor.tertiaryLabel,
+                ])
+                return
+            }
             v.attributedText = TerminalRendering.nsAttributedString(text, dark: dark)
             return
         }

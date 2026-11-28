@@ -3863,6 +3863,10 @@ public nonisolated struct Hermesh_Session_V1_GetSessionRequest: Sendable {
   /// Return immediately from local SQLite cache without dialing remote machines.
   public var cachedOnly: Bool = false
 
+  /// Omit settled reasoning text and folded tool input/output/diff bodies from
+  /// the projection; tool details are fetched on demand via DownloadBlob.
+  public var compact: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -9646,7 +9650,7 @@ nonisolated extension Hermesh_Session_V1_StartSessionResponse: SwiftProtobuf.Mes
 
 nonisolated extension Hermesh_Session_V1_GetSessionRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GetSessionRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}session_id\0\u{3}cached_only\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}session_id\0\u{3}cached_only\0\u{1}compact\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -9657,6 +9661,7 @@ nonisolated extension Hermesh_Session_V1_GetSessionRequest: SwiftProtobuf.Messag
       case 1: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
       case 3: try { try decoder.decodeSingularBoolField(value: &self.cachedOnly) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.compact) }()
       default: break
       }
     }
@@ -9672,6 +9677,9 @@ nonisolated extension Hermesh_Session_V1_GetSessionRequest: SwiftProtobuf.Messag
     if self.cachedOnly != false {
       try visitor.visitSingularBoolField(value: self.cachedOnly, fieldNumber: 3)
     }
+    if self.compact != false {
+      try visitor.visitSingularBoolField(value: self.compact, fieldNumber: 4)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -9679,6 +9687,7 @@ nonisolated extension Hermesh_Session_V1_GetSessionRequest: SwiftProtobuf.Messag
     if lhs.machineID != rhs.machineID {return false}
     if lhs.sessionID != rhs.sessionID {return false}
     if lhs.cachedOnly != rhs.cachedOnly {return false}
+    if lhs.compact != rhs.compact {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

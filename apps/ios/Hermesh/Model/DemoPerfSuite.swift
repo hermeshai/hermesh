@@ -68,6 +68,9 @@ extension DemoService {
         seedMegaSession(now: now)
         seedStreamingSession(now: now)
         seedActionPanelsSession(now: now)
+        if ProcessInfo.processInfo.arguments.contains("-DemoSwitchPerf") {
+            seedSwitchPerfSessions(now: now)
+        }
 
         // 3. Seed 7 additional concurrent running sessions (total 8 running for Overview LinkMap + Shimmer + Orbit stress).
         let runningSpecs: [(String, String, String, String, String, String)] = [
@@ -102,6 +105,7 @@ extension DemoService {
             var parent = session(parentID, title: "Her Sprint Coordinator #\(h + 1)", machine: "demo-mac", status: .idle)
             parent.agent = "her"
             parent.projectID = "__her__"
+            parent.providerSessionRef = "her-conv-\(h)"
             parent.createdBy = "owner"
             parent.updatedAt = .init(date: now.addingTimeInterval(Double(-180 - h * 900)))
             parent.progress.lastMessageExcerpt = "Coordinated 8 sub-tasks across desktop, iOS, and backend services."
@@ -869,7 +873,7 @@ extension DemoService {
         return chunks.joined(separator: "\n") + "\n"
     }()
 
-    private static func perfHerSnapshot() -> JSON {
+    private static func perfHerSnapshot(sessionID: String = "her-perf") -> JSON {
         let turns = 80
         var items: [JSON] = []
         let end = Date.now.timeIntervalSince1970 * 1000
@@ -888,11 +892,11 @@ extension DemoService {
             let tool: String
             let args: JSON
             let details: JSON
-            if mod == 4 {
+            if i < turns - 1, mod == 4 {
                 tool = "session_start"
                 args = ["title": .string("Refactor WebSocket multiplex framing")]
                 details = ["session": ["session_id": "perf-run-1", "title": "Refactor WebSocket multiplex framing", "agent": "antigravity", "machine": "MacBook Pro M4 Max"]]
-            } else if mod == 5 {
+            } else if i < turns - 1, mod == 5 {
                 tool = "work_summary"
                 args = [:]
                 details = ["work": [
@@ -904,7 +908,7 @@ extension DemoService {
                 ]]
             } else {
                 tool = "send_to_user"
-                args = ["text": .string(richTurnMarkdown(turn: i + 1))]
+                args = ["text": .string(richTurnMarkdown(turn: i + 1) + "\n\nHer Turn #\(i + 1) End")]
                 details = .null
             }
             items.append([
@@ -925,10 +929,516 @@ extension DemoService {
             items.append(["type": "task_end", "outcome": "completed", "ts": .number(ts + 4200)])
         }
         return [
-            "session": ["session_id": "her-perf", "model": "demo/her-pro"],
+            "session": ["session_id": .string(sessionID), "model": "demo/her-pro"],
+            "resume_epoch": "perf-epoch-1",
             "last_seq": .number(Double(items.count)),
-            "transcript": ["items": .array(items)],
+            "transcript": ["items": .array(items), "before": "cur_earlier_1"],
         ]
+    }
+
+    static func perfHerEarlierPage() -> JSON {
+        var items: [JSON] = []
+        let base = Date.now.timeIntervalSince1970 * 1000 - 80 * 360_000 - 120_000_000
+        for i in 0 ..< 20 {
+            let ts = base + Double(i) * 300_000
+            items.append([
+                "type": "message",
+                "message_id": .string("he-u-\(i)"),
+                "message": ["role": "user", "ts": .number(ts), "content": [["type": "text", "text": .string("Earlier sprint check #\(i + 1)")]]],
+            ])
+            items.append([
+                "type": "message",
+                "message_id": .string("he-a-\(i)"),
+                "message": ["role": "assistant", "ts": .number(ts + 1000), "duration_ms": 2000,
+                            "content": [["type": "tool_call", "id": .string("he-c-\(i)"), "name": "send_to_user", "arguments": ["text": .string(richTurnMarkdown(turn: i + 1))]]]],
+            ])
+            items.append(["type": "tool_result", "call_id": .string("he-c-\(i)"), "result": ["tool_name": "send_to_user", "details": .null]])
+            items.append(["type": "task_end", "outcome": "completed", "ts": .number(ts + 3000)])
+        }
+        return ["items": .array(items)]
+    }
+
+    fileprivate static func makePerfHerSnapshot(sessionID: String = "her-perf") -> JSON { perfHerSnapshot(sessionID: sessionID) }
+
+    // MARK: - Real-Machine Session Switching Stress Dataset (-DemoSwitchPerf)
+
+    private func seedSwitchPerfSessions(now: Date) {
+        let paddingBlob = String(repeating: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n", count: 56) // ~3.6 KB
+
+        // 1. Switch A: Context Compression (mirrors "优化 Her 上下文压缩": 38 replies ~110K chars, 20 tables, 7 Mermaid diagrams, ~1,900 inline code spans, ~1.65 MB)
+        do {
+            let id = "switch-perf-a"
+            var s = session(id, title: "Switch A: Context Compression", machine: "demo-mac", status: .idle)
+            s.projectID = "hermesh"; s.agent = "antigravity"; s.createdBy = "owner"; s.pinned = true
+            s.updatedAt = .init(date: now.addingTimeInterval(240))
+            s.progress.turnCount = 14
+            world.sessions.insert(s, at: 0)
+
+            for r in 1 ... 14 {
+                let rid = "ra_\(r)"
+                let start = now.addingTimeInterval(Double(-7200 + r * 300))
+                beginRun(id, runID: rid, ordinal: UInt32(r), asker: "owner", status: .completed, startedAt: start)
+                appendItem(id, runID: rid, kind: .userMessage) {
+                    $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+                    $0.createdAt = .init(date: start)
+                    $0.text = "Turn \(r): Inspect context compaction budget, token window thresholds, and `src/core/Engine.ts`."
+                }
+                let repliesInRun = r <= 10 ? 3 : 2 // 10*3 + 4*2 = 38 replies
+                for m in 0 ..< repliesInRun {
+                    let replyIdx = (r <= 10 ? (r - 1) * 3 : 30 + (r - 11) * 2) + m + 1
+                    for t in 0 ..< 11 {
+                        appendItem(id, runID: rid, kind: t % 3 == 0 ? .commandExecution : .toolCall) {
+                            $0.itemID = "sa-tool-\(r)-\(m)-\(t)"
+                            $0.toolName = t % 3 == 0 ? "Bash" : "Read"
+                            $0.command = t % 3 == 0 ? "go test ./internal/her/... -count=1" : ""
+                            $0.filePath = t % 3 == 0 ? "" : "src/core/Engine.ts"
+                            $0.input = "{\"target\":\"step_\(r)_\(m)_\(t)\"}\n" + String(paddingBlob.prefix(900))
+                            $0.inputSize = UInt64($0.input.utf8.count)
+                            $0.output = "ok module_\(r)_\(m)_\(t)\n" + String(paddingBlob.prefix(1900))
+                            $0.outputSize = UInt64($0.output.utf8.count)
+                        }
+                    }
+                    appendItem(id, runID: rid, kind: .reasoning) {
+                        $0.status = "completed"
+                        $0.text = String(repeating: "Analyzing compaction token window invariant and message boundary preservation. ", count: 36)
+                    }
+                    let isLast = (r == 14 && m == repliesInRun - 1)
+                    appendItem(id, runID: rid, kind: .assistantMessage) {
+                        $0.text = Self.switchCompressionReply(index: replyIdx, isFinal: isLast)
+                    }
+                }
+            }
+            syncSession(id)
+        }
+
+        // 2. Switch B: Sidebar & New Session (mirrors "优化侧边栏菜单与新建会话": 83 replies ~40K chars, ~680 items, ~2.4 MB tool I/O)
+        do {
+            let id = "switch-perf-b"
+            var s = session(id, title: "Switch B: Sidebar & New Session", machine: "demo-mac", status: .idle)
+            s.projectID = "hermesh"; s.agent = "codex"; s.createdBy = "owner"; s.pinned = true
+            s.updatedAt = .init(date: now.addingTimeInterval(230))
+            s.progress.turnCount = 23
+            world.sessions.insert(s, at: 1)
+
+            var replyCount = 0
+            for r in 1 ... 23 {
+                let rid = "rb_\(r)"
+                let start = now.addingTimeInterval(Double(-9200 + r * 240))
+                beginRun(id, runID: rid, ordinal: UInt32(r), asker: "owner", status: .completed, startedAt: start)
+                appendItem(id, runID: rid, kind: .userMessage) {
+                    $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+                    $0.createdAt = .init(date: start)
+                    $0.text = "Sidebar iteration \(r): refine drawer spring geometry and new session defaults."
+                }
+                let reps = r <= 14 ? 4 : 3 // 14*4 + 9*3 = 83 replies
+                for m in 0 ..< reps {
+                    replyCount += 1
+                    for t in 0 ..< 7 {
+                        appendItem(id, runID: rid, kind: t == 6 ? .fileChange : (t == 5 ? .commandExecution : .toolCall)) {
+                            $0.itemID = "sb-tool-\(r)-\(m)-\(t)"
+                            $0.toolName = t == 6 ? "Edit" : (t == 5 ? "Bash" : "Read")
+                            $0.command = t == 5 ? "swift test --filter SidebarTests_\(r)_\(m)" : ""
+                            $0.filePath = t == 5 ? "" : "src/core/Engine.ts"
+                            $0.input = "{\"command\":\"check_\(r)_\(m)_\(t)\",\"path\":\"src/core/Engine.ts\"}\n" + String(paddingBlob.prefix(1200))
+                            $0.inputSize = UInt64($0.input.utf8.count)
+                            if t == 6 {
+                                $0.diff = "@@ -10,6 +10,12 @@\n" + String(paddingBlob.prefix(2400))
+                            } else {
+                                $0.output = "Verified layout pass \(r).\(m).\(t)\n" + String(paddingBlob.prefix(2400))
+                                $0.outputSize = UInt64($0.output.utf8.count)
+                            }
+                        }
+                    }
+                    let isLast = (replyCount == 83)
+                    appendItem(id, runID: rid, kind: .assistantMessage) {
+                        $0.text = "### Sidebar Pass #\(replyCount)\n\nChecked `session.status`, `drawer.open`, `model.root`, `src/core/Engine.ts`, and `MenuSessions.body` alignment across portrait and split width (`pass.\(replyCount)`). Verified spring velocity continuity and toolbar transition."
+                            + (isLast ? "\n\n**SWITCH_LANDMARK_B_READY**" : "")
+                    }
+                }
+            }
+            syncSession(id)
+        }
+
+        // 3. Switch C: CLI & Installer Verify (mirrors "重构验证命令行与安装交互": 377 items, 15 long replies ~34K chars, steps.count == 51 <= 100 -> non-lazy VStack trap!)
+        do {
+            let id = "switch-perf-c"
+            var s = session(id, title: "Switch C: CLI & Installer Verify", machine: "demo-mac", status: .idle)
+            s.projectID = "hermesh"; s.agent = "claude"; s.createdBy = "owner"; s.pinned = true
+            s.updatedAt = .init(date: now.addingTimeInterval(220))
+            s.progress.turnCount = 12
+            world.sessions.insert(s, at: 2)
+
+            var replyIdx = 0
+            for r in 1 ... 12 {
+                let rid = "rc_\(r)"
+                let start = now.addingTimeInterval(Double(-5400 + r * 300))
+                beginRun(id, runID: rid, ordinal: UInt32(r), asker: "owner", status: .completed, startedAt: start)
+                appendItem(id, runID: rid, kind: .userMessage) {
+                    $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+                    $0.createdAt = .init(date: start)
+                    $0.text = "CLI check \(r): validate installer flags, `scripts/install.sh`, and exit codes."
+                }
+                let reps = r <= 3 ? 2 : 1 // 3*2 + 9*1 = 15 replies -> ~51 grouped steps (<= 100!)
+                for m in 0 ..< reps {
+                    replyIdx += 1
+                    for t in 0 ..< 23 {
+                        appendItem(id, runID: rid, kind: .commandExecution) {
+                            $0.itemID = "sc-cmd-\(r)-\(m)-\(t)"
+                            $0.toolName = "Bash"
+                            $0.command = "python3 scripts/test_install.py --case \(r)_\(m)_\(t)"
+                            $0.input = "{\"command\":\"test_install \(r)_\(m)_\(t)\"}\n" + String(paddingBlob.prefix(800))
+                            $0.inputSize = UInt64($0.input.utf8.count)
+                            $0.output = "PASS case_\(r)_\(m)_\(t)\n" + String(paddingBlob.prefix(2400))
+                            $0.outputSize = UInt64($0.output.utf8.count)
+                        }
+                    }
+                    let isLast = (replyIdx == 15)
+                    appendItem(id, runID: rid, kind: .assistantMessage) {
+                        $0.text = Self.switchCLIReply(index: replyIdx, isFinal: isLast)
+                    }
+                }
+            }
+            syncSession(id)
+        }
+
+        // 4. Switch D: Illustration Interrupt (mirrors "修复插画中断逻辑": 229 items, 8 replies ~10K chars, steps.count == 26 <= 100!)
+        do {
+            let id = "switch-perf-d"
+            var s = session(id, title: "Switch D: Illustration Interrupt", machine: "demo-mac", status: .idle)
+            s.projectID = "ios-client"; s.agent = "antigravity"; s.createdBy = "owner"; s.pinned = true
+            s.updatedAt = .init(date: now.addingTimeInterval(210))
+            s.progress.turnCount = 6
+            world.sessions.insert(s, at: 3)
+
+            var replyIdx = 0
+            for r in 1 ... 6 {
+                let rid = "rd_\(r)"
+                let start = now.addingTimeInterval(Double(-3200 + r * 300))
+                beginRun(id, runID: rid, ordinal: UInt32(r), asker: "owner", status: .completed, startedAt: start)
+                appendItem(id, runID: rid, kind: .userMessage) {
+                    $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+                    $0.createdAt = .init(date: start)
+                    $0.text = "Fix illustration cancellation race on turn \(r)."
+                }
+                let reps = r <= 2 ? 2 : 1 // 8 replies
+                for m in 0 ..< reps {
+                    replyIdx += 1
+                    for t in 0 ..< 26 {
+                        appendItem(id, runID: rid, kind: .toolCall) {
+                            $0.itemID = "sd-tool-\(r)-\(m)-\(t)"
+                            $0.toolName = "Read"
+                            $0.filePath = "src/core/Engine.ts"
+                            $0.input = "{\"path\":\"src/core/Engine.ts\"}"
+                            $0.inputSize = UInt64($0.input.utf8.count)
+                            $0.output = String(paddingBlob.prefix(2000))
+                            $0.outputSize = UInt64($0.output.utf8.count)
+                        }
+                    }
+                    let isLast = (replyIdx == 8)
+                    appendItem(id, runID: rid, kind: .assistantMessage) {
+                        if isLast {
+                            $0.text = (1 ... 12).map { sec in
+                                "#### Interrupt Section \(sec)\nVerified `task.cancel()`, `stream.abort()`, `state.phase`, `src/core/Engine.ts`, and `render.cleanup` across cancellation edges so interrupted illustration tasks release resources cleanly."
+                            }.joined(separator: "\n\n") + "\n\n**SWITCH_LANDMARK_D_READY**"
+                        } else {
+                            $0.text = "Checked cancellation guard #\(replyIdx) in `illustration.worker`, `job.status`, and `src/core/Engine.ts`."
+                        }
+                    }
+                }
+            }
+            syncSession(id)
+        }
+    }
+
+    private static func switchCompressionReply(index i: Int, isFinal: Bool) -> String {
+        let codeTokens = (1 ... 48).map { k in "`ctx.field_\(i)_\(k)`" }.joined(separator: ", ")
+        var md = """
+        ### Compaction Analysis Step #\(i)
+
+        Evaluated [Engine.ts](src/core/Engine.ts#L\(10 + i * 12)-L\(24 + i * 12)), `README.md`, and `packages/generated/module_000\((i % 9) + 1).ts` against inline symbols: \(codeTokens).
+
+        """
+        if i <= 20 {
+            md += """
+
+            | Window Tier | Input Budget | Retained Turns | Compression Ratio | Latency |
+            | :--- | ---: | ---: | ---: | ---: |
+            | Tier \(i).1 (`hot.window`) | 128,000 | \(12 + (i % 6)) | 3.\(i % 9)x | \(18 + i) ms |
+            | Tier \(i).2 (`warm.summary`) | 64,000 | \(6 + (i % 4)) | 6.\(i % 7)x | \(11 + i) ms |
+            | Tier \(i).3 (`cold.anchor`) | 16,000 | 2 | 14.2x | 4 ms |
+
+            """
+        }
+        if i % 4 == 0 && i <= 28 {
+            md += """
+
+            ```swift
+            func compactSegment\(i)(items: [TurnItem], budget: Int) -> CompactionSlice {
+                let tail = items.suffix(max(4, budget / 2048))
+                return CompactionSlice(kept: Array(tail), droppedCount: max(0, items.count - tail.count))
+            }
+            ```
+
+            """
+        }
+        if i <= 28 && i % 4 == 1 { // 7 Mermaid diagrams (1, 5, 9, 13, 17, 21, 25)
+            md += """
+
+            ```mermaid
+            flowchart LR
+                Raw\(i)["Transcript #\(i)"] --> Budget\(i)["Token Estimator"]
+                Budget\(i) --> Compact\(i)["Rolling Summary"]
+                Compact\(i) --> Prompt\(i)["Model Context"]
+            ```
+
+            """
+        }
+        if isFinal {
+            let longSections = (1 ... 18).map { sec in
+                """
+                #### Deep Synthesis \(sec): Boundary & Cache Preservation
+                Preserving prefix KV-cache stability requires anchoring `checkpoint.seq`, `turn.boundary`, `tool.digest`, and `summary.watermark` so compaction triggers only when `used.tokens` crosses `0.85 * context.limit`. Cross-verified `src/core/Engine.ts` and `docs/Architecture.md` under bursty multi-turn tool execution (`run.\(sec)`).
+                """
+            }.joined(separator: "\n\n")
+            md += "\n\n" + longSections + "\n\n**SWITCH_LANDMARK_A_READY**"
+        }
+        return md
+    }
+
+    private static func switchCLIReply(index i: Int, isFinal: Bool) -> String {
+        let refs = (1 ... 28).map { k in "`cli.opt_\(i)_\(k)`" }.joined(separator: " · ")
+        var md = """
+        ### CLI & Installer Verification #\(i)
+
+        Validated flag matrix (\(refs)) against `src/core/Engine.ts` and `package.json`:
+
+        | Check | Exit Code | Stderr | Result |
+        | :--- | :---: | :--- | :--- |
+        | `--non-interactive` (`case.\(i)a`) | `0` | empty | Passed |
+        | `--upgrade-check` (`case.\(i)b`) | `0` | warning-free | Passed |
+
+        ```bash
+        ./scripts/install.sh --verify --profile ci-\(i)
+        ```
+        """
+        if isFinal {
+            md += "\n\n" + String(repeating: "Verified end-to-end TTY prompt fallback, checksum verification (`sha256.sum`), and atomic binary swap (`bin/hermesh`). ", count: 16)
+            md += "\n\n**SWITCH_LANDMARK_C_READY**"
+        }
+        return md
+    }
+}
+
+/// Simulator stress `HerLocal` serving an 80-turn rich Markdown/Mermaid/table Her conversation with `before` pagination
+/// and `resume_epoch` over the real `herOpen` / `herCall` protocol (works in both Debug and Release builds).
+@MainActor final class DemoPerfHerLocal: HerLocal {
+    private let snap = DemoService.makePerfHerSnapshot()
+    private let earlier = DemoService.perfHerEarlierPage()
+    private var streams: [String: AsyncThrowingStream<Hermesh_Her_V1_OpenEvent, Error>.Continuation] = [:]
+
+    nonisolated func herOpen(_ req: Hermesh_Local_V1_HerOpenRequest) -> AsyncThrowingStream<Hermesh_Her_V1_OpenEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task { @MainActor in self.open(req, continuation) }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private func open(_ req: Hermesh_Local_V1_HerOpenRequest, _ c: AsyncThrowingStream<Hermesh_Her_V1_OpenEvent, Error>.Continuation) {
+        let id = UUID().uuidString
+        let responses: [Hermesh_Her_V1_Response] = req.open.setup.map { r in
+            let params = (try? JSON.parse(r.params)) ?? [:]
+            let val = handle(r.method, params)
+            return .with { $0.result = val.data() }
+        }
+        streams[id] = c
+        c.yield(.with { $0.opened = .with { $0.connectionID = id; $0.responses = responses } })
+        c.onTermination = { [weak self] _ in Task { @MainActor in self?.streams[id] = nil } }
+    }
+
+    func herCall(_ req: Hermesh_Local_V1_HerCallRequest) async throws -> Hermesh_Her_V1_CallResponse {
+        let params = (try? JSON.parse(req.call.request.params)) ?? [:]
+        let val = handle(req.call.request.method, params)
+        return .with { $0.response = .with { $0.result = val.data() } }
+    }
+
+    private func handle(_ method: String, _ params: JSON) -> JSON {
+        switch method {
+        case "bots/subscribe":
+            return ["bots": [["id": "her", "name": "Her", "default": true, "session_id": "her-perf"]]]
+        case "models/list":
+            return ["models": [["id": "demo/her-pro", "name": "Her Pro", "provider": "demo", "available": true, "shown": true]], "providers": []]
+        case "bots/open":
+            let sid = params["conversation"].string.flatMap { $0.isEmpty ? nil : $0 } ?? "her-perf"
+            if params["session_id"].string == sid, params["resume_epoch"].string == "perf-epoch-1" {
+                return ["session_id": .string(sid), "incremental": true, "resume_epoch": "perf-epoch-1", "events": [], "last_seq": snap["last_seq"]]
+            }
+            let convSnap = sid == "her-perf" ? snap : DemoService.makePerfHerSnapshot(sessionID: sid)
+            return ["session_id": .string(sid), "resume_epoch": "perf-epoch-1", "snapshot": convSnap]
+        case "session/history":
+            return earlier
+        default:
+            return [:]
+        }
+    }
+}
+
+/// Simulator `HerLocal` reproducing real-world Her conversation leave & re-entry:
+/// - `GetHerConversation` (`kept`) holds 50 shown turns (~6,500 pt), while `bots/open` returns the last 100 raw
+///   transcript items where most are quiet routine/tool steps and only the final 8 turns (16 bubbles, ~1,150 pt < 2x
+///   screen height) are visible chat rows, plus `before` pagination for earlier pages (~42 earlier turns) and realistic
+///   async IPC/Relay open latency.
+@MainActor final class DemoHerReentryLocal: HerLocal {
+    private var epochSeq = 0
+
+    nonisolated static func keptConversationResponse() throws -> Data {
+        let snap = makeReproSnapshot(sessionID: "her-repro", startTurn: 1, endTurn: 50, lastSeq: 520, before: nil)
+        return try Hermesh_Local_V1_GetHerConversationResponse.with {
+            $0.bot = JSON.object(["id": "her", "name": "Her", "default": true, "session_id": "her-repro"]).data()
+            $0.snapshot = snap.data()
+        }.jsonUTF8Data()
+    }
+
+    private nonisolated static func makeTurnItems(range: ClosedRange<Int>) -> [JSON] {
+        let base = Date.now.timeIntervalSince1970 * 1000 - 80 * 300_000
+        var items: [JSON] = []
+        for t in range {
+            let ts = base + Double(t) * 300_000
+            let userPrompt = t % 3 == 0
+                ? "Quick check #\(t)?"
+                : "Owner check #\(t): review open issues, PR checks, and scheduled task status across environments."
+            items.append([
+                "type": "message",
+                "message_id": .string("hr-u-\(t)"),
+                "message": [
+                    "role": "user",
+                    "ts": .number(ts),
+                    "content": [["type": "text", "text": .string(userPrompt)]],
+                ],
+            ])
+            if t == 32 || t == 46 {
+                // Include a coding session card (`HerSessionCard`) both in mid-history (#32) and near bottom (#46)
+                // like real 01a1fedd so tapping it pushes SessionPage onto NavigationStack from scrolled-up offsets.
+                let cardTitle = t == 32 ? "Early architecture task" : "Add a welcome page"
+                items.append([
+                    "type": "message",
+                    "message_id": .string("hr-s-\(t)"),
+                    "message": [
+                        "role": "assistant",
+                        "ts": .number(ts + 600),
+                        "duration_ms": 800,
+                        "content": [["type": "tool_call", "id": .string("hr-sc-\(t)"), "name": "session_start",
+                                     "arguments": ["title": .string(cardTitle)]]],
+                    ],
+                ])
+                items.append([
+                    "type": "tool_result",
+                    "call_id": .string("hr-sc-\(t)"),
+                    "result": ["tool_name": "session_start", "details": [
+                        "session": ["session_id": "demo-finished-session",
+                                    "title": .string(cardTitle),
+                                    "agent": "codex", "machine": "Linux Studio"],
+                    ]],
+                ])
+            }
+            // Realistic extreme height variance (like 01a1fedd): early turns have huge ~900pt reports, late turns mix 1-line acks & medium bubbles.
+            let replyText: String
+            if t <= 38 {
+                let paragraphs = (1 ... 6).map { p in
+                    "**Section \(t).\(p) Audit**: Verified PR check suite, database migration compatibility, and background routine schedules across `Mac mini` and `Linux Studio` (`run_\(t)_\(p)`). Confirmed zero regressions in cold-start or upgrade paths."
+                }.joined(separator: "\n\n")
+                replyText = "### Full Inspection Report #\(t)\n\n\(paragraphs)\n\nHer Reentry Landmark #\(t)"
+            } else if t < 50 && t % 2 == 1 {
+                replyText = "Got it, checking #\(t) now. Her Reentry Landmark #\(t)"
+            } else {
+                replyText = """
+                Checked environment state for turn #\(t): all background routines and coding sessions are healthy.
+                - Verified local worktree sync and memory usage on `Mac mini`.
+                - Her Reentry Landmark #\(t)
+                """
+            }
+            items.append([
+                "type": "message",
+                "message_id": .string("hr-a-\(t)"),
+                "message": [
+                    "role": "assistant",
+                    "ts": .number(ts + 1200),
+                    "duration_ms": 1800,
+                    "content": [["type": "tool_call", "id": .string("hr-c-\(t)"), "name": "send_to_user", "arguments": ["text": .string(replyText)]]],
+                ],
+            ])
+            items.append([
+                "type": "tool_result",
+                "call_id": .string("hr-c-\(t)"),
+                "result": ["tool_name": "send_to_user", "details": .null],
+            ])
+            items.append(["type": "task_end", "outcome": "completed", "ts": .number(ts + 3200)])
+        }
+        return items
+    }
+
+    private nonisolated static func makeReproSnapshot(sessionID: String, startTurn: Int, endTurn: Int, lastSeq: Int, before: String?) -> JSON {
+        let items = makeTurnItems(range: startTurn ... endTurn)
+        var transcript: [String: JSON] = ["items": .array(items)]
+        if let before { transcript["before"] = .string(before) }
+        return [
+            "session": ["session_id": .string(sessionID), "model": "demo/her-pro"],
+            "last_seq": .number(Double(lastSeq)),
+            "transcript": .object(transcript),
+        ]
+    }
+
+    nonisolated func herOpen(_ req: Hermesh_Local_V1_HerOpenRequest) -> AsyncThrowingStream<Hermesh_Her_V1_OpenEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task { @MainActor in
+                // Realistic 140ms IPC/Relay open latency so Frame-0 renders cached `live`/`kept` before `bots/open` settles.
+                try? await Task.sleep(for: .milliseconds(140))
+                guard !Task.isCancelled else { return }
+                let id = UUID().uuidString
+                let responses: [Hermesh_Her_V1_Response] = req.open.setup.map { r in
+                    let params = (try? JSON.parse(r.params)) ?? [:]
+                    let val = self.handle(r.method, params)
+                    return .with { $0.result = val.data() }
+                }
+                continuation.yield(.with { $0.opened = .with { $0.connectionID = id; $0.responses = responses } })
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    func herCall(_ req: Hermesh_Local_V1_HerCallRequest) async throws -> Hermesh_Her_V1_CallResponse {
+        try? await Task.sleep(for: .milliseconds(60))
+        let params = (try? JSON.parse(req.call.request.params)) ?? [:]
+        let val = handle(req.call.request.method, params)
+        return .with { $0.response = .with { $0.result = val.data() } }
+    }
+
+    private func handle(_ method: String, _ params: JSON) -> JSON {
+        switch method {
+        case "bots/subscribe":
+            return ["bots": [["id": "her", "name": "Her", "default": true, "session_id": "her-repro"]]]
+        case "models/list":
+            return ["models": [["id": "demo/her-pro", "name": "Her Pro", "provider": "demo", "available": true, "shown": true]], "providers": []]
+        case "bots/open":
+            let sid = params["conversation"].string.flatMap { $0.isEmpty ? nil : $0 } ?? "her-repro"
+            // First 2 reconnects use incremental: true with 0 missed events (so HerRows == HerRows is true on re-entry!);
+            // later reconnects simulate idle hub reload (`unloading idle session` -> new resume_epoch + 25-turn ~5,500pt tail snapshot).
+            epochSeq += 1
+            if epochSeq <= 3, params["session_id"].string == sid, let askedEpoch = params["resume_epoch"].string, !askedEpoch.isEmpty {
+                return ["session_id": .string(sid), "incremental": true, "resume_epoch": .string(askedEpoch), "events": [], "last_seq": .number(Double(520))]
+            }
+            let epoch = "repro-epoch-\(epochSeq)"
+            let startTurn = epochSeq == 1 ? 26 : 42
+            let snap = Self.makeReproSnapshot(sessionID: sid, startTurn: startTurn, endTurn: 50, lastSeq: 520 + epochSeq, before: "repro-p1")
+            return ["session_id": .string(sid), "resume_epoch": .string(epoch), "snapshot": snap]
+        case "session/history":
+            let cursor = params["before"].string ?? ""
+            if cursor == "repro-p1" {
+                return ["items": .array(Self.makeTurnItems(range: 1 ... 25))]
+            }
+            return ["items": []]
+        default:
+            return [:]
+        }
     }
 }
 #endif

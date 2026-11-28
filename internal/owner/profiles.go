@@ -252,6 +252,7 @@ func (d *Device) Close() {
 	defer d.mu.Unlock()
 	for _, o := range d.profiles {
 		o.closeConsole()
+		o.flushDirtyProjections(true)
 		o.st.db.Close()
 		o.lock.Release()
 	}
@@ -274,6 +275,7 @@ func (d *Device) SetCellularOnly(v bool) {
 
 func (d *Device) Pause() {
 	o := d.owner()
+	o.flushDirtyProjections(false)
 	o.rep.pause()
 	o.keepRelay()
 }

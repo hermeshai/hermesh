@@ -1133,14 +1133,6 @@ struct ConversationScrollFinder: UIViewRepresentable {
     }
 }
 
-private struct ScrollLayout: Equatable {
-    let contentHeight: CGFloat
-    let containerWidth: CGFloat
-    let containerHeight: CGFloat
-    let topInset: CGFloat
-    let bottomInset: CGFloat
-}
-
 extension View {
     func followsEnd<Bottom: View>(
         id: String,
@@ -1172,7 +1164,6 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
     @State private var away = false
     @State private var scrolling = false
     @State private var positioned = false
-    @State private var layout = ScrollLayout(contentHeight: 0, containerWidth: 0, containerHeight: 0, topInset: 0, bottomInset: 0)
     @State private var alignTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var still
 
@@ -1227,25 +1218,12 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
                     atEnd = true
                 }
             }
-            .onScrollGeometryChange(for: ScrollLayout.self) { g in
-                ScrollLayout(
-                    contentHeight: g.contentSize.height,
-                    containerWidth: g.containerSize.width,
-                    containerHeight: g.containerSize.height,
-                    topInset: g.contentInsets.top,
-                    bottomInset: g.contentInsets.bottom
-                )
+            .onScrollGeometryChange(for: [CGFloat].self) { g in
+                [g.contentSize.height, g.containerSize.height, g.contentInsets.bottom]
             } action: { _, next in
-                layout = next
                 guard atEnd, !userInteracting else { return }
-                if ready {
-                    if !positioned {
-                        scheduleAlign(markPositioned: true)
-                    } else {
-                        alignOnce()
-                    }
-                } else if next.contentHeight > 0 {
-                    scheduleAlign(markPositioned: false)
+                if next[0] > 0 {
+                    position.scrollTo(edge: .bottom)
                 }
             }
             .onScrollGeometryChange(for: Bool.self) { g in
@@ -1290,45 +1268,13 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
     private func scheduleAlign(markPositioned: Bool) {
         guard atEnd, !userInteracting else { return }
         alignTask?.cancel()
-        alignTask = Task { @MainActor in
-            alignToBottom()
-            for delay in [0, 32, 100, 260] {
-                if delay > 0 {
-                    try? await Task.sleep(for: .milliseconds(delay))
-                } else {
-                    await Task.yield()
-                }
-                guard !Task.isCancelled, atEnd, !userInteracting else { return }
-                alignToBottom()
-            }
-            if markPositioned, !Task.isCancelled, ready, layout.containerHeight > 0 {
-                positioned = true
-            }
-        }
-    }
-
-    private func alignOnce() {
-        guard atEnd, !userInteracting, let sv = scrollBox.view else { return }
-        guard !sv.isTracking, !sv.isDragging, !sv.isDecelerating else { return }
-        let uikitTargetY = sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height
-        let layoutTargetY = layout.containerHeight > 0 ? layout.contentHeight - layout.containerHeight - layout.topInset : uikitTargetY
-        let targetY = max(-sv.adjustedContentInset.top, max(uikitTargetY, layoutTargetY))
-        if sv.bounds.height > 0, abs(sv.contentOffset.y - targetY) > 1 {
-            sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetY), animated: false)
-        }
-    }
-
-    private func alignToBottom() {
-        guard atEnd, !userInteracting else { return }
         position.scrollTo(edge: .bottom)
-        if let sv = scrollBox.view {
-            sv.layoutIfNeeded()
-            guard !sv.isTracking, !sv.isDragging, !sv.isDecelerating else { return }
-            let uikitTargetY = sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height
-            let layoutTargetY = layout.containerHeight > 0 ? layout.contentHeight - layout.containerHeight - layout.topInset : uikitTargetY
-            let targetY = max(-sv.adjustedContentInset.top, max(uikitTargetY, layoutTargetY))
-            if sv.bounds.height > 0, abs(sv.contentOffset.y - targetY) > 1 {
-                sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetY), animated: false)
+        alignTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled, atEnd, !userInteracting else { return }
+            position.scrollTo(edge: .bottom)
+            if markPositioned, ready {
+                positioned = true
             }
         }
     }

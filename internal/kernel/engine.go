@@ -8330,6 +8330,185 @@ func (e *Engine) GetSession(_ context.Context, p *Principal, sessionID string) (
 	return proj, nil
 }
 
+const turnItemBlobPrefix = "turnitem:"
+
+func isCompactExemptMetaTool(it *sessionv1.TurnItem) bool {
+	if it.GetKind() != sessionv1.TurnItemKind_TURN_ITEM_KIND_TOOL_CALL || it.GetCommand() != "" {
+		return false
+	}
+	norm := strings.ToLower(strings.TrimSpace(it.GetToolName()))
+	for _, pfx := range []string{"run ", "call ", "tool: ", "tool "} {
+		if strings.HasPrefix(norm, pfx) {
+			norm = strings.TrimSpace(strings.TrimPrefix(norm, pfx))
+			break
+		}
+	}
+	if idx := strings.LastIndex(norm, "__"); idx >= 0 {
+		norm = norm[idx+2:]
+	} else if idx := strings.LastIndexByte(norm, '/'); idx >= 0 {
+		norm = norm[idx+1:]
+	} else if idx := strings.LastIndexByte(norm, '.'); idx >= 0 {
+		norm = norm[idx+1:]
+	}
+	for _, sfx := range []string{"update_focus", "update_steps", "todowrite", "todo_write", "update_plan"} {
+		if norm == sfx || (strings.HasPrefix(norm, "mcp_") && strings.HasSuffix(norm, "_"+sfx)) {
+			return true
+		}
+	}
+	switch norm {
+	case "todoread", "taskcreate", "taskupdate", "tasklist", "taskget":
+		return true
+	}
+	return false
+}
+
+// CompactProjection returns a slimmed copy of proj that omits settled REASONING
+// text and folded tool input/output/diff inline bodies, synthesizing virtual
+// "turnitem:<session_id>:<item_id>:(in|out|diff)" blob keys so clients can
+// fetch opened tool details on demand via DownloadBlob without mutating cached items.
+func CompactProjection(proj *sessionv1.SessionProjection) *sessionv1.SessionProjection {
+	if proj == nil || len(proj.Items) == 0 {
+		return proj
+	}
+	sid := proj.GetSession().GetSessionId()
+	activeRunID := proj.GetSession().GetActiveRunId()
+	items := make([]*sessionv1.TurnItem, len(proj.Items))
+	changed := false
+	for i, it := range proj.Items {
+		if it == nil {
+			continue
+		}
+		switch it.Kind {
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_REASONING:
+			if it.Text != "" && (!it.Streaming || activeRunID == "" || it.RunId != activeRunID) {
+				cp := proto.Clone(it).(*sessionv1.TurnItem)
+				cp.Text = ""
+				items[i] = cp
+				changed = true
+				continue
+			}
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_TOOL_CALL,
+			sessionv1.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION,
+			sessionv1.TurnItemKind_TURN_ITEM_KIND_FILE_CHANGE:
+			if isCompactExemptMetaTool(it) || sid == "" || it.ItemId == "" {
+				break
+			}
+			hasIn := len(it.Input) > 0
+			hasDiff := it.Kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_FILE_CHANGE && len(it.Diff) > 0
+			hasOut := it.Kind != sessionv1.TurnItemKind_TURN_ITEM_KIND_FILE_CHANGE && len(it.Output) > 0
+			if hasIn || hasDiff || hasOut {
+				cp := proto.Clone(it).(*sessionv1.TurnItem)
+				if hasIn {
+					if uint64(len(cp.Input)) > cp.InputSize {
+						cp.InputSize = uint64(len(cp.Input))
+					}
+					cp.InputTruncated = true
+					if cp.InputBlobSha256 == "" {
+						cp.InputBlobSha256 = fmt.Sprintf("%s%s:%s:in", turnItemBlobPrefix, sid, cp.ItemId)
+					}
+					cp.Input = ""
+				}
+				if hasDiff {
+					if uint64(len(cp.Diff)) > cp.OutputSize {
+						cp.OutputSize = uint64(len(cp.Diff))
+					}
+					cp.OutputTruncated = true
+					if cp.OutputBlobSha256 == "" {
+						cp.OutputBlobSha256 = fmt.Sprintf("%s%s:%s:diff", turnItemBlobPrefix, sid, cp.ItemId)
+					}
+					cp.Diff = ""
+				} else if hasOut {
+					if uint64(len(cp.Output)) > cp.OutputSize {
+						cp.OutputSize = uint64(len(cp.Output))
+					}
+					cp.OutputTruncated = true
+					if cp.OutputBlobSha256 == "" {
+						cp.OutputBlobSha256 = fmt.Sprintf("%s%s:%s:out", turnItemBlobPrefix, sid, cp.ItemId)
+					}
+					cp.Output = ""
+				}
+				items[i] = cp
+				changed = true
+				continue
+			}
+		}
+		items[i] = it
+	}
+	if !changed {
+		return proj
+	}
+	return &sessionv1.SessionProjection{
+		Session:          proj.Session,
+		Runs:             proj.Runs,
+		Items:            items,
+		Requests:         proj.Requests,
+		Checkpoints:      proj.Checkpoints,
+		ProviderSessions: proj.ProviderSessions,
+		BackgroundTasks:  proj.BackgroundTasks,
+	}
+}
+
+// ParseTurnItemBlobKey parses "turnitem:<session_id>:<item_id>:(in|out|diff)".
+func ParseTurnItemBlobKey(key string) (sessionID, itemID, field string, ok bool) {
+	rest, found := strings.CutPrefix(key, turnItemBlobPrefix)
+	if !found {
+		return "", "", "", false
+	}
+	sid, tail, found := strings.Cut(rest, ":")
+	if !found || sid == "" {
+		return "", "", "", false
+	}
+	last := strings.LastIndexByte(tail, ':')
+	if last <= 0 {
+		return "", "", "", false
+	}
+	itemID, field = tail[:last], tail[last+1:]
+	if field != "in" && field != "out" && field != "diff" {
+		return "", "", "", false
+	}
+	return sid, itemID, field, true
+}
+
+func (e *Engine) ReadTurnItemBlob(ctx context.Context, p *Principal, key string) (data []byte, name, mimeType string, err error) {
+	sid, itemID, field, ok := ParseTurnItemBlobKey(key)
+	if !ok {
+		return nil, "", "", connect.NewError(connect.CodeNotFound, errors.New("blob not found"))
+	}
+	if _, err := e.GetSessionRecord(ctx, p, sid); err != nil {
+		return nil, "", "", err
+	}
+	it, err := e.st.TurnItem(sid, itemID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, "", "", connect.NewError(connect.CodeNotFound, errors.New("blob not found"))
+	}
+	if err != nil {
+		return nil, "", "", err
+	}
+	switch field {
+	case "in":
+		if it.InputBlobSha256 != "" && !strings.HasPrefix(it.InputBlobSha256, turnItemBlobPrefix) {
+			if b, n, m, bErr := e.st.GetBlob(it.InputBlobSha256); bErr == nil {
+				return b, n, m, nil
+			}
+		}
+		return []byte(it.Input), "tool-input.txt", "text/plain; charset=utf-8", nil
+	case "diff":
+		if it.OutputBlobSha256 != "" && !strings.HasPrefix(it.OutputBlobSha256, turnItemBlobPrefix) {
+			if b, n, m, bErr := e.st.GetBlob(it.OutputBlobSha256); bErr == nil {
+				return b, n, m, nil
+			}
+		}
+		return []byte(it.Diff), "tool-diff.patch", "text/plain; charset=utf-8", nil
+	default:
+		if it.OutputBlobSha256 != "" && !strings.HasPrefix(it.OutputBlobSha256, turnItemBlobPrefix) {
+			if b, n, m, bErr := e.st.GetBlob(it.OutputBlobSha256); bErr == nil {
+				return b, n, m, nil
+			}
+		}
+		return []byte(it.Output), "tool-output.txt", "text/plain; charset=utf-8", nil
+	}
+}
+
 // GetSessionRecord loads and authorizes only the Session metadata record without
 // reading runs, turn items, checkpoints, or background tasks from SQLite.
 func (e *Engine) GetSessionRecord(_ context.Context, p *Principal, sessionID string) (*sessionv1.Session, error) {

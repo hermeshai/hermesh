@@ -18,15 +18,14 @@ struct MarkdownText: View {
     @Environment(\.filesRun) private var run
 
     var body: some View {
-        let blocks = parsed(text, basePath: basePath)
-        let imgs = replyImagesOf(blocks)
-        MarkdownBlocks(blocks: blocks, style: style, lazy: lazy)
-            .environment(\.replyImages, imgs)
+        let entry = parsedReply(text, basePath: basePath)
+        MarkdownBlocks(blocks: entry.blocks, style: style, lazy: lazy)
+            .environment(\.replyImages, entry.images)
             // In a session's reply, which of the paths it writes are files is asked of its machine once.
             .task(id: files == nil ? "" : "\(run)\u{0}\(basePath)\u{0}\(text)") {
                 if let files {
-                    files.registerGallery(run: run, gallery: imgs.gallery)
-                    files.want(run: run, paths: fileRefPaths(blocks))
+                    files.registerGallery(run: run, gallery: entry.images.gallery)
+                    files.want(run: run, paths: entry.filePaths)
                 }
             }
     }
@@ -245,18 +244,30 @@ struct MarkdownItem {
     let blocks: [MarkdownBlock]
 }
 
+private struct ParsedReply {
+    let blocks: [MarkdownBlock]
+    let images: ReplyImages
+    let filePaths: [String]
+}
+
 /// Parsed replies, so a row laid out again parses nothing.
-@MainActor private var parsedReplies: [String: [MarkdownBlock]] = [:]
+@MainActor private var parsedReplies: [String: ParsedReply] = [:]
 @MainActor private var parsedRepliesOrder: [String] = []
+@MainActor private var longestWordCache: [String: CGFloat] = [:]
 @MainActor private var parsedMemoryHookInstalled = false
 
 @MainActor private func parsed(_ text: String, basePath: String = "") -> [MarkdownBlock] {
+    parsedReply(text, basePath: basePath).blocks
+}
+
+@MainActor private func parsedReply(_ text: String, basePath: String = "") -> ParsedReply {
     if !parsedMemoryHookInstalled {
         parsedMemoryHookInstalled = true
         NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated {
                 parsedReplies.removeAll()
                 parsedRepliesOrder.removeAll()
+                longestWordCache.removeAll()
                 fencedAnalysisCache.removeAll()
             }
         }
@@ -267,14 +278,15 @@ struct MarkdownItem {
     let notes = liftFootnotes(unwrapCarousels(text))
     var blocks = markdownBlocks(notes.text, basePath: basePath)
     if !notes.notes.isEmpty { blocks.append(.footnotes(notes.notes.map { markdownBlocks($0, basePath: basePath) })) }
-    if parsedRepliesOrder.count >= 150 {
-        let dropCount = 60
+    let entry = ParsedReply(blocks: blocks, images: replyImagesOf(blocks), filePaths: fileRefPaths(blocks))
+    if parsedRepliesOrder.count >= 1200 {
+        let dropCount = 240
         for old in parsedRepliesOrder.prefix(dropCount) { parsedReplies.removeValue(forKey: old) }
         parsedRepliesOrder.removeFirst(dropCount)
     }
-    parsedReplies[cacheKey] = blocks
+    parsedReplies[cacheKey] = entry
     parsedRepliesOrder.append(cacheKey)
-    return blocks
+    return entry
 }
 
 private func markdownBlocks(_ text: String, basePath: String = "") -> [MarkdownBlock] {
@@ -645,7 +657,7 @@ private struct MarkdownBlocks: View {
     var wipeTail = false
 
     var body: some View {
-        if lazy {
+        if lazy || (!draft && blocks.count > 18) {
             LazyVStack(alignment: .leading, spacing: style.gap) { rows }
         } else {
             VStack(alignment: .leading, spacing: style.gap) { rows }
@@ -813,14 +825,21 @@ private struct BlockView: View {
     /// How wide the cell's longest word is in the table's type: a run of letters between spaces, or a single Chinese
     /// character (a line may break after any).
     private func longestWord(_ s: AttributedString, head: Bool) -> CGFloat {
+        let plain = String(s.characters)
+        let key = "\(style.tableSize.rawValue)\u{0}\(head)\u{0}\(plain)"
+        if let hit = longestWordCache[key] { return hit }
         var font = UIFont.preferredFont(forTextStyle: style.tableSize)
         if head, let bold = font.fontDescriptor.withSymbolicTraits(.traitBold) { font = UIFont(descriptor: bold, size: 0) }
-        let words = String(s.characters).split { c in c.isWhitespace || c.unicodeScalars.contains { (0x3000 ... 0x9FFF).contains($0.value) || (0xFF00 ... 0xFFEF).contains($0.value) } }
-        return words.map { ceil(String($0).size(withAttributes: [.font: font]).width) }.max() ?? 0
+        let words = plain.split { c in c.isWhitespace || c.unicodeScalars.contains { (0x3000 ... 0x9FFF).contains($0.value) || (0xFF00 ... 0xFFEF).contains($0.value) } }
+        let width = words.map { ceil(String($0).size(withAttributes: [.font: font]).width) }.max() ?? 0
+        if longestWordCache.count > 4000 { longestWordCache.removeAll(keepingCapacity: true) }
+        longestWordCache[key] = width
+        return width
     }
 
     /// Inline code in the code face, on a grey ground.
     private func styled(_ s: AttributedString) -> AttributedString {
+        guard s.runs.contains(where: { $0.inlinePresentationIntent?.contains(.code) == true }) else { return s }
         var out = s
         for run in s.runs where run.inlinePresentationIntent?.contains(.code) == true {
             out[run.range].font = style.code
@@ -843,13 +862,24 @@ private struct TableLayout: Layout {
     /// A word wider than this (a hash, a long link) breaks rather than widen its column.
     static let widestWord: CGFloat = 180
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let (widths, heights) = measure(proposal.width, subviews)
+    struct Cache {
+        var subviewCount = 0
+        var most: [CGFloat] = []
+        var word: [CGFloat] = []
+        var lastWidth: CGFloat? = .nan
+        var widths: [CGFloat] = []
+        var heights: [CGFloat] = []
+    }
+
+    func makeCache(subviews: Subviews) -> Cache { Cache() }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
+        let (widths, heights) = measure(proposal.width, subviews, cache: &cache)
         return CGSize(width: widths.reduce(0, +), height: heights.reduce(0, +))
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let (widths, heights) = measure(bounds.width, subviews)
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) {
+        let (widths, heights) = measure(bounds.width, subviews, cache: &cache)
         var y = bounds.minY
         for (r, height) in heights.enumerated() {
             var x = bounds.minX
@@ -861,14 +891,25 @@ private struct TableLayout: Layout {
         }
     }
 
-    private func measure(_ width: CGFloat?, _ subviews: Subviews) -> (widths: [CGFloat], heights: [CGFloat]) {
+    private func measure(_ width: CGFloat?, _ subviews: Subviews, cache: inout Cache) -> (widths: [CGFloat], heights: [CGFloat]) {
         let rows = subviews.count / max(columns, 1)
-        var most = [CGFloat](repeating: 0, count: columns)
-        var word = [CGFloat](repeating: 0, count: columns)
-        for (i, cell) in subviews.enumerated() {
-            most[i % columns] = max(most[i % columns], ceil(cell.sizeThatFits(.unspecified).width))
-            word[i % columns] = max(word[i % columns], cell[LongestWord.self])
+        if cache.subviewCount != subviews.count || cache.most.count != columns {
+            var most = [CGFloat](repeating: 0, count: columns)
+            var word = [CGFloat](repeating: 0, count: columns)
+            for (i, cell) in subviews.enumerated() {
+                most[i % columns] = max(most[i % columns], ceil(cell.sizeThatFits(.unspecified).width))
+                word[i % columns] = max(word[i % columns], cell[LongestWord.self])
+            }
+            cache.subviewCount = subviews.count
+            cache.most = most
+            cache.word = word
+            cache.lastWidth = .nan
         }
+        if !cache.widths.isEmpty, cache.lastWidth == width {
+            return (cache.widths, cache.heights)
+        }
+        let most = cache.most
+        let word = cache.word
         let least = most.indices.map { unwrapped.contains($0) ? most[$0] : min(most[$0], max(Self.narrowest, min(word[$0], Self.widestWord))) }
         var widths = least
         let room = (width ?? 0) - least.reduce(0, +)
@@ -881,6 +922,9 @@ private struct TableLayout: Layout {
         let heights = (0 ..< rows).map { r in
             (0 ..< columns).map { c in ceil(subviews[r * columns + c].sizeThatFits(ProposedViewSize(width: widths[c], height: nil)).height) }.max() ?? 0
         }
+        cache.lastWidth = width
+        cache.widths = widths
+        cache.heights = heights
         return (widths, heights)
     }
 }

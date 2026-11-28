@@ -172,6 +172,9 @@ private func toolItem(_ it: Hermesh_Session_V1_TurnItem, run: Hermesh_Session_V1
         call.name = "Edit"
         call.summary = it.filePath.isEmpty ? it.text : it.filePath
         result.summary = it.diff
+        result.truncated = it.outputTruncated
+        result.size = it.outputSize
+        result.blobSha256 = it.outputBlobSha256
         return ToolItem(seq: itemSeq(it), call: call, result: result, running: false)
     }
     let shell = it.kind == .commandExecution

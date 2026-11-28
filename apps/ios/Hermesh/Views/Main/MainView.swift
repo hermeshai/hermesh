@@ -212,6 +212,7 @@ final class DuoTabController: UITabBarController, UITabBarControllerDelegate {
     private var syncing = false
     private var menuBeside = false
     private var drawerOpen = false
+    private var desiredTab: UITab?
 
     init(sideMenu: SideMenuController) {
         self.sideMenu = sideMenu
@@ -243,12 +244,14 @@ final class DuoTabController: UITabBarController, UITabBarControllerDelegate {
         attachSideMenu(to: herSlot)
         syncing = true
         tabs = [conversationsTab, sessionsTab, herTab, overviewTab]
+        desiredTab = herTab
         selectedTab = herTab
         isTabBarHidden = !showsVerticalTabBar
         syncing = false
 
         if #available(iOS 27.1, *) {
             registerForTraitChanges(UITraitCollection.systemTraitsAffectingVerticalBarEdge) { (self: Self, _) in
+                self.syncSelectedTabIfNeeded()
                 self.updateTabBarVisibility(animated: false)
             }
         }
@@ -297,7 +300,17 @@ final class DuoTabController: UITabBarController, UITabBarControllerDelegate {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        syncSelectedTabIfNeeded()
         updateTabBarVisibility(animated: false)
+    }
+
+    private func syncSelectedTabIfNeeded() {
+        guard hasVerticalBar, let target = desiredTab, selectedTab !== target else { return }
+        let wasSyncing = syncing
+        syncing = true
+        defer { syncing = wasSyncing }
+        selectedTab = target
+        attachSideMenu(to: slot(for: target))
     }
 
     func sync(activeID: String?, menuBeside: Bool, drawerOpen: Bool, sessionsLabel: String, herLabel: String, overviewLabel: String) {
@@ -318,17 +331,14 @@ final class DuoTabController: UITabBarController, UITabBarControllerDelegate {
         if overviewTab.accessibilityLabel != overviewLabel {
             overviewTab.accessibilityLabel = overviewLabel
         }
-        let target: UITab? = switch activeID {
+        desiredTab = switch activeID {
         case "conversations": conversationsTab
         case "sessions": sessionsTab
         case "her": herTab
         case "overview": overviewTab
-        default: nil
+        default: desiredTab
         }
-        if let target, selectedTab !== target {
-            attachSideMenu(to: slot(for: target))
-            selectedTab = target
-        }
+        syncSelectedTabIfNeeded()
     }
 
     func tabBarController(_ tabBarController: UITabBarController, shouldSelectTab tab: UITab) -> Bool {
@@ -336,14 +346,14 @@ final class DuoTabController: UITabBarController, UITabBarControllerDelegate {
         if tab === tabBarController.selectedTab {
             let id = tab.identifier
             DispatchQueue.main.async { [weak self] in self?.onPick(id) }
-        } else {
-            attachSideMenu(to: slot(for: tab))
         }
         return true
     }
 
     func tabBarController(_ tabBarController: UITabBarController, didSelectTab selectedTab: UITab, previousTab: UITab?) {
         guard !syncing, selectedTab !== previousTab else { return }
+        desiredTab = selectedTab
+        attachSideMenu(to: slot(for: selectedTab))
         let id = selectedTab.identifier
         DispatchQueue.main.async { [weak self] in self?.onPick(id) }
     }

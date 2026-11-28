@@ -303,20 +303,68 @@ struct SessionTreeRow: Identifiable {
             return
         }
         let sid = sessionID
-        // Newest replies first (the end of the conversation is in view), all turns in flight concurrently.
-        for run in runs.reversed() {
-            guard let set = batch[run], !set.isEmpty else { continue }
-            let paths = Array(set)
-            Task { [weak self] in
-                do {
-                    let res = try await api.resolveFiles(sid, run: run, paths: paths)
-                    guard let self else { return }
-                    for (i, f) in res.files.enumerated() where i < paths.count { self.known[self.key(run, paths[i])] = f }
-                } catch {
-                    // The machine away: explicit links stay tappable, and paths are asked again next time.
-                    guard let self else { return }
+        let work: [(run: String, paths: [String])] = runs.reversed().compactMap { run in
+            guard let set = batch[run], !set.isEmpty else { return nil }
+            return (run, Array(set))
+        }
+        guard !work.isEmpty else { return }
+        // Newest replies first, bounded to 4 concurrent RPCs, coalescing all updates into a single @Observable write.
+        Task { [weak self] in
+            enum Outcome {
+                case resolved(String, [String], [Hermesh_Session_V1_ResolvedFile])
+                case failed(String, [String])
+            }
+            var outcomes: [Outcome] = []
+            await withTaskGroup(of: Outcome.self) { group in
+                var nextIdx = 0
+                let limit = min(4, work.count)
+                for _ in 0 ..< limit {
+                    let item = work[nextIdx]
+                    nextIdx += 1
+                    group.addTask {
+                        do {
+                            let res = try await api.resolveFiles(sid, run: item.run, paths: item.paths)
+                            return .resolved(item.run, item.paths, res.files)
+                        } catch {
+                            return .failed(item.run, item.paths)
+                        }
+                    }
+                }
+                while let out = await group.next() {
+                    outcomes.append(out)
+                    if nextIdx < work.count {
+                        let item = work[nextIdx]
+                        nextIdx += 1
+                        group.addTask {
+                            do {
+                                let res = try await api.resolveFiles(sid, run: item.run, paths: item.paths)
+                                return .resolved(item.run, item.paths, res.files)
+                            } catch {
+                                return .failed(item.run, item.paths)
+                            }
+                        }
+                    }
+                }
+            }
+            guard let self else { return }
+            var nextKnown = self.known
+            var changed = false
+            for out in outcomes {
+                switch out {
+                case .resolved(let run, let paths, let files):
+                    for (i, f) in files.enumerated() where i < paths.count {
+                        let k = self.key(run, paths[i])
+                        if nextKnown[k] != f {
+                            nextKnown[k] = f
+                            changed = true
+                        }
+                    }
+                case .failed(let run, let paths):
                     for p in paths { self.askedAt[self.key(run, p)] = nil }
                 }
+            }
+            if changed {
+                self.known = nextKnown
             }
         }
     }
@@ -389,6 +437,15 @@ enum FileRefLink {
 /// nothing is there), inline code becomes a tag once found; math drawn as `mathText` draws it. No symbol before the
 /// name, as the Mac has: an image in a Text moves its links' places for VoiceOver (and the tests) by the image's width.
 func fileText(_ text: AttributedString, files: SessionFilesModel, run: String, size: CGFloat, code: Font) -> Text {
+    let hasActiveTag = text.runs.contains { r in
+        guard let mark = r[FileRefAttribute.self] else { return false }
+        if !mark.code { return true }
+        let kind = files.info(run: run, path: mark.path)?.kind
+        return kind == .file || kind == .folder
+    }
+    guard hasActiveTag else {
+        return mathText(text, size: size, code: code)
+    }
     var out = AttributedString()
     for r in text.runs {
         var part = AttributedString(text[r.range])

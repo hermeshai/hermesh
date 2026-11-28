@@ -157,6 +157,14 @@ type Owner struct {
 	sessionMu       sync.Mutex
 	sessionWake     chan struct{}
 	sessionSubs     map[chan *sessionv1.WatchSessionsResponse]struct{}
+	projCacheMu     sync.Mutex
+	projWriteMu     sync.Mutex
+	projCache       map[string]*sessionv1.SessionProjection
+	projOrder       []string
+	projDirty       map[string]dirtyProjection
+	projFlushTimer  *time.Timer
+	projCacheClosed bool
+	projDBClosed    bool
 	filesKeptMu     sync.Mutex
 	filesKeptLoaded bool
 	filesKeptTotal  int64

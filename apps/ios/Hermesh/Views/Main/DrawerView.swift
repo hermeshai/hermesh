@@ -323,6 +323,24 @@ struct MenuSessions: View {
     @State private var expandedGroup: SessionGrouping?
     @State private var expandedLimits: [String: Int] = [:]
     @State private var expandedTrees: Set<String> = []
+    @State private var sectionMemo = MenuSectionsMemo()
+
+    private struct MenuSectionsKey: Equatable {
+        let rev: UInt64
+        let machineFilter: String?
+        let view: SessionListLayout
+        let showArchived: Bool
+        let dayStart: Date
+        let machines: [String]
+        let pinnedOrder: [String]
+        let activeOrder: [String]
+    }
+
+    @MainActor private final class MenuSectionsMemo {
+        var key: MenuSectionsKey?
+        var sections: [SessionSection] = []
+        var allTrees: [String: [Session]] = [:]
+    }
 
     private struct RenderedSection: Identifiable {
         let section: SessionSection
@@ -333,11 +351,32 @@ struct MenuSessions: View {
     }
 
     var body: some View {
-        let baseSessions = machineFilter.map { id in model.sessions.filter { $0.machineID == id } } ?? model.sessions
+        let rev = model.sessionsRevision
         let machines = model.machines.sorted { $0.machineName.localizedStandardCompare($1.machineName) == .orderedAscending }.map(\.machineID)
         let filteredMachines = machineFilter.map { [$0] } ?? machines
-        let sections = sessionSections(baseSessions, view: model.listView, archived: model.showArchived, now: model.now, machines: filteredMachines, alwaysActive: true, pinnedOrder: model.pinnedOrder, activeOrder: model.activeOrder)
-        let allTrees = herChildren(model.showArchived ? baseSessions : baseSessions.filter { $0.status != .archived })
+        let dayStart = Calendar.current.startOfDay(for: model.now)
+        let memoKey = MenuSectionsKey(
+            rev: rev,
+            machineFilter: machineFilter,
+            view: model.listView,
+            showArchived: model.showArchived,
+            dayStart: dayStart,
+            machines: filteredMachines,
+            pinnedOrder: model.pinnedOrder,
+            activeOrder: model.activeOrder
+        )
+        let (sections, allTrees): ([SessionSection], [String: [Session]]) = {
+            if sectionMemo.key == memoKey {
+                return (sectionMemo.sections, sectionMemo.allTrees)
+            }
+            let baseSessions = machineFilter.map { id in model.sessions.filter { $0.machineID == id } } ?? model.sessions
+            let builtSections = sessionSections(baseSessions, view: model.listView, archived: model.showArchived, now: dayStart.addingTimeInterval(43_200), machines: filteredMachines, alwaysActive: true, pinnedOrder: model.pinnedOrder, activeOrder: model.activeOrder)
+            let builtTrees = herChildren(model.showArchived ? baseSessions : baseSessions.filter { $0.status != .archived })
+            sectionMemo.key = memoKey
+            sectionMemo.sections = builtSections
+            sectionMemo.allTrees = builtTrees
+            return (builtSections, builtTrees)
+        }()
         let trees = model.listView.nest ? allTrees : [:]
         let limits = expandedGroup == model.listView.group ? expandedLimits : [:]
         let rendered = sections.map { section in

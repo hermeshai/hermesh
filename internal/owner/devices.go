@@ -809,6 +809,7 @@ func (o *Owner) Leave(ctx context.Context, forceLocal bool) error {
 			return err
 		}
 	}
+	o.clearHotProjections(false)
 	if err := o.st.clearRemoteAccountData(oldLocalID, newLocalID); err != nil {
 		return err
 	}

@@ -190,6 +190,150 @@ func isOfflineErr(err error) bool {
 	return code == connect.CodeUnavailable || code == connect.CodeDeadlineExceeded || errors.Is(err, context.DeadlineExceeded)
 }
 
+const maxHotProjections = 16
+
+type dirtyProjection struct {
+	proj *sessionv1.SessionProjection
+}
+
+func (o *Owner) putHotProjectionLocked(sessionID string, proj *sessionv1.SessionProjection) {
+	if sessionID == "" || proj == nil {
+		return
+	}
+	if o.projCache == nil {
+		o.projCache = make(map[string]*sessionv1.SessionProjection, maxHotProjections)
+	}
+	if idx := slices.Index(o.projOrder, sessionID); idx >= 0 {
+		o.projOrder = slices.Delete(o.projOrder, idx, idx+1)
+	}
+	o.projOrder = append(o.projOrder, sessionID)
+	o.projCache[sessionID] = proj
+	for len(o.projOrder) > maxHotProjections {
+		evict := o.projOrder[0]
+		o.projOrder = o.projOrder[1:]
+		delete(o.projCache, evict)
+	}
+}
+
+func (o *Owner) updateHotSessionLocked(sess *sessionv1.Session) {
+	if sess == nil || sess.SessionId == "" {
+		return
+	}
+	if p := o.projCache[sess.SessionId]; p != nil {
+		p.Session = proto.CloneOf(sess)
+	}
+	if d, ok := o.projDirty[sess.SessionId]; ok && d.proj != nil {
+		d.proj.Session = proto.CloneOf(sess)
+		o.projDirty[sess.SessionId] = d
+	}
+}
+
+func (o *Owner) getHotProjection(sessionID string) *sessionv1.SessionProjection {
+	o.projCacheMu.Lock()
+	defer o.projCacheMu.Unlock()
+	p := o.projCache[sessionID]
+	if p != nil {
+		if idx := slices.Index(o.projOrder, sessionID); idx >= 0 && idx+1 < len(o.projOrder) {
+			o.projOrder = slices.Delete(o.projOrder, idx, idx+1)
+			o.projOrder = append(o.projOrder, sessionID)
+		}
+		return proto.CloneOf(p)
+	}
+	if d, ok := o.projDirty[sessionID]; ok && d.proj != nil {
+		return proto.CloneOf(d.proj)
+	}
+	return nil
+}
+
+func (o *Owner) clearHotProjections(closing bool) {
+	o.projWriteMu.Lock()
+	if closing {
+		o.projDBClosed = true
+	}
+	o.projWriteMu.Unlock()
+
+	o.projCacheMu.Lock()
+	if closing {
+		o.projCacheClosed = true
+	}
+	if o.projFlushTimer != nil {
+		o.projFlushTimer.Stop()
+		o.projFlushTimer = nil
+	}
+	clear(o.projCache)
+	o.projOrder = nil
+	o.projDirty = nil
+	o.projCacheMu.Unlock()
+}
+
+func (o *Owner) flushDirtyProjections(closing bool) {
+	o.projWriteMu.Lock()
+	defer o.projWriteMu.Unlock()
+	if o.projDBClosed {
+		return
+	}
+	if closing {
+		o.projDBClosed = true
+	}
+
+	o.projCacheMu.Lock()
+	if closing {
+		o.projCacheClosed = true
+	}
+	if o.projFlushTimer != nil {
+		o.projFlushTimer.Stop()
+		o.projFlushTimer = nil
+	}
+	batch := o.projDirty
+	o.projDirty = nil
+	o.projCacheMu.Unlock()
+
+	for id, d := range batch {
+		if d.proj == nil {
+			continue
+		}
+		pb, err := proto.Marshal(d.proj)
+		if err != nil {
+			continue
+		}
+		_, _ = o.st.db.Exec(
+			`UPDATE sessions_cache SET projection_payload = ? WHERE session_id = ?`,
+			pb, id,
+		)
+	}
+}
+
+func (o *Owner) cacheSessionAsync(sess *sessionv1.Session, proj *sessionv1.SessionProjection) {
+	if sess == nil || sess.SessionId == "" {
+		return
+	}
+	// Persist the small session header synchronously so sessions_cache metadata and
+	// WatchSessions subscribers update immediately without waiting on multi-MB projection serialization.
+	o.cacheSession(sess, nil)
+	if proj == nil {
+		return
+	}
+	clonedProj := proto.CloneOf(proj)
+	clonedProj.Session = proto.CloneOf(sess)
+
+	o.projCacheMu.Lock()
+	if o.projCacheClosed {
+		o.projCacheMu.Unlock()
+		return
+	}
+	o.putHotProjectionLocked(sess.SessionId, clonedProj)
+	if o.projDirty == nil {
+		o.projDirty = make(map[string]dirtyProjection)
+	}
+	o.projDirty[sess.SessionId] = dirtyProjection{proj: clonedProj}
+	if o.projFlushTimer == nil {
+		o.projFlushTimer = time.AfterFunc(100*time.Millisecond, func() {
+			o.flushDirtyProjections(false)
+		})
+	}
+	o.projCacheMu.Unlock()
+}
+
 func (o *Owner) cacheSession(sess *sessionv1.Session, proj *sessionv1.SessionProjection) {
 	if sess == nil || sess.SessionId == "" {
 		return
@@ -200,7 +344,19 @@ func (o *Owner) cacheSession(sess *sessionv1.Session, proj *sessionv1.SessionPro
 	}
 	var pb []byte
 	if proj != nil {
+		cloned := proto.CloneOf(proj)
+		cloned.Session = proto.CloneOf(sess)
+		o.projCacheMu.Lock()
+		if !o.projCacheClosed {
+			o.putHotProjectionLocked(sess.SessionId, cloned)
+			delete(o.projDirty, sess.SessionId)
+		}
+		o.projCacheMu.Unlock()
 		pb, _ = proto.Marshal(proj)
+	} else {
+		o.projCacheMu.Lock()
+		o.updateHotSessionLocked(sess)
+		o.projCacheMu.Unlock()
 	}
 	archived := 0
 	if sess.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED || sess.ArchivedAt != nil {
@@ -237,6 +393,13 @@ func (o *Owner) cacheSession(sess *sessionv1.Session, proj *sessionv1.SessionPro
 }
 
 func (o *Owner) removeCachedSession(sessionID string) {
+	o.projCacheMu.Lock()
+	delete(o.projCache, sessionID)
+	delete(o.projDirty, sessionID)
+	if idx := slices.Index(o.projOrder, sessionID); idx >= 0 {
+		o.projOrder = slices.Delete(o.projOrder, idx, idx+1)
+	}
+	o.projCacheMu.Unlock()
 	_, _ = o.st.db.Exec(`DELETE FROM sessions_cache WHERE session_id = ?`, sessionID)
 	o.forgetFiles(sessionID)
 	if o.rep != nil {
@@ -305,6 +468,9 @@ func (o *Owner) cachedSession(sessionID string) *sessionv1.Session {
 }
 
 func (o *Owner) cachedProjectionOnly(sessionID string) *sessionv1.SessionProjection {
+	if hot := o.getHotProjection(sessionID); hot != nil {
+		return hot
+	}
 	var sb, pb []byte
 	err := o.st.db.QueryRow(`SELECT session_payload, projection_payload FROM sessions_cache WHERE session_id = ?`, sessionID).Scan(&sb, &pb)
 	if err != nil || len(pb) == 0 {
@@ -320,10 +486,18 @@ func (o *Owner) cachedProjectionOnly(sessionID string) *sessionv1.SessionProject
 			proj.Session = sess
 		}
 	}
+	o.projCacheMu.Lock()
+	if !o.projCacheClosed && o.projCache[sessionID] == nil {
+		o.putHotProjectionLocked(sessionID, proto.CloneOf(proj))
+	}
+	o.projCacheMu.Unlock()
 	return proj
 }
 
 func (o *Owner) cachedProjection(sessionID string) *sessionv1.SessionProjection {
+	if hot := o.getHotProjection(sessionID); hot != nil {
+		return hot
+	}
 	var sb, pb []byte
 	err := o.st.db.QueryRow(`SELECT session_payload, projection_payload FROM sessions_cache WHERE session_id = ?`, sessionID).Scan(&sb, &pb)
 	if err != nil {
@@ -338,6 +512,11 @@ func (o *Owner) cachedProjection(sessionID string) *sessionv1.SessionProjection 
 					proj.Session = sess
 				}
 			}
+			o.projCacheMu.Lock()
+			if !o.projCacheClosed && o.projCache[sessionID] == nil {
+				o.putHotProjectionLocked(sessionID, proto.CloneOf(proj))
+			}
+			o.projCacheMu.Unlock()
 			return proj
 		}
 	}
@@ -862,21 +1041,27 @@ func (s *ownerSessionService) StartSession(ctx context.Context, req *sessionv1.S
 
 func (s *ownerSessionService) GetSession(ctx context.Context, req *sessionv1.GetSessionRequest) (*sessionv1.GetSessionResponse, error) {
 	o := s.o()
+	maybeCompact := func(proj *sessionv1.SessionProjection) *sessionv1.SessionProjection {
+		if req.GetCompact() {
+			return kernel.CompactProjection(proj)
+		}
+		return proj
+	}
 	if req.CachedOnly {
 		if eng, _ := o.localEngineFor(""); eng != nil {
 			if proj, err := eng.GetSession(ctx, o.ownerPrincipal(), req.SessionId); err == nil {
-				return &sessionv1.GetSessionResponse{Projection: proj}, nil
+				return &sessionv1.GetSessionResponse{Projection: maybeCompact(proj)}, nil
 			}
 		}
 		if cached := o.cachedProjectionOnly(req.SessionId); cached != nil {
-			return &sessionv1.GetSessionResponse{Projection: cached, FromCache: true}, nil
+			return &sessionv1.GetSessionResponse{Projection: maybeCompact(cached), FromCache: true}, nil
 		}
 		return &sessionv1.GetSessionResponse{}, nil
 	}
 	eng, machineID, err := o.resolveMachineForSession(ctx, req.SessionId)
 	if err != nil {
 		if cached := o.cachedProjection(req.SessionId); cached != nil {
-			return &sessionv1.GetSessionResponse{Projection: cached, FromCache: true}, nil
+			return &sessionv1.GetSessionResponse{Projection: maybeCompact(cached), FromCache: true}, nil
 		}
 		return nil, err
 	}
@@ -885,21 +1070,24 @@ func (s *ownerSessionService) GetSession(ctx context.Context, req *sessionv1.Get
 		if err != nil {
 			return nil, err
 		}
-		return &sessionv1.GetSessionResponse{Projection: proj}, nil
+		return &sessionv1.GetSessionResponse{Projection: maybeCompact(proj)}, nil
 	}
 	if pm, dErr := o.dialRemoteSessionMachine(ctx, machineID); dErr == nil {
 		if res, gErr := pm.Session.GetSession(ctx, req); gErr == nil {
-			o.cacheSession(res.Projection.GetSession(), res.Projection)
+			if req.GetCompact() {
+				res.Projection = kernel.CompactProjection(res.Projection)
+			}
+			o.cacheSessionAsync(res.Projection.GetSession(), res.Projection)
 			return res, nil
 		} else if !isOfflineErr(gErr) {
 			if cached := o.cachedProjection(req.SessionId); connect.CodeOf(gErr) == connect.CodeNotFound && cached.GetSession().GetOfflineQueued() {
-				return &sessionv1.GetSessionResponse{Projection: cached, FromCache: true}, nil
+				return &sessionv1.GetSessionResponse{Projection: maybeCompact(cached), FromCache: true}, nil
 			}
 			return nil, gErr
 		}
 	}
 	if cached := o.cachedProjection(req.SessionId); cached != nil {
-		return &sessionv1.GetSessionResponse{Projection: cached, FromCache: true}, nil
+		return &sessionv1.GetSessionResponse{Projection: maybeCompact(cached), FromCache: true}, nil
 	}
 	return nil, connect.NewError(connect.CodeUnavailable, errors.New("machine is offline and session is not cached locally"))
 }
@@ -1220,11 +1408,18 @@ func (s *ownerSessionService) SubscribeSession(ctx context.Context, req *session
 				return nil
 			}
 			sentSubscribed = true
+			if proj != nil && ev.GetSeq() <= proj.GetSession().GetProgress().GetLastEventSeq() {
+				if ev.GetSession() != nil {
+					proj.Session = proto.CloneOf(ev.GetSession())
+					o.cacheSession(ev.GetSession(), nil)
+				}
+				return stream.Send(ev)
+			}
 		}
 		if proj != nil || ev.GetSession() != nil {
 			proj = foldSessionEventIntoProjection(proj, ev)
 			if proj.GetSession() != nil {
-				o.cacheSession(proj.GetSession(), proj)
+				o.cacheSessionAsync(proj.GetSession(), proj)
 			}
 		}
 		return stream.Send(ev)
@@ -1246,13 +1441,22 @@ func (s *ownerSessionService) SubscribeSession(ctx context.Context, req *session
 
 		// Legacy remote daemons block silently when already caught up at AfterSeq
 		// without flushing HTTP/2 response headers until the next live event.
-		// Start a short 120 ms GetSession check concurrently before SubscribeSession
-		// so caught-up callers confirm readiness immediately instead of hanging.
+		// Start an RTT-aware fallback GetSession check concurrently so caught-up
+		// legacy callers confirm readiness promptly without racing modern daemons
+		// over higher-latency WAN/Relay links.
+		fallbackDelay := 120 * time.Millisecond
+		rtt := pm.RTT()
+		if c != nil && c.RTT() > rtt {
+			rtt = c.RTT()
+		}
+		if rtt > 0 {
+			fallbackDelay = min(1500*time.Millisecond, max(120*time.Millisecond, 3*rtt))
+		}
 		var sawFirst atomic.Bool
 		subCtx, cancelSub := context.WithCancel(ctx)
 		var bgWG sync.WaitGroup
 		bgWG.Go(func() {
-			t := time.NewTimer(120 * time.Millisecond)
+			t := time.NewTimer(fallbackDelay)
 			defer t.Stop()
 			select {
 			case <-subCtx.Done():
@@ -1263,13 +1467,13 @@ func (s *ownerSessionService) SubscribeSession(ctx context.Context, req *session
 				return
 			}
 			gCtx, cancelG := context.WithTimeout(subCtx, 3*time.Second)
-			res, gErr := pm.Session.GetSession(gCtx, &sessionv1.GetSessionRequest{MachineId: machineID, SessionId: req.SessionId})
+			res, gErr := pm.Session.GetSession(gCtx, &sessionv1.GetSessionRequest{MachineId: machineID, SessionId: req.SessionId, Compact: true})
 			cancelG()
 			if gErr != nil || subCtx.Err() != nil || !sawFirst.CompareAndSwap(false, true) {
 				return
 			}
 			if p := res.GetProjection(); p != nil && p.GetSession() != nil {
-				o.cacheSession(p.GetSession(), p)
+				o.cacheSessionAsync(p.GetSession(), p)
 				_ = sendEvent(&sessionv1.SessionEvent{
 					Seq:       p.GetSession().GetProgress().GetLastEventSeq(),
 					SessionId: req.SessionId,
@@ -1901,9 +2105,26 @@ func (s *ownerSessionService) UploadBlob(_ context.Context, req *sessionv1.Uploa
 
 func (s *ownerSessionService) DownloadBlob(ctx context.Context, req *sessionv1.DownloadBlobRequest) (*sessionv1.DownloadBlobResponse, error) {
 	o := s.o()
-	if eng, _ := o.localEngineFor(""); eng != nil {
+	readLocalBlob := func(eng *kernel.Engine) (*sessionv1.DownloadBlobResponse, bool, error) {
+		if _, _, _, ok := kernel.ParseTurnItemBlobKey(req.BlobSha256); ok {
+			data, name, mime, err := eng.ReadTurnItemBlob(ctx, o.ownerPrincipal(), req.BlobSha256)
+			if err == nil {
+				return &sessionv1.DownloadBlobResponse{Data: data, Name: name, MimeType: mime, SizeBytes: uint64(len(data))}, true, nil
+			}
+			if connect.CodeOf(err) == connect.CodeNotFound {
+				return nil, false, nil
+			}
+			return nil, true, err
+		}
 		if data, name, mime, err := eng.Store().GetBlob(req.BlobSha256); err == nil {
-			return &sessionv1.DownloadBlobResponse{Data: data, Name: name, MimeType: mime, SizeBytes: uint64(len(data))}, nil
+			return &sessionv1.DownloadBlobResponse{Data: data, Name: name, MimeType: mime, SizeBytes: uint64(len(data))}, true, nil
+		}
+		return nil, false, nil
+	}
+
+	if eng, _ := o.localEngineFor(""); eng != nil {
+		if res, handled, err := readLocalBlob(eng); handled {
+			return res, err
 		}
 	}
 	var name, mime string
@@ -1914,12 +2135,18 @@ func (s *ownerSessionService) DownloadBlob(ctx context.Context, req *sessionv1.D
 		return nil, err
 	}
 
+	sessionID := req.SessionId
+	if sessionID == "" {
+		if parsedSID, _, _, ok := kernel.ParseTurnItemBlobKey(req.BlobSha256); ok {
+			sessionID = parsedSID
+		}
+	}
 	machineID := req.MachineId
-	if machineID == "" && req.SessionId != "" {
-		if eng, mid, err := o.resolveMachineForSession(ctx, req.SessionId); err == nil {
+	if machineID == "" && sessionID != "" {
+		if eng, mid, err := o.resolveMachineForSession(ctx, sessionID); err == nil {
 			if eng != nil {
-				if data, name, mime, gErr := eng.Store().GetBlob(req.BlobSha256); gErr == nil {
-					return &sessionv1.DownloadBlobResponse{Data: data, Name: name, MimeType: mime, SizeBytes: uint64(len(data))}, nil
+				if res, handled, lErr := readLocalBlob(eng); handled {
+					return res, lErr
 				}
 				return nil, connect.NewError(connect.CodeNotFound, errors.New("blob not found"))
 			}
@@ -1928,8 +2155,8 @@ func (s *ownerSessionService) DownloadBlob(ctx context.Context, req *sessionv1.D
 	}
 	if machineID != "" {
 		if eng, _ := o.localEngineFor(machineID); eng != nil {
-			if data, name, mime, err := eng.Store().GetBlob(req.BlobSha256); err == nil {
-				return &sessionv1.DownloadBlobResponse{Data: data, Name: name, MimeType: mime, SizeBytes: uint64(len(data))}, nil
+			if res, handled, lErr := readLocalBlob(eng); handled {
+				return res, lErr
 			}
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("blob not found"))
 		}

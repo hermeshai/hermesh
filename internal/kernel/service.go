@@ -48,6 +48,9 @@ func (s *Service) GetSession(ctx context.Context, req *sessionv1.GetSessionReque
 	if err != nil {
 		return nil, err
 	}
+	if req.GetCompact() {
+		proj = CompactProjection(proj)
+	}
 	return &sessionv1.GetSessionResponse{Projection: proj}, nil
 }
 
@@ -154,8 +157,19 @@ func (s *Service) UploadBlob(ctx context.Context, req *sessionv1.UploadBlobReque
 }
 
 func (s *Service) DownloadBlob(ctx context.Context, req *sessionv1.DownloadBlobRequest) (*sessionv1.DownloadBlobResponse, error) {
-	if s.principal != nil && s.principal(ctx) == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
+	var p *Principal
+	if s.principal != nil {
+		p = s.principal(ctx)
+		if p == nil {
+			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
+		}
+	}
+	if _, _, _, ok := ParseTurnItemBlobKey(req.BlobSha256); ok {
+		data, name, mime, err := s.engine.ReadTurnItemBlob(ctx, p, req.BlobSha256)
+		if err != nil {
+			return nil, err
+		}
+		return &sessionv1.DownloadBlobResponse{Data: data, Name: name, MimeType: mime, SizeBytes: uint64(len(data))}, nil
 	}
 	data, name, mime, err := s.engine.Store().GetBlob(req.BlobSha256)
 	if errors.Is(err, store.ErrNotFound) {

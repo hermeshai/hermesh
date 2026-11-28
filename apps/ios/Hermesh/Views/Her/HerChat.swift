@@ -200,6 +200,10 @@ final class HerChat {
             #if DEBUG
             if DemoService.herDemoOn { return nil } // the existing scrolling gallery remains a kept snapshot
             #endif
+            #if targetEnvironment(simulator)
+            if DemoService.herReentryRepro { return demo.reentryHer }
+            if DemoService.perfSuite { return demo.perfHer }
+            #endif
             return demo.herReview
         }
         return api?.live.map { HerTunnel(api: $0) }

@@ -250,6 +250,7 @@ func (o *Owner) eraseData(ctx context.Context, eraseID, keepDir string) []string
 			o.log.Warn("erasing: the root key stays in the signer", "err", err)
 		}
 	}
+	o.clearHotProjections(true)
 	o.st.db.Close()
 	o.lock.Release() // Windows removes no file that is open
 	return kept

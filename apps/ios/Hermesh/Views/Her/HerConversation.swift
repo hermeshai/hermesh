@@ -18,7 +18,9 @@ struct HerConversation: View {
     /// Whether the conversation shows its end, so it follows what comes.
     @State private var atEnd = true
     @State private var scrolling = false
+    @State private var animating = false
     @State private var position = ScrollPosition(edge: .bottom)
+    @State private var alignTask: Task<Void, Never>?
     /// Whether it was scrolled well up from its end, where a button brings it back.
     @State private var far = HerFar()
     /// The top shows, where earlier messages are read.
@@ -57,7 +59,7 @@ struct HerConversation: View {
                             openDiagnostics: openDiagnostics, machine: machine, marked: marked,
                             topSeen: $topSeen, preview: $preview, page: $page, selecting: $selecting)
                         .equatable()
-                        .background(HerScrollFinder(box: scrollView))
+                        .background(HerScrollFinder(box: scrollView) { scheduleAlign() })
                 }
                 // A page read while the top is still near: the next one.
                 .onChange(of: chat.live?.before) { if topSeen || nearTop { Task { await chat.earlier() } } }
@@ -82,7 +84,11 @@ struct HerConversation: View {
                 // Earlier messages are read while the top is still two screens away (read only once the top showed, the
                 // page was at its very top, pulled past it even, and stayed there, showing the page just read and reading the
                 // next, to the first message).
-                .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top < 2 * $0.containerSize.height } action: { _, near in
+                .onScrollGeometryChange(for: Bool.self) {
+                    $0.containerSize.height > 0 && $0.contentSize.height > 0
+                        && (!atEnd || $0.contentSize.height <= 3 * $0.containerSize.height)
+                        && $0.contentOffset.y + $0.contentInsets.top < 2 * $0.containerSize.height
+                } action: { _, near in
                     nearTop = near
                     if near { Task { await chat.earlier() } }
                 }
@@ -95,15 +101,28 @@ struct HerConversation: View {
                           let view = scrollView.view else { return }
                     view.contentOffset.y += now.height - was.height
                 }
-                .onScrollPhaseChange { _, phase in scrolling = phase == .interacting || phase == .decelerating }
+                .onScrollPhaseChange { _, phase in
+                    scrolling = phase == .interacting || phase == .decelerating
+                    animating = phase == .animating
+                }
                 .onScrollGeometryChange(for: Bool.self) { fromEnd($0) < 80 } action: { _, end in
                     if scrolling { atEnd = end }
                 }
-                // As it grows, and as less of it shows (the keyboard comes up): what was last stays in view.
-                .onScrollGeometryChange(for: [CGFloat].self) { [$0.contentSize.height, $0.containerSize.height] } action: { _, _ in
-                    if atEnd && !scrolling { position.scrollTo(edge: .bottom) }
+                // As it grows, and as less of it shows (the keyboard comes up, or top/bottom bars settle): what was last stays in view,
+                // and if an idle snapshot reload shrank content while scrolled up, keep offset clamped within bounds.
+                .onScrollGeometryChange(for: [CGFloat].self) {
+                    [$0.contentSize.height, $0.containerSize.height, $0.contentInsets.top, $0.contentInsets.bottom]
+                } action: { _, _ in
+                    alignScroll()
                 }
                 .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, away in far.away = away }
+                .onAppear { scheduleAlign() }
+                .onDisappear {
+                    alignTask?.cancel()
+                    alignTask = nil
+                }
+                .onChange(of: rows.count) { scheduleAlign() }
+                .onChange(of: rows.last?.key) { scheduleAlign() }
                 .scrollDismissesKeyboard(.interactively)
                 .keyboardAwayOnTap()
                 .overlay {
@@ -162,9 +181,10 @@ struct HerConversation: View {
                 sv.setContentOffset(sv.contentOffset, animated: false)
             }
             scrolling = false
+            animating = false
             atEnd = true
             far.away = false
-            position.scrollTo(edge: .bottom)
+            scheduleAlign()
         }
         .onChange(of: openedModel) {
             if let m = openedModel { chat.flow?.finish(model: m, session: chat.live?.sessionID, after: said.last?.key, at: .now) }
@@ -173,8 +193,50 @@ struct HerConversation: View {
 }
 
 extension HerConversation {
+    private var userInteracting: Bool {
+        guard let sv = scrollView.view else { return scrolling }
+        return scrolling || sv.isTracking || sv.isDragging || sv.isDecelerating
+    }
+
+    /// Ensures the underlying UIScrollView sits at `.bottom` while `atEnd` is true (or within valid content bounds
+    /// if a shorter snapshot replaced earlier history while scrolled up), even when SwiftUI drops a redundant
+    /// `ScrollPosition(edge: .bottom)` or re-attaches the scroll view across windows/tabs.
+    private func alignScroll() {
+        guard !userInteracting else { return }
+        if atEnd {
+            position.scrollTo(edge: .bottom)
+        }
+        guard !animating, let sv = scrollView.view, sv.window != nil, sv.bounds.height > 0, sv.contentSize.height > 0 else { return }
+        let minY = -sv.adjustedContentInset.top
+        let maxY = max(minY, sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height)
+        if atEnd {
+            if abs(sv.contentOffset.y - maxY) > 1 {
+                UIView.performWithoutAnimation {
+                    sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: maxY), animated: false)
+                }
+            }
+        } else if sv.contentOffset.y > maxY + 1 || sv.contentOffset.y < minY - 1 {
+            let clamped = min(max(sv.contentOffset.y, minY), maxY)
+            UIView.performWithoutAnimation {
+                sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: clamped), animated: false)
+            }
+        }
+    }
+
+    private func scheduleAlign() {
+        alignTask?.cancel()
+        alignScroll()
+        alignTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            alignScroll()
+        }
+    }
+
     /// Brings a row into view and marks it a moment.
     private func reveal(_ key: String, in proxy: ScrollViewProxy, after wait: Duration) {
+        alignTask?.cancel()
+        alignTask = nil
         atEnd = false
         Task {
             try? await Task.sleep(for: wait)
@@ -200,14 +262,17 @@ private final class HerScrollBox {
 /// Finds the scroll view its content is in, for HerScrollBox.
 private struct HerScrollFinder: UIViewRepresentable {
     let box: HerScrollBox
+    var onWindow: () -> Void = {}
 
-    func makeUIView(context: Context) -> UIView { Finder(box: box) }
-    func updateUIView(_ uiView: UIView, context: Context) {}
+    func makeUIView(context: Context) -> Finder { Finder(box: box, onWindow: onWindow) }
+    func updateUIView(_ uiView: Finder, context: Context) { uiView.onWindow = onWindow }
 
-    private final class Finder: UIView {
+    final class Finder: UIView {
         let box: HerScrollBox
-        init(box: HerScrollBox) {
+        var onWindow: () -> Void
+        init(box: HerScrollBox, onWindow: @escaping () -> Void) {
             self.box = box
+            self.onWindow = onWindow
             super.init(frame: .zero)
             isUserInteractionEnabled = false
         }
@@ -217,6 +282,7 @@ private struct HerScrollFinder: UIViewRepresentable {
             var v = superview
             while let view = v, !(view is UIScrollView) { v = view.superview }
             box.view = v as? UIScrollView
+            if window != nil { onWindow() }
         }
     }
 }
@@ -270,7 +336,7 @@ private struct HerRows: View, Equatable {
     }
 
     var body: some View {
-        LazyVStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             // Earlier messages (her opens it on its last 100), read once this shows at the top, as on the Mac.
             if earlier {
                 ProgressView().frame(maxWidth: .infinity).padding(.bottom, 21)

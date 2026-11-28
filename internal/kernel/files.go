@@ -103,14 +103,18 @@ func (e *Engine) filesScope(ctx context.Context, p *Principal, sessionID, runID 
 		s.real, _ = filepath.EvalSymlinks(s.folder)
 	}
 	s.gone = s.real == ""
-	switch {
-	case !s.gone && vcs.IsGitRepo(ctx, s.folder):
-		s.gitDir = s.folder
-		s.prefix = vcs.Prefix(ctx, s.folder)
-	case vcs.IsGitRepo(ctx, ws.Path):
-		s.gitDir = ws.Path
-		if !worktree {
-			s.prefix = vcs.Prefix(ctx, ws.Path)
+	if !s.gone {
+		if prefix, ok := vcs.WorktreePrefix(ctx, s.folder); ok {
+			s.gitDir = s.folder
+			s.prefix = prefix
+		}
+	}
+	if s.gitDir == "" {
+		if prefix, ok := vcs.WorktreePrefix(ctx, ws.Path); ok {
+			s.gitDir = ws.Path
+			if !worktree {
+				s.prefix = prefix
+			}
 		}
 	}
 	if s.gitDir == "" || (runID == "" && !s.gone) {
@@ -222,10 +226,20 @@ func (e *Engine) ResolveFiles(ctx context.Context, p *Principal, req *sessionv1.
 		}
 	}
 	found := map[string]vcs.TreeEntry{}
+	foundDirs := map[string]bool{}
 	if s.tree != "" && len(lookups) > 0 {
 		got, _ := vcs.TreeEntries(ctx, s.gitDir, s.tree, lookups)
 		for _, x := range got {
 			found[x.Path] = x
+			if x.Type == "tree" {
+				foundDirs[x.Path] = true
+			}
+			for dir := path.Dir(x.Path); dir != "." && dir != "/"; dir = path.Dir(dir) {
+				if foundDirs[dir] {
+					break
+				}
+				foundDirs[dir] = true
+			}
 		}
 	}
 	for i, f := range out.Files {
@@ -280,17 +294,12 @@ func (e *Engine) ResolveFiles(ctx context.Context, p *Principal, req *sessionv1.
 			f.Kind = sessionv1.FileRefKind_FILE_REF_KIND_OUTSIDE
 		default:
 			f.Kind = sessionv1.FileRefKind_FILE_REF_KIND_MISSING
-			if s.tree != "" && treeHasDir(ctx, s, rels[i]) {
+			if foundDirs[s.prefix+rels[i]] {
 				f.Kind, f.Turn = sessionv1.FileRefKind_FILE_REF_KIND_FOLDER, s.turn
 			}
 		}
 	}
 	return out, nil
-}
-
-func treeHasDir(ctx context.Context, s *filesScope, rel string) bool {
-	got, err := vcs.TreeEntries(ctx, s.gitDir, s.tree, []string{s.prefix + rel + "/"})
-	return err == nil && len(got) > 0
 }
 
 func (e *Engine) ListFiles(ctx context.Context, p *Principal, req *sessionv1.ListFilesRequest) (*sessionv1.ListFilesResponse, error) {

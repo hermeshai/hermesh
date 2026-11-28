@@ -191,6 +191,10 @@ final class AppModel {
         rebuildSessionsCacheIfNeeded()
         return cachedSessionsList
     }
+    var sessionsRevision: UInt64 {
+        _ = sessions
+        return sessionsBuiltRev
+    }
     /// As hermeshd last told of them.
     private var heldSessions: [Session] = [] {
         didSet { sessionsCacheRev &+= 1 }
@@ -306,7 +310,15 @@ final class AppModel {
         didSet {
             if drawerOpen && !oldValue {
                 hideKeyboard()
-                Task { await refreshGitStatus() }
+                drawerGitRefreshTask?.cancel()
+                drawerGitRefreshTask = Task {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    guard !Task.isCancelled, self.drawerOpen else { return }
+                    await self.refreshGitStatus()
+                }
+            } else if !drawerOpen {
+                drawerGitRefreshTask?.cancel()
+                drawerGitRefreshTask = nil
             }
         }
     }
@@ -369,7 +381,14 @@ final class AppModel {
     init(demo: DemoService? = nil) {
         isDemo = demo != nil
         stats = StatsModel(isDemo: demo != nil)
-        conversations = Conversations(persistent: demo == nil)
+        #if targetEnvironment(simulator)
+        let switchPerfDir: URL? = demo != nil && ProcessInfo.processInfo.arguments.contains("-DemoSwitchPerf")
+            ? FileManager.default.temporaryDirectory.appendingPathComponent("hermesh-switch-perf-\(UUID().uuidString)", isDirectory: true)
+            : nil
+        #else
+        let switchPerfDir: URL? = nil
+        #endif
+        conversations = Conversations(persistent: demo == nil || switchPerfDir != nil, directoryOverride: switchPerfDir)
         drafts = ComposerDraftStore(persistent: demo == nil)
         her = HerPlace(persistent: demo == nil)
         if let demo { api = AppAPI(demo: demo); root = .her; return }
@@ -417,6 +436,7 @@ final class AppModel {
     @ObservationIgnored private var knownMachineStatus: [String: Hermesh_Machine_V1_MachineStatus] = [:]
     @ObservationIgnored private var gitRefreshBusy = false
     @ObservationIgnored private var gitRefreshLast = Date.distantPast
+    @ObservationIgnored private var drawerGitRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var syncedBadgeItems: Set<String>?
 
     // MARK: Lifecycle
@@ -919,9 +939,12 @@ final class AppModel {
         gitRefreshLast = now
         defer { gitRefreshBusy = false }
         if let res = try? await api.refreshGitStatus(ids), !res.sessions.isEmpty {
-            heldSessions = mergeSessions(heldSessions, res.sessions)
-            if watched { saveSoon() }
-        syncBadge()
+            let next = mergeSessions(heldSessions, res.sessions)
+            if next != heldSessions {
+                heldSessions = next
+                if watched { saveSoon() }
+                syncBadge()
+            }
         }
     }
 

@@ -10,6 +10,9 @@ final class HerScrollUITests: XCTestCase {
 
     override func setUp() {
         continueAfterFailure = false
+        if name.contains("testLeaveAndReenterHerConversationIsNeverBlank") {
+            return
+        }
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-HerDemo", "40"]
         app.launch()
         tap("try-demo")
@@ -115,6 +118,156 @@ final class HerScrollUITests: XCTestCase {
         }
     }
 
+    /// Leaving Her's conversation page (to Overview, another session, or a pushed page) and coming back must render
+    /// the latest conversation messages immediately without an empty/blank viewport requiring a manual swipe.
+    func testLeaveAndReenterHerConversationIsNeverBlank() {
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-DemoHerReentryRepro"]
+        app.launch()
+        tap("try-demo")
+        let lastRepro = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Her Reentry Landmark #50")).firstMatch
+        XCTAssertTrue(waitUntil(timeout: 15) { lastRepro.exists && self.isVisibleInConversation(lastRepro) },
+                      "initial Her open at bottom")
+        sleep(1) // let initial nearTop `earlier()` load tall earlier turns (1...50, ~18,000 pt)
+        XCTAssertTrue(hasConversationPixels(), "initial Her screenshot has rendered bubble pixels")
+
+        // Phase A: Root switches (Her -> Coding Session -> Her, and Her -> Overview -> Her) when `bots/open` returns
+        // `incremental: true, events: []` (0 row mutations after Frame-0 mount during DuoTabController slot switch!).
+        // CRITICAL: Capture `XCUIScreen.main.screenshot()` BEFORE any XCUIApplication accessibility query (`exists` /
+        // `waitForExistence`), because UIAccessibility tree walking forces UIHostingScrollView to materialize LazyVStack!
+        for round in 1 ... 3 {
+            tap("menu")
+            tap(round == 2 ? "overview-place" : "session-Add a welcome page")
+            sleep(round == 1 ? 0 : 2) // round 1: fast switch (<1s, convUp stays true); round 2-3: >1s letGo reconnect
+            tap("menu")
+            tap("her-place")
+            sleep(1) // wait for 0.32s drawer close spring + 140ms bots/open WITHOUT touching app AX tree!
+            let rawShot = XCUIScreen.main.screenshot().image
+            let pixelsOK = hasConversationPixels(in: rawShot)
+            if !pixelsOK {
+                app.swipeUp()
+                usleep(600_000)
+                let afterPixels = hasConversationPixels(in: XCUIScreen.main.screenshot().image)
+                XCTFail("Blank Her conversation (raw framebuffer before AX query) on root re-entry round \(round): pixels=\(pixelsOK)->\(afterPixels)")
+                return
+            }
+            XCTAssertTrue(composer.waitForExistence(timeout: 5))
+            XCTAssertTrue(isVisibleInConversation(lastRepro))
+        }
+
+        // Phase B: Push HerSettings onto NavigationStack (`HerPage.view.window == nil` while `convTask` stays open)
+        // and pop back; then scroll up into mid-history (`atEnd == false`), tap `HerSessionCard` (#46 / #32) to push
+        // `SessionPage` (`HerChat.letGo` tears down `convTask` after 1s!), and pop back when `bots/open` returns a
+        // shorter reloaded snapshot (42...50)!
+        tap("her-avatar")
+        XCTAssertTrue(app.buttons["BackButton"].waitForExistence(timeout: 10), "pushed HerSettings over Her")
+        tap("BackButton")
+        sleep(1) // check raw framebuffer BEFORE AX tree walk!
+        XCTAssertTrue(hasConversationPixels(in: XCUIScreen.main.screenshot().image), "Her pixels immediately after HerSettings pop")
+        XCTAssertTrue(isVisibleInConversation(lastRepro), "still anchored at bottom after HerSettings pop")
+
+        let midCard = app.descendants(matching: .any)["her-session-Add a welcome page"].firstMatch
+        for _ in 0 ..< 4 where !(midCard.exists && isVisibleInConversation(midCard) && app.buttons["to-end"].exists) {
+            let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30))
+            start.press(forDuration: 0.04, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.80)), withVelocity: .fast, thenHoldForDuration: 0)
+            usleep(650_000)
+        }
+        XCTAssertTrue(app.buttons["to-end"].exists, "scrolled away from bottom (atEnd == false)")
+        XCTAssertTrue(midCard.exists, "session card exists")
+        midCard.tap()
+        XCTAssertTrue(app.buttons["BackButton"].waitForExistence(timeout: 10), "pushed coding SessionPage over Her")
+        sleep(2) // `SessionPage` holds NO `herConnections`, so `HerChat.letGo` tears down `convTask`!
+        tap("BackButton")
+        sleep(1) // wait for pop + 140ms `bots/open` (non-incremental 42...50 snapshot) BEFORE AX tree walk!
+        let popRawShot = XCUIScreen.main.screenshot().image
+        let popPixels = hasConversationPixels(in: popRawShot)
+        if !popPixels {
+            app.swipeUp()
+            usleep(600_000)
+            let afterPixels = hasConversationPixels(in: XCUIScreen.main.screenshot().image)
+            XCTFail("Blank Her conversation (raw framebuffer) after scrolled-up session push -> pop! pixels=\(popPixels)->\(afterPixels)")
+            return
+        }
+        XCTAssertTrue(composer.waitForExistence(timeout: 10), "popped back to HerConversation")
+        XCTAssertTrue(hasAnyVisibleHerBubble(), "at least one Her bubble visible in viewport after pop")
+
+        // Phase C: Rich Markdown/Mermaid/Image 80-turn Her (`-DemoPerfSuite`) + iPhone Duo (`-HermeshTestDuoTabs`)
+        // switches across vertical UITabBar and `.cover` (`standUp`/`standDown`) sidebar!
+        app.terminate()
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-DemoPerfSuite", "-HermeshTestDuoTabs"]
+        app.launch()
+        tap("try-demo")
+        let lastPerf = app.staticTexts["Her Turn #80 End"].firstMatch
+        XCTAssertTrue(waitUntil(timeout: 15) { lastPerf.exists && self.isVisibleInConversation(lastPerf) }, "initial Duo Perf Her open")
+        XCTAssertTrue(hasConversationPixels(), "initial Duo Perf Her pixels")
+
+        let tabBar = app.tabBars.firstMatch
+        for cycle in 1 ... 4 {
+            if cycle % 2 == 1 {
+                // Switch via Duo vertical UITabBar: Her -> Sessions -> Coding Session -> Her
+                tabBar.buttons["sessions-place"].tap()
+                XCTAssertTrue(app.descendants(matching: .any)["sessions-hub"].firstMatch.waitForExistence(timeout: 10))
+                app.buttons["session-Mega 80-Turn Architecture"].firstMatch.tap()
+                XCTAssertTrue(app.descendants(matching: .any)["thread-composer"].firstMatch.waitForExistence(timeout: 10))
+                if cycle == 3 { sleep(2) }
+                tabBar.buttons["her-place"].tap()
+            } else {
+                // Switch via Duo `.cover` sidebar (`standUp` hides `page.view`) -> Overview / Her
+                tap("menu")
+                XCTAssertTrue(app.buttons["menu-close"].waitForExistence(timeout: 5))
+                app.buttons["session-Mega 80-Turn Architecture"].firstMatch.tap()
+                XCTAssertTrue(app.descendants(matching: .any)["thread-composer"].firstMatch.waitForExistence(timeout: 10))
+                if cycle == 4 { sleep(2) }
+                tabBar.buttons["her-place"].tap()
+            }
+            sleep(1) // raw framebuffer check BEFORE any AX query!
+            let pOK = hasConversationPixels(in: XCUIScreen.main.screenshot().image)
+            if !pOK {
+                app.swipeUp()
+                usleep(600_000)
+                let pAfter = hasConversationPixels(in: XCUIScreen.main.screenshot().image)
+                XCTFail("Blank Duo Her conversation (raw framebuffer) on cycle \(cycle): pixels=\(pOK)->\(pAfter)")
+                return
+            }
+            XCTAssertTrue(composer.waitForExistence(timeout: 10), "Duo re-entered Her cycle \(cycle)")
+            XCTAssertTrue(lastPerf.exists && isVisibleInConversation(lastPerf))
+        }
+    }
+
+    private func hasAnyVisibleHerBubble() -> Bool {
+        let replies = app.descendants(matching: .any).matching(identifier: "her-reply").allElementsBoundByIndex
+        return replies.contains { isVisibleInConversation($0) }
+    }
+
+    /// Samples rendered pixels in the middle conversation viewport (strictly below Her's header/tag and above the
+    /// `to-end` button/composer) to catch CoreAnimation/LazyVStack/mask blanking even if accessibility frames exist.
+    private func hasConversationPixels(in image: UIImage? = nil) -> Bool {
+        guard let cg = (image ?? XCUIScreen.main.screenshot().image).cgImage else { return false }
+        let w = cg.width, h = cg.height
+        guard let data = cg.dataProvider?.data, let ptr = CFDataGetBytePtr(data) else { return false }
+        let bpr = cg.bytesPerRow, bpp = max(4, cg.bitsPerPixel / 8)
+        let x0 = Int(Double(w) * 0.14), x1 = Int(Double(w) * 0.86)
+        let y0 = Int(Double(h) * 0.28), y1 = Int(Double(h) * 0.72)
+        // Reference background pixel near left margin below header
+        let refOff = y0 * bpr + Int(Double(w) * 0.03) * bpp
+        let r0 = Int(ptr[refOff]), g0 = Int(ptr[refOff + 1]), b0 = Int(ptr[refOff + 2])
+        var nonBg = 0, total = 0
+        for y in stride(from: y0, to: y1, by: 4) {
+            for x in stride(from: x0, to: x1, by: 4) {
+                let off = y * bpr + x * bpp
+                let dr = abs(Int(ptr[off]) - r0), dg = abs(Int(ptr[off + 1]) - g0), db = abs(Int(ptr[off + 2]) - b0)
+                total += 1
+                if dr + dg + db > 18 { nonBg += 1 }
+            }
+        }
+        return total > 0 && Double(nonBg) / Double(total) > 0.015
+    }
+
+    private func isVisibleInConversation(_ el: XCUIElement) -> Bool {
+        guard el.exists else { return false }
+        let f = el.frame, w = window.frame
+        return f.height > 4 && f.maxY > w.minY + 90 && f.minY < composer.frame.minY + 8
+    }
+
     private var window: XCUIElement { app.windows.firstMatch }
     private var composer: XCUIElement { app.descendants(matching: .any)["her-composer"].firstMatch }
     /// The owner's last message of the demo's forty.
@@ -127,6 +280,17 @@ final class HerScrollUITests: XCTestCase {
             usleep(300_000)
         }
         return false
+    }
+
+    private func openDrawerRow(_ identifier: String, scrollUp: Bool = false) {
+        let drawer = app.descendants(matching: .any)["drawer"].firstMatch
+        XCTAssertTrue(drawer.waitForExistence(timeout: 10), "drawer")
+        let item = drawer.descendants(matching: .any).matching(identifier: identifier).firstMatch
+        for _ in 0 ..< 5 where !item.exists || !item.isHittable {
+            if scrollUp { drawer.swipeDown() } else { drawer.swipeUp() }
+        }
+        XCTAssertTrue(item.waitForExistence(timeout: 10), identifier)
+        item.tap()
     }
 
     private func tap(_ identifier: String) {

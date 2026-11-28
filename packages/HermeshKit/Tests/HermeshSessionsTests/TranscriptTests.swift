@@ -357,6 +357,24 @@ private func kind(_ it: TranscriptItem) -> String {
     c.inputBlobSha256 = "sha_in"
     c.inputSize = 40_000
     #expect(partialInput(c))
+
+    let compactedEdit = sessionTranscript(.with {
+        $0.runs = [.with { $0.runID = "r1"; $0.ordinal = 1; $0.status = .completed }]
+        $0.items = [item(1, "r1", .fileChange) {
+            $0.itemID = "edit_1"
+            $0.filePath = "internal/kernel/files.go"
+            $0.diff = ""
+            $0.outputSize = 2_048
+            $0.outputTruncated = true
+            $0.outputBlobSha256 = "turnitem:s_1:edit_1:diff"
+        }]
+    })
+    guard case .tool(let editTool) = compactedEdit.last, let editRes = editTool.result else {
+        Issue.record("expected compacted fileChange tool row")
+        return
+    }
+    #expect(partialOutput(editRes))
+    #expect(editRes.blobSha256 == "turnitem:s_1:edit_1:diff")
 }
 
 @Test func interrupterIsWhoTheMachineRecorded() {

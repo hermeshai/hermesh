@@ -3,8 +3,11 @@ package vcs
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // A checkpoint's tree read back (docs/session-files.md §6.2): a turn's files as it
@@ -78,6 +81,63 @@ func Prefix(ctx context.Context, dir string) string {
 		return ""
 	}
 	return strings.TrimSpace(out)
+}
+
+type cachedWorktreePrefix struct {
+	prefix string
+	ok     bool
+}
+
+var (
+	worktreePrefixMu    sync.Mutex
+	worktreePrefixCache = map[string]cachedWorktreePrefix{}
+)
+
+// WorktreePrefix reports whether dir is inside a Git work tree and returns its
+// slash-terminated prefix within that work tree ("" at the work tree root).
+// Root repositories and worktrees with a valid .git entry resolve without
+// spawning a git subprocess; subdirectory lookups are cached by canonical path.
+func WorktreePrefix(ctx context.Context, dir string) (string, bool) {
+	dotGit := filepath.Join(dir, ".git")
+	if st, err := os.Stat(dotGit); err == nil {
+		if st.IsDir() {
+			if _, hErr := os.Stat(filepath.Join(dotGit, "HEAD")); hErr == nil {
+				return "", true
+			}
+		} else if b, rErr := os.ReadFile(dotGit); rErr == nil && strings.HasPrefix(string(b), "gitdir:") {
+			return "", true
+		}
+	}
+	key := filepath.Clean(dir)
+	if real, err := filepath.EvalSymlinks(key); err == nil && real != "" {
+		key = real
+	}
+	worktreePrefixMu.Lock()
+	if hit, exists := worktreePrefixCache[key]; exists {
+		worktreePrefixMu.Unlock()
+		return hit.prefix, hit.ok
+	}
+	worktreePrefixMu.Unlock()
+
+	out, err := runGit(ctx, dir, nil, "rev-parse", "--is-inside-work-tree", "--show-prefix")
+	if err != nil {
+		return "", false
+	}
+	lines := strings.Split(strings.TrimRight(out, "\r\n"), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "true" {
+		return "", false
+	}
+	var prefix string
+	if len(lines) > 1 {
+		prefix = strings.TrimSpace(lines[1])
+	}
+	worktreePrefixMu.Lock()
+	if len(worktreePrefixCache) >= 256 {
+		clear(worktreePrefixCache)
+	}
+	worktreePrefixCache[key] = cachedWorktreePrefix{prefix: prefix, ok: true}
+	worktreePrefixMu.Unlock()
+	return prefix, true
 }
 
 // Ignored reports whether Git ignores rel (relative to dir) there.

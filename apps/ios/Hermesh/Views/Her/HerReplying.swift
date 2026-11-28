@@ -190,7 +190,7 @@ private struct HerLeftSwipe: UIGestureRecognizerRepresentable {
 
         private func sideways(_ other: UIGestureRecognizer) -> Bool {
             guard let scroll = other.view as? UIScrollView, other === scroll.panGestureRecognizer else { return false }
-            return scroll.contentSize.width > scroll.bounds.width
+            return scroll.contentSize.width > scroll.bounds.width + 2
         }
     }
 }

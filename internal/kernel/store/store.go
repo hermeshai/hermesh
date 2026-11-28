@@ -1492,6 +1492,39 @@ func (s *Store) TurnItems(sessionID string) ([]*sessionv1.TurnItem, error) {
 	return out, nil
 }
 
+func (s *Store) TurnItem(sessionID, itemID string) (*sessionv1.TurnItem, error) {
+	if sessionID == "" || itemID == "" {
+		return nil, ErrNotFound
+	}
+	s.turnItemsMu.Lock()
+	if cached, ok := s.turnItemsCache[sessionID]; ok {
+		for _, it := range cached {
+			if it.GetItemId() == itemID {
+				cp := proto.Clone(it).(*sessionv1.TurnItem)
+				s.turnItemsMu.Unlock()
+				return cp, nil
+			}
+		}
+		s.turnItemsMu.Unlock()
+		return nil, ErrNotFound
+	}
+	s.turnItemsMu.Unlock()
+
+	var b []byte
+	err := s.reader.QueryRow(`SELECT payload FROM turn_items WHERE session_id = ? AND item_id = ?`, sessionID, itemID).Scan(&b)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	it := &sessionv1.TurnItem{}
+	if err := proto.Unmarshal(b, it); err != nil {
+		return nil, err
+	}
+	return it, nil
+}
+
 func (tx *Tx) PutRuntimeRequest(req *sessionv1.RuntimeRequest) error {
 	if req.CreatedAt == nil {
 		req.CreatedAt = timestamppb.Now()

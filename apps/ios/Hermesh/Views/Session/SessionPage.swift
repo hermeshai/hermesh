@@ -1590,10 +1590,10 @@ struct SessionPage: View {
     // MARK: Talking to hermeshd
 
     private func start() async {
-        initialized = false
         atEnd = true
         rise = false
         if isNew {
+            initialized = false
             projection = nil
             let known = { (id: String) in !id.isEmpty && model.machines.contains { $0.machineID == id } }
             let mid = [askedMachine, SessionChoices.lastMachine ?? ""].first(where: known) ?? model.machines.first(where: \.local)?.machineID ?? model.machines.first?.machineID ?? ""
@@ -1621,10 +1621,17 @@ struct SessionPage: View {
             return
         }
         if projection?.session.sessionID != sessionID {
-            if let cached = model.conversations.projection(sessionID) {
+            if let cached = model.conversations.peek(sessionID) {
+                model.conversations.touch(sessionID)
                 apply(cached.session)
                 projection = cached
-            } else {
+            } else if let cached = await model.conversations.load(sessionID) {
+                if projection?.session.sessionID != sessionID ||
+                   (projection?.session.progress.lastEventSeq ?? 0) < cached.session.progress.lastEventSeq {
+                    apply(cached.session)
+                    projection = cached
+                }
+            } else if projection?.session.sessionID != sessionID {
                 projection = nil
             }
         }
@@ -1659,7 +1666,7 @@ struct SessionPage: View {
         var seeded = model.seededSessions.remove(sessionID) != nil
             || (projection?.items.contains(where: { $0.itemID == "starting" }) == true)
         if projection == nil,
-           let cached = try? await api.getSession(sessionID, cachedOnly: true),
+           let cached = try? await api.getSession(sessionID, cachedOnly: true, compact: true),
            cached.hasProjection, cached.projection.hasSession {
             applied = true
             apply(cached.projection.session)
@@ -1669,7 +1676,7 @@ struct SessionPage: View {
         while !Task.isCancelled {
             do {
                 if projection == nil || failures > 0 || seeded {
-                    let first = try await api.getSession(sessionID)
+                    let first = try await api.getSession(sessionID, compact: true)
                     if !applied && first.projection.hasSession {
                         applied = true
                         apply(first.projection.session)
@@ -3403,6 +3410,18 @@ private struct ConversationStack<Content: View>: View {
         let lastReqStatus: Int
     }
 
+    private struct CachedEntry {
+        let key: Key
+        let steps: [Step]
+        let previousTurns: [Date?]
+        let writing: Set<UInt64>
+        let todos: [TodoStepView]
+    }
+
+    private static let maxSharedSessions = 12
+    private static var sharedEntries: [String: CachedEntry] = [:]
+    private static var sharedOrder: [String] = []
+
     private var key: Key?
     private var steps: [Step] = []
     private var previousTurns: [Date?] = []
@@ -3416,7 +3435,7 @@ private struct ConversationStack<Content: View>: View {
             return latchedLazy.lazy
         }
         guard stepCount > 0 else { return false }
-        let lazy = stepCount > 100
+        let lazy = stepCount > 12
         latchedLazy = (sessionID, lazy)
         return lazy
     }
@@ -3445,6 +3464,18 @@ private struct ConversationStack<Content: View>: View {
         if key == nextKey {
             return (steps, previousTurns, writing, todos)
         }
+        if let shared = Self.sharedEntries[sessionID], shared.key == nextKey {
+            if let idx = Self.sharedOrder.firstIndex(of: sessionID), idx + 1 < Self.sharedOrder.count {
+                Self.sharedOrder.remove(at: idx)
+                Self.sharedOrder.append(sessionID)
+            }
+            key = shared.key
+            steps = shared.steps
+            previousTurns = shared.previousTurns
+            writing = shared.writing
+            todos = shared.todos
+            return (steps, previousTurns, writing, todos)
+        }
         let builtSteps = groupSteps(sessionTranscript(proj))
         var builtPrev = [Date?](repeating: nil, count: builtSteps.count)
         var seenTurn: Date?
@@ -3461,6 +3492,18 @@ private struct ConversationStack<Content: View>: View {
         previousTurns = builtPrev
         writing = builtWriting
         todos = builtTodos
+        if !sessionID.isEmpty, !builtSteps.isEmpty {
+            let entry = CachedEntry(key: nextKey, steps: builtSteps, previousTurns: builtPrev, writing: builtWriting, todos: builtTodos)
+            Self.sharedEntries[sessionID] = entry
+            if let idx = Self.sharedOrder.firstIndex(of: sessionID) {
+                Self.sharedOrder.remove(at: idx)
+            }
+            Self.sharedOrder.append(sessionID)
+            while Self.sharedOrder.count > Self.maxSharedSessions {
+                let evict = Self.sharedOrder.removeFirst()
+                Self.sharedEntries.removeValue(forKey: evict)
+            }
+        }
         return (builtSteps, builtPrev, builtWriting, builtTodos)
     }
 }

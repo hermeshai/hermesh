@@ -1232,3 +1232,108 @@ func TestPromoteToSteerRealACPDriver(t *testing.T) {
 		})
 	}
 }
+
+func TestCompactProjectionAndTurnItemBlobs(t *testing.T) {
+	ctx := context.Background()
+	eng, err := Open(Config{
+		DataDir:         t.TempDir(),
+		MachineID:       "m_compact",
+		IncludeScripted: true,
+		IdleTTL:         time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+
+	owner := OwnerPrincipal("dev_owner", "Owner")
+	sid := "s_compact0_01jcompacttest0000000001"
+	if _, err := eng.Store().Mutate(func(tx *store.Tx) error {
+		if err := tx.PutSession(&sessionv1.Session{
+			SessionId:   sid,
+			MachineId:   "m_compact",
+			ProjectId:   "repo",
+			CreatedBy:   "dev_owner",
+			Status:      sessionv1.SessionStatus_SESSION_STATUS_RUNNING,
+			ActiveRunId: "run_live",
+		}); err != nil {
+			return err
+		}
+		if err := tx.PutRun(&sessionv1.Run{RunId: "run_done", SessionId: sid, Ordinal: 1, Status: sessionv1.RunStatus_RUN_STATUS_COMPLETED}); err != nil {
+			return err
+		}
+		if err := tx.PutRun(&sessionv1.Run{RunId: "run_live", SessionId: sid, Ordinal: 2, Status: sessionv1.RunStatus_RUN_STATUS_RUNNING}); err != nil {
+			return err
+		}
+		for _, it := range []*sessionv1.TurnItem{
+			{ItemId: "th_done", SessionId: sid, RunId: "run_done", Seq: 1, Kind: sessionv1.TurnItemKind_TURN_ITEM_KIND_REASONING, Text: "settled chain of thought"},
+			{ItemId: "th_live", SessionId: sid, RunId: "run_live", Seq: 2, Kind: sessionv1.TurnItemKind_TURN_ITEM_KIND_REASONING, Streaming: true, Text: "live streaming thought"},
+			{ItemId: "todo_meta", SessionId: sid, RunId: "run_live", Seq: 3, Kind: sessionv1.TurnItemKind_TURN_ITEM_KIND_TOOL_CALL, ToolName: "update_steps", Input: `{"steps":[{"title":"Verify","status":"in_progress"}]}`},
+			{ItemId: "call:colon:1", SessionId: sid, RunId: "run_done", Seq: 4, Kind: sessionv1.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION, ToolName: "Bash", Command: "make test", Input: `{"cmd":"make test"}`, Output: "ok all packages"},
+			{ItemId: "edit:colon:2", SessionId: sid, RunId: "run_done", Seq: 5, Kind: sessionv1.TurnItemKind_TURN_ITEM_KIND_FILE_CHANGE, ToolName: "Edit", FilePath: "main.go", Diff: "@@ -1 +1 @@\n+package main"},
+		} {
+			if err := tx.PutTurnItem(it); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := NewService(eng, func(context.Context) *Principal { return owner })
+	compactRes, err := svc.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: sid, Compact: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]*sessionv1.TurnItem{}
+	for _, it := range compactRes.Projection.Items {
+		byID[it.ItemId] = it
+	}
+	if byID["th_done"].Text != "" {
+		t.Fatalf("expected settled reasoning stripped, got %q", byID["th_done"].Text)
+	}
+	if byID["th_live"].Text != "live streaming thought" {
+		t.Fatalf("expected active streaming reasoning preserved, got %q", byID["th_live"].Text)
+	}
+	if !strings.Contains(byID["todo_meta"].Input, `"Verify"`) {
+		t.Fatalf("expected meta progress tool input preserved, got %q", byID["todo_meta"].Input)
+	}
+	if byID["call:colon:1"].Input != "" || byID["call:colon:1"].Output != "" {
+		t.Fatalf("expected command input/output compacted, got %+v", byID["call:colon:1"])
+	}
+	if byID["edit:colon:2"].Diff != "" || byID["edit:colon:2"].OutputSize == 0 {
+		t.Fatalf("expected edit diff compacted with size metadata, got %+v", byID["edit:colon:2"])
+	}
+
+	// Verify store's cached TurnItems slice was NOT mutated by CompactProjection!
+	fullRes, err := svc.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: sid, Compact: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range fullRes.Projection.Items {
+		if it.ItemId == "call:colon:1" && it.Output != "ok all packages" {
+			t.Fatalf("store TurnItems cache was mutated by CompactProjection: %+v", it)
+		}
+	}
+
+	// Verify DownloadBlob serves colon-containing itemIDs and enforces session visibility!
+	for _, tc := range []struct {
+		key  string
+		want string
+	}{
+		{byID["call:colon:1"].InputBlobSha256, `{"cmd":"make test"}`},
+		{byID["call:colon:1"].OutputBlobSha256, "ok all packages"},
+		{byID["edit:colon:2"].OutputBlobSha256, "@@ -1 +1 @@\n+package main"},
+	} {
+		blob, err := svc.DownloadBlob(ctx, &sessionv1.DownloadBlobRequest{SessionId: sid, BlobSha256: tc.key})
+		if err != nil || string(blob.Data) != tc.want {
+			t.Fatalf("DownloadBlob(%q): err=%v got=%q want=%q", tc.key, err, string(blob.GetData()), tc.want)
+		}
+	}
+
+	unauthSvc := NewService(eng, func(context.Context) *Principal { return testGrant(identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS) })
+	if _, err := unauthSvc.DownloadBlob(ctx, &sessionv1.DownloadBlobRequest{SessionId: sid, BlobSha256: byID["call:colon:1"].OutputBlobSha256}); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("expected PermissionDenied for unauthorized grant on turnitem blob, got %v", err)
+	}
+}

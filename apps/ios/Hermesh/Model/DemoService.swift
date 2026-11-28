@@ -9,6 +9,10 @@ import SwiftProtobuf
 /// It speaks the same messages as the core so the normal screens stay in use.
 final class DemoService {
     let herReview = HerReviewDemo()
+    #if targetEnvironment(simulator)
+    lazy var perfHer = DemoPerfHerLocal()
+    lazy var reentryHer = DemoHerReentryLocal()
+    #endif
     var world = Hermesh_Local_V1_WatchResponse()
     var projections: [String: Hermesh_Session_V1_SessionProjection] = [:]
     var events: [String: [SessionEvent]] = [:]
@@ -443,6 +447,15 @@ final class DemoService {
         #endif
     }()
 
+    // Simulator-only fixture reproducing Her conversation leave/re-enter snapshot shrink & pagination transitions.
+    static let herReentryRepro: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-DemoHerReentryRepro")
+        #else
+        false
+        #endif
+    }()
+
     // Simulator-only: each turn counts as a very busy owner's do (billions of tokens over a month, hours of work), so
     // the Usage page can be checked at its largest numbers (DemoUITests.testUsageAtLargeNumbers).
     private static let bigUsage: Bool = {
@@ -648,6 +661,9 @@ final class DemoService {
         if Self.herDemoOn, let answer = try herDemo(rpc, r) { return answer }
         #endif
         #if targetEnvironment(simulator)
+        if Self.herReentryRepro, rpc == "GetHerConversation" {
+            return try DemoHerReentryLocal.keptConversationResponse()
+        }
         if Self.perfSuite, let answer = try perfSuiteCall(rpc, data: data, id: id) { return answer }
         #endif
         switch rpc {
@@ -696,7 +712,29 @@ final class DemoService {
             #endif
             var p = projections[id] ?? .init()
             p.session = s
+            if req.compact {
+                p = Self.compactProjection(p)
+            }
             return try encoded(Hermesh_Session_V1_GetSessionResponse.with { $0.projection = p })
+        case "DownloadBlob":
+            let req = (try? Hermesh_Session_V1_DownloadBlobRequest(jsonUTF8Data: data, options: dec)) ?? .init()
+            if let (sid, itemID, field) = Self.parseTurnItemBlobKey(req.blobSha256),
+               let it = projections[sid]?.items.first(where: { $0.itemID == itemID }) {
+                let raw: String
+                switch field {
+                case "in": raw = it.input
+                case "diff": raw = it.diff
+                default: raw = it.output
+                }
+                let out = Data(raw.utf8)
+                return try encoded(Hermesh_Session_V1_DownloadBlobResponse.with {
+                    $0.data = out
+                    $0.name = "tool-\(field).txt"
+                    $0.mimeType = "text/plain; charset=utf-8"
+                    $0.sizeBytes = UInt64(out.count)
+                })
+            }
+            throw APIError(code: "not_found", message: "blob not found")
         case "StartSession":
             let req = try Hermesh_Session_V1_StartSessionRequest(jsonUTF8Data: data, options: dec)
             let newID = "demo-started-" + UUID().uuidString.prefix(8)
@@ -1859,4 +1897,69 @@ final class DemoService {
         }
     }
     #endif
+
+    static func parseTurnItemBlobKey(_ key: String) -> (sessionID: String, itemID: String, field: String)? {
+        let prefix = "turnitem:"
+        guard key.hasPrefix(prefix) else { return nil }
+        let rest = key.dropFirst(prefix.count)
+        guard let firstColon = rest.firstIndex(of: ":") else { return nil }
+        let sid = String(rest[..<firstColon])
+        let tail = rest[rest.index(after: firstColon)...]
+        guard !sid.isEmpty, let lastColon = tail.lastIndex(of: ":"), lastColon > tail.startIndex else { return nil }
+        let itemID = String(tail[..<lastColon])
+        let field = String(tail[tail.index(after: lastColon)...])
+        guard !itemID.isEmpty, ["in", "out", "diff"].contains(field) else { return nil }
+        return (sid, itemID, field)
+    }
+
+    static func compactProjection(_ proj: Hermesh_Session_V1_SessionProjection) -> Hermesh_Session_V1_SessionProjection {
+        let sid = proj.session.sessionID
+        let activeRunID = proj.session.activeRunID
+        guard !sid.isEmpty, !proj.items.isEmpty else { return proj }
+        var out = proj
+        for i in out.items.indices {
+            var it = out.items[i]
+            switch it.kind {
+            case .reasoning:
+                if !it.text.isEmpty, !it.streaming || activeRunID.isEmpty || it.runID != activeRunID {
+                    it.text = ""
+                    out.items[i] = it
+                }
+            case .toolCall, .commandExecution, .fileChange:
+                let norm = it.toolName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if it.kind == .toolCall, it.command.isEmpty,
+                   ["update_focus", "update_steps", "todowrite", "todo_write", "update_plan", "todoread", "taskcreate", "taskupdate", "tasklist", "taskget"].contains(where: { norm == $0 || norm.hasSuffix("_\($0)") }) {
+                    break
+                }
+                guard !it.itemID.isEmpty else { break }
+                var mutated = false
+                if !it.input.isEmpty {
+                    it.inputSize = max(it.inputSize, UInt64(it.input.utf8.count))
+                    it.inputTruncated = true
+                    if it.inputBlobSha256.isEmpty { it.inputBlobSha256 = "turnitem:\(sid):\(it.itemID):in" }
+                    it.input = ""
+                    mutated = true
+                }
+                if it.kind == .fileChange {
+                    if !it.diff.isEmpty {
+                        it.outputSize = max(it.outputSize, UInt64(it.diff.utf8.count))
+                        it.outputTruncated = true
+                        if it.outputBlobSha256.isEmpty { it.outputBlobSha256 = "turnitem:\(sid):\(it.itemID):diff" }
+                        it.diff = ""
+                        mutated = true
+                    }
+                } else if !it.output.isEmpty {
+                    it.outputSize = max(it.outputSize, UInt64(it.output.utf8.count))
+                    it.outputTruncated = true
+                    if it.outputBlobSha256.isEmpty { it.outputBlobSha256 = "turnitem:\(sid):\(it.itemID):out" }
+                    it.output = ""
+                    mutated = true
+                }
+                if mutated { out.items[i] = it }
+            default:
+                break
+            }
+        }
+        return out
+    }
 }

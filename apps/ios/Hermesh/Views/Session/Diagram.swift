@@ -58,7 +58,7 @@ final class DiagramRenderer: NSObject, WKNavigationDelegate {
             let drawing = try await draw(source, dark: dark)
             kept[key] = drawing
             order.append(key)
-            if order.count > 16 { kept[order.removeFirst()] = nil }
+            if order.count > 64 { kept[order.removeFirst()] = nil }
             return drawing
         }
         last = Task { _ = try? await work.value }

@@ -7097,7 +7097,10 @@ type GetSessionRequest struct {
 	MachineId string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
 	SessionId string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	// Return immediately from local SQLite cache without dialing remote machines.
-	CachedOnly    bool `protobuf:"varint,3,opt,name=cached_only,json=cachedOnly,proto3" json:"cached_only,omitempty"`
+	CachedOnly bool `protobuf:"varint,3,opt,name=cached_only,json=cachedOnly,proto3" json:"cached_only,omitempty"`
+	// Omit settled reasoning text and folded tool input/output/diff bodies from
+	// the projection; tool details are fetched on demand via DownloadBlob.
+	Compact       bool `protobuf:"varint,4,opt,name=compact,proto3" json:"compact,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7149,6 +7152,13 @@ func (x *GetSessionRequest) GetSessionId() string {
 func (x *GetSessionRequest) GetCachedOnly() bool {
 	if x != nil {
 		return x.CachedOnly
+	}
+	return false
+}
+
+func (x *GetSessionRequest) GetCompact() bool {
+	if x != nil {
+		return x.Compact
 	}
 	return false
 }
@@ -11363,14 +11373,15 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\asession\x18\x01 \x01(\v2\x1b.hermesh.session.v1.SessionR\asession\x128\n" +
 	"\vinitial_run\x18\x02 \x01(\v2\x17.hermesh.session.v1.RunR\n" +
 	"initialRun\x12%\n" +
-	"\x0equeued_offline\x18\x03 \x01(\bR\rqueuedOffline\"r\n" +
+	"\x0equeued_offline\x18\x03 \x01(\bR\rqueuedOffline\"\x8c\x01\n" +
 	"\x11GetSessionRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x02 \x01(\tR\tsessionId\x12\x1f\n" +
 	"\vcached_only\x18\x03 \x01(\bR\n" +
-	"cachedOnly\"z\n" +
+	"cachedOnly\x12\x18\n" +
+	"\acompact\x18\x04 \x01(\bR\acompact\"z\n" +
 	"\x12GetSessionResponse\x12E\n" +
 	"\n" +
 	"projection\x18\x01 \x01(\v2%.hermesh.session.v1.SessionProjectionR\n" +
