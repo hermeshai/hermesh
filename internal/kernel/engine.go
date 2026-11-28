@@ -2302,7 +2302,14 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *session
 			!queueIntent &&
 			!freshCtx &&
 			!isShellShortcut
-		steerInterrupt := sNow.ActiveRunId != "" && !isShellShortcut && (intent == sessionv1.DispatchIntent_DISPATCH_INTENT_STEER || waitingGateSteer)
+		targetInstCfg, targetDrv, _ := e.resolveInstanceConfig(nil, sNow.ProjectId, sel.GetInstanceId())
+		var targetCaps *sessionv1.ProviderCapabilities
+		if targetDrv != nil {
+			targetCaps = targetDrv.Capabilities(targetInstCfg.GetAcpFlavor())
+		}
+		sameSel := SelectionsEqual(sNow.ModelSelection, sel)
+		steerInterrupt := sNow.ActiveRunId != "" && !isShellShortcut && (waitingGateSteer ||
+			(intent == sessionv1.DispatchIntent_DISPATCH_INTENT_STEER && (!targetCaps.GetMidTurnSteer() || !sameSel)))
 		if steerInterrupt {
 			sNow.QueueHeld = false
 			interruptRunID = sNow.ActiveRunId
@@ -3440,6 +3447,7 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 		e.finishRunFailed(sessionID, runID, "turn_start_failed", err.Error(), runtime.FailureOf(err, sessionv1.FailureKind_FAILURE_KIND_UNKNOWN))
 		return
 	}
+	e.drainPendingSteerRuns(runCtx, sessionID, runID, activeLease)
 
 	select {
 	case <-turn.doneCh:
@@ -3454,6 +3462,79 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 			e.finishRunInterrupted(sessionID, runID, "interrupted", cp, cumStat)
 		}
 		return
+	}
+}
+
+// drainPendingSteerRuns injects any same-selection steering prompts that arrived while the
+// workspace or provider process was still starting up right after StartTurn attaches.
+func (e *Engine) drainPendingSteerRuns(ctx context.Context, sessionID, activeRunID string, lease *runtime.LeaseEntry) {
+	if lease == nil || lease.Session == nil || !lease.Session.Alive() {
+		return
+	}
+	for {
+		unlock := e.lockSession(sessionID)
+		sess, err := e.st.Session(sessionID)
+		if err != nil || sess.ActiveRunId != activeRunID || sess.Status != sessionv1.SessionStatus_SESSION_STATUS_RUNNING || sess.PendingRequestId != "" {
+			unlock()
+			return
+		}
+		runs, _ := e.st.Runs(sessionID)
+		var qRun *sessionv1.Run
+		for _, r := range runs {
+			if r.Status == sessionv1.RunStatus_RUN_STATUS_QUEUED {
+				qRun = r
+				break
+			}
+		}
+		if qRun == nil || qRun.Intent != sessionv1.DispatchIntent_DISPATCH_INTENT_STEER {
+			unlock()
+			return
+		}
+		_, isShell := ParseShellShortcut(qRun.GetAuthor(), qRun.Prompt)
+		if isShell || (qRun.ModelSelection != nil && !SelectionsEqual(lease.Selection, qRun.ModelSelection)) {
+			unlock()
+			return
+		}
+		if sErr := lease.Session.Steer(ctx, qRun.Prompt, e.loadTurnAttachments(qRun.Attachments)); sErr != nil {
+			unlock()
+			return
+		}
+		events, mErr := e.st.Mutate(func(tx *store.Tx) error {
+			sNow, gErr := tx.GetSession(sessionID)
+			if gErr != nil {
+				return gErr
+			}
+			sNow.QueueHeld = false
+			qRun.Status = sessionv1.RunStatus_RUN_STATUS_CANCELLED
+			qRun.CompletedAt = timestamppb.Now()
+			_ = tx.PutRun(qRun)
+			item := &sessionv1.TurnItem{
+				ItemId:      newID("itm"),
+				SessionId:   sessionID,
+				RunId:       activeRunID,
+				Kind:        sessionv1.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
+				Status:      "promoted_to_steer",
+				Actor:       qRun.Author,
+				Text:        qRun.Prompt,
+				Attachments: qRun.Attachments,
+			}
+			_ = tx.PutTurnItem(item)
+			rem, _ := tx.QueuedRuns(sessionID)
+			sNow.QueuedRunCount = uint32(len(rem))
+			_ = putSessionSynced(tx, sNow)
+			return tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sessionID,
+				Type:      "queue.promoted",
+				Session:   sNow,
+				Run:       qRun,
+				Item:      item,
+			})
+		})
+		unlock()
+		if mErr != nil {
+			return
+		}
+		e.publish(events, nil)
 	}
 }
 
@@ -6977,8 +7058,23 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *sessionv1.M
 					if idx < 0 {
 						return connect.NewError(connect.CodeFailedPrecondition, errors.New("run is no longer queued"))
 					}
+					moving := queued[idx]
+					_, isShell := ParseShellShortcut(moving.GetAuthor(), moving.Prompt)
+					sameSel := moving.ModelSelection == nil || SelectionsEqual(sNow.ModelSelection, moving.ModelSelection)
+					targetID := cmp.Or(moving.GetModelSelection().GetInstanceId(), sNow.GetModelSelection().GetInstanceId())
+					instCfg, drv, _ := e.resolveInstanceConfig(nil, sNow.ProjectId, targetID)
+					var caps *sessionv1.ProviderCapabilities
+					if drv != nil {
+						caps = drv.Capabilities(instCfg.GetAcpFlavor())
+					}
+					deferToLiveSteer := caps.GetMidTurnSteer() && sameSel && !isShell &&
+						moving.Intent != sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT &&
+						sNow.PendingRequestId == "" &&
+						e.sup.Get(sNow.ActiveProviderSessionId) == nil
+					if deferToLiveSteer {
+						moving.Intent = sessionv1.DispatchIntent_DISPATCH_INTENT_STEER
+					}
 					if idx > 0 {
-						moving := queued[idx]
 						rest := slices.Delete(slices.Clone(queued), idx, idx+1)
 						reordered := slices.Insert(rest, 0, moving)
 						for i, r := range reordered {
@@ -6989,11 +7085,18 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *sessionv1.M
 						}
 						updatedRuns = reordered
 					} else {
-						updatedRuns = []*sessionv1.Run{queued[0]}
+						if deferToLiveSteer {
+							if err := tx.PutRun(moving); err != nil {
+								return err
+							}
+						}
+						updatedRuns = []*sessionv1.Run{moving}
 					}
-					interruptRunID = sNow.ActiveRunId
-					interruptPSID = sNow.ActiveProviderSessionId
-					interruptPendingReqID = sNow.PendingRequestId
+					if !deferToLiveSteer && (!caps.GetMidTurnSteer() || !sameSel || sNow.PendingRequestId != "" || isShell || moving.Intent == sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT) {
+						interruptRunID = sNow.ActiveRunId
+						interruptPSID = sNow.ActiveProviderSessionId
+						interruptPendingReqID = sNow.PendingRequestId
+					}
 				}
 				break
 			}

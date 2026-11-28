@@ -303,12 +303,13 @@ func (e *rpcError) Error() string {
 
 func newProbeSession(proc *runtime.Proc, ctx context.Context) *session {
 	s := &session{
-		proc:      proc,
-		events:    make(chan runtime.Event, 256),
-		pending:   map[int64]func(rpcRes){},
-		terminals: map[string]*managedTerm{},
-		tools:     map[string]*acpToolState{},
-		turnCtx:   ctx,
+		proc:        proc,
+		events:      make(chan runtime.Event, 256),
+		pending:     map[int64]func(rpcRes){},
+		openPrompts: map[int64]*acpOpenPrompt{},
+		terminals:   map[string]*managedTerm{},
+		tools:       map[string]*acpToolState{},
+		turnCtx:     ctx,
 	}
 	s.alive.Store(true)
 	return s
@@ -322,6 +323,7 @@ type Driver struct {
 	OutOfTurnDebounce      time.Duration
 	OutOfTurnQuietLimit    time.Duration
 	BusyPromptRetryDelay   time.Duration
+	SteerAckWindow         time.Duration
 	TaskLogPollInterval    time.Duration
 	ScheduleExpiryGrace    time.Duration
 	SessionStartTimeout    time.Duration
@@ -379,6 +381,13 @@ func (d *Driver) busyPromptRetryDelay() time.Duration {
 		return d.BusyPromptRetryDelay
 	}
 	return 350 * time.Millisecond
+}
+
+func (d *Driver) steerAckWindow() time.Duration {
+	if d != nil && d.SteerAckWindow > 0 {
+		return d.SteerAckWindow
+	}
+	return 150 * time.Millisecond
 }
 
 func (d *Driver) sessionStartTimeout() time.Duration {
@@ -452,7 +461,7 @@ func (d *Driver) Capabilities(_ string) *sessionv1.ProviderCapabilities {
 		InSessionModelSwitch:  true,
 		InSessionOptionSwitch: true,
 		InSessionModeSwitch:   true,
-		MidTurnSteer:          false,
+		MidTurnSteer:          true,
 		LiveApproval:          true,
 		LiveUserInput:         true,
 		NativeResume:          true,
@@ -630,6 +639,7 @@ func (p *Provider) startRuntimeSessionAttempt(leaseCtx, attemptCtx context.Conte
 		spec:          spec,
 		events:        make(chan runtime.Event, 256),
 		pending:       map[int64]func(rpcRes){},
+		openPrompts:   map[int64]*acpOpenPrompt{},
 		terminals:     map[string]*managedTerm{},
 		agentTerms:    map[string]*acpAgentTerm{},
 		tools:         map[string]*acpToolState{},
@@ -684,9 +694,15 @@ func (p *Provider) startRuntimeSessionAttempt(leaseCtx, attemptCtx context.Conte
 				Image bool `json:"image"`
 			} `json:"promptCapabilities"`
 		} `json:"agentCapabilities"`
+		Meta struct {
+			Steering struct {
+				Supported bool `json:"supported"`
+			} `json:"steering"`
+		} `json:"_meta"`
 	}
 	_ = json.Unmarshal(initRes, &caps)
 	s.supportsImages = caps.AgentCapabilities.PromptCapabilities.Image
+	s.supportsSteeringExt = caps.Meta.Steering.Supported
 
 	authID := authMethod(p.Auth, caps.AuthMethods)
 	if authID == "" {
@@ -1042,32 +1058,47 @@ type acpBgTask struct {
 	running        bool
 }
 
+type acpOpenPrompt struct {
+	isSteer bool
+	ackOnce sync.Once
+	ackCh   chan error
+}
+
+func (p *acpOpenPrompt) ack(err error) {
+	if p != nil && p.ackCh != nil {
+		p.ackOnce.Do(func() { p.ackCh <- err })
+	}
+}
+
 type session struct {
-	drv             *Driver
-	proc            *runtime.Proc
-	prov            *Provider
-	bin             string
-	env             []string
-	spec            runtime.StartSpec
-	sessionID       string
-	supportsImages  bool
-	modelOptionID   string
-	thoughtOptionID string
-	curOptions      sessionOptions
-	replaying       atomic.Bool
-	events          chan runtime.Event
-	alive           atomic.Bool
-	nextID          atomic.Int64
-	itemSeq         atomic.Uint64
-	closeOnce       sync.Once
-	sessionCtx      context.Context
-	sessionCancel   context.CancelFunc
+	drv                 *Driver
+	proc                *runtime.Proc
+	prov                *Provider
+	bin                 string
+	env                 []string
+	spec                runtime.StartSpec
+	sessionID           string
+	supportsImages      bool
+	supportsSteeringExt bool
+	modelOptionID       string
+	thoughtOptionID     string
+	curOptions          sessionOptions
+	replaying           atomic.Bool
+	events              chan runtime.Event
+	alive               atomic.Bool
+	nextID              atomic.Int64
+	itemSeq             atomic.Uint64
+	closeOnce           sync.Once
+	sessionCtx          context.Context
+	sessionCancel       context.CancelFunc
 
 	emitMu       sync.RWMutex
 	eventsClosed bool
 
 	mu             sync.Mutex
 	pending        map[int64]func(rpcRes)
+	openPrompts    map[int64]*acpOpenPrompt
+	steerRejected  bool
 	terminals      map[string]*managedTerm
 	agentTerms     map[string]*acpAgentTerm
 	tools          map[string]*acpToolState
@@ -1537,6 +1568,34 @@ func isACPBusyError(err error) bool {
 		strings.Contains(msg, "turn in progress")
 }
 
+func (s *session) hasRunningAwaitedBgLocked() bool {
+	for _, bg := range s.bgTasks {
+		if bg != nil && bg.running && bg.awaited {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *session) buildPromptBlocks(text string, atts []runtime.TurnAttachment) []any {
+	prompt := []any{map[string]any{"type": "text", "text": text}}
+	for _, a := range atts {
+		if s.supportsImages && strings.HasPrefix(a.MimeType, "image/") && len(a.Data) > 0 {
+			prompt = append(prompt, map[string]any{
+				"type":     "image",
+				"mimeType": a.MimeType,
+				"data":     base64.StdEncoding.EncodeToString(a.Data),
+			})
+		} else if a.Path != "" {
+			prompt = append(prompt, map[string]any{
+				"type": "text",
+				"text": fmt.Sprintf("[Attached: %s]", a.Path),
+			})
+		}
+	}
+	return prompt
+}
+
 func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 	if !s.Alive() {
 		return runtime.ErrSessionClosed
@@ -1545,6 +1604,7 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 	s.stopTimersLocked()
 	settledBeforeTurn := s.syncAntigravityCompletionsLocked()
 	s.inPrompt = true
+	s.openPrompts = map[int64]*acpOpenPrompt{}
 	s.turnSeq++
 	s.awaitingMerge = false
 	s.wakeSteps.Reset()
@@ -1563,22 +1623,8 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 		s.emit(ev)
 	}
 
-	prompt := []any{map[string]any{"type": "text", "text": in.Prompt}}
-	for _, a := range in.Attachments {
-		if s.supportsImages && strings.HasPrefix(a.MimeType, "image/") && len(a.Data) > 0 {
-			prompt = append(prompt, map[string]any{
-				"type":     "image",
-				"mimeType": a.MimeType,
-				"data":     base64.StdEncoding.EncodeToString(a.Data),
-			})
-		} else if a.Path != "" {
-			prompt = append(prompt, map[string]any{
-				"type": "text",
-				"text": fmt.Sprintf("[Attached: %s]", a.Path),
-			})
-		}
-	}
-	err := s.sendPromptWithBusyRetry(ctx, prompt, 0)
+	prompt := s.buildPromptBlocks(in.Prompt, in.Attachments)
+	_, err := s.sendSessionPrompt(ctx, prompt, false, 0)
 	if err != nil {
 		s.mu.Lock()
 		s.inPrompt = false
@@ -1587,13 +1633,56 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 	return err
 }
 
-func (s *session) sendPromptWithBusyRetry(turnCtx context.Context, prompt []any, attempt int) error {
+func (s *session) sendSessionPrompt(turnCtx context.Context, prompt []any, isSteer bool, attempt int) (*acpOpenPrompt, error) {
 	params := map[string]any{
 		"sessionId": s.sessionID,
 		"prompt":    prompt,
 	}
-	return s.request("session/prompt", params, func(r rpcRes) {
-		if r.err != nil && isACPBusyError(r.err) && attempt < 8 && s.Alive() && turnCtx.Err() == nil {
+	id := s.nextID.Add(1)
+	op := &acpOpenPrompt{
+		isSteer: isSteer,
+		ackCh:   make(chan error, 1),
+	}
+	s.mu.Lock()
+	if s.openPrompts == nil {
+		s.openPrompts = map[int64]*acpOpenPrompt{}
+	}
+	s.openPrompts[id] = op
+	s.pending[id] = func(r rpcRes) {
+		s.handlePromptResponse(id, op, turnCtx, prompt, attempt, r)
+	}
+	s.mu.Unlock()
+	if err := s.writeJSON(map[string]any{"jsonrpc": "2.0", "id": id, "method": "session/prompt", "params": params}); err != nil {
+		s.mu.Lock()
+		delete(s.pending, id)
+		delete(s.openPrompts, id)
+		s.mu.Unlock()
+		return nil, err
+	}
+	return op, nil
+}
+
+func (s *session) handlePromptResponse(id int64, op *acpOpenPrompt, turnCtx context.Context, prompt []any, attempt int, r rpcRes) {
+	s.mu.Lock()
+	delete(s.openPrompts, id)
+	remaining := len(s.openPrompts)
+	var waitingSteers []*acpOpenPrompt
+	for _, other := range s.openPrompts {
+		if other.isSteer {
+			waitingSteers = append(waitingSteers, other)
+		}
+	}
+	s.mu.Unlock()
+
+	if r.err != nil {
+		if op.isSteer && remaining > 0 {
+			s.mu.Lock()
+			s.steerRejected = true
+			s.mu.Unlock()
+			op.ack(runtime.ErrSteerUnsupported)
+			return
+		}
+		if isACPBusyError(r.err) && attempt < 8 && s.Alive() && turnCtx.Err() == nil && remaining == 0 {
 			delay := s.drv.busyPromptRetryDelay()
 			go func() {
 				select {
@@ -1601,27 +1690,60 @@ func (s *session) sendPromptWithBusyRetry(turnCtx context.Context, prompt []any,
 					s.mu.Lock()
 					if !s.Alive() || !s.inPrompt {
 						s.mu.Unlock()
+						op.ack(runtime.ErrSessionClosed)
 						return
 					}
-					s.msgBuf.Reset()
+					if !op.isSteer {
+						s.msgBuf.Reset()
+					}
 					s.mu.Unlock()
-					if err := s.sendPromptWithBusyRetry(turnCtx, prompt, attempt+1); err != nil {
+					nextOp, err := s.sendSessionPrompt(turnCtx, prompt, op.isSteer, attempt+1)
+					if err != nil {
+						op.ack(err)
 						s.onPromptResult(rpcRes{err: err})
+						return
+					}
+					if op.isSteer {
+						select {
+						case ackErr := <-nextOp.ackCh:
+							op.ack(ackErr)
+						case <-time.After(s.drv.steerAckWindow()):
+							op.ack(nil)
+						}
 					}
 				case <-turnCtx.Done():
+					op.ack(turnCtx.Err())
 					s.mu.Lock()
 					s.inPrompt = false
 					s.stopTimersLocked()
 					s.mu.Unlock()
 					s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
 				case <-s.sessionCtx.Done():
+					op.ack(s.sessionCtx.Err())
 				case <-s.proc.Done():
+					op.ack(runtime.ErrSessionClosed)
 				}
 			}()
 			return
 		}
-		s.onPromptResult(r)
-	})
+		op.ack(r.err)
+		if remaining == 0 {
+			s.onPromptResult(r)
+		}
+		return
+	}
+
+	if remaining > 0 {
+		// Superseded prompt handed over active-turn ownership to a mid-turn steering prompt.
+		s.emitPromptUsage(r.result)
+		for _, w := range waitingSteers {
+			w.ack(nil)
+		}
+		op.ack(nil)
+		return
+	}
+	op.ack(nil)
+	s.onPromptResult(r)
 }
 
 var (
@@ -2770,6 +2892,33 @@ func (s *session) promoteOpenBackgroundWork() (newEvents []runtime.Event, hasAwa
 	return newEvents, hasAwaited
 }
 
+func (s *session) emitPromptUsage(raw json.RawMessage) string {
+	var res struct {
+		StopReason string `json:"stopReason"`
+		Usage      struct {
+			InputTokens       uint64 `json:"inputTokens"`
+			OutputTokens      uint64 `json:"outputTokens"`
+			CachedReadTokens  uint64 `json:"cachedReadTokens"`
+			CachedWriteTokens uint64 `json:"cachedWriteTokens"`
+		} `json:"usage"`
+	}
+	_ = json.Unmarshal(raw, &res)
+	inTok := res.Usage.InputTokens + res.Usage.CachedReadTokens + res.Usage.CachedWriteTokens
+	if inTok > 0 || res.Usage.OutputTokens > 0 {
+		s.emit(runtime.Event{
+			Kind: runtime.EventUsage,
+			Usage: &sessionv1.ContextWindowUsage{
+				InputTokens:        inTok,
+				OutputTokens:       res.Usage.OutputTokens,
+				CacheReadTokens:    res.Usage.CachedReadTokens,
+				ContextUsedTokens:  inTok + res.Usage.OutputTokens,
+				ContextLimitTokens: 200000,
+			},
+		})
+	}
+	return res.StopReason
+}
+
 func (s *session) onPromptResult(r rpcRes) {
 	s.flushAssistantSegment()
 	if r.err != nil {
@@ -2793,30 +2942,8 @@ func (s *session) onPromptResult(r rpcRes) {
 		})
 		return
 	}
-	var res struct {
-		StopReason string `json:"stopReason"`
-		Usage      struct {
-			InputTokens       uint64 `json:"inputTokens"`
-			OutputTokens      uint64 `json:"outputTokens"`
-			CachedReadTokens  uint64 `json:"cachedReadTokens"`
-			CachedWriteTokens uint64 `json:"cachedWriteTokens"`
-		} `json:"usage"`
-	}
-	_ = json.Unmarshal(r.result, &res)
-	inTok := res.Usage.InputTokens + res.Usage.CachedReadTokens + res.Usage.CachedWriteTokens
-	if inTok > 0 || res.Usage.OutputTokens > 0 {
-		s.emit(runtime.Event{
-			Kind: runtime.EventUsage,
-			Usage: &sessionv1.ContextWindowUsage{
-				InputTokens:        inTok,
-				OutputTokens:       res.Usage.OutputTokens,
-				CacheReadTokens:    res.Usage.CachedReadTokens,
-				ContextUsedTokens:  inTok + res.Usage.OutputTokens,
-				ContextLimitTokens: 200000,
-			},
-		})
-	}
-	switch res.StopReason {
+	stopReason := s.emitPromptUsage(r.result)
+	switch stopReason {
 	case "cancelled":
 		s.mu.Lock()
 		s.inPrompt = false
@@ -2852,9 +2979,9 @@ func (s *session) onPromptResult(r rpcRes) {
 		s.mu.Unlock()
 		s.emit(runtime.Event{
 			Kind:         runtime.EventTurnFailed,
-			ErrorCode:    res.StopReason,
-			ErrorMessage: "acp turn stopped: " + res.StopReason,
-			Failure:      &runtime.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_REFUSED, Message: "acp turn stopped: " + res.StopReason},
+			ErrorCode:    stopReason,
+			ErrorMessage: "acp turn stopped: " + stopReason,
+			Failure:      &runtime.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_REFUSED, Message: "acp turn stopped: " + stopReason},
 		})
 	case "max_tokens", "max_turn_requests":
 		s.mu.Lock()
@@ -2863,9 +2990,9 @@ func (s *session) onPromptResult(r rpcRes) {
 		s.mu.Unlock()
 		s.emit(runtime.Event{
 			Kind:         runtime.EventTurnFailed,
-			ErrorCode:    res.StopReason,
-			ErrorMessage: "acp turn stopped: " + res.StopReason,
-			Failure:      &runtime.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_LIMIT_REACHED, Message: "acp turn stopped: " + res.StopReason},
+			ErrorCode:    stopReason,
+			ErrorMessage: "acp turn stopped: " + stopReason,
+			Failure:      &runtime.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_LIMIT_REACHED, Message: "acp turn stopped: " + stopReason},
 		})
 	default:
 		bgEvents, hasAwaited := s.promoteOpenBackgroundWork()
@@ -2885,8 +3012,96 @@ func (s *session) onPromptResult(r rpcRes) {
 	}
 }
 
-func (s *session) Steer(context.Context, string, []runtime.TurnAttachment) error {
-	return runtime.ErrSteerUnsupported
+func (s *session) Steer(ctx context.Context, text string, atts []runtime.TurnAttachment) error {
+	if !s.Alive() {
+		return runtime.ErrSessionClosed
+	}
+	s.mu.Lock()
+	active := s.inPrompt || s.awaitingMerge || s.wakeSteps.Active() || s.hasRunningAwaitedBgLocked()
+	if !active {
+		s.mu.Unlock()
+		return errors.New("no active turn to steer")
+	}
+	if s.steerRejected && !s.supportsSteeringExt {
+		s.mu.Unlock()
+		return runtime.ErrSteerUnsupported
+	}
+	useExt := s.supportsSteeringExt && s.inPrompt
+	turnCtx := s.turnCtx
+	s.mu.Unlock()
+	if turnCtx == nil {
+		turnCtx = ctx
+	}
+
+	prompt := s.buildPromptBlocks(text, atts)
+	s.flushAssistantSegment()
+
+	if useExt {
+		res, err := s.call(ctx, "_session/steering", map[string]any{
+			"sessionId": s.sessionID,
+			"prompt":    prompt,
+			"_meta": map[string]any{
+				"steering": map[string]any{
+					"idleBehavior": "promptRequired",
+				},
+			},
+		})
+		if err == nil {
+			var sr struct {
+				Outcome string `json:"outcome"`
+			}
+			_ = json.Unmarshal(res, &sr)
+			if sr.Outcome != "noActiveTurn" {
+				return nil
+			}
+		} else {
+			var rpc *rpcError
+			if errors.As(err, &rpc) && rpc.Code == -32601 {
+				s.mu.Lock()
+				s.supportsSteeringExt = false
+				s.mu.Unlock()
+			} else if isACPBusyError(err) {
+				s.mu.Lock()
+				s.steerRejected = true
+				s.mu.Unlock()
+				return runtime.ErrSteerUnsupported
+			} else {
+				return err
+			}
+		}
+	}
+
+	s.mu.Lock()
+	if s.steerRejected {
+		s.mu.Unlock()
+		return runtime.ErrSteerUnsupported
+	}
+	if !s.inPrompt && !s.awaitingMerge && !s.wakeSteps.Active() && !s.hasRunningAwaitedBgLocked() {
+		s.mu.Unlock()
+		return errors.New("no active turn to steer")
+	}
+	if !s.inPrompt {
+		s.stopTimersLocked()
+		s.awaitingMerge = false
+		s.wakeSteps.Reset()
+		s.inPrompt = true
+	}
+	s.mu.Unlock()
+
+	op, err := s.sendSessionPrompt(turnCtx, prompt, true, 0)
+	if err != nil {
+		return err
+	}
+	select {
+	case ackErr := <-op.ackCh:
+		return ackErr
+	case <-time.After(s.drv.steerAckWindow()):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.proc.Done():
+		return fmt.Errorf("acp exited: %v", s.proc.Err())
+	}
 }
 
 func (s *session) SetSelection(ctx context.Context, sel *sessionv1.ModelSelection) error {
@@ -3219,11 +3434,19 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		}
 		if json.Unmarshal(u.Content, &cb) == nil && cb.Text != "" {
 			s.mu.Lock()
+			text := cb.Text
+			if s.msgBuf.Len() == 0 {
+				text = strings.TrimLeft(text, "\r\n")
+			}
+			if text == "" {
+				s.mu.Unlock()
+				return
+			}
 			s.noteWakeReplyLocked()
 			msgID := s.msgItemID
-			s.msgBuf.WriteString(cb.Text)
+			s.msgBuf.WriteString(text)
 			s.mu.Unlock()
-			s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgID, Text: cb.Text})
+			s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgID, Text: text})
 		}
 	case "agent_thought_chunk":
 		var cb struct {

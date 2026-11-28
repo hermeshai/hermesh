@@ -564,6 +564,8 @@ impl Encoder for AcpEncoder {
                     }
                     Control::Prompt { session, id } => {
                         let state = self.sessions.entry(session).or_insert_with(|| SessionState::new(None));
+                        // Steering a running turn sends another `session/prompt`: hand over by answering the earlier one.
+                        answer_prompt(&self.shared, state, Ok(json!({ "stopReason": "end_turn" })), out);
                         state.prompt = Some(id);
                         state.skip_user = true;
                     }

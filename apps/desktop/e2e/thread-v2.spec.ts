@@ -191,7 +191,7 @@ test("while a turn runs, messages queue; one can steer the turn now, be edited o
   }
 });
 
-test("on an ACP provider without native mid-turn steer, Steer Now promotes the chosen queued item, interrupts the turn, and runs it first", async () => {
+test("on an ACP provider, mid-turn submit and Steer Now inject into the running turn without interrupting it", async () => {
   await cli(
     "session",
     "start",
@@ -206,7 +206,7 @@ test("on an ACP provider without native mid-turn steer, Steer Now promotes the c
     "--title",
     "ACP 引导测试",
     "--prompt",
-    "read README.md\nsleep 20s",
+    "read README.md\nsleep 4s\nsay acp_initial_done",
   );
   const { app, page } = await launch();
   try {
@@ -214,29 +214,34 @@ test("on an ACP provider without native mid-turn steer, Steer Now promotes the c
     await expect(page.getByTestId("composer-stop-btn")).toBeVisible({ timeout: 10_000 });
     await expect(conversation(page).locator(".tgroup, .tool").first()).toBeVisible({ timeout: 10_000 });
 
+    // Explicit Queue places follow-ups in the next-turn strip, and Steer Now promotes one into the running turn without interrupting!
     await page.getByTestId("thread-composer-input").fill("say acp_queued_second");
-    await page.getByTestId("composer-submit-btn").click();
+    await page.getByTestId("composer-queue-btn").click();
     await page.getByTestId("thread-composer-input").fill("say acp_steered_first");
-    await page.getByTestId("composer-submit-btn").click();
+    await page.getByTestId("composer-queue-btn").click();
 
     await expect(page.getByTestId("queued-run-0")).toContainText("acp_queued_second");
     await expect(page.getByTestId("queued-run-1")).toContainText("acp_steered_first");
     await page.getByTestId("queue-promote-1").click();
 
-    await expect(replies(page).first()).toContainText("acp_steered_first", { timeout: 15_000 });
-    await expect(replies(page).nth(1)).toContainText("acp_queued_second", { timeout: 15_000 });
+    await expect(conversation(page)).toContainText("acp_initial_done", { timeout: 15_000 });
+    await expect(conversation(page)).toContainText("acp_steered_first", { timeout: 15_000 });
+    await expect(conversation(page)).toContainText("acp_queued_second", { timeout: 15_000 });
+    await expect(conversation(page)).not.toContainText("这一轮被打断了");
+    await expect(conversation(page)).not.toContainText("interrupted this turn");
     await expect(page.getByTestId("queued-runs-strip")).toHaveCount(0);
     await expect(page.getByTestId("composer-stop-btn")).toHaveCount(0, { timeout: 10_000 });
 
-    // Also verify the direct composer Steer button (1-click interrupt & send on ACP without queueing first):
-    await page.getByTestId("thread-composer-input").fill("sleep 20s");
+    // Also verify primary submit while ACP turn runs steers directly into the live timeline without interrupting:
+    await page.getByTestId("thread-composer-input").fill("sleep 2s\nsay acp_turn2_done");
     await page.getByTestId("composer-submit-btn").click();
     await expect(page.getByTestId("composer-stop-btn")).toBeVisible({ timeout: 10_000 });
 
     await page.getByTestId("thread-composer-input").fill("say acp_direct_steered");
-    await expect(page.getByTestId("composer-steer-btn")).toBeVisible();
-    await page.getByTestId("composer-steer-btn").click();
-    await expect(replies(page).nth(2)).toContainText("acp_direct_steered", { timeout: 15_000 });
+    await page.getByTestId("composer-submit-btn").click();
+    await expect(conversation(page)).toContainText("acp_turn2_done", { timeout: 15_000 });
+    await expect(conversation(page)).toContainText("acp_direct_steered", { timeout: 15_000 });
+    await expect(conversation(page)).not.toContainText("这一轮被打断了");
     await expect(page.getByTestId("composer-stop-btn")).toHaveCount(0, { timeout: 10_000 });
   } finally {
     await app.close();

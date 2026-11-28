@@ -14430,6 +14430,16 @@
         }
       }
     },
+    "Say more to steer this turn": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "继续说，会直接插入当前轮…"
+          }
+        }
+      }
+    },
     "Say more; it goes to the next turn": {
       "localizations": {
         "zh-Hans": {

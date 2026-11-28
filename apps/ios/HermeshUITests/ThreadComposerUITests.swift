@@ -369,9 +369,8 @@ extension HermeshUITests {
         _ = try control("machine?up=1", method: "POST")
     }
 
-    /// Steer Now on an ACP provider (Gemini / Antigravity, where MidTurnSteer == false) on iPhone:
-    /// tapping "立即插入引导" on the 2nd queued item promotes it ahead of the 1st, interrupts the running turn,
-    /// and executes it immediately.
+    /// Steer Now on an ACP provider (Gemini / Antigravity, where MidTurnSteer == true) on iPhone:
+    /// queuing two items and tapping "立即插入引导" on the 2nd injects it live into the running turn without interrupting it.
     ///
     ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testSteerNowOnACP go test ./e2e -run TestIPhone -v -timeout 20m
     @objc func testSteerNowOnACP() throws {
@@ -385,18 +384,25 @@ extension HermeshUITests {
         tap("thread-model")
         tap("model-small")
 
-        send("read README.md\nsleep 20s")
+        send("read README.md\nsleep 5s\nsay acp_initial_done")
         XCTAssertTrue(app.buttons["thread-stop"].waitForExistence(timeout: 30), "Stop while ACP turn runs")
         XCTAssertTrue(app.descendants(matching: .any)["tool-steps-summary"].firstMatch.waitForExistence(timeout: 15), "ACP turn actively running")
 
-        send("say acp_queued_second")
-        send("say acp_steered_first")
+        let field = app.descendants(matching: .any)["thread-composer-input"].firstMatch
+        field.tap()
+        field.typeText("say acp_queued_second")
+        tap("thread-queue")
+        field.tap()
+        field.typeText("say acp_steered_first")
+        tap("thread-queue")
         XCTAssertTrue(app.descendants(matching: .any)["thread-queued-0"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.descendants(matching: .any)["thread-queued-1"].waitForExistence(timeout: 15))
 
         tap("thread-queue-promote-1")
-        XCTAssertTrue(reply("acp_steered_first").waitForExistence(timeout: 30), "promoted ACP message runs immediately")
+        XCTAssertTrue(reply("acp_initial_done").waitForExistence(timeout: 30), "initial ACP turn completes without interruption")
+        XCTAssertTrue(reply("acp_steered_first").waitForExistence(timeout: 30), "promoted ACP message joins active turn")
         XCTAssertTrue(reply("acp_queued_second").waitForExistence(timeout: 30), "remaining queued message follows")
+        XCTAssertFalse(app.staticTexts["这一轮被打断了"].exists, "turn must not be interrupted")
         XCTAssertTrue(app.descendants(matching: .any)["thread-queued-0"].waitForNonExistence(timeout: 15), "queue drained")
         XCTAssertTrue(app.buttons["thread-stop"].waitForNonExistence(timeout: 15), "settled idle")
     }

@@ -55,6 +55,7 @@ func (d *Driver) Kind() string { return "her" }
 
 func (d *Driver) Capabilities(_ string) *sessionv1.ProviderCapabilities {
 	return &sessionv1.ProviderCapabilities{
+		MidTurnSteer: true,
 		NativeResume: true,
 		SupportedRuntimeModes: []identityv1.RuntimeMode{
 			identityv1.RuntimeMode_RUNTIME_MODE_AUTO,
@@ -204,19 +205,24 @@ func asOwner(prompt string) string {
 	return strings.Join(said, "\n")
 }
 
-func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
-	if !s.Alive() {
-		return runtime.ErrSessionClosed
-	}
+func buildHerInput(text string, attachments []runtime.TurnAttachment) []map[string]string {
 	input := []map[string]string{}
-	if text := asOwner(in.HandoffPrefix + in.Prompt); strings.TrimSpace(text) != "" {
+	if strings.TrimSpace(text) != "" {
 		input = append(input, map[string]string{"type": "text", "text": text})
 	}
-	for _, a := range in.Attachments {
+	for _, a := range attachments {
 		if strings.HasPrefix(a.MimeType, "image/") && len(a.Data) > 0 {
 			input = append(input, map[string]string{"type": "image", "mime_type": a.MimeType, "data": base64.StdEncoding.EncodeToString(a.Data)})
 		}
 	}
+	return input
+}
+
+func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
+	if !s.Alive() {
+		return runtime.ErrSessionClosed
+	}
+	input := buildHerInput(asOwner(in.HandoffPrefix+in.Prompt), in.Attachments)
 	// The run's id names the message, so that sending it again never doubles it.
 	s.mu.Lock()
 	s.turnPending = true
@@ -243,7 +249,20 @@ func idChars(s string) string {
 }
 
 func (s *session) Steer(ctx context.Context, text string, attachments []runtime.TurnAttachment) error {
-	return runtime.ErrSteerUnsupported
+	if !s.Alive() {
+		return runtime.ErrSessionClosed
+	}
+	s.mu.Lock()
+	active := s.turnPending || s.inTask
+	s.mu.Unlock()
+	if !active {
+		return errors.New("no active turn to steer")
+	}
+	input := buildHerInput(text, attachments)
+	if len(input) == 0 {
+		return nil
+	}
+	return s.conv.Op(ctx, map[string]any{"type": "prompt", "input": input, "mode": "steer"})
 }
 
 func (s *session) SetSelection(ctx context.Context, sel *sessionv1.ModelSelection) error {

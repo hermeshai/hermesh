@@ -349,3 +349,35 @@ func TestSubAgentsAndApproval(t *testing.T) {
 		t.Fatalf("stopped sub-agent on idle: %+v", ev)
 	}
 }
+
+func TestSteer(t *testing.T) {
+	b := newFakeBridge()
+	drv := NewDriver(b)
+	if !drv.Capabilities("").GetMidTurnSteer() {
+		t.Fatal("expected Her driver to advertise MidTurnSteer")
+	}
+	s, c := start(t, b, nil, "")
+	if err := s.Steer(context.Background(), "too early", nil); err == nil {
+		t.Fatal("expected Steer to fail when no turn is active")
+	}
+	if err := s.StartTurn(context.Background(), runtime.TurnInput{RunID: "run_s1", Prompt: "run suite"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = op(t, c)
+	c.say(t, `{"type":"task_started","task_id":"t_s1"}`)
+	if err := s.Steer(context.Background(), "还没测完吗", nil); err != nil {
+		t.Fatalf("Steer during active Her task: %v", err)
+	}
+	steeredOp := op(t, c)
+	if steeredOp["type"] != "prompt" || steeredOp["mode"] != "steer" || steeredOp["input"].([]any)[0].(map[string]any)["text"] != "还没测完吗" {
+		t.Fatalf("unexpected steer op: %v", steeredOp)
+	}
+	c.say(t, `{"type":"tool_started","call_id":"c_rep","name":"send_to_user","args":{"text":"还在跑，马上好。"}}`)
+	c.say(t, `{"type":"task_completed","task_id":"t_s1"}`)
+	if ev := next(t, s); ev.Kind != runtime.EventAssistantMessage || ev.Text != "还在跑，马上好。" {
+		t.Fatalf("expected steered reply, got %+v", ev)
+	}
+	if ev := next(t, s); ev.Kind != runtime.EventTurnCompleted {
+		t.Fatalf("expected clean turn completion without interruption, got %+v", ev)
+	}
+}

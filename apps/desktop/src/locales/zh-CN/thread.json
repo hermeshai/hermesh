@@ -120,6 +120,7 @@
     "stop": "停止",
     "forceStop": "强制终止",
     "placeholderIdle": "继续聊…",
+    "placeholderSteer": "继续说，会直接插入当前轮…",
     "placeholderRunning": "继续说，会排到下一轮…",
     "nextTurn": "将在下一轮处理",
     "addAttachment": "添加附件…",

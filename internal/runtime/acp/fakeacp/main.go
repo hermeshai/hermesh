@@ -82,7 +82,18 @@ var (
 	cwd       string
 	// The session's selected model and thought level.
 	curModel, curEffort string
+
+	turnMu       sync.Mutex
+	turnRunning  bool
+	spokeInTurn  bool
+	activeReqID  json.RawMessage
+	steeredItems []steerInput
 )
+
+type steerInput struct {
+	text   string
+	images []string
+}
 
 func send(v any) {
 	b, _ := json.Marshal(v)
@@ -275,7 +286,11 @@ func handle(m msg) {
 		if authID != "" {
 			auth = []any{map[string]any{"id": "other", "name": "Other"}, map[string]any{"id": authID, "name": "Login"}}
 		}
-		reply(m.ID, map[string]any{"protocolVersion": 1, "agentCapabilities": caps, "authMethods": auth})
+		initReply := map[string]any{"protocolVersion": 1, "agentCapabilities": caps, "authMethods": auth}
+		if os.Getenv("FAKE_ACP_STEERING_EXT") == "1" {
+			initReply["_meta"] = map[string]any{"steering": map[string]any{"supported": true}}
+		}
+		reply(m.ID, initReply)
 	case "authenticate":
 		if p.MethodID != authID {
 			replyErr(m.ID, -32000, "unknown auth method "+p.MethodID)
@@ -424,22 +439,69 @@ func handle(m msg) {
 			}
 		}
 		replyErr(m.ID, -32602, "unknown model "+p.ModelID)
+	case "_session/steering":
+		if os.Getenv("FAKE_ACP_STEERING_EXT") != "1" {
+			replyErr(m.ID, -32601, "Method not found: _session/steering")
+			return
+		}
+		var images []string
+		var text string
+		for i, b := range p.Prompt {
+			if i == 0 {
+				text = b.Text
+			}
+			if b.Type == "image" && b.Data != "" {
+				images = append(images, b.MimeType)
+			}
+		}
+		turnMu.Lock()
+		if !turnRunning {
+			turnMu.Unlock()
+			reply(m.ID, map[string]any{"outcome": "noActiveTurn"})
+			return
+		}
+		steeredItems = append(steeredItems, steerInput{text: text, images: images})
+		turnMu.Unlock()
+		reply(m.ID, map[string]any{"outcome": "injected", "messageId": fmt.Sprintf("steer-%d", time.Now().UnixNano())})
 	case "session/prompt":
 		if os.Getenv("FAKE_ACP_REQUIRE_MODE") == "1" && mode != "default" {
 			replyErr(m.ID, -32602, "permission mode was not reset")
 			return
 		}
-		select { // drop a stale cancel
-		case <-cancelled:
-		default:
-		}
 		var images []string
-		for _, b := range p.Prompt {
+		var text string
+		for i, b := range p.Prompt {
+			if i == 0 {
+				text = b.Text
+			}
 			if b.Type == "image" && b.Data != "" {
 				images = append(images, b.MimeType)
 			}
 		}
-		go prompt(m.ID, p.SessionID, p.Prompt[0].Text, images)
+		turnMu.Lock()
+		if turnRunning {
+			if os.Getenv("FAKE_ACP_REJECT_STEER") == "1" {
+				turnMu.Unlock()
+				replyErr(m.ID, -32603, "Session is already processing a prompt")
+				return
+			}
+			prevID := activeReqID
+			activeReqID = m.ID
+			steeredItems = append(steeredItems, steerInput{text: text, images: images})
+			turnMu.Unlock()
+			reply(prevID, map[string]any{"stopReason": "end_turn", "usage": map[string]any{"inputTokens": 50, "outputTokens": 10, "cachedReadTokens": 5}})
+			return
+		}
+		turnRunning = true
+		spokeInTurn = false
+		activeReqID = m.ID
+		steeredItems = nil
+		turnMu.Unlock()
+		select { // drop a stale cancel
+		case <-cancelled:
+		default:
+		}
+		go prompt(p.SessionID, text, images)
 	case "session/cancel":
 		select {
 		case cancelled <- struct{}{}:
@@ -457,10 +519,36 @@ var callN int
 // canElicit: the client takes form elicitations.
 var canElicit bool
 
-func prompt(id json.RawMessage, sid, text string, images []string) {
+func isFakeDirective(line string) bool {
+	cmd, _, _ := strings.Cut(strings.TrimSpace(line), " ")
+	switch cmd {
+	case "settings", "model-options", "say", "stream", "images", "ask", "ask3", "history", "write", "read", "shell", "focus", "steps", "run-summary", "think", "sleep", "crash", "fail", "fail-code":
+		return true
+	}
+	return false
+}
+
+func finishActivePrompt(result any, errCode int, errText string) {
+	turnMu.Lock()
+	rid := activeReqID
+	turnRunning = false
+	activeReqID = nil
+	steeredItems = nil
+	turnMu.Unlock()
+	if rid == nil {
+		return
+	}
+	if errText != "" || errCode != 0 {
+		replyErr(rid, errCode, errText)
+		return
+	}
+	reply(rid, result)
+}
+
+func prompt(sid, text string, images []string) {
 	h, err := load(sid)
 	if err != nil {
-		replyErr(id, -32002, "unknown session")
+		finishActivePrompt(nil, -32002, "unknown session")
 		return
 	}
 	h.Turns = append(h.Turns, text)
@@ -468,6 +556,39 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 	if _, after, ok := strings.Cut(text, "</context_handoff>\n\n"); ok {
 		text = after
 	}
+	if runPromptLines(sid, text, images) {
+		return
+	}
+	for {
+		turnMu.Lock()
+		batch := steeredItems
+		steeredItems = nil
+		turnMu.Unlock()
+		if len(batch) == 0 {
+			break
+		}
+		for _, st := range batch {
+			if hh, lErr := load(sid); lErr == nil {
+				hh.Turns = append(hh.Turns, st.text)
+				save(sid, hh)
+			}
+			if spokeInTurn {
+				update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": "\n"}})
+				spokeInTurn = false
+			}
+			stText := strings.TrimSpace(st.text)
+			if !strings.Contains(stText, "\n") && !isFakeDirective(stText) {
+				stText = "say Steered: " + stText
+			}
+			if runPromptLines(sid, stText, st.images) {
+				return
+			}
+		}
+	}
+	finishActivePrompt(map[string]any{"stopReason": "end_turn", "usage": map[string]any{"inputTokens": 100, "outputTokens": 20, "cachedReadTokens": 5}}, 0, "")
+}
+
+func runPromptLines(sid, text string, images []string) bool {
 	for _, line := range strings.Split(text, "\n") {
 		cmd, arg, _ := strings.Cut(strings.TrimSpace(line), " ")
 		switch cmd {
@@ -476,20 +597,22 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 		case "model-options":
 			update(sid, map[string]any{"sessionUpdate": "config_option_update", "configOptions": json.RawMessage(arg)})
 		case "say":
+			spokeInTurn = true
 			r := []rune(strings.ReplaceAll(arg, `\n`, "\n")) // split between characters, as agents stream
 			half := len(r) / 2
 			update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": string(r[:half])}})
 			update(sid, map[string]any{"sessionUpdate": "agent_thought_chunk", "content": map[string]any{"type": "text", "text": "thinking"}})
 			update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": string(r[half:])}})
 		case "stream":
+			spokeInTurn = true
 			r := []rune(strings.ReplaceAll(arg, `\n`, "\n"))
 			for i := 0; i < len(r); i += 4 {
 				update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": string(r[i:min(i+4, len(r))])}})
 				select {
 				case <-time.After(50 * time.Millisecond):
 				case <-cancelled:
-					reply(id, map[string]any{"stopReason": "cancelled"})
-					return
+					finishActivePrompt(map[string]any{"stopReason": "cancelled"}, 0, "")
+					return true
 				}
 			}
 		case "images":
@@ -574,7 +697,12 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 			}
 			update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": text}})
 		case "history":
-			update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": fmt.Sprintf("history: %d turns", len(h.Turns))}})
+			hh, _ := load(sid)
+			nTurns := 0
+			if hh != nil {
+				nTurns = len(hh.Turns)
+			}
+			update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": fmt.Sprintf("history: %d turns", nTurns)}})
 		case "write":
 			path, body, _ := strings.Cut(arg, " ")
 			abs := path
@@ -648,22 +776,22 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 			select {
 			case <-time.After(d):
 			case <-cancelled:
-				reply(id, map[string]any{"stopReason": "cancelled"})
-				return
+				finishActivePrompt(map[string]any{"stopReason": "cancelled"}, 0, "")
+				return true
 			}
 		case "crash":
 			os.Exit(1)
 		case "fail":
-			replyErr(id, -32603, arg)
-			return
+			finishActivePrompt(nil, -32603, arg)
+			return true
 		case "fail-code":
 			code, text, _ := strings.Cut(arg, " ")
 			n, _ := strconv.Atoi(code)
-			replyErr(id, n, text)
-			return
+			finishActivePrompt(nil, n, text)
+			return true
 		}
 	}
-	reply(id, map[string]any{"stopReason": "end_turn", "usage": map[string]any{"inputTokens": 100, "outputTokens": 20, "cachedReadTokens": 5}})
+	return false
 }
 
 // modelConfig is the session's config options, selecting the first model

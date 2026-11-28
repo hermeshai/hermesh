@@ -1253,7 +1253,7 @@ struct SessionPage: View {
                 .accessibilityIdentifier("thread-attached")
             }
             ZStack(alignment: .bottom) {
-                TextField(isNew && starting == nil ? (who == .her ? String(localized: "Message Her") : String(localized: "Describe what to build, debug or plan")) : running ? String(localized: "Say more; it goes to the next turn") : String(localized: "Keep going"),
+                TextField(isNew && starting == nil ? (who == .her ? String(localized: "Message Her") : String(localized: "Describe what to build, debug or plan")) : running ? (liveSteer ? String(localized: "Say more to steer this turn") : String(localized: "Say more; it goes to the next turn")) : String(localized: "Keep going"),
                           text: draftBinding, axis: .vertical)
                     .font(shellDraft ? .body.monospaced() : .body)
                     .lineLimit(open ? 2 ... 6 : 1 ... 6)

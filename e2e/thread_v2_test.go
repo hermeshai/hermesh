@@ -371,13 +371,14 @@ func TestThreadV2EndToEnd(t *testing.T) {
 			s.GetProgress().GetTurnCount() == 2
 	})
 
-	// 3c. Remote ACP (Antigravity, MidTurnSteer=false) PROMOTE_TO_STEER over Relay:
-	// While a long turn runs on vps-1, queue 2 messages and promote the 2nd ("Steer Now") ->
-	// interrupts the active turn and executes the promoted message immediately before the 1st queued message!
-	if _, err := sc.DispatchMessage(ctx, &sessionv1.DispatchMessageRequest{
+	// 3c. Remote ACP (Antigravity, MidTurnSteer=true) PROMOTE_TO_STEER over Relay:
+	// While a turn runs on vps-1, queue 2 messages and promote the 2nd ("Steer Now") ->
+	// injects the promoted message live into the active turn WITHOUT interrupting it, then runs the 1st queued message!
+	slowRunRes, err := sc.DispatchMessage(ctx, &sessionv1.DispatchMessageRequest{
 		SessionId: planSessionID,
-		Text:      "sleep 20s\nsay acp_never_finishes",
-	}); err != nil {
+		Text:      "sleep 800ms\nsay acp_initial_finishes",
+	})
+	if err != nil {
 		t.Fatalf("start slow antigravity turn: %v", err)
 	}
 	eventually(t, 10*time.Second, "antigravity slow turn running", func() bool {
@@ -417,17 +418,29 @@ func TestThreadV2EndToEnd(t *testing.T) {
 		}
 		return false
 	})
-	var q1Ord, q2Ord uint32
+	var slowStatus, q1Status sessionv1.RunStatus
 	for _, r := range acpSteerProj.GetRuns() {
-		if r.RunId == acpQ1.Run.RunId && r.Status == sessionv1.RunStatus_RUN_STATUS_COMPLETED {
-			q1Ord = r.Ordinal
+		if r.RunId == slowRunRes.GetRun().GetRunId() {
+			slowStatus = r.Status
 		}
-		if r.RunId == acpQ2.Run.RunId && r.Status == sessionv1.RunStatus_RUN_STATUS_COMPLETED {
-			q2Ord = r.Ordinal
+		if r.RunId == acpQ1.Run.RunId {
+			q1Status = r.Status
 		}
 	}
-	if q2Ord == 0 || q1Ord == 0 || q2Ord >= q1Ord {
-		t.Fatalf("expected promoted acpQ2 to execute before acpQ1, got q2Ord=%d q1Ord=%d", q2Ord, q1Ord)
+	if slowStatus != sessionv1.RunStatus_RUN_STATUS_COMPLETED || q1Status != sessionv1.RunStatus_RUN_STATUS_COMPLETED {
+		t.Fatalf("expected steered active run and queued run to both complete without interruption, got slow=%v q1=%v", slowStatus, q1Status)
+	}
+	var allReplies string
+	for _, it := range acpSteerProj.GetItems() {
+		if it.Kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE {
+			allReplies += it.Text + "\n"
+		}
+	}
+	idxInit := strings.Index(allReplies, "acp_initial_finishes")
+	idxProm := strings.Index(allReplies, "acp_promoted_now")
+	idxQueued := strings.Index(allReplies, "acp_queued_after")
+	if idxInit < 0 || idxProm < 0 || idxQueued < 0 || !(idxInit < idxProm && idxProm < idxQueued) {
+		t.Fatalf("expected replies in order [acp_initial_finishes, acp_promoted_now, acp_queued_after], got:\n%s", allReplies)
 	}
 
 	// 4. Durable Offline Outbox: stop vps-1, launch session + queue follow-up while offline, restart vps-1 -> auto-flushes FIFO!
@@ -577,7 +590,7 @@ func TestThreadV2EndToEnd(t *testing.T) {
 	}
 	bgSessionID := bgLaunch.Session.SessionId
 
-	// Wait for automatic Continuation Run #2 to settle ActiveBackgroundCount -> 0 while ActiveDaemonCount stays 1.
+	// Wait for automatic background wakeup on unified Run #1 to settle ActiveBackgroundCount -> 0 while ActiveDaemonCount stays 1.
 	var bgAfterCont *sessionv1.SessionProjection
 	eventually(t, 20*time.Second, "remote background continuation completed on vps-1", func() bool {
 		g, err := sc.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: bgSessionID})
@@ -585,7 +598,7 @@ func TestThreadV2EndToEnd(t *testing.T) {
 			return false
 		}
 		s := g.Projection.GetSession()
-		if s.GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_IDLE && s.GetProgress().GetTurnCount() >= 2 && s.GetActiveBackgroundCount() == 0 && s.GetActiveDaemonCount() == 1 {
+		if s.GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_IDLE && s.GetProgress().GetTurnCount() >= 1 && s.GetActiveBackgroundCount() == 0 && s.GetActiveDaemonCount() == 1 {
 			bgAfterCont = g.Projection
 			return true
 		}

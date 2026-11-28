@@ -217,10 +217,11 @@ Each session uses a long-running stdio ACP process. Hermesh handles streamed
 replies, tool events, token usage, permission requests, cancellation and
 resumption. The server's **default** permission mode is selected explicitly
 on both new and resumed sessions; Hermesh never chooses auto-edit/YOLO or
-persistent `allow_always` permissions. Commands are extracted from Google's
-`CommandLine`/`command_line` fields, and terminal output from `combinedOutput`.
-ACP does not support steering a running turn in this adapter; Hermesh queues
-the next message until the turn ends.
+persistent `allow_always` permissions. Commands are extracted from Google's `CommandLine`/`command_line` fields, and
+terminal output from `combinedOutput`. Hermesh steers a running turn in place
+by sending a follow-up `session/prompt` (which joins at the agent's next step
+without cancelling active work) and also supports explicit queueing for the
+next turn.
 
 ## Verification and limits
 
