@@ -90,6 +90,8 @@ function Environment({ machine, envs, choose, task }: { machine: Machine; envs: 
   const [panel, setPanel] = useState<Panel>(null);
   const [sheet, setSheet] = useState<HerSheet>(null);
   const [convProgress, setConvProgress] = useState<{ task?: ProgressTaskRef } | null>(null);
+  const [greeted, setGreeted] = useState(false);
+  const finishGreet = useCallback(() => setGreeted(true), []);
   const id = machine.machineId;
   // Until her answers, and while the machine is offline: Her and the conversation as this Mac keeps them.
   const bot = env.bots.find((b) => b.default) ?? (task ? undefined : kept?.bot);
@@ -181,7 +183,7 @@ function Environment({ machine, envs, choose, task }: { machine: Machine; envs: 
             <Progress bot={bot} conv={conv} op={op} task={progressTask} />
           ) : (
             <>
-              <TopBar view={conv.view} task={task} />
+              <TopBar view={conv.view} task={task} greet={!greeted} onGreetEnd={finishGreet} />
               {bot && conversation !== "" ? <Conversation visible={chatVisible} bot={bot} conv={conv} op={op} waiting={waiting.list} onWaiting={refreshWaiting} /> : <EnvStatus machine={machine} />}
             </>
           )}

@@ -1,8 +1,8 @@
-/* Her's cat (Cat.tsx): she breathes from the ground up and blinks; busy, she bobs and looks from side to side.
+/* Her's cat (Cat.tsx): she breathes from the ground up and blinks; entering her conversation, she waves hello; busy, she bobs and looks from side to side.
    Each moving part is an HTML layer over viewBox 8 16 104 104 so CoreAnimation composites all transforms with zero SVGLayout. */
 .cat{position:relative;display:block;width:100%;height:100%;overflow:visible}
 .cat svg{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible}
-.cat .cat-body,.cat .cat-eyes,.cat .eye{position:absolute;inset:0;display:block}
+.cat .cat-body,.cat .cat-eyes,.cat .eye,.cat .eye-happy,.cat .cat-ear-l,.cat .cat-ear-r,.cat .cat-paw-r,.cat .cat-blush,.cat .cat-wave-paw{position:absolute;inset:0;display:block}
 .cat .cat-body{transform-origin:50% 90.3846%;will-change:transform;animation:cat-breathe 3.4s ease-in-out infinite}
 .cat .eye{transform-origin:50% 46.1538%;will-change:transform;animation:cat-blink 4.8s infinite}
 .cat.busy .cat-body{animation:cat-bob .8s ease-in-out infinite}
@@ -11,6 +11,30 @@
 @keyframes cat-blink{0%,45%,49%,100%{transform:none}47%{transform:scaleY(.1)}}
 @keyframes cat-bob{0%,100%{transform:none}50%{transform:scale(1.03,.96)}}
 @keyframes cat-look{0%,100%{transform:translate(-2.4038%,-2.4038%)}50%{transform:translate(2.4038%,-2.4038%)}}
+/* Greeting: she perks up, smiles with her eyes and waves her right paw twice (1.26 s), even before a busy bob resumes. */
+.cat .eye-happy{transform-origin:50% 46.1538%;opacity:0}
+.cat .cat-ear-l{transform-origin:30.7692% 27.8846%}
+.cat .cat-ear-r{transform-origin:69.2308% 27.8846%}
+.cat .cat-paw-r{transform-origin:86.5385% 67.3077%}
+.cat .cat-blush{opacity:.6}
+.cat .cat-wave-paw{transform-origin:82.6923% 60.5769%;opacity:0}
+.cat.greet .cat-body{animation:cat-wave-body 1.26s cubic-bezier(.2,.8,.2,1) both}
+.cat.greet .cat-eyes{will-change:auto;animation:none}
+.cat.greet .eye{animation:cat-smile-open 1.26s ease-in-out both}
+.cat.greet .eye-happy{will-change:transform,opacity;animation:cat-smile-arc 1.26s ease-in-out both}
+.cat.greet .cat-ear-l{will-change:transform;animation:cat-wave-ear-l 1.26s ease-in-out both}
+.cat.greet .cat-ear-r{will-change:transform;animation:cat-wave-ear-r 1.26s ease-in-out both}
+.cat.greet .cat-paw-r{will-change:transform;animation:cat-tuck-paw-r 1.26s ease-in-out both}
+.cat.greet .cat-blush{will-change:opacity;animation:cat-blush-warm 1.26s ease-in-out both}
+.cat.greet .cat-wave-paw{will-change:transform,opacity;animation:cat-wave-arm 1.26s ease-in-out both}
+@keyframes cat-wave-body{0%{transform:none}10%{transform:scale(1.03,.96)}24%{transform:translateY(-3.6%) rotate(-4.2deg) scale(.985,1.02)}44%{transform:translateY(-2.4%) rotate(-2.8deg)}62%{transform:translateY(-3.1%) rotate(-4deg)}82%{transform:translateY(0) rotate(.8deg) scale(1.02,.98)}100%{transform:none}}
+@keyframes cat-wave-arm{0%{opacity:0;transform:translate(-6.5%,12%) rotate(34deg) scale(.72)}9%{opacity:1}21%{opacity:1;transform:translate(0,0) rotate(-9deg) scale(1)}37%{opacity:1;transform:translate(1.4%,.6%) rotate(20deg) scale(1)}53%{opacity:1;transform:translate(0,0) rotate(-8deg) scale(1)}69%{opacity:1;transform:translate(1.2%,.5%) rotate(18deg) scale(1)}84%{opacity:1;transform:translate(-2%,4%) rotate(20deg) scale(.92)}93%,100%{opacity:0;transform:translate(-6.5%,12%) rotate(34deg) scale(.72)}}
+@keyframes cat-tuck-paw-r{0%,100%{transform:none}12%,84%{transform:translateX(-8.5%) scale(.82)}}
+@keyframes cat-wave-ear-r{0%,100%{transform:none}20%{transform:rotate(7deg)}38%{transform:rotate(-3deg)}56%{transform:rotate(6deg)}76%{transform:none}}
+@keyframes cat-wave-ear-l{0%,100%{transform:none}22%{transform:rotate(-5deg)}58%{transform:rotate(-3deg)}}
+@keyframes cat-smile-open{0%{opacity:1;transform:none}9%{opacity:1;transform:scaleY(.12)}10%,83%{opacity:0;transform:scaleY(.12)}84%{opacity:1;transform:scaleY(.12)}94%,100%{opacity:1;transform:none}}
+@keyframes cat-smile-arc{0%,9%{opacity:0;transform:scaleY(.35)}10%{opacity:1;transform:scaleY(.35)}19%,75%{opacity:1;transform:none}83%{opacity:1;transform:scaleY(.35)}84%,100%{opacity:0;transform:scaleY(.35)}}
+@keyframes cat-blush-warm{0%,100%{opacity:.6}22%,74%{opacity:.85}}
 /* Asleep: eyes shut, breathing slower. Waking: the eyes open and she hops, then breathes and blinks as ever. */
 .cat.asleep .cat-body{animation-duration:5.2s}
 .cat.asleep .eye{will-change:auto;animation:none;transform:scaleY(.1)}
@@ -18,4 +42,4 @@
 .cat.wake .cat-body{animation:cat-hop .8s cubic-bezier(.3,1.5,.5,1) .3s both,cat-breathe 3.4s 1.2s ease-in-out infinite}
 @keyframes cat-open{from{transform:scaleY(.1)}to{transform:none}}
 @keyframes cat-hop{0%{transform:none}35%{transform:translateY(-9.6154%) scale(.97,1.05)}70%{transform:scale(1.04,.95)}100%{transform:none}}
-@media (prefers-reduced-motion:reduce){.cat .cat-body,.cat .eye,.cat .cat-eyes{will-change:auto;animation:none}.cat.wake .eye{transform:none}}
+@media (prefers-reduced-motion:reduce){.cat .cat-body,.cat .eye,.cat .eye-happy,.cat .cat-eyes,.cat .cat-ear-l,.cat .cat-ear-r,.cat .cat-paw-r,.cat .cat-blush,.cat .cat-wave-paw{will-change:auto;animation:none}.cat.wake .eye{transform:none}}

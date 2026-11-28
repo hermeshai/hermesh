@@ -1,0 +1,1292 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Her 顶部小猫 · 打招呼动作 Demo</title>
+<style>
+/* Tokens aligned with apps/desktop/src/renderer/src/styles/app.css & her/her.css */
+:root{
+  --font:"Google Sans Flex","Google Sans",-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Noto Sans SC",sans-serif;
+  --font-ios:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --mono:"Google Sans Code",ui-monospace,"SF Mono",Menlo,monospace;
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --spring:cubic-bezier(.3,1.4,.5,1);
+  --speed:1;
+}
+:root[data-speed="slow"]{--speed:2.85}
+
+:root[data-theme="dark"]{
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--page-fg3:#666876;
+  --card:#16171d;--card-bd:rgba(255,255,255,.08);
+  --win:#1e1e21;--win2:#29292d;--win3:#323237;--side:#1a1a1e;
+  --l1:rgba(255,255,255,.88);--l2:rgba(255,255,255,.55);--l3:rgba(255,255,255,.34);--l4:rgba(255,255,255,.14);
+  --sep:rgba(255,255,255,.09);--fill:rgba(255,255,255,.055);--fill2:rgba(255,255,255,.09);--fill3:rgba(255,255,255,.14);
+  --side-sel:rgba(255,255,255,.10);--side-fg:rgba(255,255,255,.78);--side-sel-fg:#ffffff;
+  --glass:rgba(42,42,48,.74);--glass-sh:0 0 0 .5px rgba(255,255,255,.13),0 6px 20px rgba(0,0,0,.36);
+  --accent:#4a66ff;--accent-fg:#8fa2ff;--accent-bg:rgba(74,102,255,.18);
+  --ok:#3fcf86;--warn:#ffab3d;--danger:#ff6670;
+  --bub:#4a66ff;--bub-fg:#fff;--bot-reply:#29292d;--pill:#29292d;--pill-bd:rgba(255,255,255,.11);
+  --shadow-win:0 0 0 .5px rgba(255,255,255,.14),0 22px 60px rgba(0,0,0,.55),0 6px 18px rgba(0,0,0,.3);
+  --i-bg:#000000;--i-reply:rgba(255,255,255,.085);--i-glass:rgba(44,44,50,.80);--i-glass-bd:rgba(255,255,255,.12);
+  --bezel:#25262c;
+  color-scheme:dark;
+}
+:root[data-theme="light"]{
+  --page:#eceef4;--page-fg:#1b1c22;--page-fg2:#60636e;--page-fg3:#8d909c;
+  --card:#ffffff;--card-bd:rgba(0,0,0,.08);
+  --win:#ffffff;--win2:#f4f4f7;--win3:#ebebf0;--side:#f3f4f7;
+  --l1:rgba(0,0,0,.86);--l2:rgba(0,0,0,.54);--l3:rgba(0,0,0,.34);--l4:rgba(0,0,0,.14);
+  --sep:rgba(0,0,0,.08);--fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.075);--fill3:rgba(0,0,0,.12);
+  --side-sel:rgba(0,0,0,.075);--side-fg:rgba(0,0,0,.76);--side-sel-fg:rgba(0,0,0,.95);
+  --glass:rgba(255,255,255,.78);--glass-sh:0 0 0 .5px rgba(0,0,0,.08),0 6px 18px rgba(15,20,40,.08);
+  --accent:#3d5bff;--accent-fg:#2d4ae6;--accent-bg:rgba(61,91,255,.10);
+  --ok:#17924f;--warn:#d97706;--danger:#dc323e;
+  --bub:#3d5bff;--bub-fg:#fff;--bot-reply:#f4f4f7;--pill:#ffffff;--pill-bd:rgba(0,0,0,.10);
+  --shadow-win:0 0 0 .5px rgba(0,0,0,.16),0 22px 60px rgba(15,22,48,.18),0 6px 18px rgba(15,22,48,.08);
+  --i-bg:#ffffff;--i-reply:#f3f3f7;--i-glass:rgba(255,255,255,.84);--i-glass-bd:rgba(0,0,0,.08);
+  --bezel:#1b1c20;
+  color-scheme:light;
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:13.5px/1.55 var(--font);-webkit-font-smoothing:antialiased;padding-bottom:64px}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+svg{display:block}
+
+.wrap{max-width:1280px;margin:0 auto;padding:24px 20px 0}
+.hero{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:16px}
+.hero h1{margin:0 0 5px;font-size:21px;font-weight:650;letter-spacing:-.015em}
+.hero p{margin:0;max-width:780px;color:var(--page-fg2);font-size:13.5px}
+.hero p b{color:var(--page-fg);font-weight:600}
+
+/* Control bar */
+.bar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:11px 14px;border-radius:14px;background:var(--card);border:1px solid var(--card-bd);margin-bottom:18px;position:sticky;top:10px;z-index:40;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);background:color-mix(in srgb,var(--card) 88%,transparent)}
+.bar-g{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.bar-lbl{font-size:12px;color:var(--page-fg2);font-weight:500}
+.seg{display:inline-flex;padding:2.5px;border-radius:9px;background:var(--fill2);gap:2px;flex-wrap:wrap}
+.seg button{padding:5px 11px;border-radius:7px;font-size:12.5px;color:var(--page-fg2);transition:background .15s,color .15s}
+.seg button:hover{color:var(--page-fg)}
+.seg button.on{background:var(--win);color:var(--page-fg);font-weight:550;box-shadow:0 1px 2.5px rgba(0,0,0,.16)}
+.replay-btn{margin-left:auto;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;background:var(--accent);color:#fff;font-size:12.5px;font-weight:600;box-shadow:0 2px 8px color-mix(in srgb,var(--accent) 42%,transparent);transition:transform .12s,filter .15s}
+.replay-btn:hover{filter:brightness(1.07)}
+.replay-btn:active{transform:scale(.96)}
+.replay-btn kbd{font:10.5px/1 var(--mono);padding:2px 5px;border-radius:4px;background:rgba(255,255,255,.2)}
+
+/* ============================================================================
+   HER'S CAT (Cat.tsx + cat.css + Greeting extensions)
+   Grid: viewBox="8 16 104 104" (width 104, height 104, x:8..112, y:16..120)
+   Every moving part is an HTML layer over the same 8 16 104 104 box so
+   CoreAnimation composites all transforms with zero SVGLayout.
+   ============================================================================ */
+.cat{position:relative;display:block;width:100%;height:100%;overflow:visible;user-select:none}
+.cat svg{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible}
+.cat-layer{position:absolute;inset:0;display:block;pointer-events:none}
+
+/* Key origins in % of viewBox 8 16 104 104:
+   Ground (60, 110)       -> 50% 90.3846%
+   Eyes center (60, 64)   -> 50% 46.1538%
+   Left ear base (40, 45) -> 30.7692% 27.8846%
+   Right ear base (80,45) -> 69.2308% 27.8846%
+   Right shoulder (94,79) -> 82.6923% 60.5769%
+   Left paw (16, 86)      -> 7.6923% 67.3077%
+   Right paw (104, 86)    -> 92.3077% 67.3077% */
+.cat .cat-body{transform-origin:50% 90.3846%;will-change:transform;animation:cat-breathe 3.4s ease-in-out infinite}
+.cat .eye-open{transform-origin:50% 46.1538%;will-change:transform;animation:cat-blink 4.8s infinite}
+.cat .eye-happy{transform-origin:50% 46.1538%;opacity:0}
+.cat .ear-l{transform-origin:30.7692% 27.8846%}
+.cat .ear-r{transform-origin:69.2308% 27.8846%}
+.cat .paw-l{transform-origin:13.4615% 67.3077%}
+.cat .paw-r{transform-origin:86.5385% 67.3077%}
+.cat .wave-paw{transform-origin:82.6923% 60.5769%;opacity:0;transform:translate(-5.8%,11.5%) rotate(34deg) scale(.76)}
+.cat .blush-layer{opacity:.6}
+.cat .mouth-happy{opacity:0}
+
+/* Busy state (existing cat.css) */
+.cat.busy .cat-body{animation:cat-bob .8s ease-in-out infinite}
+.cat.busy .cat-eyes{will-change:transform;animation:cat-look 2.4s ease-in-out infinite}
+
+@keyframes cat-breathe{0%,100%{transform:none}50%{transform:scale(1.02,.975)}}
+@keyframes cat-blink{0%,45%,49%,100%{transform:none}47%{transform:scaleY(.1)}}
+@keyframes cat-bob{0%,100%{transform:none}50%{transform:scale(1.03,.96)}}
+@keyframes cat-look{0%,100%{transform:translate(-2.4038%,-2.4038%)}50%{transform:translate(2.4038%,-2.4038%)}}
+
+/* ----------------------------------------------------------------------------
+   VARIANT A (Recommended): 举爪招手 (Wave Paw + Happy Smile Eyes + Soft Tilt)
+   Duration: 1.26s — right paw rises with pink paw-pad, waves twice, tucks back
+   ---------------------------------------------------------------------------- */
+.cat.greet-wave .cat-body{
+  animation:cat-wave-body calc(1.26s * var(--speed)) var(--ease) both;
+}
+.cat.greet-wave .wave-paw{
+  will-change:transform,opacity;
+  animation:cat-wave-arm calc(1.26s * var(--speed)) ease-in-out both;
+}
+.cat.greet-wave .paw-r{
+  will-change:transform;
+  animation:cat-tuck-paw-r calc(1.26s * var(--speed)) ease-in-out both;
+}
+.cat.greet-wave .ear-r{
+  will-change:transform;
+  animation:cat-wave-ear-r calc(1.26s * var(--speed)) ease-in-out both;
+}
+.cat.greet-wave .ear-l{
+  will-change:transform;
+  animation:cat-wave-ear-l calc(1.26s * var(--speed)) ease-in-out both;
+}
+.cat.greet-wave .eye-open{
+  animation:cat-smile-swap-open calc(1.26s * var(--speed)) ease-in-out both;
+}
+.cat.greet-wave .eye-happy{
+  will-change:transform,opacity;
+  animation:cat-smile-swap-arc calc(1.26s * var(--speed)) ease-in-out both;
+}
+.cat.greet-wave .blush-layer{
+  animation:cat-blush-warm calc(1.26s * var(--speed)) ease-in-out both;
+}
+.cat.greet-wave .cat-eyes{animation:none}
+
+@keyframes cat-wave-body{
+  0%{transform:none}
+  10%{transform:scale(1.03,.96)}
+  24%{transform:translateY(-3.6%) rotate(-4.2deg) scale(.985,1.02)}
+  44%{transform:translateY(-2.4%) rotate(-2.8deg)}
+  62%{transform:translateY(-3.1%) rotate(-4deg)}
+  82%{transform:translateY(0) rotate(.8deg) scale(1.02,.98)}
+  100%{transform:none}
+}
+@keyframes cat-wave-arm{
+  0%{opacity:0;transform:translate(-6.5%,12%) rotate(34deg) scale(.72)}
+  9%{opacity:1}
+  21%{opacity:1;transform:translate(0,0) rotate(-9deg) scale(1)}
+  37%{opacity:1;transform:translate(1.4%,.6%) rotate(20deg) scale(1)}
+  53%{opacity:1;transform:translate(0,0) rotate(-8deg) scale(1)}
+  69%{opacity:1;transform:translate(1.2%,.5%) rotate(18deg) scale(1)}
+  84%{opacity:1;transform:translate(-2%,4%) rotate(20deg) scale(.92)}
+  93%{opacity:0;transform:translate(-6.5%,12%) rotate(34deg) scale(.72)}
+  100%{opacity:0;transform:translate(-6.5%,12%) rotate(34deg) scale(.72)}
+}
+@keyframes cat-tuck-paw-r{
+  0%,100%{transform:none}
+  12%,84%{transform:translateX(-8.5%) scale(.82)}
+}
+@keyframes cat-wave-ear-r{
+  0%,100%{transform:none}
+  20%{transform:rotate(7deg)}
+  38%{transform:rotate(-3deg)}
+  56%{transform:rotate(6deg)}
+  76%{transform:rotate(0deg)}
+}
+@keyframes cat-wave-ear-l{
+  0%,100%{transform:none}
+  22%{transform:rotate(-5deg)}
+  58%{transform:rotate(-3deg)}
+}
+/* Blink-midpoint swap: open eyes close at 10%, stay hidden while happy arcs show, blink open at 86% */
+@keyframes cat-smile-swap-open{
+  0%{opacity:1;transform:none}
+  9%{opacity:1;transform:scaleY(.12)}
+  10%,83%{opacity:0;transform:scaleY(.12)}
+  84%{opacity:1;transform:scaleY(.12)}
+  94%,100%{opacity:1;transform:none}
+}
+@keyframes cat-smile-swap-arc{
+  0%,9%{opacity:0;transform:scaleY(.35)}
+  10%{opacity:1;transform:scaleY(.35)}
+  19%,75%{opacity:1;transform:none}
+  83%{opacity:1;transform:scaleY(.35)}
+  84%,100%{opacity:0;transform:scaleY(.35)}
+}
+@keyframes cat-blush-warm{
+  0%,100%{opacity:.6}
+  22%,74%{opacity:.85}
+}
+
+/* ----------------------------------------------------------------------------
+   VARIANT B: 歪头轻招 + 抖耳 (Curious Head-Tilt + Bright Gaze + Gentle Beckon)
+   Duration: 1.34s — keeps round dark eyes open & bright, tilts head, flicks ear
+   ---------------------------------------------------------------------------- */
+.cat.greet-tilt .cat-body{
+  animation:cat-tilt-body calc(1.34s * var(--speed)) var(--ease) both;
+}
+.cat.greet-tilt .wave-paw{
+  will-change:transform,opacity;
+  animation:cat-tilt-arm calc(1.34s * var(--speed)) ease-in-out both;
+}
+.cat.greet-tilt .paw-r{
+  will-change:transform;
+  animation:cat-tuck-paw-r calc(1.34s * var(--speed)) ease-in-out both;
+}
+.cat.greet-tilt .ear-r{
+  will-change:transform;
+  animation:cat-tilt-ear calc(1.34s * var(--speed)) ease-in-out both;
+}
+.cat.greet-tilt .cat-eyes{
+  will-change:transform;
+  animation:cat-tilt-gaze calc(1.34s * var(--speed)) ease-in-out both;
+}
+.cat.greet-tilt .eye-open{
+  animation:cat-tilt-blink calc(1.34s * var(--speed)) ease-in-out both;
+}
+.cat.greet-tilt .blush-layer{
+  animation:cat-blush-warm calc(1.34s * var(--speed)) ease-in-out both;
+}
+
+@keyframes cat-tilt-body{
+  0%{transform:none}
+  24%{transform:translateY(-2%) rotate(-6.5deg) scale(.99,1.015)}
+  68%{transform:translateY(-1.8%) rotate(-5.5deg)}
+  88%{transform:rotate(1deg) scale(1.015,.988)}
+  100%{transform:none}
+}
+@keyframes cat-tilt-arm{
+  0%{opacity:0;transform:translate(-6.5%,12%) rotate(34deg) scale(.72)}
+  12%{opacity:1}
+  28%{opacity:1;transform:translate(-1.5%,2.5%) rotate(-6deg) scale(.95)}
+  46%{opacity:1;transform:translate(-.5%,4.2%) rotate(11deg) scale(.95)}
+  62%{opacity:1;transform:translate(-1.5%,2.5%) rotate(-5deg) scale(.95)}
+  76%{opacity:1;transform:translate(-1%,4%) rotate(10deg) scale(.93)}
+  90%{opacity:0;transform:translate(-6.5%,12%) rotate(34deg) scale(.72)}
+  100%{opacity:0;transform:translate(-6.5%,12%) rotate(34deg) scale(.72)}
+}
+@keyframes cat-tilt-ear{
+  0%,100%{transform:none}
+  16%{transform:rotate(10deg)}
+  26%{transform:rotate(-2deg)}
+  36%{transform:rotate(9deg)}
+  50%{transform:rotate(2deg)}
+}
+@keyframes cat-tilt-gaze{
+  0%,100%{transform:none}
+  20%,72%{transform:translate(1.2%,-2.2%) scale(1.04)}
+}
+@keyframes cat-tilt-blink{
+  0%,76%,84%,100%{transform:none}
+  80%{transform:scaleY(.1)}
+}
+
+/* ----------------------------------------------------------------------------
+   VARIANT C: 双爪欢跳 (Compact Happy Hop + Spread Side Paws + Smile Eyes)
+   Duration: 1.08s — echoes first-run wake hop, spreads both little side paws
+   ---------------------------------------------------------------------------- */
+.cat.greet-hop .cat-body{
+  animation:cat-hop-greet calc(1.08s * var(--speed)) ease-in-out both;
+}
+.cat.greet-hop .paw-l{
+  will-change:transform;
+  animation:cat-flap-l calc(1.08s * var(--speed)) ease-in-out both;
+}
+.cat.greet-hop .paw-r{
+  will-change:transform;
+  animation:cat-flap-r calc(1.08s * var(--speed)) ease-in-out both;
+}
+.cat.greet-hop .ear-l{
+  animation:cat-hop-ear-l calc(1.08s * var(--speed)) ease-in-out both;
+}
+.cat.greet-hop .ear-r{
+  animation:cat-hop-ear-r calc(1.08s * var(--speed)) ease-in-out both;
+}
+.cat.greet-hop .eye-open{
+  animation:cat-smile-swap-open calc(1.08s * var(--speed)) ease-in-out both;
+}
+.cat.greet-hop .eye-happy{
+  animation:cat-smile-swap-arc calc(1.08s * var(--speed)) ease-in-out both;
+}
+.cat.greet-hop .mouth-happy{
+  animation:cat-mouth-peek calc(1.08s * var(--speed)) ease-in-out both;
+}
+.cat.greet-hop .blush-layer{
+  animation:cat-blush-warm calc(1.08s * var(--speed)) ease-in-out both;
+}
+.cat.greet-hop .cat-eyes{animation:none}
+
+@keyframes cat-hop-greet{
+  0%{transform:none}
+  13%{transform:scale(1.055,.925)}
+  38%{transform:translateY(-9.2%) scale(.965,1.055)}
+  58%{transform:translateY(-6.5%) rotate(-2.5deg) scale(.98,1.03)}
+  78%{transform:translateY(0) scale(1.045,.95)}
+  90%{transform:translateY(-1.6%) scale(.995,1.01)}
+  100%{transform:none}
+}
+@keyframes cat-flap-l{
+  0%,82%,100%{transform:none}
+  36%,58%{transform:translate(-3.4%,-7.5%) scale(1.08)}
+}
+@keyframes cat-flap-r{
+  0%,82%,100%{transform:none}
+  36%,58%{transform:translate(3.4%,-7.5%) scale(1.08)}
+}
+@keyframes cat-hop-ear-l{
+  0%,100%{transform:none}
+  13%{transform:rotate(-5deg)}
+  40%{transform:rotate(5deg)}
+  78%{transform:rotate(-4deg)}
+}
+@keyframes cat-hop-ear-r{
+  0%,100%{transform:none}
+  13%{transform:rotate(5deg)}
+  40%{transform:rotate(-5deg)}
+  78%{transform:rotate(4deg)}
+}
+@keyframes cat-mouth-peek{
+  0%,18%,74%,100%{opacity:0}
+  26%,64%{opacity:1}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .cat .cat-body,.cat .eye-open,.cat .eye-happy,.cat .cat-eyes,.cat .wave-paw,.cat .paw-l,.cat .paw-r,.cat .ear-l,.cat .ear-r{animation:none!important;will-change:auto}
+}
+
+/* ============================================================================
+   SECTION 1: STUDIO CLOSEUP & REAL HEADER SIZES
+   ============================================================================ */
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 10px}
+.sec-head h2{margin:0;font-size:15px;font-weight:620}
+.sec-head span{font-size:12.5px;color:var(--page-fg2)}
+
+.lab-grid{display:grid;grid-template-columns:360px 1fr;gap:16px;margin-bottom:26px}
+@media (max-width:900px){.lab-grid{grid-template-columns:1fr}}
+
+.stage-card{position:relative;border-radius:16px;background:var(--card);border:1px solid var(--card-bd);padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:286px;overflow:hidden;cursor:pointer}
+.stage-card::before{content:"";position:absolute;width:240px;height:240px;border-radius:50%;background:radial-gradient(closest-side,rgba(179,188,242,.22),rgba(255,163,190,.10) 58%,transparent);pointer-events:none}
+.stage-cat{position:relative;width:184px;height:184px;z-index:1}
+.stage-status{position:relative;z-index:1;margin-top:10px;display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 11px;border-radius:13px;background:var(--fill2);font-size:12px;color:var(--page-fg2)}
+.stage-status i{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.stage-status.waving i{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.stage-status.busy i{background:var(--warn)}
+.stage-hint{position:relative;z-index:1;margin-top:6px;font-size:11.5px;color:var(--page-fg3)}
+
+.sizes-card{border-radius:16px;background:var(--card);border:1px solid var(--card-bd);padding:18px 20px;display:flex;flex-direction:column;justify-content:space-between;gap:16px}
+.sizes-row{display:grid;grid-template-columns:1fr 1fr 180px;gap:14px;align-items:stretch}
+@media (max-width:720px){.sizes-row{grid-template-columns:1fr}}
+.sz-box{border-radius:12px;background:var(--win);border:1px solid var(--sep);padding:14px 12px 12px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:10px;position:relative;overflow:hidden}
+.sz-box.ios-bg{background:var(--i-bg)}
+.sz-tag{font-size:11.5px;color:var(--l2);text-align:center}
+.sz-tag b{color:var(--l1);font-weight:600;display:block;font-size:12.5px;margin-bottom:1px}
+
+/* Exact TopBar Her Identity (her.css .her-id & .her-cap) */
+.her-id-mock{display:flex;flex-direction:column;align-items:center;padding-top:4px}
+.her-av-56{width:56px;height:56px;position:relative;display:flex}
+.her-av-72{width:72px;height:72px;position:relative;display:flex;z-index:1}
+.her-cap-mac{position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;height:28px;margin-top:-13px;padding:0 13px;border-radius:14px;background:var(--glass);box-shadow:var(--glass-sh);backdrop-filter:blur(20px) saturate(1.6);-webkit-backdrop-filter:blur(20px) saturate(1.6);font-size:14px;font-weight:500;color:var(--l1);white-space:nowrap}
+.her-cap-ios{position:relative;z-index:2;display:inline-flex;align-items:center;gap:6px;height:32px;margin-top:-16px;padding:0 14px;border-radius:16px;background:var(--i-glass);border:.5px solid var(--i-glass-bd);box-shadow:0 2px 10px rgba(0,0,0,.14);font:600 15px/1 var(--font-ios);color:var(--l1);white-space:nowrap}
+.cap-sub{font-size:12.5px;font-weight:450;color:var(--l2)}
+.cap-sep{color:var(--l3)}
+
+.small-cats{display:flex;align-items:center;gap:14px;padding:10px 0 4px}
+.small-item{display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;color:var(--l3)}
+.var-desc{font-size:12.5px;color:var(--page-fg2);padding:10px 13px;border-radius:10px;background:var(--fill);line-height:1.55}
+.var-desc b{color:var(--page-fg);font-weight:600}
+
+/* ============================================================================
+   SECTION 2: INTERACTIVE SESSION-SWITCHING SIMULATOR (Mac + iPhone)
+   ============================================================================ */
+.sim-grid{display:grid;grid-template-columns:1fr 362px;gap:20px;align-items:start;margin-bottom:28px}
+@media (max-width:1100px){.sim-grid{grid-template-columns:1fr}}
+
+/* Mac Window */
+.mac-win{border-radius:12px;overflow:hidden;background:var(--win);box-shadow:var(--shadow-win);display:flex;height:560px;position:relative}
+.lights{position:absolute;left:14px;top:16px;display:flex;gap:8px;z-index:10}
+.lights i{width:12px;height:12px;border-radius:50%;background:#ff5f57}
+.lights i:nth-child(2){background:#febc2e}
+.lights i:nth-child(3){background:#28c840}
+
+.side{width:248px;flex:none;background:var(--side);border-right:.5px solid var(--sep);display:flex;flex-direction:column;padding-top:44px;user-select:none}
+.side-nav{padding:4px 8px;display:flex;flex-direction:column;gap:2px}
+.nav-row{height:33px;border-radius:8px;padding:0 10px;display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--side-fg);text-align:left;width:100%}
+.nav-row:hover{background:var(--fill)}
+.nav-row.sel{background:var(--side-sel);color:var(--side-sel-fg);font-weight:550}
+.nav-row .ico{width:17px;height:17px;display:flex;align-items:center;justify-content:center;flex:none;color:var(--l2)}
+.nav-row.sel .ico{color:var(--l1)}
+.nav-row .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav-badge{font-size:10.5px;padding:1px 6px;border-radius:99px;background:var(--accent-bg);color:var(--accent-fg);font-weight:550}
+
+.side-sec{padding:14px 16px 5px;font-size:11.5px;font-weight:600;color:var(--l3);display:flex;align-items:center;justify-content:space-between}
+.slist{flex:1;overflow-y:auto;padding:0 8px 12px;display:flex;flex-direction:column;gap:2px}
+.srow{padding:7px 10px;border-radius:8px;display:flex;align-items:flex-start;gap:8px;text-align:left;width:100%}
+.srow:hover{background:var(--fill)}
+.srow.sel{background:var(--side-sel)}
+.slogo{width:16px;height:16px;margin-top:2px;flex:none;position:relative;display:flex;align-items:center;justify-content:center}
+.smain{flex:1;min-width:0}
+.stitle{font-size:13px;color:var(--side-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.srow.sel .stitle{color:var(--side-sel-fg);font-weight:550}
+.smeta{font-size:11.5px;color:var(--l3);display:flex;align-items:center;gap:5px;margin-top:1px}
+.sdot{width:6.5px;height:6.5px;border-radius:50%;flex:none;margin-top:6px}
+.sdot.run{background:var(--accent)}
+.sdot.idle{background:var(--l4)}
+.kids{margin-left:17px;padding-left:7px;border-left:1px solid var(--sep);display:flex;flex-direction:column;gap:1px}
+.kids .srow{padding:5px 8px}
+.kids .stitle{font-size:12.5px;color:var(--l2)}
+.code-chip{width:16px;height:16px;border-radius:4px;background:#d97757;color:#fff;font:700 9.5px/16px var(--font);text-align:center;flex:none}
+.code-chip.cx{background:#10a37f}
+
+/* Mac Content Area */
+.content{flex:1;min-width:0;position:relative;display:flex;flex-direction:column;background:var(--win)}
+.her-head{height:44px;flex:none;display:flex;align-items:center;padding:0 12px;position:relative;z-index:3}
+.her-id{position:absolute;top:4px;left:0;right:0;width:fit-content;margin:0 auto;display:flex;flex-direction:column;align-items:center}
+.her-id-av{width:56px;height:56px;display:flex;border-radius:50%;position:relative}
+.her-id-av:hover{transform:scale(1.02)}
+.head-sp{flex:1}
+.tb{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--l2);position:relative}
+.tb:hover,.tb.on{background:var(--fill2);color:var(--l1)}
+.tb .rtn-dot{position:absolute;top:5px;right:5px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+
+.conv-scroll{flex:1;min-height:0;overflow-y:auto;padding:54px 34px 86px;display:flex;flex-direction:column;gap:10px;position:relative}
+.conv-fade{position:absolute;top:0;left:0;right:0;height:48px;background:linear-gradient(var(--win),transparent);pointer-events:none;z-index:2}
+.msg-col{max-width:600px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.b-me{align-self:flex-end;max-width:78%;padding:9px 14px;border-radius:16px;background:var(--bub);color:var(--bub-fg);font-size:14px;line-height:1.55}
+.b-her{align-self:flex-start;max-width:84%;padding:9px 15px;border-radius:16px;background:var(--bot-reply);box-shadow:inset 0 0 0 .5px var(--sep);color:var(--l1);font-size:14px;line-height:1.6}
+.b-work{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:18px;background:var(--bot-reply);box-shadow:inset 0 0 0 .5px var(--sep);font-size:13px;color:var(--l2)}
+.dots{display:inline-flex;gap:3px}
+.dots i{width:4.5px;height:4.5px;border-radius:50%;background:var(--l2);animation:wb-wave 2s ease-in-out infinite}
+.dots i:nth-child(2){animation-delay:.18s}.dots i:nth-child(3){animation-delay:.36s}
+@keyframes wb-wave{0%,60%,100%{opacity:1}30%{opacity:.3}}
+
+.task-card{display:flex;align-items:center;gap:10px;max-width:400px;padding:10px 13px;border-radius:14px;background:var(--fill);box-shadow:inset 0 0 0 .5px var(--sep)}
+.task-card b{display:block;font-size:13px;color:var(--l1)}
+.task-card span{font-size:11.5px;color:var(--l2)}
+
+.cmp-dock{position:absolute;left:0;right:0;bottom:0;padding:20px 34px 14px;background:linear-gradient(to bottom,transparent,var(--win) 22px);z-index:3}
+.cmp-box{max-width:620px;margin:0 auto;height:44px;border-radius:16px;background:var(--pill);box-shadow:0 0 0 .5px var(--pill-bd),0 3px 12px rgba(0,0,0,.1);display:flex;align-items:center;padding:0 10px 0 14px;gap:8px;color:var(--l3);font-size:14px}
+.cmp-box span{flex:1}
+.cmp-send{width:28px;height:28px;border-radius:50%;background:var(--fill2);color:var(--l2);display:grid;place-items:center}
+
+/* Non-Her placeholder views inside Mac simulator */
+.plain-head{height:44px;border-bottom:.5px solid var(--sep);display:flex;align-items:center;padding:0 18px;gap:8px;font-weight:600;font-size:14px;color:var(--l1)}
+.plain-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:32px;text-align:center;color:var(--l2)}
+.plain-cta{margin-top:4px;padding:7px 14px;border-radius:9px;background:var(--fill2);color:var(--l1);font-size:12.5px;font-weight:550}
+.plain-cta:hover{background:var(--fill3)}
+
+/* Right settings drawer inside Mac simulator (to test non-retrigger!) */
+.her-panel-mock{width:220px;border-left:.5px solid var(--sep);background:var(--win);padding:12px 14px;display:flex;flex-direction:column;gap:10px;animation:panel-in .18s var(--ease-out)}
+@keyframes panel-in{from{opacity:0;transform:translateX(12px)}}
+.her-panel-mock .ph{display:flex;align-items:center;justify-content:space-between;font-size:12.5px;font-weight:600;color:var(--l2)}
+.her-panel-mock .pbody{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 0;text-align:center}
+.her-panel-mock .pnote{font-size:11.5px;color:var(--l3);line-height:1.5;background:var(--fill);padding:8px 10px;border-radius:8px}
+
+/* New Session Presence inside Mac simulator */
+.pres-wrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;position:relative;overflow:hidden;padding-bottom:60px}
+.pres-aura{position:absolute;width:440px;height:440px;border-radius:50%;background:radial-gradient(closest-side,rgba(179,188,242,.2),rgba(255,163,190,.12) 55%,transparent);pointer-events:none}
+.pres-cat{width:76px;height:76px;position:relative;z-index:1;filter:drop-shadow(0 6px 18px rgba(179,188,242,.3))}
+.pres-title{font-size:24px;font-weight:620;color:var(--l1);position:relative;z-index:1;margin:0}
+.pres-sub{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--l2);position:relative;z-index:1}
+
+/* iPhone Simulator */
+.phone-col{display:flex;flex-direction:column;gap:10px;align-items:center}
+.p-tabs{display:inline-flex;gap:4px;padding:3px;border-radius:10px;background:var(--card);border:1px solid var(--card-bd);flex-wrap:wrap;justify-content:center}
+.p-tabs button{font-size:12px;padding:4px 10px;border-radius:7px;color:var(--page-fg2);transition:background .15s,color .15s}
+.p-tabs button:hover{color:var(--page-fg)}
+.p-tabs button.on{background:var(--accent);color:#fff;font-weight:550}
+.phone{width:362px;max-width:100%;height:518px;border-radius:48px;background:var(--bezel);padding:9px;box-shadow:var(--shadow-win);margin:0 auto}
+.phone-scr{position:relative;width:100%;height:100%;border-radius:40px;background:var(--i-bg);overflow:hidden;display:flex;flex-direction:column;font-family:var(--font-ios);color:var(--l1)}
+.p-sbar{height:40px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 26px 4px;font-size:14px;font-weight:600;position:relative;z-index:3}
+.p-island{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:104px;height:28px;border-radius:16px;background:#000}
+.p-head{position:relative;height:94px;flex:none;padding:4px 14px 0;display:flex;align-items:flex-start;justify-content:space-between;z-index:3}
+.p-gbtn{width:38px;height:38px;border-radius:50%;background:var(--i-glass);border:.5px solid var(--i-glass-bd);display:grid;place-items:center;color:var(--l1)}
+.p-center{position:absolute;left:0;right:0;top:0;display:flex;flex-direction:column;align-items:center;pointer-events:none}
+.p-center>*{pointer-events:auto}
+.p-chat{flex:1;padding:10px 14px 72px;display:flex;flex-direction:column;justify-content:flex-end;gap:9px;overflow:hidden}
+.p-me{align-self:flex-end;max-width:80%;padding:8px 13px;border-radius:18px;background:var(--bub);color:#fff;font-size:15px;line-height:1.42}
+.p-her{align-self:flex-start;max-width:84%;padding:8px 13px;border-radius:18px;background:var(--i-reply);font-size:15px;line-height:1.45}
+.p-cmp{position:absolute;left:12px;right:12px;bottom:14px;height:44px;border-radius:22px;background:var(--i-glass);border:.5px solid var(--i-glass-bd);display:flex;align-items:center;padding:0 14px;color:var(--l3);font-size:15px}
+
+/* Event toast log */
+.trig-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--page-fg2);padding:4px 10px;border-radius:99px;background:var(--card);border:1px solid var(--card-bd)}
+.trig-pill b{color:var(--accent-fg);font-weight:600}
+
+/* Notes */
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.note{padding:15px 17px;border-radius:14px;background:var(--card);border:1px solid var(--card-bd)}
+.note h3{margin:0 0 6px;font-size:14px;font-weight:620}
+.note p,.note li{margin:0;color:var(--page-fg2);font-size:12.8px;line-height:1.6}
+.note ul{margin:5px 0 0;padding-left:18px}
+.note li+li{margin-top:4px}
+.note code{font:11.5px/1.4 var(--mono);padding:1px 5px;border-radius:4px;background:var(--fill2);color:var(--page-fg)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div>
+      <h1>Her 顶部小猫 · 打招呼动作 Demo</h1>
+      <p>围绕 <b>Cat.tsx 无描边柔光造型</b> 绘制了抬爪招手动作：每次进入 <b>Her 主会话</b> 或任务列表里的 <b>Her 话题对话</b>，顶部小猫先打个招呼，随后自然回到呼吸眨眼（或衔接忙碌态）。</p>
+    </div>
+    <span class="trig-pill" id="trigLog">已触发：<b>进入 Her 主会话</b> · 招手播放中</span>
+  </div>
+
+  <!-- Sticky Control Bar -->
+  <div class="bar">
+    <div class="bar-g">
+      <span class="bar-lbl">动作方案</span>
+      <div class="seg" id="variantSeg">
+        <button data-v="wave" class="on">A · 举爪招手（推荐）</button>
+        <button data-v="tilt">B · 歪头轻招 + 抖耳</button>
+        <button data-v="hop">C · 双爪欢跳</button>
+      </div>
+    </div>
+    <div class="bar-g">
+      <span class="bar-lbl">进入时状态</span>
+      <div class="seg" id="afterSeg">
+        <button data-v="idle" class="on">空闲会话</button>
+        <button data-v="busy">Her 正在忙</button>
+      </div>
+    </div>
+    <div class="bar-g">
+      <span class="bar-lbl">速度</span>
+      <div class="seg" id="speedSeg">
+        <button data-v="normal" class="on">1×</button>
+        <button data-v="slow">0.35× 慢放</button>
+      </div>
+    </div>
+    <div class="bar-g">
+      <span class="bar-lbl">外观</span>
+      <div class="seg" id="themeSeg">
+        <button data-v="dark" class="on">深色</button>
+        <button data-v="light">浅色</button>
+      </div>
+    </div>
+    <button class="replay-btn" id="replayBtn" title="重新播放一次打招呼动作（空格键）">
+      <span>👋 再打一次招呼</span>
+      <kbd>Space</kbd>
+    </button>
+  </div>
+
+  <!-- Section 1: Studio Closeup + Real Header Sizes -->
+  <div class="sec-head">
+    <h2>1. 造型特写与真实尺寸对比</h2>
+    <span>点左侧大猫或按空格可随时重播；右侧检查毛玻璃胶囊遮挡关系</span>
+  </div>
+  <div class="lab-grid">
+    <div class="stage-card" id="stageCard" title="点击重播打招呼动作">
+      <div class="stage-cat" id="catCloseup"></div>
+      <div class="stage-status waving" id="stageStatus"><i></i><span id="stageStatusText">👋 正在打招呼…</span></div>
+      <div class="stage-hint">点击小猫重播 · 184px 放大检视无描边渐变与小肉垫</div>
+    </div>
+
+    <div class="sizes-card">
+      <div class="sizes-row">
+        <div class="sz-box">
+          <div class="her-id-mock">
+            <div class="her-av-56" id="catMac56"></div>
+            <div class="her-cap-mac"><span>Her</span></div>
+          </div>
+          <div class="sz-tag"><b>Mac 顶部 · 56px</b>叠 -13px 毛玻璃名字胶囊</div>
+        </div>
+
+        <div class="sz-box ios-bg">
+          <div class="her-id-mock">
+            <div class="her-av-72" id="catIos72"></div>
+            <div class="her-cap-ios"><span>Her</span></div>
+          </div>
+          <div class="sz-tag"><b>iPhone 顶部 · 72pt</b>叠 -16pt 胶囊（zIndex 在上）</div>
+        </div>
+
+        <div class="sz-box">
+          <div class="small-cats">
+            <div class="small-item">
+              <div style="width:28px;height:28px" id="catSm28"></div>
+              <span>28px</span>
+            </div>
+            <div class="small-item">
+              <div style="width:16px;height:16px" id="catSm16"></div>
+              <span>16px 列表</span>
+            </div>
+          </div>
+          <div class="sz-tag"><b>列表小图标（small）</b>保持安静，不跟着挥手</div>
+        </div>
+      </div>
+
+      <div class="var-desc" id="varDesc"></div>
+    </div>
+  </div>
+
+  <!-- Section 2: Interactive Session-Switching Simulator -->
+  <div class="sec-head">
+    <h2>2. 交互体验：切换进入「Her 有关的会话」自动先打招呼</h2>
+    <span>点左侧栏的「Her」或下方任意一条「Her 对话」体验进入瞬间；开关右侧设置面板不会重复触发</span>
+  </div>
+  <div class="sim-grid">
+    <!-- Mac Window -->
+    <div class="mac-win">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <aside class="side">
+        <div class="side-nav">
+          <button class="nav-row" data-route="overview">
+            <span class="ico">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="5" height="5" rx="1.2"/><rect x="9" y="2" width="5" height="5" rx="1.2"/><rect x="2" y="9" width="5" height="5" rx="1.2"/><rect x="9" y="9" width="5" height="5" rx="1.2"/></svg>
+            </span>
+            <span class="grow">概览</span>
+          </button>
+          <button class="nav-row sel" data-route="her-main">
+            <span class="ico" style="width:18px;height:18px" id="navHerIcon"></span>
+            <span class="grow">Her</span>
+            <span class="nav-badge">主会话</span>
+          </button>
+          <button class="nav-row" data-route="new-her">
+            <span class="ico">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
+            </span>
+            <span class="grow">新建会话 · Her</span>
+          </button>
+        </div>
+
+        <div class="side-sec"><span>会话列表</span><span>点选切换</span></div>
+        <div class="slist">
+          <!-- Her Conversation 1 -->
+          <button class="srow" data-route="her-release">
+            <span class="slogo" id="rowIcon1"></span>
+            <span class="smain">
+              <span class="stitle">规划 1.4 发布与迁移</span>
+              <span class="smeta">你 → Her · 刚刚</span>
+            </span>
+            <i class="sdot idle"></i>
+          </button>
+          <div class="kids">
+            <button class="srow" data-route="claude-sub">
+              <span class="code-chip">C</span>
+              <span class="smain">
+                <span class="stitle">核对 changelog 与破坏性变更</span>
+              </span>
+            </button>
+          </div>
+
+          <!-- Her Conversation 2 (Busy) -->
+          <button class="srow" data-route="her-weekly">
+            <span class="slogo" id="rowIcon2"></span>
+            <span class="smain">
+              <span class="stitle">整理本周 issue 周报</span>
+              <span class="smeta">你 → Her · 进行中</span>
+            </span>
+            <i class="sdot run"></i>
+          </button>
+
+          <!-- Regular Coding Agent Session -->
+          <button class="srow" data-route="codex-fix">
+            <span class="code-chip cx">X</span>
+            <span class="smain">
+              <span class="stitle">修复 WebRTC 重连抖动</span>
+              <span class="smeta">Codex · hermesh</span>
+            </span>
+            <i class="sdot idle"></i>
+          </button>
+        </div>
+      </aside>
+
+      <div class="content" id="macContent"></div>
+    </div>
+
+    <!-- iPhone Simulator -->
+    <div class="phone-col">
+      <div class="p-tabs" id="iosTabs">
+        <button data-iroute="her-main" class="on">iPhone · 主会话</button>
+        <button data-iroute="her-release">话题：1.4 发布</button>
+        <button data-iroute="her-weekly">话题：周报 (忙)</button>
+      </div>
+      <div class="phone">
+        <div class="phone-scr">
+          <div class="p-sbar">
+            <span>9:41</span>
+            <div class="p-island"></div>
+            <span>5G 100%</span>
+          </div>
+          <div class="p-head">
+            <button class="p-gbtn" id="iosMenuBtn" title="模拟从抽屉重新进入会话">
+              <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 5h12M3 9h12M3 13h12"/></svg>
+            </button>
+            <div class="p-center">
+              <div class="her-av-72" id="iosSimCat"></div>
+              <div class="her-cap-ios" id="iosSimCap"><span>Her</span></div>
+            </div>
+            <button class="p-gbtn" title="进展">
+              <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 9h3l2-4.5 3 9 2-4.5h3"/></svg>
+            </button>
+          </div>
+
+          <div class="p-chat" id="iosChat"></div>
+          <div class="p-cmp">发消息给 Her</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 3: Research & Engineering Notes -->
+  <div class="sec-head">
+    <h2>3. 研究结论与落地设计</h2>
+    <span>零描边柔光统一 · 明确触发边界 · GPU 合成层零重排</span>
+  </div>
+  <div class="notes">
+    <div class="note">
+      <h3>为什么这么画（造型一致性）</h3>
+      <ul>
+        <li><code>Cat.tsx</code> 的核心设定是 <b>No outline: soft shading only</b>——全身只有淡紫径向渐变（<code>#f1f3ff → #d7ddff → #b3bcf2</code>）和 <code>#ffa3be</code> 柔光腮红。</li>
+        <li>原猫身体背后原本就藏着左右两只 <code>r=7.5</code> 的小圆爪（<code>cx=16/104, cy=86</code>）。方案 A/B 抬起右侧小圆爪时，底下那颗静置圆爪同步向内收进身体遮挡区，<b>不会出现“三条手”或透明度残影</b>。</li>
+        <li>掌心加了同色系 <code>#ffa3be</code> 小肉垫，既不引入新颜色，又让 56px 尺寸下一眼能认出是猫爪在挥手；笑眼在 90ms 闭眼帧切换 <code>◠ ◠</code>，干净无重影。</li>
+      </ul>
+    </div>
+    <div class="note">
+      <h3>什么时候打招呼（触发规则）</h3>
+      <ul>
+        <li><b>触发</b>：进入侧栏 <code>Her</code> 主会话（含切换运行机器）、从任务列表点进任意一条 <code>Her 对话</code>（<code>HerConversationPage</code> 按 <code>machineId/sessionId</code> 独立挂载）。</li>
+        <li><b>如果进入时正在忙</b>：先完整打完招呼（约 1.25s），在动画 <code>onAnimationEnd</code> 后无缝衔接到 <code>busy</code>（点头 + 左右看），既回应了你的到来，又不丢运行状态。</li>
+        <li><b>不打扰</b>：在同一条对话内开关右侧设置面板/团队胶囊、收发消息、冷启动闭眼（<code>asleep</code>）以及开启系统「减少动态效果」时，均不重复触发。</li>
+      </ul>
+    </div>
+    <div class="note">
+      <h3>双端性能与实现代价</h3>
+      <ul>
+        <li><b>Mac（<code>Cat.tsx</code> + <code>cat.css</code>）</b>：延续 <code>f141e618</code> 的分层合成策略，<code>.wave-paw</code>、<code>.ear-r</code>、<code>.eye-happy</code> 均为独立 HTML 层叠在 <code>8 16 104 104</code> 上，只跑 <code>transform / opacity</code>，CoreAnimation 合成零 <code>SVGLayout</code>，约 1.25s 结束后退回普通 <code>idle</code>。</li>
+        <li><b>iPhone（<code>HerAvatar.swift</code>）</b>：在现有 <code>TimelineView + Canvas</code> 中按进入时间戳算 <code>0..1.26s</code> 局部相位，用同一个肩部旋转矩阵画出抬爪和肉垫即可 1:1 对齐。</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+const catBody = "M60 30C84 30 100 48 103 72C106 96 92 110 60 110C28 110 14 96 17 72C20 48 36 30 60 30Z";
+const catFace = "M46 47H74C86 47 92 55 92 65.5C92 80 82 88 60 88C38 88 28 80 28 65.5C28 55 34 47 46 47Z";
+// Plump raised right kitty paw: shoulder ball centered around (94, 79), round mitt peaking around (104.5, 57)
+const wavePawPath = "M88.5 77.5C90 69 94.5 59 97.4 54.4C100.4 49.4 108 48.8 111.8 53.6C115.4 58.2 113.3 65.6 108.6 72.6C105.2 77.6 101.4 82.5 96.4 83.5C91.4 84.5 87.5 82.4 88.5 77.5Z";
+const catInk = "#3c2f3a";
+const catBlush = "#ffa3be";
+
+let uidSeq = 0;
+function renderCatHTML({ small = false, cls = "" } = {}) {
+  const id = `c${++uidSeq}`;
+  if (small) {
+    return `<span class="cat ${cls}" aria-hidden="true">
+      <span class="cat-layer cat-body">
+        <svg viewBox="8 16 104 104" aria-hidden="true">
+          <defs>
+            <radialGradient id="${id}g" gradientUnits="userSpaceOnUse" cx="44" cy="50" r="72">
+              <stop offset="0" stop-color="#f1f3ff"/>
+              <stop offset="0.55" stop-color="#d7ddff"/>
+              <stop offset="1" stop-color="#b3bcf2"/>
+            </radialGradient>
+          </defs>
+          <path d="M30 53L26 25L50 37Z" fill="#cbd3fb" stroke="#cbd3fb" stroke-width="8" stroke-linejoin="round"/>
+          <g transform="translate(120 0) scale(-1 1)"><path d="M30 53L26 25L50 37Z" fill="#cbd3fb" stroke="#cbd3fb" stroke-width="8" stroke-linejoin="round"/></g>
+          <path d="${catBody}" fill="url(#${id}g)"/>
+          <path d="${catFace}" fill="#fafbff"/>
+        </svg>
+        <span class="cat-layer cat-eyes">
+          <span class="cat-layer eye-open">
+            <svg viewBox="8 16 104 104" aria-hidden="true">
+              <ellipse cx="47.5" cy="64" rx="5.2" ry="5.9" fill="${catInk}"/>
+              <ellipse cx="72.5" cy="64" rx="5.2" ry="5.9" fill="${catInk}"/>
+            </svg>
+          </span>
+        </span>
+      </span>
+    </span>`;
+  }
+
+  return `<span class="cat ${cls}" aria-hidden="true">
+    <!-- Ground shadow -->
+    <svg viewBox="8 16 104 104" aria-hidden="true">
+      <defs>
+        <filter id="${id}s" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="1.1"/>
+        </filter>
+      </defs>
+      <ellipse cx="60" cy="111" rx="34" ry="3.6" fill="#4b4660" opacity="0.12" filter="url(#${id}s)"/>
+    </svg>
+
+    <span class="cat-layer cat-body">
+      <!-- Shared defs + Ears + Resting side paws + Body + Face + Blush + Mouth -->
+      <span class="cat-layer ear-l">
+        <svg viewBox="8 16 104 104" aria-hidden="true">
+          <defs>
+            <filter id="${id}el" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="0.8"/></filter>
+          </defs>
+          <path d="M30 53L26 25L50 37Z" fill="#cbd3fb" stroke="#cbd3fb" stroke-width="8" stroke-linejoin="round"/>
+          <path d="M33 45L31.5 33L42.5 38.5Z" fill="${catBlush}" stroke="${catBlush}" stroke-width="3" stroke-linejoin="round" opacity="0.55" filter="url(#${id}el)"/>
+        </svg>
+      </span>
+      <span class="cat-layer ear-r">
+        <svg viewBox="8 16 104 104" aria-hidden="true">
+          <defs>
+            <filter id="${id}er" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="0.8"/></filter>
+          </defs>
+          <g transform="translate(120 0) scale(-1 1)">
+            <path d="M30 53L26 25L50 37Z" fill="#cbd3fb" stroke="#cbd3fb" stroke-width="8" stroke-linejoin="round"/>
+            <path d="M33 45L31.5 33L42.5 38.5Z" fill="${catBlush}" stroke="${catBlush}" stroke-width="3" stroke-linejoin="round" opacity="0.55" filter="url(#${id}er)"/>
+          </g>
+        </svg>
+      </span>
+
+      <span class="cat-layer paw-l">
+        <svg viewBox="8 16 104 104" aria-hidden="true">
+          <defs>
+            <radialGradient id="${id}pl" gradientUnits="userSpaceOnUse" cx="44" cy="50" r="72">
+              <stop offset="0" stop-color="#f1f3ff"/><stop offset="0.55" stop-color="#d7ddff"/><stop offset="1" stop-color="#b3bcf2"/>
+            </radialGradient>
+          </defs>
+          <circle cx="16" cy="86" r="7.5" fill="url(#${id}pl)"/>
+        </svg>
+      </span>
+      <span class="cat-layer paw-r">
+        <svg viewBox="8 16 104 104" aria-hidden="true">
+          <defs>
+            <radialGradient id="${id}pr" gradientUnits="userSpaceOnUse" cx="44" cy="50" r="72">
+              <stop offset="0" stop-color="#f1f3ff"/><stop offset="0.55" stop-color="#d7ddff"/><stop offset="1" stop-color="#b3bcf2"/>
+            </radialGradient>
+          </defs>
+          <circle cx="104" cy="86" r="7.5" fill="url(#${id}pr)"/>
+        </svg>
+      </span>
+
+      <!-- Main round body & face -->
+      <svg viewBox="8 16 104 104" aria-hidden="true">
+        <defs>
+          <radialGradient id="${id}g" gradientUnits="userSpaceOnUse" cx="44" cy="50" r="72">
+            <stop offset="0" stop-color="#f1f3ff"/>
+            <stop offset="0.55" stop-color="#d7ddff"/>
+            <stop offset="1" stop-color="#b3bcf2"/>
+          </radialGradient>
+          <filter id="${id}b1" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="0.8"/></filter>
+          <filter id="${id}b2" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.1"/></filter>
+        </defs>
+        <path d="${catBody}" fill="url(#${id}g)"/>
+        <ellipse cx="37" cy="47" rx="7" ry="3.6" fill="#fff" opacity="0.5" filter="url(#${id}b2)" transform="rotate(-30 37 47)"/>
+        <path d="${catFace}" fill="#fafbff" filter="url(#${id}b1)"/>
+      </svg>
+
+      <!-- Cheek blush layer (warms slightly when greeting) -->
+      <span class="cat-layer blush-layer">
+        <svg viewBox="8 16 104 104" aria-hidden="true">
+          <defs>
+            <filter id="${id}b3" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.4"/></filter>
+          </defs>
+          <ellipse cx="37" cy="73" rx="6.5" ry="4.4" fill="${catBlush}" filter="url(#${id}b3)"/>
+          <ellipse cx="83" cy="73" rx="6.5" ry="4.4" fill="${catBlush}" filter="url(#${id}b3)"/>
+        </svg>
+      </span>
+
+      <!-- Mouth (+ tiny cheerful pink tongue peek for hop variant) -->
+      <svg viewBox="8 16 104 104" aria-hidden="true">
+        <path class="mouth-happy" d="M57.6 72.1 Q60 77.2 62.4 72.1 Z" fill="#ff8fb1"/>
+        <path d="M55.2 71.2q2.4 3.3 4.8 0q2.4 3.3 4.8 0" fill="none" stroke="${catInk}" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+
+      <!-- Eyes: normal open eyes + happy crescent smile arcs -->
+      <span class="cat-layer cat-eyes">
+        <span class="cat-layer eye-open">
+          <svg viewBox="8 16 104 104" aria-hidden="true">
+            <ellipse cx="48.5" cy="64" rx="4.1" ry="4.7" fill="${catInk}"/>
+            <circle cx="49.8" cy="62.4" r="1.25" fill="#fff"/>
+            <ellipse cx="71.5" cy="64" rx="4.1" ry="4.7" fill="${catInk}"/>
+            <circle cx="72.8" cy="62.4" r="1.25" fill="#fff"/>
+          </svg>
+        </span>
+        <span class="cat-layer eye-happy">
+          <svg viewBox="8 16 104 104" aria-hidden="true">
+            <path d="M44.1 65.2 Q48.5 59.4 52.9 65.2" fill="none" stroke="${catInk}" stroke-width="2.35" stroke-linecap="round"/>
+            <path d="M67.1 65.2 Q71.5 59.4 75.9 65.2" fill="none" stroke="${catInk}" stroke-width="2.35" stroke-linecap="round"/>
+          </svg>
+        </span>
+      </span>
+
+      <!-- Raised waving kitty paw (outline-free plush coat + seamless shoulder + soft pink paw pad) -->
+      <span class="cat-layer wave-paw">
+        <svg viewBox="8 16 104 104" aria-hidden="true">
+          <defs>
+            <!-- Same userSpaceOnUse coat gradient shifted slightly toward the raised mitt so the shoulder base (94,79) matches catBody seamlessly -->
+            <linearGradient id="${id}wp" gradientUnits="userSpaceOnUse" x1="106" y1="50" x2="91" y2="83">
+              <stop offset="0" stop-color="#ecefff"/>
+              <stop offset="0.52" stop-color="#d4dcff"/>
+              <stop offset="1" stop-color="#c3cbf6"/>
+            </linearGradient>
+            <!-- Soft mask fading the bottom 5 units of the shoulder ball into catBody so rotating never shows a seam -->
+            <linearGradient id="${id}wmf" gradientUnits="userSpaceOnUse" x1="104" y1="68" x2="93" y2="83.5">
+              <stop offset="0" stop-color="#fff"/>
+              <stop offset="0.72" stop-color="#fff"/>
+              <stop offset="1" stop-color="#000"/>
+            </linearGradient>
+            <mask id="${id}wm">
+              <rect x="70" y="36" width="54" height="56" fill="url(#${id}wmf)"/>
+            </mask>
+            <filter id="${id}ws" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.3"/></filter>
+            <filter id="${id}wpad" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="0.3"/></filter>
+          </defs>
+          <!-- Subtle upper-mitt shadow only where the paw crosses the upper cheek edge -->
+          <ellipse cx="97.5" cy="59.5" rx="4.2" ry="6.8" transform="rotate(24 97.5 59.5)" fill="#4b4660" opacity="0.09" filter="url(#${id}ws)"/>
+          <g mask="url(#${id}wm)">
+            <path d="${wavePawPath}" fill="url(#${id}wp)"/>
+            <!-- Soft pink paw pad (palm + 3 toe beans) -->
+            <g transform="translate(104.8 59.4) rotate(22)" filter="url(#${id}wpad)">
+              <ellipse cx="0" cy="2.3" rx="3.4" ry="2.5" fill="${catBlush}" opacity="0.82"/>
+              <ellipse cx="-3.3" cy="-2.0" rx="1.3" ry="1.6" transform="rotate(-18 -3.3 -2.0)" fill="${catBlush}" opacity="0.82"/>
+              <ellipse cx="0" cy="-3.2" rx="1.35" ry="1.7" fill="${catBlush}" opacity="0.82"/>
+              <ellipse cx="3.3" cy="-2.0" rx="1.3" ry="1.6" transform="rotate(18 3.3 -2.0)" fill="${catBlush}" opacity="0.82"/>
+            </g>
+          </g>
+        </svg>
+      </span>
+    </span>
+  </span>`;
+}
+
+const VARIANTS = {
+  wave: {
+    cls: "greet-wave",
+    ms: 1260,
+    desc: `<b>方案 A · 举爪招手（推荐）</b>：身体轻盈上提微倾，右侧小圆爪抬到脸颊旁<b>挥两下</b>，露出同色系 <code>#ffa3be</code> 粉色小肉垫，眼睛弯成开心的 <code>◠ ◠</code> 笑弧（约 1.26s）。即使缩到 Mac 顶部 56px 且叠着名字胶囊，余光也能一眼认出她在跟你招手。`
+  },
+  tilt: {
+    cls: "greet-tilt",
+    ms: 1340,
+    desc: `<b>方案 B · 歪头轻招 + 抖耳</b>：保留圆亮黑眼珠向上注视你，脑袋温柔歪一下、右耳轻抖两下，小爪在脸侧轻轻招两下（约 1.34s）。气质更安静克制，适合喜欢猫咪眼神对视感的风格。`
+  },
+  hop: {
+    cls: "greet-hop",
+    ms: 1080,
+    desc: `<b>方案 C · 双爪欢跳</b>：不额外伸长手臂，呼应首次唤醒（<code>wake</code>）的弹性跳跃——微蹲后欢快跳起，身体两侧的小圆爪一起张开，配 <code>◠ ◠</code> 笑眼与小粉舌（约 1.08s），轮廓最紧凑。`
+  }
+};
+
+const ROUTES = {
+  "her-main": {
+    kind: "her",
+    label: "Her 主会话",
+    cap: "Her",
+    capSub: "2 个在工作",
+    busy: false,
+    msgs: [
+      ["me", "早！帮我看看今天有哪些 PR 需要我先审。"],
+      ["her", "早上好！现在有两条需要先看：一条是桌面端图层合成优化，另一条是连接器刷新逻辑。要先打开哪一条？"]
+    ]
+  },
+  "her-release": {
+    kind: "her",
+    label: "Her 对话 · 规划 1.4 发布与迁移",
+    cap: "Her",
+    capSub: "",
+    busy: false,
+    card: { title: "核对 changelog 与破坏性变更", sub: "Claude Code · 已完成 · 12 个文件" },
+    msgs: [
+      ["me", "把 1.4 发布的风险点拉个清单，顺便派 Claude 核对一下 changelog。"],
+      ["her", "清单整理好了，Claude 已经核对完最近 38 个提交，没有未声明的配置破坏性变更。"]
+    ]
+  },
+  "her-weekly": {
+    kind: "her",
+    label: "Her 对话 · 整理本周 issue 周报",
+    cap: "正在输入…",
+    capSub: "1 个在工作",
+    busy: true,
+    msgs: [
+      ["me", "把本周新开的 issue 按模块归类，整理一份简短周报。"],
+      ["her", "好，我正在拉取本周的 24 条记录并按桌面端、iPhone 和守护进程归类…"]
+    ]
+  },
+  "new-her": {
+    kind: "new-her",
+    label: "新建会话 · 交给 Her"
+  },
+  "overview": {
+    kind: "other",
+    title: "概览",
+    body: "这是非 Her 页面。现在点击左侧的「Her」或任意一条「Her 对话」，看看进入会话瞬间的打招呼效果。"
+  },
+  "claude-sub": {
+    kind: "other",
+    title: "Claude Code · 核对 changelog 与破坏性变更",
+    body: "这是一条普通编码 Agent 会话（顶部无小猫头像）。点回左侧「规划 1.4 发布与迁移」或「Her」即可触发小猫打招呼。"
+  },
+  "codex-fix": {
+    kind: "other",
+    title: "Codex · 修复 WebRTC 重连抖动",
+    body: "这是一条 Codex 编程任务。再点回左侧任意 Her 会话体验进入打招呼。"
+  }
+};
+
+let state = {
+  variant: "wave",
+  after: "idle",
+  speed: "normal",
+  theme: "dark",
+  macRoute: "her-main",
+  iosRoute: "her-main",
+  panelOpen: false
+};
+
+// Mount static cats first
+document.getElementById("catCloseup").innerHTML = renderCatHTML();
+document.getElementById("catMac56").innerHTML = renderCatHTML();
+document.getElementById("catIos72").innerHTML = renderCatHTML();
+document.getElementById("catSm28").innerHTML = renderCatHTML({ small: true });
+document.getElementById("catSm16").innerHTML = renderCatHTML({ small: true });
+document.getElementById("navHerIcon").innerHTML = renderCatHTML({ small: true });
+document.getElementById("rowIcon1").innerHTML = renderCatHTML({ small: true });
+document.getElementById("rowIcon2").innerHTML = renderCatHTML({ small: true });
+document.getElementById("iosSimCat").innerHTML = renderCatHTML();
+
+const timers = new WeakMap();
+
+function playGreetOn(container, { busyAfter = false, onStatus } = {}) {
+  if (!container) return;
+  const cat = container.querySelector(".cat");
+  if (!cat) return;
+  const prev = timers.get(cat);
+  if (prev) clearTimeout(prev);
+
+  const v = VARIANTS[state.variant];
+  const mult = state.speed === "slow" ? 2.85 : 1;
+  const dur = Math.round(v.ms * mult);
+
+  cat.classList.remove("greet-wave", "greet-tilt", "greet-hop", "busy");
+  // Force reflow so switching conversations or clicking replay restarts cleanly
+  void cat.offsetWidth;
+  cat.classList.add(v.cls);
+  if (onStatus) onStatus("waving", `👋 正在打招呼（${(dur / 1000).toFixed(2)}s）`);
+
+  const t = setTimeout(() => {
+    cat.classList.remove(v.cls);
+    if (busyAfter) {
+      cat.classList.add("busy");
+      if (onStatus) onStatus("busy", "⚡ 打完招呼 → 衔接忙碌态（点头 + 左右看）");
+    } else {
+      if (onStatus) onStatus("idle", "😌 打完招呼 → 回到安静呼吸 + 眨眼");
+    }
+  }, dur);
+  timers.set(cat, t);
+}
+
+function updateLabStatus(kind, text) {
+  const pill = document.getElementById("stageStatus");
+  const span = document.getElementById("stageStatusText");
+  pill.className = `stage-status ${kind}`;
+  span.textContent = text;
+}
+
+function triggerLabAll(reason = "手动重播") {
+  const busy = state.after === "busy";
+  document.getElementById("varDesc").innerHTML = VARIANTS[state.variant].desc;
+  playGreetOn(document.getElementById("catCloseup"), { busyAfter: busy, onStatus: updateLabStatus });
+  playGreetOn(document.getElementById("catMac56"), { busyAfter: busy });
+  playGreetOn(document.getElementById("catIos72"), { busyAfter: busy });
+  logTrigger(reason);
+}
+
+function logTrigger(reason) {
+  const el = document.getElementById("trigLog");
+  el.innerHTML = `最近触发：<b>${reason}</b>`;
+}
+
+function renderMacRoute(greet = true) {
+  const host = document.getElementById("macContent");
+  const r = ROUTES[state.macRoute];
+
+  if (r.kind === "other") {
+    host.innerHTML = `
+      <div class="plain-head">${r.title}</div>
+      <div class="plain-body">
+        <div style="font-size:14px;color:var(--l1);font-weight:550">${r.title}</div>
+        <div style="max-width:360px">${r.body}</div>
+        <button class="plain-cta" id="jumpHerBtn">← 点此切回 Her 主会话（看打招呼）</button>
+      </div>`;
+    document.getElementById("jumpHerBtn").onclick = () => selectMacRoute("her-main");
+    return;
+  }
+
+  if (r.kind === "new-her") {
+    host.innerHTML = `
+      <div class="her-head"><span class="head-sp"></span></div>
+      <div class="pres-wrap">
+        <div class="pres-aura"></div>
+        <div class="pres-cat" id="macPresCat">${renderCatHTML()}</div>
+        <h3 class="pres-title">要 Her 做什么？</h3>
+        <div class="pres-sub">
+          <span style="width:15px;height:15px;display:inline-block">${renderCatHTML({ small: true })}</span>
+          <span>Her 在 这台 Mac</span>
+        </div>
+      </div>
+      <div class="cmp-dock">
+        <div class="cmp-box"><span>发消息给 Her</span><div class="cmp-send">↑</div></div>
+      </div>`;
+    if (greet) {
+      playGreetOn(document.getElementById("macPresCat"), { busyAfter: false });
+      logTrigger(r.label);
+    }
+    return;
+  }
+
+  // Her main conversation or Her task conversation
+  const busy = r.busy || state.after === "busy";
+  const capWords = r.capSub
+    ? `<span>${r.cap}</span><span class="cap-sep">·</span><span class="cap-sub">${r.capSub}</span>`
+    : `<span>${r.cap}</span>`;
+  const bubbles = r.msgs.map(([who, text]) => `<div class="${who === "me" ? "b-me" : "b-her"}">${text}</div>`).join("");
+  const card = r.card
+    ? `<div class="task-card"><span class="code-chip">C</span><div><b>${r.card.title}</b><span>${r.card.sub}</span></div></div>`
+    : "";
+  const workLine = busy
+    ? `<div class="b-work"><span class="dots"><i></i><i></i><i></i></span><span>正在输入…</span></div>`
+    : "";
+
+  host.innerHTML = `
+    <div style="display:flex;flex:1;min-height:0">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
+        <div class="her-head">
+          <div class="her-id">
+            <button class="her-id-av" id="macTopAv" title="点击打开/关闭右侧设置面板（测试同会话内不重复挥手）">
+              ${renderCatHTML()}
+            </button>
+            <div class="her-cap-mac">${capWords}</div>
+          </div>
+          <span class="head-sp"></span>
+          <button class="tb" title="进展">
+            <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 9h3l2-4.5 3 9 2-4.5h3"/></svg>
+            ${busy ? '<i class="rtn-dot"></i>' : ""}
+          </button>
+          <button class="tb ${state.panelOpen ? "on" : ""}" id="macPanelToggle" title="开关设置面板（不重复触发打招呼）">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12.5" cy="8" r="1.2"/></svg>
+          </button>
+        </div>
+        <div class="conv-scroll">
+          <div class="conv-fade"></div>
+          <div class="msg-col">
+            ${bubbles}
+            ${card}
+            ${workLine}
+          </div>
+        </div>
+        <div class="cmp-dock">
+          <div class="cmp-box"><span>发消息给 Her</span><div class="cmp-send">↑</div></div>
+        </div>
+      </div>
+      <div id="macSideSlot">${state.panelOpen ? renderSidePanelHTML() : ""}</div>
+    </div>`;
+
+  const togglePanel = () => {
+    state.panelOpen = !state.panelOpen;
+    document.getElementById("macSideSlot").innerHTML = state.panelOpen ? renderSidePanelHTML() : "";
+    document.getElementById("macPanelToggle").classList.toggle("on", state.panelOpen);
+    const closeBtn = document.getElementById("closePanelBtn");
+    if (closeBtn) closeBtn.onclick = togglePanel;
+    logTrigger(state.panelOpen ? "打开设置面板（同会话不重播）" : "关闭设置面板（同会话不重播）");
+  };
+  document.getElementById("macTopAv").onclick = togglePanel;
+  document.getElementById("macPanelToggle").onclick = togglePanel;
+  const closeBtn = document.getElementById("closePanelBtn");
+  if (closeBtn) closeBtn.onclick = togglePanel;
+
+  if (greet) {
+    playGreetOn(document.getElementById("macTopAv"), { busyAfter: busy });
+    logTrigger(`进入「${r.label}」`);
+  } else if (busy) {
+    document.querySelector("#macTopAv .cat")?.classList.add("busy");
+  }
+}
+
+function renderSidePanelHTML() {
+  return `<aside class="her-panel-mock">
+    <div class="ph"><span>Her 设置</span><button id="closePanelBtn" style="padding:2px 6px;color:var(--l2)">✕</button></div>
+    <div class="pbody">
+      <div style="width:52px;height:52px">${renderCatHTML()}</div>
+      <b style="font-size:14px">Her</b>
+    </div>
+    <div class="pnote">在同一条会话里开关右侧设置面板或团队面板，顶部 <code>TopBar</code> 保持挂载，小猫<b>不会</b>反复挥手打扰。</div>
+  </aside>`;
+}
+
+function selectMacRoute(route) {
+  const changed = state.macRoute !== route;
+  state.macRoute = route;
+  state.panelOpen = false;
+  document.querySelectorAll("[data-route]").forEach((b) => b.classList.toggle("sel", b.dataset.route === route));
+  // Even clicking the already-selected Her item in this demo replays if changed or clicked explicitly so it's easy to test
+  renderMacRoute(changed || ROUTES[route].kind !== "other");
+}
+
+function renderIosRoute(greet = true) {
+  const r = ROUTES[state.iosRoute];
+  const busy = r.busy || state.after === "busy";
+  document.getElementById("iosSimCap").innerHTML = r.capSub
+    ? `<span>${r.cap}</span><span class="cap-sep">·</span><span class="cap-sub">${r.capSub}</span>`
+    : `<span>${r.cap}</span>`;
+  document.getElementById("iosChat").innerHTML = r.msgs
+    .map(([who, text]) => `<div class="${who === "me" ? "p-me" : "p-her"}">${text}</div>`)
+    .join("");
+  if (greet) {
+    playGreetOn(document.getElementById("iosSimCat"), { busyAfter: busy });
+  }
+}
+
+// Wire controls
+function bindSeg(id, key, onChange) {
+  const root = document.getElementById(id);
+  root.querySelectorAll("button").forEach((btn) => {
+    btn.onclick = () => {
+      state[key] = btn.dataset.v;
+      root.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === btn));
+      onChange(btn.dataset.v);
+    };
+  });
+}
+
+bindSeg("variantSeg", "variant", () => {
+  triggerLabAll(`切换为 ${VARIANTS[state.variant].cls}`);
+  if (ROUTES[state.macRoute].kind === "her") playGreetOn(document.getElementById("macTopAv"), { busyAfter: ROUTES[state.macRoute].busy || state.after === "busy" });
+  playGreetOn(document.getElementById("iosSimCat"), { busyAfter: ROUTES[state.iosRoute].busy || state.after === "busy" });
+});
+
+bindSeg("afterSeg", "after", () => {
+  triggerLabAll(state.after === "busy" ? "测试进入忙碌会话" : "测试进入空闲会话");
+  renderMacRoute(true);
+  renderIosRoute(true);
+});
+
+bindSeg("speedSeg", "speed", (v) => {
+  document.documentElement.dataset.speed = v === "slow" ? "slow" : "normal";
+  triggerLabAll(v === "slow" ? "0.35× 慢动作检视" : "恢复 1× 正常速度");
+});
+
+bindSeg("themeSeg", "theme", (v) => {
+  document.documentElement.dataset.theme = v;
+});
+
+document.querySelectorAll("[data-route]").forEach((btn) => {
+  btn.onclick = () => selectMacRoute(btn.dataset.route);
+});
+
+document.querySelectorAll("#iosTabs button").forEach((btn) => {
+  btn.onclick = () => {
+    state.iosRoute = btn.dataset.iroute;
+    document.querySelectorAll("#iosTabs button").forEach((b) => b.classList.toggle("on", b === btn));
+    renderIosRoute(true);
+    logTrigger(`iPhone 切入「${btn.textContent}」`);
+  };
+});
+
+document.getElementById("iosMenuBtn").onclick = () => {
+  renderIosRoute(true);
+  logTrigger("iPhone 从抽屉进入 Her 会话");
+};
+
+const replayAll = () => {
+  triggerLabAll("手动重播");
+  if (ROUTES[state.macRoute].kind === "her") playGreetOn(document.getElementById("macTopAv"), { busyAfter: ROUTES[state.macRoute].busy || state.after === "busy" });
+  if (ROUTES[state.macRoute].kind === "new-her") playGreetOn(document.getElementById("macPresCat"), { busyAfter: false });
+  playGreetOn(document.getElementById("iosSimCat"), { busyAfter: ROUTES[state.iosRoute].busy || state.after === "busy" });
+};
+
+document.getElementById("replayBtn").onclick = replayAll;
+document.getElementById("stageCard").onclick = replayAll;
+window.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && e.target === document.body) {
+    e.preventDefault();
+    replayAll();
+  }
+});
+
+// Initial render & wave!
+renderMacRoute(true);
+renderIosRoute(true);
+triggerLabAll("进入 Her 主会话");
+</script>
+</body>
+</html>

@@ -170,7 +170,7 @@ struct NewSessionPresence: View {
                 Button {
                     onWho(.her)
                 } label: {
-                    HerAvatar(size: 72)
+                    HerAvatar(size: 72, greet: who == .her)
                         .shadow(color: Color(hex: "b3bcf2").opacity(0.35), radius: 10, y: 4)
                         .frame(width: 76, height: 76)
                         .contentShape(.rect)
