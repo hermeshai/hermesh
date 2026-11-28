@@ -126,13 +126,22 @@ final class SidebarUITests: XCTestCase {
         XCTAssertFalse(app.buttons["new-session-place"].exists && app.buttons["new"].exists,
                        "no redundant + button on SessionsHubView since Conversations bubble is adjacent")
 
-        // Tapping a session row inside SessionsHubView opens that session AND keeps `sessions-place` (</>) locked!
+        // Tapping a session row inside SessionsHubView pushes that session onto the navigation stack (keeping
+        // `sessions-place` </> locked) so swiping back from the left edge returns to SessionsHubView rather than
+        // sliding open the sidebar.
         app.buttons["session-Add a welcome page"].tap()
         XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10))
         XCTAssertTrue(tabBar.buttons["sessions-place"].isSelected, "entering a session locks highlight onto Sessions </> tab")
         XCTAssertFalse(tabBar.buttons["conversations-place"].isSelected, "Conversations bubble stays unlocked while viewing an existing session")
+        let edgeStart = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5))
+        let edgeEnd = app.coordinate(withNormalizedOffset: CGVector(dx: 0.78, dy: 0.5))
+        edgeStart.press(forDuration: 0.05, thenDragTo: edgeEnd, withVelocity: .fast, thenHoldForDuration: 0)
+        XCTAssertTrue(hub.waitForExistence(timeout: 10), "left-edge swipe back from a hub-opened session returns to SessionsHubView")
+        XCTAssertFalse(app.buttons["menu-close"].exists, "swipe back from a hub-opened session must NOT open the sidebar")
 
-        // Re-tapping `sessions-place` (</>) while inside a session returns directly to SessionsHubView!
+        // Entering again and re-tapping `sessions-place` (</>) also returns directly to SessionsHubView!
+        app.buttons["session-Add a welcome page"].tap()
+        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10))
         tabBar.buttons["sessions-place"].tap()
         XCTAssertTrue(hub.waitForExistence(timeout: 10), "re-tapping Sessions </> from a session returns straight to SessionsHubView")
 

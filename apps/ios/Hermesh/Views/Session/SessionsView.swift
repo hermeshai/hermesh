@@ -17,6 +17,7 @@ struct SessionListRow: View {
     var twistShut: Bool?
     var collapsedMark: TreeMark?
     var metadataOverride: Bool? = nil
+    var onOpen: (() -> Void)? = nil
     var onTwist: (() -> Void)?
     @State private var renaming = false
     @State private var deleting = false
@@ -43,7 +44,9 @@ struct SessionListRow: View {
                 .accessibilityLabel(twistShut ? Text("Expand") : Text("Collapse"))
                 .accessibilityIdentifier("twist-\(session.displayTitle)")
             }
-            Button { model.open(.session(session.sessionID)) } label: {
+            Button {
+                if let onOpen { onOpen() } else { model.open(.session(session.sessionID)) }
+            } label: {
                 MenuSessionRow(session: session, metadata: showMetadata, selected: selected, isChild: isChild, hasTwist: twistShut != nil, collapsedMark: collapsedMark)
             }
             .buttonStyle(RowStyle(selected: selected))

@@ -319,6 +319,7 @@ struct MenuSessions: View {
     @Environment(AppModel.self) private var model
     var machineFilter: String? = nil
     var metadataOverride: Bool? = nil
+    var onOpen: ((Session) -> Void)? = nil
     @State private var expandedGroup: SessionGrouping?
     @State private var expandedLimits: [String: Int] = [:]
     @State private var expandedTrees: Set<String> = []
@@ -536,9 +537,12 @@ struct MenuSessions: View {
     @ViewBuilder private func rowView(_ r: SectionRow) -> some View {
         switch r {
         case .session(let s, let twistShut, let mark):
-            SessionListRow(session: s, twistShut: twistShut, collapsedMark: mark, metadataOverride: metadataOverride, onTwist: twistShut != nil ? { toggleTree(s.sessionID) } : nil)
+            SessionListRow(session: s, twistShut: twistShut, collapsedMark: mark, metadataOverride: metadataOverride,
+                           onOpen: onOpen.map { fn in { fn(s) } },
+                           onTwist: twistShut != nil ? { toggleTree(s.sessionID) } : nil)
         case .child(let k, let first, let last):
-            SessionListRow(session: k, isChild: true, childFirst: first, childLast: last, metadataOverride: metadataOverride)
+            SessionListRow(session: k, isChild: true, childFirst: first, childLast: last, metadataOverride: metadataOverride,
+                           onOpen: onOpen.map { fn in { fn(k) } })
                 .moveDisabled(true)
         case .moreKids(let parentID, let hiddenCount):
             Button {

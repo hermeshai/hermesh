@@ -912,7 +912,7 @@ struct SessionPage: View {
     }
 
     private func wideFilesRoot(for s: Session, files: SessionFilesModel) -> some View {
-        SessionSidePanel(files: files)
+        SessionSidePanel(files: files, sideBars: sideBars)
             .environment(model)
             .environment(\.openURL, OpenURLAction { url in
                 guard let route = FileRefLink.route(url, session: s.sessionID) else { return .systemAction }

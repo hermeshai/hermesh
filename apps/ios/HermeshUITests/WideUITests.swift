@@ -172,6 +172,59 @@ final class WideUITests: XCTestCase {
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), "sending dismisses keyboard on wide screen")
     }
 
+    /// On iPhone Duo unfolded (`barsOnTheSide == true`), window and file tools belong in the system vertical bar,
+    /// so `SessionSidePanel` hosted inside `WideSidePanelController` must NOT render duplicate top-strip buttons,
+    /// while non-Duo wide screens (`barsOnTheSide == false`) still show them in the top strip.
+    func testDuoUnfoldedSidePanelOmitsDuplicateTopStripButtons() throws {
+        // 1. Duo unfolded (`barsOnTheSide == true`): top strip keeps only tabs, no duplicate window/file tools.
+        XCUIDevice.shared.orientation = .portrait
+        app.launchArguments = ["-HermeshTestTurns", "YES", "-HermeshTestDuoTabs", "YES", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+        tap("try-demo")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        sleep(2)
+        let drawer = element("drawer")
+        guard drawer.waitForExistence(timeout: 5) else { throw XCTSkip("no regular width on its side here") }
+
+        let rows = drawer.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session-"))
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 10))
+        rows.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10))
+
+        if app.buttons["session-side-panel"].exists {
+            tap("session-side-panel")
+        } else {
+            tap("session-more")
+            tap("session-files")
+        }
+        let panel = element("side-panel")
+        XCTAssertTrue(panel.waitForExistence(timeout: 5), "side panel opens on Duo unfolded")
+        XCTAssertTrue(panel.descendants(matching: .any)["side-panel-tab"].waitForExistence(timeout: 5), "tab chip shown")
+        for duplicateID in ["side-panel-new", "side-panel-max", "side-panel-hide", "file-source", "file-more"] {
+            XCTAssertFalse(panel.descendants(matching: .any)[duplicateID].exists,
+                           "\(duplicateID) must not duplicate inside side-panel top strip when bars are on the side")
+        }
+
+        // 2. Non-Duo wide screen (`barsOnTheSide == false`): inline top-strip controls remain visible.
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
+        app.launchArguments = ["-HermeshTestTurns", "YES", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+        tap("try-demo")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        sleep(2)
+        XCTAssertTrue(drawer.waitForExistence(timeout: 5))
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 10))
+        rows.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10))
+        tap("session-side-panel")
+        XCTAssertTrue(panel.waitForExistence(timeout: 5), "side panel opens on non-Duo wide screen")
+        for inlineID in ["side-panel-new", "side-panel-max", "side-panel-hide"] {
+            XCTAssertTrue(panel.descendants(matching: .any)[inlineID].exists,
+                          "\(inlineID) remains in side-panel top strip on non-Duo wide screen")
+        }
+    }
+
     /// A session row the list shows whole (it scrolls under the menu's top band, and keeps where it was left).
     private func visibleRow(_ rows: XCUIElementQuery) -> XCUIElement {
         let band = element("search").frame.maxY + 16

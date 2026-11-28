@@ -45,7 +45,9 @@ struct SessionsHubView: View {
                     offlineMachineBanner(m)
                         .plainRow()
                 }
-                MenuSessions(machineFilter: selectedMachineID, metadataOverride: hubMetadata)
+                MenuSessions(machineFilter: selectedMachineID, metadataOverride: hubMetadata) { session in
+                    model.openSession(session.sessionID)
+                }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)

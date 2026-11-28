@@ -252,8 +252,10 @@ func sidePanelHideImage() -> Image {
 /// capsule on the strip holds ＋, Enlarge/Shrink and Hide), and at a file tab's foot the unified bottom tree drawer.
 struct SessionSidePanel: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.barsOnTheSide) private var sideBars
     @Bindable var files: SessionFilesModel
+    /// Passed explicitly from `SessionPage` because `WideSidePanelController` hosts this view in a standalone
+    /// `UIHostingController` outside `NavigationStack`, where `@Environment(\.toolbarVerticalEdge)` is `nil`.
+    let sideBars: Bool
 
     private var machineID: String { model.session(files.sessionID)?.machineID ?? "" }
     private var projectID: String { model.session(files.sessionID)?.projectID ?? "" }
