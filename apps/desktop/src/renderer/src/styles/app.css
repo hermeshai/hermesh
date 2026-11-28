@@ -654,6 +654,7 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 /* A message, and a turn's reply at its end, keep room below (blocks apart); when and copy show there on hover, under the bubble's right edge or the text's left
    (Copy's plate hangs out of the column, so that its glyph starts where the text does). */
 .um,.am.end{margin-bottom:var(--sp-3)}
+.vrow:has(>.um):has(+.vrow>.tq)>.um{margin-bottom:var(--sp-1)}
 .msg-act{position:absolute;top:100%;padding-top:3px;display:flex;align-items:center;gap:4px;opacity:0;transition:opacity .15s}
 .um .msg-act{right:2px}
 .am .msg-act{left:-6px;flex-direction:row-reverse}
@@ -805,23 +806,21 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .tool.denied .th .vb{color:var(--orange)}
 .tnote{align-self:center;font-size:12px;color:var(--l2);background:var(--fill);padding:5px 12px;border-radius:var(--r-sm);text-align:center;max-width:100%}
 .tnote.warn{color:var(--orange);background:var(--orange-bg)}
-.tq{border-radius:var(--r-panel);background:var(--fill);box-shadow:inset 0 0 0 .5px var(--sep);padding:12px 14px;display:flex;flex-direction:column;gap:11px}
-.tq-by{font-size:12px;color:var(--l2);padding:0 2px}
-.tq-item{display:flex;flex-direction:column;gap:7px}
-.tq-item+.tq-item{padding-top:11px;border-top:.5px solid var(--sep)}
-.tq-q{font-size:12.5px;line-height:1.5;color:var(--l2);padding:0 2px;overflow-wrap:break-word;text-wrap:pretty;text-spacing-trim:trim-start}
-.tq-ans{display:flex;flex-direction:column;border-radius:var(--r-box);background:var(--tq-ans);box-shadow:var(--tq-ans-sh);overflow:hidden}
+.tq{display:flex;flex-direction:column;gap:11px;margin-bottom:var(--sp-1)}
+.tq-by{font-size:12px;color:var(--l2)}
+.tq-item{display:flex;flex-direction:column;align-items:flex-start;gap:5px}
+.tq-q{font-size:13.5px;line-height:20px;color:var(--l2);overflow-wrap:break-word;text-wrap:pretty;text-spacing-trim:trim-start}
+.tq-ans{display:flex;flex-direction:column;width:fit-content;max-width:100%;border-radius:var(--r-md);background:var(--tq-ans);box-shadow:var(--tq-ans-sh);overflow:hidden}
 .tq-ans.muted{background:transparent;box-shadow:inset 0 0 0 .5px var(--sep)}
-.tq-choice{display:flex;align-items:flex-start;gap:9px;padding:9px 14px 9px 11px}
+.tq-choice{display:flex;align-items:flex-start;gap:8px;padding:6.5px 12px 6.5px 10px}
 .tq-choice+.tq-choice{border-top:.5px solid var(--sep)}
-.tq-ck{width:18px;height:18px;margin-top:1.5px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:none;font-size:11px;font-weight:600}
-.tq-ck.ok{background:var(--green-bg);color:var(--green);box-shadow:inset 0 0 0 .5px color-mix(in srgb,var(--green) 24%,transparent)}
-.tq-ck.ok .ic{width:11px;height:11px;stroke-width:2.3}
-.tq-ck.skip{background:var(--fill2);color:var(--l2)}
-.tq-atxt{flex:1;min-width:0;font-size:13.5px;font-weight:var(--font-weight-medium);line-height:21px;letter-spacing:-.004em;color:var(--l1);overflow-wrap:break-word;text-wrap:pretty;line-break:strict;text-spacing-trim:trim-start}
-.tq-ans.muted .tq-atxt{color:var(--l2);font-weight:var(--font-weight-normal);font-size:13px;line-height:20px}
-.tq-ans.muted .tq-ck{margin-top:1px}
-.tq-rec{display:inline-flex;align-items:center;height:17px;padding:0 5.5px;margin-left:1px;border-radius:4.5px;font-size:11px;font-weight:var(--font-weight-semibold);line-height:1;letter-spacing:0;background:var(--accent-bg);color:var(--accent-t);vertical-align:.5px;white-space:nowrap;user-select:none}
+.tq-ck{width:15px;height:15px;margin-top:2.5px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:none;font-size:10.5px;font-weight:600}
+.tq-ck.ok{background:var(--fill2);color:var(--l2)}
+.tq-ck.ok .ic{width:10.5px;height:10.5px;stroke-width:2.2}
+.tq-ck.skip{background:var(--fill2);color:var(--l3)}
+.tq-atxt{flex:1;min-width:0;font-size:14px;font-weight:var(--font-weight-normal);line-height:20px;color:var(--msg);font-variant-numeric:tabular-nums;overflow-wrap:break-word;text-wrap:pretty;line-break:strict;text-spacing-trim:trim-start}
+.tq-ans.muted .tq-atxt{color:var(--l2);font-size:13.5px;line-height:20px}
+.tq-rec{display:inline-flex;align-items:center;height:16px;padding:0 5px;margin-left:4px;border-radius:4px;font-size:11px;font-weight:500;line-height:1;letter-spacing:0;background:var(--fill2);color:var(--l2);vertical-align:.5px;white-space:nowrap;user-select:none}
 .msg{border:1px solid var(--sep);border-radius:var(--r-lg);background:var(--fill);padding:10px 14px;font-size:14px;line-height:21px;color:var(--msg)}
 .msg-head{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--l2);margin-bottom:6px}
 .msg-head b{font-weight:500;color:var(--l1)}
