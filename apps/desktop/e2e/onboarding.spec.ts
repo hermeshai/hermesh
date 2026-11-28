@@ -203,7 +203,8 @@ test("the official service in the browser: the link brings the authorization, th
   expect([status.initialized, status.localMachineId]).toEqual([true, before]);
   await snap(page, "first-07-linked");
   await finish(app, page);
-  await expect(page.locator(".side-foot")).toContainText("已登录");
+  await expect(page.locator(".side-foot")).toHaveAttribute("data-signed-in", "true");
+  await expect(page.locator(".side-foot")).not.toContainText("未登录");
   await app.close();
   center.close();
 });
@@ -270,7 +271,8 @@ test("a server of one's own: its warnings, signing in on the sign-in step, then 
   await expect(main).toContainText("已连接", { timeout: 30_000 });
   status = await daemon(fresh.socket).getStatus({});
   expect([status.signedOut, status.initialized]).toEqual([false, true]);
-  await expect(page.locator(".side-foot")).toContainText("已登录");
+  await expect(page.locator(".side-foot")).toHaveAttribute("data-signed-in", "true");
+  await expect(page.locator(".side-foot")).not.toContainText("未登录");
   await app.close();
 });
 

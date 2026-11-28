@@ -33,8 +33,9 @@ test("the README's screenshots", async () => {
   await page.addStyleTag({
     content: [
       ".side{background:#1d1d21 !important}",
-      ".side-foot .who b, .side-foot .av{color:transparent !important;position:relative}",
-      '.side-foot .who b::after{content:"Alex";color:var(--l1);position:absolute;inset:0}',
+      ".side-foot .foot-name, .side-foot .av{color:transparent !important;position:relative}",
+      ".side-foot .av .ic{opacity:0}",
+      '.side-foot .foot-name::after{content:"Alex";color:var(--l1);position:absolute;inset:0}',
       '.side-foot .av::after{content:"A";color:var(--l2);position:absolute;inset:0;display:grid;place-items:center}',
     ].join("\n"),
   });

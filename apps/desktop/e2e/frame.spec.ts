@@ -65,10 +65,22 @@ test("the sidebar keeps one rhythm, one heading per group and a quiet foot", asy
   for (const h of await list.locator(".grp-h").allInnerTexts()) expect(h).not.toMatch(/\d/);
 
   const foot = page.getByRole("button", { name: "账号与设置" });
+  expect((await box(foot)).height).toBe(36);
+  await expect(foot).toHaveAttribute("data-signed-in", "true");
   await expect(foot).not.toContainText("在线");
-  // Signed in or not, and nothing more (docs/cold-start-prd.md §6.1).
-  await expect(foot).toContainText("已登录");
-  await expect(foot.locator(".dotc")).toHaveCount(0);
+  await expect(foot).not.toContainText("已登录");
+  await expect(foot).not.toContainText("未登录");
+  await expect(foot.locator(".dotc, .av-warn")).toHaveCount(0);
+  // Hovering the account foot reveals server & connection details in a quiet card; opening the menu hides it.
+  await foot.hover();
+  const hoverCard = page.getByTestId("account-hover-card");
+  await expect(hoverCard).toBeVisible();
+  await expect(hoverCard).toContainText("已连接");
+  await foot.click();
+  await expect(hoverCard).toBeHidden();
+  await expect(page.getByRole("menu", { name: "账号与设置" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.mouse.move(0, 0);
   await page.emulateMedia({ colorScheme: "dark" });
   // Selected nav item reads brighter and heavier than an unselected row in the dark.
   const selStyle = await nav.locator(".nav-i.sel").evaluate((el) => [getComputedStyle(el).color, getComputedStyle(el).fontWeight]);

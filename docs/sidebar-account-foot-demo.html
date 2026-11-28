@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>侧边栏底部账号区 · 单行简约优化 Demo</title>
+<style>
+:root{
+  --font:"Google Sans Flex","Google Sans",system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+  --mono:"Google Sans Code",ui-monospace,"SF Mono",Menlo,Monaco,Consolas,monospace;
+  --ease-out:cubic-bezier(0.2,0,0,1);
+  --r-ctl:7px;--r-md:8px;--r-box:10px;--r-card:12px;
+}
+[data-theme=light]{
+  --page:#e8eaf0;--page-fg:#1b1c22;--page-fg2:#62646f;--page-card:#fff;--page-bd:rgba(0,0,0,.08);
+  --win:#ffffff;--win2:#f4f4f7;--side:#f4f4f7;--side-head:#f4f4f7;
+  --l1:rgba(0,0,0,.86);--l2:rgba(0,0,0,.54);--l3:rgba(0,0,0,.32);--l4:rgba(0,0,0,.14);
+  --sep:rgba(0,0,0,.075);--fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.075);--fill3:rgba(0,0,0,.12);
+  --side-sel:rgba(0,0,0,.075);--side-fg:rgba(0,0,0,.76);--side-sel-fg:rgba(0,0,0,.95);--side-sel-sh:none;
+  --accent:#3d5bff;--accent-t:#2d4ae6;--accent-bg:rgba(61,91,255,.10);
+  --green:#17924f;--green-bg:rgba(23,146,79,.11);
+  --orange:#d0700a;--orange-bg:rgba(230,126,10,.12);
+  --gh-merge:#6e59a5;
+  --menu-solid:#f8f8fa;--menu-bd:rgba(0,0,0,.10);
+  --shadow-win:0 0 0 .5px rgba(0,0,0,.18),0 22px 58px rgba(10,20,50,.18),0 6px 18px rgba(10,20,50,.08);
+}
+[data-theme=soft]{
+  --page:#e4e6ec;--page-fg:#202127;--page-fg2:#60636d;--page-card:#fafafb;--page-bd:rgba(32,33,39,.08);
+  --win:#f4f5f7;--win2:#ebedf2;--side:#eef0f4;--side-head:#eef0f4;
+  --l1:#202127;--l2:#60636d;--l3:#727580;--l4:rgba(32,33,39,.14);
+  --sep:rgba(32,33,39,.065);--fill:rgba(32,33,39,.04);--fill2:rgba(32,33,39,.07);--fill3:rgba(32,33,39,.12);
+  --side-sel:#e7edf7;--side-fg:#202127;--side-sel-fg:#202127;--side-sel-sh:inset 0 0 0 .5px rgba(47,111,214,.28);
+  --accent:#2f6fd6;--accent-t:#285fb8;--accent-bg:rgba(47,111,214,.09);
+  --green:#17924f;--green-bg:rgba(23,146,79,.11);
+  --orange:#d0700a;--orange-bg:rgba(230,126,10,.12);
+  --gh-merge:#6e59a5;
+  --menu-solid:#fafafb;--menu-bd:rgba(32,33,39,.09);
+  --shadow-win:0 0 0 .5px rgba(32,33,39,.14),0 22px 58px rgba(20,30,50,.14),0 6px 18px rgba(20,30,50,.06);
+}
+[data-theme=dark]{
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--page-card:#18191e;--page-bd:rgba(255,255,255,.08);
+  --win:#1e1e21;--win2:#27272b;--side:#25252a;--side-head:#25252a;
+  --l1:rgba(255,255,255,.88);--l2:rgba(255,255,255,.55);--l3:rgba(255,255,255,.32);--l4:rgba(255,255,255,.14);
+  --sep:rgba(255,255,255,.09);--fill:rgba(255,255,255,.05);--fill2:rgba(255,255,255,.085);--fill3:rgba(255,255,255,.14);
+  --side-sel:rgba(255,255,255,.10);--side-fg:rgba(255,255,255,.78);--side-sel-fg:#fff;--side-sel-sh:none;
+  --accent:#4a66ff;--accent-t:#8fa2ff;--accent-bg:rgba(91,121,255,.16);
+  --green:#3fcf86;--green-bg:rgba(63,207,134,.14);
+  --orange:#ffab3d;--orange-bg:rgba(255,171,61,.14);
+  --gh-merge:#9482c4;
+  --menu-solid:#2c2c30;--menu-bd:rgba(255,255,255,.12);
+  --shadow-win:0 0 0 .5px rgba(255,255,255,.14),0 24px 64px rgba(0,0,0,.55),0 8px 20px rgba(0,0,0,.32);
+}
+[data-theme=black]{
+  --page:#050507;--page-fg:#f5f5f7;--page-fg2:#87888f;--page-card:#0e0e12;--page-bd:rgba(255,255,255,.07);
+  --win:#070709;--win2:#131317;--side:#111114;--side-head:#111114;
+  --l1:#f5f5f7;--l2:#bcbdc6;--l3:#87888f;--l4:rgba(255,255,255,.16);
+  --sep:rgba(255,255,255,.06);--fill:rgba(255,255,255,.042);--fill2:rgba(255,255,255,.075);--fill3:rgba(255,255,255,.12);
+  --side-sel:linear-gradient(180deg,#202025,#1c1c21);--side-fg:#bcbdc6;--side-sel-fg:#f5f5f7;--side-sel-sh:inset 0 0 0 .5px rgba(255,255,255,.055);
+  --accent:#2f71e3;--accent-t:#8ab4f8;--accent-bg:rgba(47,113,227,.15);
+  --green:#7aae66;--green-bg:rgba(122,174,102,.12);
+  --orange:#f3c949;--orange-bg:rgba(243,201,73,.12);
+  --gh-merge:#8b7ab8;
+  --menu-solid:#16161b;--menu-bd:rgba(255,255,255,.09);
+  --shadow-win:0 0 0 .5px rgba(255,255,255,.12),0 26px 70px rgba(0,0,0,.75),0 8px 22px rgba(0,0,0,.45);
+}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:13.5px/1.5 var(--font);padding:28px 24px 80px;-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+svg{display:block}
+h1,h2,h3,p{margin:0}
+
+.ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.35;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ic.sm{width:13px;height:13px}
+
+.wrap{max-width:1160px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+.head{display:flex;flex-direction:column;gap:6px}
+.head-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.head h1{font-size:19px;font-weight:600;letter-spacing:-.01em}
+.badge{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--accent-bg);color:var(--accent-t);font-weight:500}
+.head p{color:var(--page-fg2);font-size:13px;max-width:860px;line-height:1.6}
+.head p b{color:var(--page-fg);font-weight:500}
+
+/* Control bar */
+.bar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;background:var(--page-card);border:.5px solid var(--page-bd);border-radius:12px;padding:10px 14px}
+.ctl{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ctl .lbl{font-size:12px;color:var(--page-fg2);margin-right:2px}
+.seg{display:inline-flex;background:var(--fill2);padding:2px;border-radius:8px;gap:2px}
+.seg button{font-size:12px;padding:4px 9px;border-radius:6px;color:var(--l2);transition:background .12s,color .12s}
+.seg button:hover{color:var(--l1)}
+.seg button.on{background:var(--win);color:var(--l1);font-weight:500;box-shadow:0 1px 2px rgba(0,0,0,.14)}
+
+/* Main layout */
+.stage{display:grid;grid-template-columns:minmax(0,680px) minmax(290px,1fr);gap:24px;align-items:start}
+@media (max-width:960px){.stage{grid-template-columns:1fr}}
+
+/* Simulated Mac Window */
+.mac-win{position:relative;height:520px;display:grid;grid-template-columns:272px minmax(0,1fr);background:var(--win);border-radius:12px;box-shadow:var(--shadow-win);overflow:visible;font:13px/1.38 var(--font);color:var(--l1)}
+.mac-win-clip{position:absolute;inset:0;border-radius:12px;overflow:hidden;pointer-events:none}
+.tl{position:absolute;left:14px;top:16px;display:flex;gap:8px;z-index:6}
+.tl i{width:12px;height:12px;border-radius:50%}
+.tl i:nth-child(1){background:#ff5f57}.tl i:nth-child(2){background:#febc2e}.tl i:nth-child(3){background:#28c840}
+
+.side{background:var(--side);border-right:.5px solid var(--sep);border-radius:12px 0 0 12px;display:flex;flex-direction:column;min-height:0;position:relative;z-index:2}
+.side-top{height:44px;display:flex;align-items:center;padding:0 8px 0 79px;flex:none}
+.side-search{margin-left:auto}
+.tb{height:28px;min-width:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--l2)}
+.tb:hover{background:var(--fill2);color:var(--l1)}
+
+.side-nav{padding:10px 8px 8px;display:flex;flex-direction:column;gap:4px;flex:none}
+.nav-i{display:flex;align-items:center;gap:8px;height:32px;padding:0 9px;border-radius:8px;font-size:14px;color:var(--side-fg);width:100%;text-align:left}
+.nav-i:hover{background:var(--fill)}
+.nav-i.sel{background:var(--side-sel);color:var(--side-sel-fg);font-weight:500;box-shadow:var(--side-sel-sh)}
+.nav-i .ic{width:17px;height:17px}
+
+.side-h{height:32px;flex:none;display:flex;align-items:center;padding:0 8px 0 18px;font-size:12.5px;color:var(--l2)}
+.side-list{flex:1;overflow-y:auto;min-height:0;padding:0 8px 8px}
+.grp-h{font-size:12px;font-weight:500;color:var(--l2);padding:8px 10px 4px;display:flex;align-items:center;gap:5px}
+
+.srow{display:flex;gap:8px;padding:6px 9px;border-radius:8px;align-items:center;width:100%;text-align:left;font-size:14px;color:var(--side-fg)}
+.srow:hover{background:var(--fill)}
+.srow.sel{background:var(--side-sel);color:var(--side-sel-fg);font-weight:500;box-shadow:var(--side-sel-sh)}
+.slogo{width:16px;height:16px;border-radius:4px;flex:none;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff}
+.stitle{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmark{color:var(--gh-merge);opacity:.82;flex:none}
+.gmark .ic{width:13.5px;height:13.5px}
+
+/* ---------- NEW Single-Line Account Footer ---------- */
+.acct{position:relative;flex:none;border-top:.5px solid var(--sep);padding:6px 8px}
+.side-foot{
+  width:100%;height:36px;display:flex;align-items:center;gap:8px;
+  padding:0 8px 0 9px;border-radius:8px;background:none;text-align:left;
+  color:var(--side-fg);transition:background .12s;position:relative;
+}
+.side-foot:hover{background:var(--fill);color:var(--l1)}
+.side-foot[aria-expanded="true"]{background:var(--fill2);color:var(--l1)}
+
+/* Avatar (22px, crisp & quiet) */
+.av-wrap{position:relative;width:20px;height:20px;flex:none;display:inline-flex;align-items:center;justify-content:center}
+.av{
+  width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+  background:var(--fill2);color:var(--l2);font-size:11px;font-weight:550;overflow:hidden;flex:none;
+}
+.av img{width:100%;height:100%;object-fit:cover;display:block}
+.av.hosted{background:linear-gradient(135deg,#0891b2,#2f6bf0,#6d3cf0);color:#fff}
+.av.server{background:var(--fill2);color:var(--l2)}
+.av.out{background:var(--fill2);color:var(--l3)}
+.av .ic{width:12px;height:12px;stroke-width:1.5}
+
+/* Tiny status dot on avatar corner ONLY when disconnected/reconnecting */
+.av-warn{
+  position:absolute;right:-1.5px;bottom:-1.5px;width:7px;height:7px;border-radius:50%;
+  background:var(--orange);box-shadow:0 0 0 1.5px var(--side);
+}
+
+.foot-name{
+  flex:1;min-width:0;font-size:13px;font-weight:500;line-height:1.2;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  color:var(--l1);
+}
+.foot-name.out{color:var(--l2);font-weight:450}
+.foot-chev{color:var(--l3);flex:none;transform:rotate(180deg);transition:transform .2s var(--ease-out),color .12s}
+.side-foot:hover .foot-chev{color:var(--l2)}
+.side-foot[aria-expanded="true"] .foot-chev{transform:none;color:var(--l1)}
+
+/* Account Menu (opens upward) */
+.acct-menu{
+  position:absolute;left:8px;right:8px;bottom:calc(100% + 4px);z-index:20;
+  background:var(--menu-solid);border-radius:var(--r-card);
+  box-shadow:0 0 0 .5px var(--menu-bd),0 12px 32px rgba(0,0,0,.24),0 2px 6px rgba(0,0,0,.08);
+  padding:5px;transform-origin:50% 100%;animation:menuup .16s var(--ease-out);
+}
+@keyframes menuup{from{opacity:0;transform:translateY(5px) scale(.98)}to{opacity:1;transform:none}}
+.acct-menu .mi{display:flex;align-items:center;gap:9px;width:100%;height:30px;padding:0 9px;border-radius:var(--r-ctl);font-size:13px;color:var(--l1);text-align:left}
+.acct-menu .mi:hover{background:var(--fill2)}
+.acct-menu .mi .ic{color:var(--l2);width:15px;height:15px}
+.acct-menu .mi .kbd{margin-left:auto;font-size:11px;color:var(--l3)}
+.acct-menu .msep{height:.5px;background:var(--sep);margin:5px 9px}
+
+/* ---------- Hover Popover Card (matches .shover-card visual language) ---------- */
+.ahover-card{
+  position:absolute;z-index:30;width:248px;pointer-events:none;
+  background:color-mix(in srgb,var(--menu-solid) 92%,transparent);
+  backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);
+  border-radius:var(--r-card);
+  box-shadow:0 0 0 .5px var(--menu-bd),0 14px 36px rgba(0,0,0,.22),0 2px 6px rgba(0,0,0,.08);
+  padding:10px 12px;display:flex;flex-direction:column;gap:8px;
+  opacity:0;visibility:hidden;transition:opacity .14s var(--ease-out),transform .14s var(--ease-out),visibility 0s linear .14s;
+}
+/* Placement: right of sidebar (matching .shover-card) */
+.ahover-card.pos-right{left:calc(100% + 8px);bottom:8px;transform:translateX(-4px)}
+.ahover-card.pos-right.show{opacity:1;visibility:visible;transform:none;transition:opacity .14s var(--ease-out),transform .14s var(--ease-out),visibility 0s}
+/* Placement: above footer */
+.ahover-card.pos-top{left:8px;bottom:calc(100% + 6px);width:256px;transform:translateY(4px)}
+.ahover-card.pos-top.show{opacity:1;visibility:visible;transform:none;transition:opacity .14s var(--ease-out),transform .14s var(--ease-out),visibility 0s}
+
+.ahover-head{display:flex;align-items:center;gap:9px;min-width:0}
+.ahover-head .av{width:30px;height:30px;font-size:13px}
+.ahover-head .av .ic{width:15px;height:15px}
+.ahover-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.ahover-title{font-size:13px;font-weight:550;color:var(--l1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ahover-email{font-size:11.5px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ahover-sep{height:.5px;background:var(--sep)}
+.ahover-rows{display:flex;flex-direction:column;gap:5px}
+.ahover-row{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--l2);min-width:0}
+.ahover-row .ic{width:13px;height:13px;color:var(--l3);flex:none}
+.ahover-row .val{color:var(--l1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ahover-row .mono{font-family:var(--mono);font-size:11px}
+.dotc{width:6.5px;height:6.5px;border-radius:50%;flex:none;display:inline-block}
+.dotc.on{background:var(--green)}
+.dotc.warn{background:var(--orange)}
+.dotc.off{background:var(--l3)}
+
+/* Right content pane of window */
+.content{border-radius:0 12px 12px 0;background:var(--win);display:flex;flex-direction:column;padding:18px 24px;gap:14px;min-width:0}
+.c-hint{margin-top:auto;padding:14px 16px;border-radius:10px;background:var(--fill);border:.5px solid var(--sep);display:flex;flex-direction:column;gap:6px}
+.c-hint b{font-size:13px;font-weight:550;color:var(--l1)}
+.c-hint p{font-size:12px;color:var(--l2);line-height:1.55}
+.c-hint code{font-family:var(--mono);font-size:11px;background:var(--fill2);padding:1px 5px;border-radius:4px;color:var(--l1)}
+
+/* Right-side Comparison Panel */
+.panel{display:flex;flex-direction:column;gap:14px}
+.card{background:var(--page-card);border:.5px solid var(--page-bd);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.card-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card-h b{font-size:13px;font-weight:600}
+.card-h span{font-size:11px;color:var(--page-fg2);font-family:var(--mono)}
+
+/* Mini sidebar strip for Before vs After */
+.strip-box{background:var(--side);border:.5px solid var(--sep);border-radius:10px;overflow:hidden;width:272px;max-width:100%}
+.strip-top{padding:8px 8px 6px}
+.strip-srow{display:flex;gap:8px;padding:6px 9px;border-radius:8px;align-items:center;font-size:13.5px;color:var(--side-fg)}
+
+/* Old 52px footer for direct visual comparison */
+.old-acct{border-top:.5px solid var(--sep);padding-top:6px}
+.old-foot{height:52px;display:flex;align-items:center;gap:9px;margin:0 6px 6px;padding:0 10px 0 8px;border-radius:var(--r-box)}
+.old-foot .av{width:22px;height:22px;background:var(--fill2);color:var(--l2);font-weight:500}
+.old-foot .who{flex:1;min-width:0;line-height:1.25}
+.old-foot .who b{display:block;font-size:13px;font-weight:500;color:var(--l1)}
+.old-foot .who span{display:block;font-size:11.5px;color:var(--l2)}
+.old-foot .chev{color:var(--l3);transform:rotate(180deg)}
+
+.state-list{display:flex;flex-direction:column;gap:8px}
+.state-item{display:flex;flex-direction:column;gap:4px}
+.state-cap{font-size:11.5px;color:var(--page-fg2);display:flex;justify-content:space-between}
+.state-cap em{font-style:normal;color:var(--l3)}
+.mini-acct{background:var(--side);border:.5px solid var(--sep);border-radius:9px;padding:4px 6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div class="head-row">
+      <h1>侧边栏底部账号区 · 单行简约方案</h1>
+      <span class="badge">交互 Demo</span>
+    </div>
+    <p>
+      把底部从 <b>52px 两行</b> 收紧成 <b>36px 单行</b>（与上方 <code>32px</code> 行节奏对齐）：官方账号只显示邮箱 <code>@</code> 前的名称（有真实头像时显示头像，无图退回首字母），自建服务器显示简洁图标 + 用户名，<b>完整邮箱 / 服务器地址 / 连接状态全部收敛到 Hover 悬浮卡片</b>里；点击照常展开账号菜单。把鼠标移到左下角试试。
+    </p>
+  </div>
+
+  <!-- Interactive Controls -->
+  <div class="bar">
+    <div class="ctl">
+      <span class="lbl">账号状态</span>
+      <div class="seg" id="stateSeg">
+        <button class="on" data-state="hosted-avatar">官方 · 有头像</button>
+        <button data-state="hosted-initial">官方 · 首字母</button>
+        <button data-state="self-hosted">自建服务器</button>
+        <button data-state="offline">重连中</button>
+        <button data-state="signed-out">未登录</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span class="lbl">邮箱长度</span>
+      <div class="seg" id="lenSeg">
+        <button class="on" data-len="normal">普通</button>
+        <button data-len="long">超长截断</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span class="lbl">Hover 位置</span>
+      <div class="seg" id="posSeg">
+        <button class="on" data-pos="right">侧栏右侧（同任务卡）</button>
+        <button data-pos="top">底部条正上方</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span class="lbl">主题</span>
+      <div class="seg" id="themeSeg">
+        <button class="on" data-theme="dark">深色</button>
+        <button data-theme="black">暗黑</button>
+        <button data-theme="light">浅色</button>
+        <button data-theme="soft">柔白</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <!-- Simulated Hermesh Desktop Window -->
+    <div class="mac-win">
+      <div class="tl"><i></i><i></i><i></i></div>
+      <aside class="side">
+        <div class="side-top">
+          <button class="tb" title="隐藏边栏">
+            <svg class="ic" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M6 2.5v11"/></svg>
+          </button>
+          <button class="tb side-search" title="搜索 ⌘K">
+            <svg class="ic" viewBox="0 0 16 16"><circle cx="7.2" cy="7.2" r="4.5"/><path d="M10.6 10.6L13.8 13.8"/></svg>
+          </button>
+        </div>
+
+        <nav class="side-nav">
+          <button class="nav-i">
+            <svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>
+            <span>新建任务</span>
+          </button>
+          <button class="nav-i sel">
+            <svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M5.8 7.5h.01M10.2 7.5h.01M6.2 10c.5.6 1.1.9 1.8.9s1.3-.3 1.8-.9"/></svg>
+            <span>Her</span>
+          </button>
+          <button class="nav-i">
+            <svg class="ic" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></svg>
+            <span>概览</span>
+          </button>
+        </nav>
+
+        <div class="side-h">任务</div>
+        <div class="side-list">
+          <div class="grp-h">
+            <svg class="ic sm" viewBox="0 0 16 16"><path d="M4.5 6.5L8 10l3.5-3.5"/></svg>
+            <span>已结束</span>
+          </div>
+          <button class="srow">
+            <span class="slogo" style="background:linear-gradient(135deg,#2563eb,#38bdf8)">A</span>
+            <span class="stitle">修复侧边栏拖拽时高度抖动</span>
+          </button>
+          <button class="srow">
+            <span class="slogo" style="background:#d97757">C</span>
+            <span class="stitle">重构账号设置页同步逻辑</span>
+          </button>
+          <button class="srow">
+            <span class="slogo" style="background:linear-gradient(135deg,#2563eb,#38bdf8)">A</span>
+            <span class="stitle">制作 Her 头像打招呼动画</span>
+            <span class="gmark"><svg class="ic" viewBox="0 0 16 16"><circle cx="5" cy="4" r="1.5"/><circle cx="5" cy="12" r="1.5"/><circle cx="11.5" cy="8" r="1.5"/><path d="M5 5.5v5M5 5.5c0 2 1.5 2.5 5 2.5"/></svg></span>
+          </button>
+        </div>
+
+        <!-- Account Footer -->
+        <div class="acct" id="acctRoot">
+          <div class="acct-menu" id="acctMenu" hidden>
+            <button class="mi"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg><span>连接 agent…</span><span class="kbd">⇧⌘N</span></button>
+            <button class="mi"><svg class="ic" viewBox="0 0 16 16"><rect x="2" y="3.5" width="12" height="8" rx="1.5"/><path d="M5.5 13.5h5"/></svg><span>添加环境…</span></button>
+            <button class="mi"><svg class="ic" viewBox="0 0 16 16"><path d="M5.5 8h5M3 5.5v5M13 5.5v5"/></svg><span>输入配对码…</span><span class="kbd">⇧⌘P</span></button>
+            <div class="msep"></div>
+            <button class="mi"><svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 2.2v1.6M8 12.2v1.6M2.2 8h1.6M12.2 8h1.6M3.9 3.9l1.1 1.1M11 11l1.1 1.1M12.1 3.9L11 5M5 11l-1.1 1.1"/></svg><span>设置…</span><span class="kbd">⌘,</span></button>
+            <button class="mi"><svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"/><path d="M3.2 13.2c.8-2.2 2.5-3.2 4.8-3.2s4 1 4.8 3.2"/></svg><span>账号…</span></button>
+          </div>
+
+          <div class="ahover-card pos-right" id="hoverCard" aria-hidden="true"></div>
+
+          <button class="side-foot" id="sideFoot" aria-expanded="false">
+            <span class="av-wrap" id="footAvWrap"></span>
+            <span class="foot-name" id="footName"></span>
+            <svg class="ic sm foot-chev" viewBox="0 0 16 16"><path d="M4.5 6.5L8 10l3.5-3.5"/></svg>
+          </button>
+        </div>
+      </aside>
+
+      <main class="content">
+        <div class="c-hint">
+          <b>交互说明（试着操作左下角）</b>
+          <p>
+            1. <b>鼠标悬停</b>在左下角账号行约 200ms → 弹出悬浮卡片，展示完整邮箱、服务器域名和连接状态。<br>
+            2. <b>点击</b>账号行 → 悬浮卡片自动隐藏，向上展开账号菜单。<br>
+            3. 切换上方「账号状态」「Hover 位置」「主题」对比不同场景。
+          </p>
+        </div>
+      </main>
+    </div>
+
+    <!-- Before vs After + All States Glance -->
+    <div class="panel">
+      <div class="card">
+        <div class="card-h">
+          <b>改造前后对比</b>
+          <span>52px → 36px (-16px)</span>
+        </div>
+
+        <div class="state-item">
+          <div class="state-cap"><span>现在（两行，常驻「已登录」）</span><em>height: 52px</em></div>
+          <div class="strip-box">
+            <div class="strip-top">
+              <div class="strip-srow">
+                <span class="slogo" style="background:linear-gradient(135deg,#2563eb,#38bdf8)">A</span>
+                <span class="stitle">制作 Her 头像打招呼动画</span>
+                <span class="gmark"><svg class="ic" viewBox="0 0 16 16"><circle cx="5" cy="4" r="1.5"/><circle cx="5" cy="12" r="1.5"/><circle cx="11.5" cy="8" r="1.5"/><path d="M5 5.5v5M5 5.5c0 2 1.5 2.5 5 2.5"/></svg></span>
+              </div>
+            </div>
+            <div class="old-acct">
+              <div class="old-foot">
+                <span class="av">Y</span>
+                <span class="who"><b>yipengfei</b><span>已登录</span></span>
+                <svg class="ic sm chev" viewBox="0 0 16 16"><path d="M4.5 6.5L8 10l3.5-3.5"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="state-item">
+          <div class="state-cap"><span>优化后（单行，Hover 展开详情）</span><em>height: 36px</em></div>
+          <div class="strip-box">
+            <div class="strip-top">
+              <div class="strip-srow">
+                <span class="slogo" style="background:linear-gradient(135deg,#2563eb,#38bdf8)">A</span>
+                <span class="stitle">制作 Her 头像打招呼动画</span>
+                <span class="gmark"><svg class="ic" viewBox="0 0 16 16"><circle cx="5" cy="4" r="1.5"/><circle cx="5" cy="12" r="1.5"/><circle cx="11.5" cy="8" r="1.5"/><path d="M5 5.5v5M5 5.5c0 2 1.5 2.5 5 2.5"/></svg></span>
+              </div>
+            </div>
+            <div class="acct" style="padding:6px 8px">
+              <div class="side-foot" id="afterPreview"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <b>五种状态一览</b>
+          <span>点击可切换左侧预览</span>
+        </div>
+        <div class="state-list" id="allStates"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Inline SVG avatar to simulate GitHub/Google photo without external network requests.
+const SAMPLE_AVATAR = "data:image/svg+xml;utf8," + encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#38bdf8"/><stop offset="55%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#9333ea"/></linearGradient></defs>
+    <rect width="64" height="64" fill="url(#g)"/>
+    <circle cx="32" cy="25" r="11" fill="rgba(255,255,255,.92)"/>
+    <path d="M13 56c2-11 10-17 19-17s17 6 19 17" fill="rgba(255,255,255,.92)"/>
+  </svg>`
+);
+
+const IC = {
+  server: `<svg class="ic" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="4.5" rx="1.2"/><rect x="2.5" y="9" width="11" height="4.5" rx="1.2"/><circle cx="5" cy="4.75" r=".6" fill="currentColor" stroke="none"/><circle cx="5" cy="11.25" r=".6" fill="currentColor" stroke="none"/></svg>`,
+  user: `<svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.4"/><path d="M3.4 13.2c.8-2.1 2.4-3.1 4.6-3.1s3.8 1 4.6 3.1"/></svg>`,
+  globe: `<svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c1.8 1.6 1.8 9.4 0 11M8 2.5c-1.8 1.6-1.8 9.4 0 11"/></svg>`,
+  chev: `<svg class="ic sm foot-chev" viewBox="0 0 16 16"><path d="M4.5 6.5L8 10l3.5-3.5"/></svg>`
+};
+
+const state = { kind: "hosted-avatar", len: "normal", pos: "right", menuOpen: false };
+
+function emailLocal(email) {
+  const i = email.indexOf("@");
+  return i > 0 ? email.slice(0, i) : email;
+}
+
+function modelFor(kind, len) {
+  const email = len === "long" ? "pengfei.yi.engineering@company-corp.io" : "yipengfei@gmail.com";
+  const local = emailLocal(email);
+  switch (kind) {
+    case "hosted-avatar":
+      return {
+        label: "官方 · 有头像",
+        avHtml: `<span class="av"><img src="${SAMPLE_AVATAR}" alt=""></span>`,
+        name: local,
+        out: false,
+        warn: false,
+        hover: {
+          title: local,
+          sub: email,
+          serverLabel: "Hermesh 官方服务",
+          host: "hermesh.io",
+          status: "已连接",
+          dot: "on"
+        }
+      };
+    case "hosted-initial":
+      return {
+        label: "官方 · 无头像",
+        avHtml: `<span class="av hosted">${local.slice(0,1).toUpperCase()}</span>`,
+        name: local,
+        out: false,
+        warn: false,
+        hover: {
+          title: local,
+          sub: email,
+          serverLabel: "Hermesh 官方服务",
+          host: "hermesh.io",
+          status: "已连接",
+          dot: "on"
+        }
+      };
+    case "self-hosted":
+      return {
+        label: "自建服务器",
+        avHtml: `<span class="av server">${IC.server}</span>`,
+        name: len === "long" ? "pengfei-macbook-pro" : "yipengfei",
+        out: false,
+        warn: false,
+        hover: {
+          title: len === "long" ? "pengfei-macbook-pro" : "yipengfei",
+          sub: "自建服务器",
+          serverLabel: "服务器",
+          host: len === "long" ? "relay-prod.internal.example.com:8443" : "relay.example.com",
+          status: "已连接",
+          dot: "on"
+        }
+      };
+    case "offline":
+      return {
+        label: "官方 · 重连中",
+        avHtml: `<span class="av"><img src="${SAMPLE_AVATAR}" alt=""></span>`,
+        name: local,
+        out: false,
+        warn: true,
+        hover: {
+          title: local,
+          sub: email,
+          serverLabel: "Hermesh 官方服务",
+          host: "hermesh.io",
+          status: "正在重新连接…",
+          dot: "warn"
+        }
+      };
+    case "signed-out":
+      return {
+        label: "未登录",
+        avHtml: `<span class="av out">${IC.user}</span>`,
+        name: "未登录",
+        out: true,
+        warn: false,
+        hover: {
+          title: "未登录",
+          sub: "仅本地可用，登录后可跨设备连接",
+          serverLabel: null,
+          host: null,
+          status: "本地模式",
+          dot: "off"
+        }
+      };
+  }
+}
+
+function renderHoverHtml(m) {
+  const h = m.hover;
+  return `
+    <div class="ahover-head">
+      ${m.avHtml}
+      <div class="ahover-meta">
+        <div class="ahover-title">${h.title}</div>
+        <div class="ahover-email">${h.sub}</div>
+      </div>
+    </div>
+    <div class="ahover-sep"></div>
+    <div class="ahover-rows">
+      ${h.host ? `<div class="ahover-row">${IC.globe}<span class="val mono">${h.host}</span></div>` : ""}
+      <div class="ahover-row"><i class="dotc ${h.dot}"></i><span>${h.status}${h.serverLabel && h.host === "hermesh.io" ? " · " + h.serverLabel : ""}</span></div>
+    </div>
+  `;
+}
+
+function renderFootInner(m) {
+  return `
+    <span class="av-wrap">${m.avHtml}${m.warn ? `<i class="av-warn"></i>` : ""}</span>
+    <span class="foot-name${m.out ? " out" : ""}">${m.name}</span>
+    ${IC.chev}
+  `;
+}
+
+const foot = document.getElementById("sideFoot");
+const menu = document.getElementById("acctMenu");
+const hoverCard = document.getElementById("hoverCard");
+const afterPreview = document.getElementById("afterPreview");
+const allStatesEl = document.getElementById("allStates");
+
+function render() {
+  const m = modelFor(state.kind, state.len);
+  foot.innerHTML = renderFootInner(m);
+  afterPreview.innerHTML = renderFootInner(m);
+  hoverCard.innerHTML = renderHoverHtml(m);
+  hoverCard.className = `ahover-card pos-${state.pos}`;
+  menu.hidden = !state.menuOpen;
+  foot.setAttribute("aria-expanded", String(state.menuOpen));
+
+  // Render all 5 states preview
+  const kinds = ["hosted-avatar", "hosted-initial", "self-hosted", "offline", "signed-out"];
+  allStatesEl.innerHTML = kinds.map(k => {
+    const item = modelFor(k, state.len);
+    const active = k === state.kind ? `style="box-shadow:0 0 0 1.5px var(--accent)"` : "";
+    return `
+      <div class="state-item">
+        <div class="state-cap"><span>${item.label}</span><em>${item.hover.host || "本地模式"}</em></div>
+        <div class="mini-acct" ${active}>
+          <button class="side-foot" data-pick="${k}">${renderFootInner(item)}</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+  allStatesEl.querySelectorAll("[data-pick]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.kind = btn.dataset.pick;
+      syncSeg("stateSeg", "state", state.kind);
+      render();
+    });
+  });
+}
+
+// Hover logic with subtle 180ms enter delay
+let hoverTimer = null;
+foot.addEventListener("mouseenter", () => {
+  if (state.menuOpen) return;
+  clearTimeout(hoverTimer);
+  hoverTimer = setTimeout(() => {
+    if (!state.menuOpen) hoverCard.classList.add("show");
+  }, 180);
+});
+foot.addEventListener("mouseleave", () => {
+  clearTimeout(hoverTimer);
+  hoverCard.classList.remove("show");
+});
+foot.addEventListener("click", (e) => {
+  e.stopPropagation();
+  clearTimeout(hoverTimer);
+  hoverCard.classList.remove("show");
+  state.menuOpen = !state.menuOpen;
+  render();
+});
+document.addEventListener("click", (e) => {
+  if (state.menuOpen && !document.getElementById("acctRoot").contains(e.target)) {
+    state.menuOpen = false;
+    render();
+  }
+});
+
+function syncSeg(id, attr, val) {
+  document.getElementById(id).querySelectorAll("button").forEach(b => {
+    b.classList.toggle("on", b.dataset[attr] === val);
+  });
+}
+
+document.getElementById("stateSeg").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  state.kind = b.dataset.state; syncSeg("stateSeg", "state", state.kind); render();
+});
+document.getElementById("lenSeg").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  state.len = b.dataset.len; syncSeg("lenSeg", "len", state.len); render();
+});
+document.getElementById("posSeg").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  state.pos = b.dataset.pos; syncSeg("posSeg", "pos", state.pos); render();
+});
+document.getElementById("themeSeg").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  document.documentElement.dataset.theme = b.dataset.theme;
+  syncSeg("themeSeg", "theme", b.dataset.theme);
+});
+
+render();
+</script>
+</body>
+</html>

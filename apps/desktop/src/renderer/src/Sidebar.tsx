@@ -20,6 +20,7 @@ import { expiringClients } from "./overview/Attention";
 import { keys, ownKeys } from "./platform";
 import { useNow, useStore, type Store } from "./store";
 import { forgetSessionDraft } from "./session/draftMemory";
+import { accountFootModel, type AccountFootModel } from "./accountFoot";
 
 export function grantLabel(st: Store, s: Session): string {
   // A session the owner started here (a v2 thread's): "You".
@@ -834,9 +835,37 @@ export function AccountMenu() {
   const { t } = useTranslation("common");
   // "key": opened from the keyboard, so the first item is chosen at once, as in a native menu.
   const [open, setOpen] = useState<false | "mouse" | "key">(false);
+  const [hoverAnchor, setHoverAnchor] = useState<{ left: number; bottom: number } | null>(null);
+  const [brokenAvatar, setBrokenAvatar] = useState("");
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const foot = useRef<HTMLButtonElement>(null);
+  const model = useMemo(() => accountFootModel(st.status, window.hermesh?.userName), [st.status]);
+  const avatarBroken = !!model.avatarUrl && brokenAvatar === model.avatarUrl;
+  const clearHover = () => {
+    if (hoverTimer.current) {
+      clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+    setHoverAnchor(null);
+  };
+  useEffect(() => clearHover, []);
+  useEffect(() => {
+    if (open) clearHover();
+  }, [open]);
+  const onFootEnter = () => {
+    if (open) return;
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => {
+      hoverTimer.current = null;
+      const el = foot.current;
+      if (!el) return;
+      const sideRect = el.closest(".side")?.getBoundingClientRect() ?? el.getBoundingClientRect();
+      const footRect = el.getBoundingClientRect();
+      setHoverAnchor({ left: sideRect.right + 8, bottom: window.innerHeight - footRect.bottom });
+    }, 180);
+  };
   // A machine only adds nothing to the owner's (null: a separator).
   const items: AccountItem[] = st.status?.machineOnly
     ? [
@@ -901,18 +930,113 @@ export function AccountMenu() {
           )}
         </div>
       )}
-      <button className="side-foot" ref={foot} aria-label={t("sidebar.account")} aria-haspopup="menu" aria-expanded={!!open} onClick={(e) => setOpen(open ? false : e.detail ? "mouse" : "key")}>
-        <span className="av" aria-hidden="true">
-          {(window.hermesh?.userName ?? "H").slice(0, 1).toUpperCase()}
+      <button
+        className="side-foot"
+        ref={foot}
+        aria-label={t("sidebar.account")}
+        aria-haspopup="menu"
+        aria-expanded={!!open}
+        data-signed-in={model.signedIn ? "true" : "false"}
+        onMouseEnter={onFootEnter}
+        onMouseLeave={clearHover}
+        onClick={(e) => {
+          clearHover();
+          setOpen(open ? false : e.detail ? "mouse" : "key");
+        }}
+      >
+        <span className="av-wrap" aria-hidden="true">
+          <AccountAvatar model={model} broken={avatarBroken} onError={() => setBrokenAvatar(model.avatarUrl)} />
+          {model.signedIn && model.linkState !== "connected" && <i className="av-warn" />}
         </span>
-        <span className="who">
-          <b>{window.hermesh?.userName ?? "Hermesh"}</b>
-          {/* Signed in or not (docs/cold-start-prd.md §6.1): the connection has its own line where it matters. */}
-          <span>{(st.status?.initialized || st.status?.machineOnly) && !st.status.signedOut ? t("sidebar.signedIn") : t("sidebar.signedOut")}</span>
+        <span className={`foot-name${model.signedIn ? "" : " out"}`}>
+          {model.signedIn ? model.displayName : t("sidebar.signedOut")}
         </span>
         <Icon name="chevD" className="sm chev" />
       </button>
+      {hoverAnchor && !open && (
+        <AccountHoverCard
+          model={model}
+          brokenAvatar={avatarBroken}
+          onAvatarError={() => setBrokenAvatar(model.avatarUrl)}
+          anchor={hoverAnchor}
+        />
+      )}
     </div>
+  );
+}
+
+function AccountAvatar({ model, broken, onError }: { model: AccountFootModel; broken: boolean; onError: () => void }) {
+  if (!model.signedIn) return <span className="av out" aria-hidden="true"><Icon name="user" /></span>;
+  if (model.hosted) {
+    if (model.avatarUrl && !broken) {
+      return <span className="av" aria-hidden="true"><img src={model.avatarUrl} alt="" onError={onError} /></span>;
+    }
+    return <span className="av hosted" aria-hidden="true">{model.initial}</span>;
+  }
+  return <span className="av server" aria-hidden="true"><Icon name="server" /></span>;
+}
+
+/** Read-only hover card anchored beside the sidebar's account foot: full account, server host, and connection state. */
+function AccountHoverCard({ model, brokenAvatar, onAvatarError, anchor }: {
+  model: AccountFootModel;
+  brokenAvatar: boolean;
+  onAvatarError: () => void;
+  anchor: { left: number; bottom: number };
+}) {
+  const { t } = useTranslation("common");
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: anchor.left, bottom: anchor.bottom });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    setPos({
+      left: Math.max(8, Math.min(anchor.left, innerWidth - w - 8)),
+      bottom: Math.max(8, Math.min(anchor.bottom, innerHeight - h - 8)),
+    });
+  }, [anchor.left, anchor.bottom, model]);
+
+  const title = model.signedIn ? model.displayName : t("sidebar.signedOut");
+  const subtitle = !model.signedIn
+    ? t("sidebar.signedOutHint")
+    : model.hosted
+      ? model.email || t("sidebar.officialService")
+      : t("sidebar.selfHostedServer");
+  const dotTone = model.linkState === "connected" ? "on" : model.linkState === "local" ? "" : "warn";
+  const linkText = model.linkState === "connected"
+    ? t("sidebar.linkConnected")
+    : model.linkState === "reconnecting"
+      ? t("sidebar.linkReconnecting")
+      : model.linkState === "offline"
+        ? t("sidebar.linkOffline")
+        : t("sidebar.localMode");
+  const statusLine = model.hosted && model.email ? `${linkText} · ${t("sidebar.officialService")}` : linkText;
+
+  return createPortal(
+    <div className="ahover-card" data-testid="account-hover-card" ref={ref} style={pos} role="tooltip">
+      <div className="ahover-head">
+        <AccountAvatar model={model} broken={brokenAvatar} onError={onAvatarError} />
+        <div className="ahover-meta">
+          <div className="ahover-title">{title}</div>
+          <div className="ahover-sub">{subtitle}</div>
+        </div>
+      </div>
+      <div className="ahover-sep" />
+      <div className="ahover-rows">
+        {model.signedIn && model.serverHost && (
+          <div className="ahover-row">
+            <Icon name="web" />
+            <span className="val mono">{model.serverHost}</span>
+          </div>
+        )}
+        <div className="ahover-row">
+          <i className={`dotc ${dotTone}`} />
+          <span>{statusLine}</span>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
