@@ -1,11 +1,32 @@
 import { createContext, useEffect, useSyncExternalStore } from "react";
 import { Code, ConnectError } from "@connectrpc/connect";
+import { sameImagePath } from "@hermesh/her-client";
 import { FileContentKind } from "@hermesh/proto/session";
 import { sessions } from "../../api";
-import { extractPureImageSlice, scanReplyImages, shortImageTag, type ReplyImageItem, type ReplyImages } from "../markdown/parse";
+import {
+  extractPureImageSlice,
+  isTallStageImage,
+  isUltraLongImage,
+  scanReplyImages,
+  shortImageTag,
+  TALL_STAGE_RATIO,
+  ULTRA_LONG_RATIO,
+  type ReplyImageItem,
+  type ReplyImages,
+} from "../markdown/parse";
 import type { SessionFile } from "./files";
 
-export { extractPureImageSlice, scanReplyImages, shortImageTag, type ReplyImageItem, type ReplyImages };
+export {
+  extractPureImageSlice,
+  isTallStageImage,
+  isUltraLongImage,
+  scanReplyImages,
+  shortImageTag,
+  TALL_STAGE_RATIO,
+  ULTRA_LONG_RATIO,
+  type ReplyImageItem,
+  type ReplyImages,
+};
 
 export const ReplyImagesContext = createContext<ReplyImages | null>(null);
 
@@ -152,4 +173,23 @@ export function useSessionImage(file: SessionFile | null, active: boolean, onlin
     requestSessionImage(file, state?.status === "offline" && online, urgent);
   }, [key, active, online, urgent, state?.status === "offline"]);
   return state;
+}
+
+export function useAnyTallSessionImage(session: string, run: string, paths: string[]): boolean {
+  return useSyncExternalStore(
+    (l) => (listeners.add(l), () => listeners.delete(l)),
+    () => {
+      if (!session || paths.length === 0) return false;
+      const prefix = `${session}\0${run}\0`;
+      for (const p of paths) {
+        const direct = store.get(`${prefix}${p}`);
+        if (direct?.status === "ready" && isTallStageImage(direct.width, direct.height)) return true;
+      }
+      for (const [k, v] of store) {
+        if (!k.startsWith(prefix) || v.status !== "ready" || !isTallStageImage(v.width, v.height)) continue;
+        if (paths.some((p) => sameImagePath(v.resolvedPath, p))) return true;
+      }
+      return false;
+    },
+  );
 }

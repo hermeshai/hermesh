@@ -1374,7 +1374,7 @@ export function SessionPage() {
                         liveSteer={canLiveSteer}
                         waitingInput={waitingInput}
                         sending={busySend}
-                        placeholder={running ? t("composer.placeholderRunning") : t("composer.placeholderIdle")}
+                        placeholder={running ? (canLiveSteer ? t("composer.placeholderSteer") : t("composer.placeholderRunning")) : t("composer.placeholderIdle")}
                         attachments={attachments}
                         onAttach={handleAttachFiles}
                         onRemove={(sha) => removeDraftAttachment(draftKey, sha)}

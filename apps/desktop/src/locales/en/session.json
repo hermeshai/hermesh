@@ -179,6 +179,7 @@
     "more": "More",
     "prevImage": "Previous Image",
     "nextImage": "Next Image",
+    "longImage": "Long image",
     "line": "Line {{line}}",
     "lines": "Lines {{line}}–{{end}}",
     "notFound": "File not found",

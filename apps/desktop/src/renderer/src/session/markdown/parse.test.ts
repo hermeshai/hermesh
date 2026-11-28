@@ -6,7 +6,16 @@ import Markdown from "react-markdown";
 import gfm from "remark-gfm";
 import math from "remark-math";
 import directive from "remark-directive";
-import { createMarkdownSlices, extractPureImageSlice, pendingText, scanReplyImages, shortImageTag, unwrapCarousels } from "./parse.ts";
+import {
+  createMarkdownSlices,
+  extractPureImageSlice,
+  isTallStageImage,
+  isUltraLongImage,
+  pendingText,
+  scanReplyImages,
+  shortImageTag,
+  unwrapCarousels,
+} from "./parse.ts";
 
 const render = (text: string) => renderToStaticMarkup(createElement(Markdown, { remarkPlugins: [gfm, [math, { singleDollarTextMath: false }], directive], children: text })).replace(/>\s+</g, "><");
 const cases = [
@@ -150,4 +159,13 @@ test("extractPureImageSlice recognizes standalone image blocks and pure image li
   assert.equal(shortImageTag("方案一 [默认收起]：连体抽屉托盘", "stage_1.png"), "方案一 [默认收起]");
   assert.equal(shortImageTag("stage_1.png", "stage_1.png"), "");
   assert.equal(shortImageTag("", "stage_1.png"), "");
+
+  assert.equal(isTallStageImage(1206, 2622), true);
+  assert.equal(isTallStageImage(1000, 1000), true);
+  assert.equal(isTallStageImage(2544, 1390), false);
+  assert.equal(isTallStageImage(0, 200), false);
+
+  assert.equal(isUltraLongImage(750, 3150), true);
+  assert.equal(isUltraLongImage(1206, 2622), false);
+  assert.equal(isUltraLongImage(2544, 1390), false);
 });

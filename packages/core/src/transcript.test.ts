@@ -287,6 +287,8 @@ describe("unified session transcript", () => {
     expect(resolutionTitle(r({ resolution: QuestionResolution.TIMED_OUT, by: "hermesh" }))).toBe("无人回答，Agent 已自行继续");
     expect(isInterruption({ kind: FailureKind.INTERRUPTED } as never)).toBe(true);
     expect(interrupter({ kind: FailureKind.INTERRUPTED, message: "interrupted by owner" } as never)).toBe("owner");
+    expect(interrupter({ kind: FailureKind.INTERRUPTED, message: "steered by owner" } as never)).toBe("owner");
+    expect(interrupter({ kind: FailureKind.INTERRUPTED, message: "steered by c_abc" } as never)).toBe("c_abc");
   });
 });
 

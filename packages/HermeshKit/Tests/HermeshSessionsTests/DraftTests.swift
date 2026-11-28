@@ -81,4 +81,13 @@ import Testing
     #expect(shortImageTag("方案 A（默认收起 · 推荐 1）：连体抽屉托盘", fileName: "demo-a.png") == "方案 A")
     #expect(shortImageTag("方案一 [默认收起]：连体抽屉托盘", fileName: "stage_1.png") == "方案一 [默认收起]")
     #expect(shortImageTag("stage_1.png", fileName: "stage_1.png") == "")
+
+    #expect(isTallStageImage(width: 1206, height: 2622) == true)
+    #expect(isTallStageImage(width: 1000, height: 1000) == true)
+    #expect(isTallStageImage(width: 2544, height: 1390) == false)
+    #expect(isTallStageImage(width: 0, height: 200) == false)
+
+    #expect(isUltraLongImage(width: 750, height: 3150) == true)
+    #expect(isUltraLongImage(width: 1206, height: 2622) == false)
+    #expect(isUltraLongImage(width: 2544, height: 1390) == false)
 }

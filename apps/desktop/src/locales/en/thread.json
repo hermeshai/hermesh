@@ -120,6 +120,7 @@
     "stop": "Stop",
     "forceStop": "Force Stop",
     "placeholderIdle": "Keep going…",
+    "placeholderSteer": "Say more to steer this turn…",
     "placeholderRunning": "Say more; it goes to the next turn…",
     "nextTurn": "Handled in the next turn",
     "addAttachment": "Add Attachment…",

@@ -99,8 +99,8 @@ pub(crate) enum TaskOutcome {
 enum Work {
     /// The agent loop, starting with this message (none: continue the current history).
     Prompt(Option<Input>),
-    /// Only a compaction (`Op::Compact`).
-    Compact,
+    /// Only a compaction (`Op::Compact`, `/compact`, or idle warm-cache pre-compaction).
+    Compact(CompactionReason),
     /// Only the context report (`/context`).
     Context,
 }
@@ -252,16 +252,28 @@ pub(crate) fn on_mail(session: &Arc<Session>, mail: Mail) {
     }
 }
 
-/// A card of the session ended. Its end joins the history at the next turn boundary, or starts a
-/// task when nothing runs, even after the bot's work was stopped (docs/her-secure-cards.md §3.4).
+/// A card of the session ended. User-answered cards start a task when nothing runs; cards that
+/// timed out (`expired`) with no sub-agent waiting, or while the session is held after a stop,
+/// join the history quietly and wait for the next user turn.
 pub(crate) fn on_card(session: &Arc<Session>, card: Box<CardResolvedEntry>) {
+    let sub_agents_busy = session.agents.as_ref().is_some_and(|tree| !tree.settled());
     let wake = {
         let mut state = session.state.lock();
-        state.inbox.push_back(Delivery::Card(card));
-        state.active_task.is_none()
+        let should_wake = !state.hold && (card.outcome != "expired" || sub_agents_busy);
+        if state.active_task.is_none() && !should_wake {
+            let id = state.history.new_id();
+            let entry = state.history.append(id, EntryKind::CardResolved(card), now_ms());
+            session.writer.append(entry);
+            false
+        } else {
+            state.inbox.push_back(Delivery::Card { card, wake: should_wake });
+            state.active_task.is_none() && state.has_waking_mail()
+        }
     };
     if wake {
         start(session, Work::Prompt(None), TaskTrigger::Mail);
+    } else {
+        session.check_idle();
     }
 }
 
@@ -292,7 +304,7 @@ pub(crate) fn on_compact(session: &Arc<Session>) {
         session.warn("nothing to compact");
         return;
     }
-    start(session, Work::Compact, TaskTrigger::User);
+    start(session, Work::Compact(CompactionReason::Manual), TaskTrigger::User);
 }
 
 /// `/compact` typed as a message. Unlike `Op::Compact` it runs as a task even when there is
@@ -303,7 +315,7 @@ fn on_compact_command(session: &Arc<Session>) {
         session.warn("a task is running; compact after it ends");
         return;
     }
-    start(session, Work::Compact, TaskTrigger::User);
+    start(session, Work::Compact(CompactionReason::Manual), TaskTrigger::User);
 }
 
 /// `/context` typed as a message: the report, in a task of its own so that a front end waiting
@@ -330,6 +342,9 @@ fn start(session: &Arc<Session>, work: Work, trigger: TaskTrigger) {
 /// Makes the session busy with a new task. Under the state lock, so that input arriving
 /// meanwhile waits for it instead of starting a task of its own.
 fn reserve(state: &mut SessionState) -> TaskCtx {
+    if let Some(idle_timer) = state.idle_compact.take() {
+        idle_timer.cancel();
+    }
     let cancel = CancellationToken::new();
     let turn = Arc::new(Mutex::new(cancel.child_token()));
     state.idle = false;
@@ -383,7 +398,7 @@ async fn task_main(session: Arc<Session>, task: TaskCtx, work: Work, trigger: Ta
     let run = async {
         match work {
             Work::Prompt(input) => run_task(&session, &task, input).await,
-            Work::Compact => run_compaction(&session, &task).await,
+            Work::Compact(reason) => run_compaction(&session, &task, reason).await,
             Work::Context => {
                 session.emit(EventMsg::ContextReported {
                     report: session.context_report(),
@@ -496,8 +511,69 @@ async fn finish_task(session: &Arc<Session>, task: &TaskCtx, outcome: TaskOutcom
         None => {
             crate::browser::task_ended(&session.tool_state);
             session.check_idle();
+            schedule_idle_compaction(session);
         }
     }
+}
+
+const WARM_CACHE_WINDOW: std::time::Duration = std::time::Duration::from_secs(240);
+
+/// When a bot's conversation enters `Idle` past `bot_idle_message_tokens` while its provider
+/// prompt cache is still warm, waits `bot_idle_delay` and pre-compacts quietly unless new work
+/// arrives first.
+fn schedule_idle_compaction(session: &Arc<Session>) {
+    if !session.config.compaction.enabled || session.config.compaction.bot_idle_message_tokens == 0 {
+        return;
+    }
+    if !session.is_bot() || !session.cache_warm(WARM_CACHE_WINDOW) || !compaction::can_compact(session) {
+        return;
+    }
+    let fixed = crate::budget::scale(session.fixed_tokens(), session.estimate_ratio());
+    let dynamic = session.budget().usage.tokens.saturating_sub(fixed);
+    if dynamic < session.config.compaction.bot_idle_message_tokens {
+        return;
+    }
+    let cancel = CancellationToken::new();
+    {
+        let mut state = session.state.lock();
+        if !state.idle || state.hold || state.active_task.is_some() {
+            return;
+        }
+        if let Some(prev) = state.idle_compact.replace(cancel.clone()) {
+            prev.cancel();
+        }
+    }
+    let delay = session.config.compaction.bot_idle_delay;
+    let session = session.clone();
+    tokio::spawn(async move {
+        tokio::select! {
+            _ = cancel.cancelled() => return,
+            _ = tokio::time::sleep(delay) => {}
+        }
+        if !session.cache_warm(WARM_CACHE_WINDOW) || !compaction::can_compact(&session) {
+            return;
+        }
+        let next = {
+            let mut guard = session.state.lock();
+            let state = &mut *guard;
+            if cancel.is_cancelled()
+                || !state.idle
+                || state.hold
+                || state.active_task.is_some()
+                || !state.steer.is_empty()
+                || !state.follow_up.is_empty()
+                || state.has_waking_mail()
+            {
+                None
+            } else {
+                state.idle_compact = None;
+                Some(reserve(state))
+            }
+        };
+        if let Some(task) = next {
+            launch(&session, task, Work::Compact(CompactionReason::Idle), TaskTrigger::Mail);
+        }
+    });
 }
 
 /// Input that arrived after the last turn boundary starts the next task.
@@ -584,6 +660,21 @@ async fn run_task(session: &Arc<Session>, task: &TaskCtx, input: Option<Input>) 
         }
         if task.cancel.is_cancelled() {
             return TaskOutcome::Interrupted;
+        }
+        // First-tier cold-cache pruning for a bot's conversation: fold old settled bulky tool
+        // outputs and reports once the provider cache has expired, before measuring compaction.
+        if turn == 0
+            && session.is_bot()
+            && session.quiet()
+            && let Some((up_to, _)) = session.with_branch(|branch| {
+                crate::context::plan_context_trim(
+                    branch,
+                    crate::context::TRIM_KEEP_RECENT_TASKS,
+                    crate::context::TRIM_MIN_SAVED_TOKENS,
+                )
+            })
+        {
+            session.record(EntryKind::ContextTrim { up_to });
         }
         // Every request is checked first: each turn, each new task, after a resume.
         if let Err(outcome) = check_context(session, task, &mut compactions).await {
@@ -836,16 +927,18 @@ async fn check_context(session: &Arc<Session>, task: &TaskCtx, compactions: &mut
     }
 }
 
-/// `Op::Compact` and `/compact`: a task that only compacts.
-async fn run_compaction(session: &Arc<Session>, task: &TaskCtx) -> TaskOutcome {
+/// `Op::Compact`, `/compact`, and warm-cache idle pre-compaction: a task that only compacts.
+async fn run_compaction(session: &Arc<Session>, task: &TaskCtx, reason: CompactionReason) -> TaskOutcome {
     if !compaction::can_compact(session) {
-        session.warn("nothing to compact");
+        if reason == CompactionReason::Manual {
+            session.warn("nothing to compact");
+        }
         return TaskOutcome::Completed {
             last_message: None,
             reason: CompletionReason::Done,
         };
     }
-    match compaction::compact(session, task, CompactionReason::Manual, None).await {
+    match compaction::compact(session, task, reason, None).await {
         Ok(()) => TaskOutcome::Completed {
             last_message: None,
             reason: CompletionReason::Done,

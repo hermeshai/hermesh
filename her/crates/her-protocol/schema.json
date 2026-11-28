@@ -4193,6 +4193,13 @@
             "model_switch"
           ],
           "type": "string"
+        },
+        {
+          "description": "A bot's conversation compacted quietly while idle, before its prompt cache expired.",
+          "enum": [
+            "idle"
+          ],
+          "type": "string"
         }
       ]
     },

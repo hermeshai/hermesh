@@ -787,6 +787,22 @@ func otherMacFiles(t *testing.T, f desktopFixture) int {
 	if sw, r := w.send(2*time.Minute, walkSession.SessionID, stageTurn); sw.Status != "idle" {
 		t.Fatalf("walkthrough stage turn: %+v", r)
 	}
+	tallOne := filepath.Join(brainDir, "portrait_1.png")
+	tallTwo := filepath.Join(brainDir, "portrait_2.png")
+	longThree := filepath.Join(brainDir, "long_3.png")
+	if err := os.WriteFile(tallOne, makeE2EPNG(t, 120, 260, 30, 60, 120), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tallTwo, makeE2EPNG(t, 120, 260, 45, 95, 165), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(longThree, makeE2EPNG(t, 120, 520, 65, 145, 110), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stripTurn := "say 竖图轨道：\\n\\n````carousel\\n![01 直板机 · 展开侧边栏](" + tallOne + ")\\n<!-- slide -->\\n![02 直板机 · 不展开侧边栏](" + tallTwo + ")\\n<!-- slide -->\\n![03 整页长截图报告](" + longThree + ")\\n````"
+	if stp, r := w.send(2*time.Minute, walkSession.SessionID, stripTurn); stp.Status != "idle" {
+		t.Fatalf("walkthrough strip turn: %+v", r)
+	}
 	f.Sessions["走查预览"] = walkSession.SessionID
 	return daemon.cmd.Process.Pid
 }

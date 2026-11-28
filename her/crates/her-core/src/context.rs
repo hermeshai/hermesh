@@ -24,6 +24,15 @@ pub const NOT_EXECUTED: &str = "Tool call was not executed (interrupted).";
 /// Appended to the context to ask the model for a handoff summary.
 pub const HANDOFF_REQUEST: &str = include_str!("prompts/handoff.md");
 
+/// Appended to a bot's persistent conversation when compacting its working set.
+pub const BOT_HANDOFF_REQUEST: &str = include_str!("prompts/bot_handoff.md");
+
+/// Completed tasks kept unfolded at the tail when anchoring a cold-cache [`EntryKind::ContextTrim`].
+pub const TRIM_KEEP_RECENT_TASKS: usize = 3;
+
+/// Minimum estimated token savings required before writing a cold-cache [`EntryKind::ContextTrim`].
+pub const TRIM_MIN_SAVED_TOKENS: u64 = 1_500;
+
 const SUMMARY_INTRO: &str = "Earlier parts of this conversation were replaced by the handoff summary below, \
     written by the assistant that did the work.";
 const SUMMARY_KEPT: &str = "The user's recent messages are kept above in their own words: the latest one \
@@ -217,12 +226,115 @@ pub fn branch_messages(branch: &[&Entry]) -> Vec<Message> {
         }
         None => 0,
     };
-    for entry in &branch[start..] {
+    let trim_cutoff = latest_trim_index(&branch[start..]);
+    for (offset, entry) in branch[start..].iter().enumerate() {
+        if trim_cutoff.is_some_and(|cut| offset <= cut)
+            && let Some(folded) = fold_settled_entry(&entry.kind)
+        {
+            out.push(folded);
+            continue;
+        }
         if let Some(message) = entry_message(&entry.kind, entry.ts) {
             out.push(message.into_owned());
         }
     }
     out
+}
+
+const FOLD_MIN_CHARS: usize = 600;
+const FOLD_HEAD_CHARS: usize = 180;
+
+fn latest_trim_index(window: &[&Entry]) -> Option<usize> {
+    let up_to = window.iter().rev().find_map(|e| match &e.kind {
+        EntryKind::ContextTrim { up_to } => Some(up_to.as_str()),
+        _ => None,
+    })?;
+    window.iter().rposition(|e| e.id == up_to)
+}
+
+fn fold_settled_entry(kind: &EntryKind) -> Option<Message> {
+    match kind {
+        EntryKind::Message {
+            message: Message::ToolResult(tr),
+            ..
+        } if tr.tool_name != crate::bot::SEND_TO_USER => {
+            let text = tr.text_content();
+            let char_count = text.chars().count();
+            if char_count <= FOLD_MIN_CHARS {
+                return None;
+            }
+            let head: String = text.chars().take(FOLD_HEAD_CHARS).collect();
+            let stub = format!(
+                "{head}\n…[settled {} output ({char_count} chars) folded after idle; re-run tool if full raw output is needed]",
+                tr.tool_name
+            );
+            Some(Message::from(ToolResultMessage {
+                call_id: tr.call_id.clone(),
+                tool_name: tr.tool_name.clone(),
+                content: vec![UserContent::Text { text: stub }],
+                is_error: tr.is_error,
+                details: None,
+                ts: tr.ts,
+                duration_ms: tr.duration_ms,
+            }))
+        }
+        EntryKind::Mail {
+            mail,
+            message: Message::User(u),
+        } if matches!(mail.kind, her_protocol::MailKind::News | her_protocol::MailKind::Routine) => {
+            let text = u.text_content();
+            let char_count = text.chars().count();
+            if char_count <= FOLD_MIN_CHARS || text.contains("kind=\"question\"") {
+                return None;
+            }
+            let head: String = text.chars().take(FOLD_HEAD_CHARS).collect();
+            let stub = format!("{head}\n…[settled report ({char_count} chars) folded after idle]");
+            Some(Message::from(UserMessage {
+                content: vec![UserContent::Text { text: stub }],
+                ts: u.ts,
+            }))
+        }
+        _ => None,
+    }
+}
+
+/// Plans a deterministic cold-cache trim anchor before the last `keep_recent_tasks` completed
+/// tasks when at least `min_saved_tokens` of settled bulky tool outputs or reports can be folded.
+pub fn plan_context_trim(branch: &[&Entry], keep_recent_tasks: usize, min_saved_tokens: u64) -> Option<(String, u64)> {
+    let window = &branch[window_start(branch)..];
+    if window.is_empty() {
+        return None;
+    }
+    let already = latest_trim_index(window);
+    let mut completed_seen = 0usize;
+    let mut cutoff_idx = None;
+    for (idx, entry) in window.iter().enumerate().rev() {
+        if matches!(
+            entry.kind,
+            EntryKind::Task {
+                status: crate::store::TaskStatus::Completed,
+                ..
+            }
+        ) {
+            completed_seen += 1;
+            if completed_seen == keep_recent_tasks + 1 {
+                cutoff_idx = Some(idx);
+                break;
+            }
+        }
+    }
+    let cutoff = cutoff_idx?;
+    let scan_from = already.map_or(0, |i| i + 1);
+    if cutoff < scan_from {
+        return None;
+    }
+    let mut saved = 0u64;
+    for entry in &window[scan_from..=cutoff] {
+        if let (Some(orig), Some(folded)) = (entry_message(&entry.kind, entry.ts), fold_settled_entry(&entry.kind)) {
+            saved += estimate_message(&orig).saturating_sub(estimate_message(&folded));
+        }
+    }
+    (saved >= min_saved_tokens).then(|| (window[cutoff].id.clone(), saved))
 }
 
 /// The message an entry adds to the context; `ts` is the entry's. A delivered report, a new
@@ -696,5 +808,72 @@ mod tests {
 
     fn assistant_entry_kind(text: &str) -> EntryKind {
         EntryKind::message(assistant(vec![AssistantContent::Text { text: text.into() }], StopReason::Stop))
+    }
+
+    #[test]
+    fn context_trim_folds_settled_outputs_deterministically_and_preserves_recent_tasks() {
+        let completed_task = |id: &str| {
+            entry(
+                id,
+                EntryKind::Task {
+                    task_id: id.into(),
+                    status: crate::store::TaskStatus::Completed,
+                    error: None,
+                    reason: None,
+                    usage: None,
+                },
+            )
+        };
+        let big_tool = |id: &str, tool_name: &str, ch: char| {
+            entry(
+                id,
+                EntryKind::message(Message::from(ToolResultMessage {
+                    call_id: id.into(),
+                    tool_name: tool_name.into(),
+                    content: vec![UserContent::Text {
+                        text: ch.to_string().repeat(4_000),
+                    }],
+                    is_error: false,
+                    details: None,
+                    ts: 1,
+                    duration_ms: None,
+                })),
+            )
+        };
+        let mut entries = vec![
+            user_entry("u1", "keep my exact user words"),
+            big_tool("tr_old", "call_tool", 'x'),
+            big_tool("tr_send", "send_to_user", 's'),
+            completed_task("t_old"),
+            user_entry("u2", "recent 1"),
+            big_tool("tr_recent1", "bash", 'r'),
+            completed_task("t_r1"),
+            user_entry("u3", "recent 2"),
+            completed_task("t_r2"),
+            user_entry("u4", "recent 3"),
+            completed_task("t_r3"),
+        ];
+        let branch: Vec<&Entry> = entries.iter().collect();
+        let (up_to, saved) = plan_context_trim(&branch, TRIM_KEEP_RECENT_TASKS, 500).expect("should plan trim");
+        assert_eq!(up_to, "t_old");
+        assert!(saved > 800, "saved={saved}");
+
+        entries.push(entry("trim1", EntryKind::ContextTrim { up_to }));
+        entries.push(user_entry("u5", "warm follow-up"));
+        let branch_after: Vec<&Entry> = entries.iter().collect();
+        assert!(plan_context_trim(&branch_after, TRIM_KEEP_RECENT_TASKS, 500).is_none(), "already trimmed");
+
+        let first = branch_messages(&branch_after);
+        let second = branch_messages(&branch_after);
+        assert_eq!(
+            serde_json::to_string(&first).unwrap(),
+            serde_json::to_string(&second).unwrap(),
+            "subsequent warm turns must rebuild byte-identical prefixes"
+        );
+        // Old bulky tool output folded; user message, send_to_user, and recent bulky tool output intact.
+        assert!(matches!(&first[0], Message::User(u) if u.text_content() == "keep my exact user words"));
+        assert!(matches!(&first[1], Message::ToolResult(tr) if tr.text_content().contains("folded after idle")));
+        assert!(matches!(&first[2], Message::ToolResult(tr) if tr.text_content().len() == 4_000));
+        assert!(matches!(&first[4], Message::ToolResult(tr) if tr.text_content().len() == 4_000));
     }
 }

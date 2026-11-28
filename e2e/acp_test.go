@@ -408,3 +408,76 @@ func TestCodeBuddy(t *testing.T) {
 		t.Fatalf("codebuddy session: %+v", r)
 	}
 }
+
+// TestAntigravityACPMidTurnSteer exercises real mid-turn steering (`hermesh session steer`)
+// over ACP through the full Relay + hermeshd + CLI stack, both with fakeacp and with the
+// real `agy acp` server (HERMESH_REAL_CLI=1), verifying that active commands finish
+// uninterrupted and the steered prompt joins the running turn without cancelling it.
+func TestAntigravityACPMidTurnSteer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	for _, mode := range []string{"scripted", "real"} {
+		real := mode == "real"
+		t.Run(mode, func(t *testing.T) {
+			var env []string
+			var modelArgs []string
+			if real {
+				if os.Getenv("HERMESH_REAL_CLI") != "1" {
+					t.Skip("set HERMESH_REAL_CLI=1")
+				}
+				for _, p := range acp.Providers("") {
+					if p.Name() == "antigravity" {
+						i := p.Discover(context.Background())
+						if !i.Available || !i.LoggedIn {
+							t.Skipf("Antigravity ACP not ready: %+v", i)
+						}
+						env = append(env, "HERMESH_ANTIGRAVITY_BIN="+i.Binary)
+						for _, m := range i.Models {
+							if strings.Contains(strings.ToLower(m.ID), "flash") {
+								modelArgs = []string{"--model", m.ID}
+								break
+							}
+						}
+					}
+				}
+			} else {
+				env, _ = antigravityEnv(t)
+			}
+			w := newOwnerMac(t, env, &localv1.GrantSpec{Agents: []string{"antigravity"}})
+			initPrompt := "read README.md\nsleep 1500ms\nsay FIRST_STEP_COMPLETE"
+			steerPrompt := "say STEERED_IN_PLACE"
+			if real {
+				initPrompt = "Run the shell command `sleep 4 && echo SHELL_NOT_KILLED`, then include FIRST_STEP_COMPLETE in your reply."
+				steerPrompt = "Without stopping the running command, also include the exact token STEERED_IN_PLACE in your reply."
+			}
+			startArgs := append([]string{"--agent", "antigravity", "--mode", "full-access", "--prompt", initPrompt}, modelArgs...)
+			s, r := w.startSession(time.Minute, startArgs...)
+			if r.code != 0 || s.SessionID == "" {
+				t.Fatalf("startSession: %+v", r)
+			}
+			eventually(t, 20*time.Second, "antigravity tool started", func() bool {
+				ev := w.cli(10*time.Second, "session", "events", s.SessionID, "--limit", "50")
+				return ev.code == 0 && (strings.Contains(ev.stdout, "tool") || strings.Contains(ev.stdout, "sleep") || strings.Contains(ev.stdout, "README"))
+			})
+			sr := w.cli(20*time.Second, "session", "steer", s.SessionID, steerPrompt)
+			if sr.code != 0 || !strings.Contains(sr.stdout, "· running ·") || !strings.Contains(sr.stdout, "· 1 turn") {
+				t.Fatalf("expected live mid-turn steer keeping 1 running turn, got code=%d out=%q err=%q", sr.code, sr.stdout, sr.stderr)
+			}
+			eventually(t, 90*time.Second, "steered antigravity turn completed", func() bool {
+				st := w.cli(10*time.Second, "session", "get", s.SessionID, "-o", "json")
+				return st.code == 0 && strings.Contains(st.stdout, `"status": "idle"`)
+			})
+			ev := w.cli(15*time.Second, "session", "events", s.SessionID, "--limit", "500")
+			if strings.Contains(ev.stdout, "interrupted") {
+				t.Fatalf("turn must NOT be interrupted during mid-turn steer:\n%s", ev.stdout)
+			}
+			if !strings.Contains(ev.stdout, "FIRST_STEP_COMPLETE") || !strings.Contains(ev.stdout, "STEERED_IN_PLACE") {
+				t.Fatalf("expected both FIRST_STEP_COMPLETE and STEERED_IN_PLACE in completed turn events:\n%s", ev.stdout)
+			}
+			if real && !strings.Contains(ev.stdout, "SHELL_NOT_KILLED") {
+				t.Fatalf("expected running shell command to finish unkilled (SHELL_NOT_KILLED):\n%s", ev.stdout)
+			}
+		})
+	}
+}

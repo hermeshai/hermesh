@@ -127,14 +127,32 @@ extension HermeshUITests {
         let lightSlide = app.buttons["session-image-carousel_light.png"]
         XCTAssertTrue(darkSlide.waitForExistence(timeout: 20) && lightSlide.waitForExistence(timeout: 20), "unwrapped carousel images")
         XCTAssertEqual(darkSlide.frame.minY, lightSlide.frame.minY, accuracy: 8, "2-slide carousel side-by-side")
-        let stageCounter = app.staticTexts["session-image-counter"]
+        let stageCounter = app.staticTexts.matching(identifier: "session-image-counter").firstMatch
         XCTAssertTrue(stageCounter.waitForExistence(timeout: 20), "4-image focus stage counter")
         XCTAssertEqual(stageCounter.label, "1 / 4")
-        let thumb2 = app.buttons["session-image-thumb-2"]
+        let thumb2 = app.buttons.matching(identifier: "session-image-thumb-2").firstMatch
         XCTAssertTrue(thumb2.waitForExistence(timeout: 10), "filmstrip thumbnail 3")
         reach(thumb2)
         thumb2.tap()
         XCTAssertTrue(waitUntil(timeout: 5) { stageCounter.label == "3 / 4" }, "filmstrip switches active stage slide")
+
+        // 3+ portrait / ultra-long slides lay out side-by-side in an equal-height strip without a full-width empty box.
+        let stripOne = app.buttons["session-image-portrait_1.png"]
+        let stripTwo = app.buttons["session-image-portrait_2.png"]
+        let stripLong = app.buttons["session-image-long_3.png"]
+        reach(stripOne)
+        XCTAssertTrue(stripOne.waitForExistence(timeout: 20) && stripTwo.waitForExistence(timeout: 20), "multi-up portrait strip cards")
+        XCTAssertEqual(stripOne.frame.minY, stripTwo.frame.minY, accuracy: 8, "portrait strip cards share equal row top")
+        XCTAssertLessThan(stripOne.frame.maxX, stripTwo.frame.minX + 2, "portrait strip cards sit side-by-side")
+        XCTAssertLessThan(stripOne.frame.width, 160, "portrait card hugs bitmap width instead of full screen width")
+        XCTAssertTrue(stripLong.waitForExistence(timeout: 15), "ultra-long card visible in strip")
+        XCTAssertTrue(app.descendants(matching: .any)["session-image-long-badge"].firstMatch.exists, "ultra-long badge rendered")
+        stripTwo.tap()
+        XCTAssertTrue(lb.waitForExistence(timeout: 10), "tapping strip card opens Lightbox directly")
+        XCTAssertEqual(app.staticTexts["lightbox-title"].label, "portrait_2.png")
+        XCTAssertTrue(app.staticTexts["lightbox-meta"].label.contains("2 / 3 · 120 × 260"))
+        app.buttons["lightbox-close"].tap()
+        XCTAssertTrue(lb.waitForNonExistence(timeout: 5))
         let walkTag = app.links.containing(NSPredicate(format: "label CONTAINS %@", "walkthrough.md")).firstMatch
         XCTAssertTrue(walkTag.waitForExistence(timeout: 20), "outside artifact walkthrough.md tag")
         reach(walkTag)

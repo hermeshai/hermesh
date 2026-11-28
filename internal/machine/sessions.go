@@ -128,7 +128,7 @@ func buildRuntimeDrivers(cfg Config) (map[string]rt.Driver, bool) {
 			"fake":     scripted.NewDriver(),
 			"claude":   scripted.NewDriver(),
 			"codex":    scripted.NewDriver(),
-			"acp":      &scripted.Driver{DisableSteer: true},
+			"acp":      scripted.NewDriver(),
 		}
 		for _, name := range strings.FieldsFunc(os.Getenv("HERMESH_FAKE_AGENTS"), func(r rune) bool { return r == ',' }) {
 			d[name] = scripted.NewDriver()

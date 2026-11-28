@@ -213,6 +213,11 @@ pub enum EntryKind {
     /// A bot's session: how a secure card ended, which the model reads as `<card …>`
     /// (docs/her-secure-cards.md §3.4). Never a value the owner typed.
     CardResolved(Box<CardResolvedEntry>),
+    /// A bot's session: anchors cold-cache folding of settled bulky tool outputs and delivered
+    /// reports at or before `up_to`, keeping subsequent warm requests byte-identical in prefix.
+    ContextTrim {
+        up_to: String,
+    },
     /// A kind written by a later version. It keeps its place in the branch, so the entries
     /// after it still link up; nothing else reads it.
     #[serde(other, skip_serializing)]

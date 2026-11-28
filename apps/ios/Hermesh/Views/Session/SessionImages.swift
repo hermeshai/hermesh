@@ -70,11 +70,16 @@ nonisolated private enum SessionImageDecoder {
             width = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
             height = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
         }
+        var effectiveMax = maxPixelSize
+        if width > 0, height > 0, Double(height) / Double(width) > 2.6 {
+            let scaled = Int((Double(maxPixelSize) * Double(height) / Double(width) * 0.55).rounded())
+            effectiveMax = min(3840, max(maxPixelSize, scaled))
+        }
         let opts: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceShouldCacheImmediately: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceThumbnailMaxPixelSize: effectiveMax,
         ]
         if let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) {
             let img = UIImage(cgImage: cg)
@@ -157,6 +162,25 @@ nonisolated private enum SessionImageDecoder {
 
     func state(sessionID: String, run: String, path: String) -> State? {
         entries[key(sessionID: sessionID, run: run, path: path)]
+    }
+
+    func hasTallImage(sessionID: String, run: String, paths: [String]) -> Bool {
+        guard !sessionID.isEmpty, !paths.isEmpty else { return false }
+        let prefix = "\(sessionID)\u{0}\(run)\u{0}"
+        for p in paths {
+            if case .ready(let loaded)? = entries["\(prefix)\(p)"],
+               isTallStageImage(width: loaded.pixelWidth, height: loaded.pixelHeight) {
+                return true
+            }
+        }
+        for (k, v) in entries where k.hasPrefix(prefix) {
+            if case .ready(let loaded) = v,
+               isTallStageImage(width: loaded.pixelWidth, height: loaded.pixelHeight),
+               paths.contains(where: { sameImagePath(loaded.resolvedPath, $0) }) {
+                return true
+            }
+        }
+        return false
     }
 
     func state(attachment: Hermesh_Session_V1_AttachmentRef) -> State? {
@@ -387,7 +411,7 @@ struct SessionImageStrip: View {
 }
 
 private enum InlineCardMode {
-    case single, pair, stage
+    case single, pair, stage, strip
 }
 
 private func hasDistinctImageCaption(_ caption: String, name: String) -> Bool {
@@ -404,6 +428,9 @@ private struct SessionImageStageView: View {
 
     @Environment(AppModel.self) private var model
     @State private var activeIndex = 0
+    @State private var scrolledIndex: Int? = 0
+    @State private var latchedStrip = false
+    @State private var chipSelectUntil: ContinuousClock.Instant = .now
 
     private var safeIndex: Int {
         max(0, min(items.count - 1, activeIndex))
@@ -419,23 +446,67 @@ private struct SessionImageStageView: View {
 
     var body: some View {
         let activeName = fileBaseName(activeItem.path)
+        let hasTall = SessionImageStore.shared.hasTallImage(sessionID: files.sessionID, run: run, paths: items.map(\.path))
+        let isStrip = latchedStrip || hasTall
+
         VStack(alignment: .leading, spacing: 8) {
-            TabView(selection: $activeIndex) {
-                ForEach(Array(items.enumerated()), id: \.offset) { idx, it in
-                    SessionInlineImageCard(
-                        item: it,
-                        mode: .stage,
-                        fromLinks: fromLinks,
-                        files: files,
-                        run: run,
-                        gallery: gallery,
-                        urgent: abs(idx - safeIndex) <= 1 || idx == 0
-                    )
-                    .tag(idx)
+            if isStrip {
+                ScrollViewReader { trackProxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .center, spacing: 8) {
+                            ForEach(Array(items.enumerated()), id: \.offset) { idx, it in
+                                SessionInlineImageCard(
+                                    item: it,
+                                    mode: .strip,
+                                    isSelected: idx == safeIndex,
+                                    fromLinks: fromLinks,
+                                    files: files,
+                                    run: run,
+                                    gallery: gallery,
+                                    urgent: abs(idx - safeIndex) <= 2,
+                                    onActivate: {
+                                        chipSelectUntil = .now + .milliseconds(450)
+                                        activeIndex = idx
+                                    }
+                                )
+                                .id(idx)
+                            }
+                        }
+                        .scrollTargetLayout()
+                        .padding(.vertical, 2)
+                    }
+                    .scrollTargetBehavior(.viewAligned)
+                    .scrollPosition(id: $scrolledIndex)
+                    .onChange(of: scrolledIndex) { _, next in
+                        guard ContinuousClock.now >= chipSelectUntil else { return }
+                        if let next, next >= 0, next < items.count, next != activeIndex {
+                            activeIndex = next
+                        }
+                    }
+                    .onChange(of: safeIndex) { _, next in
+                        withAnimation(.snappy(duration: 0.22)) {
+                            trackProxy.scrollTo(next, anchor: .leading)
+                        }
+                    }
                 }
+            } else {
+                TabView(selection: $activeIndex) {
+                    ForEach(Array(items.enumerated()), id: \.offset) { idx, it in
+                        SessionInlineImageCard(
+                            item: it,
+                            mode: .stage,
+                            fromLinks: fromLinks,
+                            files: files,
+                            run: run,
+                            gallery: gallery,
+                            urgent: abs(idx - safeIndex) <= 1 || idx == 0
+                        )
+                        .tag(idx)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(height: 208)
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 208)
 
             HStack(alignment: .center, spacing: 8) {
                 ScrollViewReader { proxy in
@@ -445,6 +516,7 @@ private struct SessionImageStageView: View {
                                 let tag = shortImageTag(it.caption, fileName: fileBaseName(it.path))
                                 let selected = idx == safeIndex
                                 Button {
+                                    chipSelectUntil = .now + .milliseconds(450)
                                     withAnimation(.snappy(duration: 0.2)) { activeIndex = idx }
                                 } label: {
                                     HStack(spacing: 4) {
@@ -492,6 +564,9 @@ private struct SessionImageStageView: View {
                     .accessibilityIdentifier("session-image-caption")
             }
         }
+        .onChange(of: hasTall) { _, next in
+            if next, !latchedStrip { latchedStrip = true }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("session-image-row")
     }
@@ -500,11 +575,13 @@ private struct SessionImageStageView: View {
 private struct SessionInlineImageCard: View {
     let item: ReplyImageItem
     let mode: InlineCardMode
+    var isSelected = false
     let fromLinks: Bool
     let files: SessionFilesModel
     let run: String
     let gallery: [ReplyImageItem]
     var urgent = false
+    var onActivate: (() -> Void)? = nil
 
     @Environment(AppModel.self) private var model
     @State private var sharing: URL?
@@ -573,9 +650,19 @@ private struct SessionInlineImageCard: View {
     }
 
     private var loadingCard: some View {
-        let h: CGFloat = mode == .single ? 200 : (mode == .stage ? 214 : 184)
+        let h: CGFloat = switch mode {
+        case .single: 200
+        case .stage: 208
+        case .strip: 232
+        case .pair: 184
+        }
+        let maxW: CGFloat = switch mode {
+        case .single: 200
+        case .strip: 112
+        case .stage, .pair: .infinity
+        }
         return ProgressView()
-            .frame(maxWidth: mode == .single ? 200 : .infinity, minHeight: h, maxHeight: h)
+            .frame(maxWidth: maxW, minHeight: h, maxHeight: h)
             .background(mode == .stage ? Color.clear : Palette.fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
                 if mode != .stage {
@@ -584,46 +671,109 @@ private struct SessionInlineImageCard: View {
             }
     }
 
+    private var longImageBadge: some View {
+        LinearGradient(colors: [.clear, .black.opacity(0.76)], startPoint: .top, endPoint: .bottom)
+            .frame(height: 44)
+            .frame(maxWidth: .infinity, alignment: .bottom)
+            .overlay(alignment: .bottom) {
+                Text(verbatim: "↕ \(String(localized: "Long image"))")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .environment(\.colorScheme, .dark)
+                    .padding(.bottom, 6)
+            }
+            .allowsHitTesting(false)
+            .accessibilityIdentifier("session-image-long-badge")
+    }
+
+    @ViewBuilder private func framedCrop(width: CGFloat, height: CGFloat, image: UIImage, borderColor: Color, borderWidth: CGFloat) -> some View {
+        Color.clear
+            .frame(width: width, height: height)
+            .overlay(alignment: .top) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            }
+            .overlay(alignment: .bottom) {
+                longImageBadge
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(borderColor, lineWidth: borderWidth))
+    }
+
     @ViewBuilder private func readyCard(_ loaded: SessionImageStore.Loaded, effectivePath: String) -> some View {
         let name = fileBaseName(loaded.resolvedPath)
         let showPairCaption = mode == .pair && hasDistinctImageCaption(item.caption, name: name)
         let ratio = CGFloat(max(loaded.pixelWidth, 1)) / CGFloat(max(loaded.pixelHeight, 1))
+        let tall = isTallStageImage(width: loaded.pixelWidth, height: loaded.pixelHeight)
+        let ultraLong = isUltraLongImage(width: loaded.pixelWidth, height: loaded.pixelHeight)
+        let borderColor = (mode == .strip && isSelected) ? Color.accentColor : Palette.separator.opacity(0.65)
+        let borderWidth: CGFloat = (mode == .strip && isSelected) ? 1.5 : 0.5
         let open = {
+            onActivate?()
             files.openLightbox(run: run, path: item.path, machineID: machineID, gallery: gallery)
         }
 
         Button(action: open) {
             VStack(alignment: .leading, spacing: 6) {
-                Group {
-                    switch mode {
-                    case .single:
-                        let maxH: CGFloat = 260
-                        let naturalW = min(maxH * ratio, 310)
+                switch mode {
+                case .single:
+                    if ultraLong {
+                        framedCrop(width: 164, height: 260, image: loaded.thumbnail, borderColor: borderColor, borderWidth: borderWidth)
+                    } else {
                         Image(uiImage: loaded.thumbnail)
                             .resizable()
                             .scaledToFit()
-                            .frame(maxWidth: max(110, naturalW), maxHeight: maxH)
-                    case .pair:
+                            .frame(maxWidth: 310, maxHeight: 260)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(borderColor, lineWidth: borderWidth))
+                    }
+                case .pair:
+                    if ultraLong {
+                        framedCrop(width: 144, height: 204, image: loaded.thumbnail, borderColor: borderColor, borderWidth: borderWidth)
+                    } else {
                         Image(uiImage: loaded.thumbnail)
                             .resizable()
                             .scaledToFit()
-                            .frame(maxWidth: .infinity, maxHeight: 204)
-                    case .stage:
+                            .frame(maxHeight: 204)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(borderColor, lineWidth: borderWidth))
+                    }
+                case .stage:
+                    Image(uiImage: loaded.thumbnail)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 208)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(borderColor, lineWidth: borderWidth))
+                        .frame(maxWidth: .infinity, maxHeight: 208, alignment: .leading)
+                case .strip:
+                    if ultraLong {
+                        framedCrop(width: 140, height: 232, image: loaded.thumbnail, borderColor: borderColor, borderWidth: borderWidth)
+                    } else {
+                        let stripH: CGFloat = 232
+                        let idealW = min(296, max(72, stripH * ratio))
+                        let idealH = min(stripH, idealW / max(ratio, 0.01))
                         Image(uiImage: loaded.thumbnail)
                             .resizable()
                             .scaledToFit()
-                            .frame(maxWidth: .infinity, maxHeight: 208, alignment: .leading)
+                            .frame(width: idealW, height: idealH)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(borderColor, lineWidth: borderWidth))
+                            .frame(height: stripH)
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.separator.opacity(0.65), lineWidth: 0.5))
 
                 if showPairCaption {
+                    let capMaxW: CGFloat? = if ultraLong { 144 } else if tall { max(110, min(172, 204 * ratio)) } else { .infinity }
                     Text(verbatim: item.caption)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: capMaxW, alignment: .leading)
                 }
             }
         }

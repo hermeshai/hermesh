@@ -1098,14 +1098,14 @@ func TestPromoteToSteerRealACPDriver(t *testing.T) {
 		Workspace:      &sessionv1.WorkspaceStrategy{Mode: identityv1.Workspace_WORKSPACE_WORKTREE},
 		ModelSelection: sel,
 		RuntimeMode:    identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS,
-		InitialPrompt:  "focus Checking ACP state\nsleep 20s",
+		InitialPrompt:  "focus Checking ACP state\nsleep 500ms\nsay acp_initial_done",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	sid := launched.Session.SessionId
 
-	// Test BOTH immediate promote during worktree/process startup AND mid-turn promote!
+	// Test BOTH immediate promote during worktree/process startup AND mid-turn live steer without interrupting Run 1!
 	q1, _ := eng.DispatchMessage(ctx, owner, &sessionv1.DispatchMessageRequest{
 		SessionId: sid, ModelSelection: sel, RuntimeMode: identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS, Text: "say acp_queued_second", Intent: sessionv1.DispatchIntent_DISPATCH_INTENT_QUEUE,
 	})
@@ -1121,7 +1121,7 @@ func TestPromoteToSteerRealACPDriver(t *testing.T) {
 		t.Fatalf("ManageQueue(PROMOTE_TO_STEER): %v", err)
 	}
 
-	deadline := time.Now().Add(6 * time.Second)
+	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
 		p, _ := eng.GetSession(ctx, owner, sid)
 		if p.GetSession().GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_IDLE {
@@ -1139,13 +1139,96 @@ func TestPromoteToSteerRealACPDriver(t *testing.T) {
 		}
 		t.Fatalf("session stuck on %v (err=%q)", p.GetSession().GetStatus(), p.GetSession().GetError())
 	}
+	for _, r := range p.GetRuns() {
+		if r.RunId == launched.InitialRun.RunId && r.Status != sessionv1.RunStatus_RUN_STATUS_COMPLETED {
+			t.Fatalf("expected initial ACP run to complete without interruption, got %v (err=%q)", r.Status, r.ErrorMessage)
+		}
+	}
 	var replies []string
 	for _, it := range p.GetItems() {
 		if it.Kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE {
 			replies = append(replies, it.Text)
 		}
 	}
-	if len(replies) != 2 || replies[0] != "acp_steered_first" || replies[1] != "acp_queued_second" {
-		t.Fatalf("expected replies [acp_steered_first, acp_queued_second], got %v (q1=%s)", replies, q1.Run.RunId)
+	if len(replies) != 2 || replies[0] != "acp_initial_done\nacp_steered_first" || replies[1] != "acp_queued_second" {
+		t.Fatalf("expected replies [acp_initial_done\\nacp_steered_first, acp_queued_second], got %q (q1=%s)", replies, q1.Run.RunId)
+	}
+
+	// Also verify direct mid-turn DISPATCH_INTENT_STEER AFTER pre-steer assistant text streamed:
+	// pre-steer bubble flushes before the steered user item, and post-steer bubble appears after it!
+	for _, mode := range []string{"prompt_handover", "ext", "reject"} {
+		t.Run(mode, func(t *testing.T) {
+			env := map[string]string{}
+			switch mode {
+			case "ext":
+				env["FAKE_ACP_STEERING_EXT"] = "1"
+			case "reject":
+				env["FAKE_ACP_REJECT_STEER"] = "1"
+			}
+			instID := "gemini_" + mode
+			_, _ = eng.UpsertProviderInstance(ctx, owner, &sessionv1.ProviderInstanceConfig{
+				InstanceId:  instID,
+				Driver:      "acp",
+				AcpFlavor:   "gemini",
+				BinaryPath:  fakeBin,
+				DisplayName: "Gemini " + mode,
+				Enabled:     true,
+				Env:         env,
+			})
+			msel := &sessionv1.ModelSelection{InstanceId: instID, Model: "gemini-3-pro"}
+			l, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+				ProjectId:      "demo",
+				ModelSelection: msel,
+				RuntimeMode:    identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS,
+				InitialPrompt:  "say mode_initial_" + mode + "\nsleep 600ms",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Wait until pre-steer assistant delta streamed (StartTurn active and inside sleep 600ms).
+			waitDeadline := time.Now().Add(4 * time.Second)
+			for time.Now().Before(waitDeadline) {
+				gp, _ := eng.GetSession(ctx, owner, l.Session.SessionId)
+				sawReply := false
+				for _, it := range gp.GetItems() {
+					if it.Kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE {
+						sawReply = true
+						break
+					}
+				}
+				if sawReply {
+					break
+				}
+				time.Sleep(15 * time.Millisecond)
+			}
+			stRes, err := eng.DispatchMessage(ctx, owner, &sessionv1.DispatchMessageRequest{
+				SessionId:      l.Session.SessionId,
+				ModelSelection: msel,
+				RuntimeMode:    identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS,
+				Text:           "say mode_steered_" + mode,
+				Intent:         sessionv1.DispatchIntent_DISPATCH_INTENT_STEER,
+			})
+			if err != nil {
+				t.Fatalf("DispatchMessage(STEER) in %s mode: %v", mode, err)
+			}
+			if mode != "reject" && !stRes.SteeredActiveRun {
+				t.Fatalf("expected SteeredActiveRun=true in %s mode, got %+v", mode, stRes)
+			}
+			settled := waitForSessionStatus(t, eng, owner, l.Session.SessionId, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+			for _, r := range settled.GetRuns() {
+				if r.RunId == l.InitialRun.RunId && r.Status != sessionv1.RunStatus_RUN_STATUS_COMPLETED {
+					t.Fatalf("%s: initial run must NOT be interrupted, got %v (%q)", mode, r.Status, r.ErrorMessage)
+				}
+			}
+			var got []string
+			for _, it := range settled.GetItems() {
+				if it.Kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE {
+					got = append(got, it.Text)
+				}
+			}
+			if len(got) != 2 || got[0] != "mode_initial_"+mode || got[1] != "mode_steered_"+mode {
+				t.Fatalf("%s: got replies %q, want [mode_initial_%s mode_steered_%s]", mode, got, mode, mode)
+			}
+		})
 	}
 }

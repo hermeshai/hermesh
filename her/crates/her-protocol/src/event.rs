@@ -401,6 +401,8 @@ pub enum CompactionReason {
     Overflow,
     /// The session switched to a model with a smaller window.
     ModelSwitch,
+    /// A bot's conversation compacted quietly while idle, before its prompt cache expired.
+    Idle,
     Manual,
 }
 
@@ -410,6 +412,7 @@ impl CompactionReason {
             CompactionReason::Threshold => "threshold",
             CompactionReason::Overflow => "overflow",
             CompactionReason::ModelSwitch => "model_switch",
+            CompactionReason::Idle => "idle",
             CompactionReason::Manual => "manual",
         }
     }

@@ -716,8 +716,11 @@ export function isInterruption(f: Failure | undefined): boolean {
 
 /** Who stopped an interrupted turn, as the machine recorded it: "owner" or an agent's client id. */
 export function interrupter(f: Failure | undefined): string | undefined {
-  const prefix = "interrupted by ";
-  return isInterruption(f) && f!.message.startsWith(prefix) ? f!.message.slice(prefix.length) : undefined;
+  if (!isInterruption(f)) return undefined;
+  for (const prefix of ["interrupted by ", "steered by "]) {
+    if (f!.message.startsWith(prefix)) return f!.message.slice(prefix.length);
+  }
+  return undefined;
 }
 
 const recPrefixRe = /^\s*(?:\(Recommended\)|（推荐）)\s*/i;

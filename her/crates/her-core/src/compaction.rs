@@ -102,6 +102,7 @@ async fn run(
     if ctx.messages.len() <= checkpoint {
         return Err(CompactError::failed("compaction", "there is nothing to compact"));
     }
+    let is_bot = session.is_bot();
     let mut input = Trimmable::new(ctx.messages.clone(), checkpoint);
     let mut tool_choice = ToolChoice::Auto;
     let mut usage = Usage::default();
@@ -109,7 +110,7 @@ async fn run(
     let summary = loop {
         let mut request = ctx.clone();
         request.messages = input.messages();
-        add_handoff_request(&mut request.messages);
+        add_handoff_request(&mut request.messages, is_bot);
         let options = RequestOptions {
             thinking,
             cache_key: Some(session.id.clone()),
@@ -178,8 +179,8 @@ async fn run(
     let skills = session.state.lock().skills.clone();
     let rendered = kept::render(&kept::in_use(&used, &previous, &skills), &session.config.limits);
     let ts = now_ms();
-    let mut retained_budget = budget::retained_budget(&session.config.compaction, &limits);
-    let mut skill_budget = budget::skill_budget(&session.config.compaction, &limits);
+    let mut retained_budget = budget::retained_budget(&session.config.compaction, &limits, is_bot);
+    let mut skill_budget = budget::skill_budget(&session.config.compaction, &limits, is_bot);
     let (retained, kept_skills, tokens_after) = loop {
         let retained = select_retained(&candidates, retained_budget);
         let kept_skills = kept::select(&rendered, skill_budget);
@@ -249,14 +250,19 @@ async fn run(
 /// tool-call sequence differently once a new user turn follows it (DeepSeek in thinking mode
 /// drops the earlier reasoning), which loses the cached prefix. Only the last message changes,
 /// and it is new since the previous request anyway.
-fn add_handoff_request(messages: &mut Vec<Message>) {
+fn add_handoff_request(messages: &mut Vec<Message>, bot_handoff: bool) {
+    let prompt = if bot_handoff {
+        context::BOT_HANDOFF_REQUEST
+    } else {
+        context::HANDOFF_REQUEST
+    };
     let text = UserContent::Text {
-        text: format!("\n{}", context::HANDOFF_REQUEST),
+        text: format!("\n{prompt}"),
     };
     match messages.last_mut() {
         Some(Message::ToolResult(result)) => Arc::make_mut(result).content.push(text),
         Some(Message::User(user)) => Arc::make_mut(user).content.push(text),
-        _ => messages.push(Message::from(UserMessage::text(context::HANDOFF_REQUEST))),
+        _ => messages.push(Message::from(UserMessage::text(prompt))),
     }
 }
 
@@ -507,13 +513,13 @@ mod tests {
         });
         let history = vec![Message::from(user("go")), result];
         let mut request = history.clone();
-        add_handoff_request(&mut request);
+        add_handoff_request(&mut request, false);
         assert_eq!(request.len(), 2, "no new user turn after a tool result");
         assert!(has_handoff_request(&request[1]));
         assert!(!has_handoff_request(&history[1]), "the history itself is untouched");
 
         let mut after_user = vec![Message::from(user("new task"))];
-        add_handoff_request(&mut after_user);
+        add_handoff_request(&mut after_user, false);
         assert_eq!(after_user.len(), 1);
         assert!(has_handoff_request(&after_user[0]));
 
@@ -530,9 +536,10 @@ mod tests {
             duration_ms: None,
         });
         let mut after_reply = vec![reply];
-        add_handoff_request(&mut after_reply);
+        add_handoff_request(&mut after_reply, true);
         assert_eq!(after_reply.len(), 2);
         assert!(has_handoff_request(&after_reply[1]));
+        assert!(matches!(&after_reply[1], Message::User(u) if u.text_content().contains("In-Flight Work")));
     }
 
     #[test]

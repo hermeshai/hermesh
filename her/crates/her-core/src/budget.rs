@@ -50,19 +50,44 @@ pub(crate) fn limits(model: &Model, thinking: ThinkingLevel, settings: &Compacti
     Limits { soft, hard, window }
 }
 
+/// Window limits for a bot's persistent conversation: caps the soft limit at
+/// `scaled_fixed + bot_active_message_tokens` unless `token_limit` overrides it explicitly.
+pub(crate) fn bot_limits(
+    model: &Model,
+    thinking: ThinkingLevel,
+    settings: &CompactionSettings,
+    scaled_fixed: u64,
+) -> Limits {
+    let mut base = limits(model, thinking, settings);
+    if settings.token_limit == 0 && settings.bot_active_message_tokens > 0 {
+        base.soft = base.soft.min(scaled_fixed.saturating_add(settings.bot_active_message_tokens));
+    }
+    base
+}
+
 /// Token limits for tool results under these window limits.
 pub(crate) fn tool_limits(base: &OutputLimits, limits: &Limits) -> OutputLimits {
     base.capped((limits.hard * TOOL_RESULT_SHARE / 100) as usize)
 }
 
 /// Token budget for the user messages kept word for word by a compaction.
-pub(crate) fn retained_budget(settings: &CompactionSettings, limits: &Limits) -> u64 {
-    settings.keep_user_tokens.min(limits.hard * RETAINED_SHARE / 100)
+pub(crate) fn retained_budget(settings: &CompactionSettings, limits: &Limits, is_bot: bool) -> u64 {
+    let keep = if is_bot {
+        settings.bot_keep_user_tokens
+    } else {
+        settings.keep_user_tokens
+    };
+    keep.min(limits.hard * RETAINED_SHARE / 100)
 }
 
 /// Token budget for the instructions of the skills in use that a compaction keeps.
-pub(crate) fn skill_budget(settings: &CompactionSettings, limits: &Limits) -> u64 {
-    settings.keep_skill_tokens.min(limits.hard * SKILL_SHARE / 100)
+pub(crate) fn skill_budget(settings: &CompactionSettings, limits: &Limits, is_bot: bool) -> u64 {
+    let keep = if is_bot {
+        settings.bot_keep_skill_tokens
+    } else {
+        settings.keep_skill_tokens
+    };
+    keep.min(limits.hard * SKILL_SHARE / 100)
 }
 
 #[derive(Clone, Debug)]
@@ -116,6 +141,10 @@ pub(crate) fn measure_with(branch: &[&Entry], m: &Measure, turns: impl FnOnce(&[
     let mut full = None;
     let mut previous_model = None;
     for entry in branch[start..].iter().rev() {
+        if matches!(entry.kind, crate::store::EntryKind::ContextTrim { .. }) {
+            // Earlier assistant responses reported usage before older outputs were folded.
+            break;
+        }
         let Some(message) = context::entry_message(&entry.kind, entry.ts) else {
             continue;
         };
@@ -406,8 +435,18 @@ impl Session {
 
     /// Window limits of the current model.
     pub(crate) fn limits(&self) -> Limits {
-        let (model, thinking) = self.current_model();
-        limits(&model, thinking, &self.config.compaction)
+        let fixed = self.fixed_tokens();
+        let state = self.state.lock();
+        if state.bot.is_some() {
+            bot_limits(
+                &state.model,
+                state.thinking,
+                &self.config.compaction,
+                scale(fixed, state.estimate_ratio),
+            )
+        } else {
+            limits(&state.model, state.thinking, &self.config.compaction)
+        }
     }
 
     /// Tool result limits for the current model.
@@ -423,11 +462,21 @@ impl Session {
         let branch = state.history.branch();
         let (positions, generation) = state.history.branch_positions();
         let scan = &mut state.turn_scan;
+        let session_limits = if state.bot.is_some() {
+            bot_limits(
+                &state.model,
+                state.thinking,
+                &self.config.compaction,
+                scale(fixed, state.estimate_ratio),
+            )
+        } else {
+            limits(&state.model, state.thinking, &self.config.compaction)
+        };
         measure_with(
             &branch,
             &Measure {
                 model: &state.model,
-                limits: limits(&state.model, state.thinking, &self.config.compaction),
+                limits: session_limits,
                 fixed,
                 ratio: state.estimate_ratio,
             },
@@ -477,6 +526,11 @@ mod tests {
             token_limit: 0,
             keep_user_tokens: 20_000,
             keep_skill_tokens: 20_000,
+            bot_idle_message_tokens: 35_000,
+            bot_active_message_tokens: 48_000,
+            bot_keep_user_tokens: 8_000,
+            bot_keep_skill_tokens: 3_000,
+            bot_idle_delay: std::time::Duration::from_secs(90),
         }
     }
 
@@ -558,8 +612,64 @@ mod tests {
             ..settings()
         };
         assert_eq!(limits(&model("m"), ThinkingLevel::Off, &capped).soft, 5_000);
-        assert_eq!(retained_budget(&settings(), &l), 1_350);
+        assert_eq!(retained_budget(&settings(), &l, false), 1_350);
         assert_eq!(tool_limits(&OutputLimits::default(), &l).max_tokens, 900);
+
+        let mut big = model("big");
+        big.context_window = 500_000;
+        let bl = bot_limits(&big, ThinkingLevel::Off, &settings(), 10_000);
+        assert_eq!(bl.soft, 58_000, "fixed (10K) + bot_active_message_tokens (48K)");
+        let big_l = limits(&big, ThinkingLevel::Off, &settings());
+        assert_eq!(retained_budget(&settings(), &big_l, true), 8_000);
+        assert_eq!(skill_budget(&settings(), &big_l, true), 3_000);
+    }
+
+    #[test]
+    fn context_trim_resets_pre_trim_usage_baseline() {
+        let m = model("m");
+        let call = Entry {
+            id: "c1".into(),
+            parent: None,
+            ts: 0,
+            kind: EntryKind::Message {
+                message: Message::from(AssistantMessage {
+                    content: vec![AssistantContent::ToolCall(her_llm::ToolCall {
+                        id: "c".into(),
+                        name: "bash".into(),
+                        arguments: serde_json::json!({}).into(),
+                        arguments_error: None,
+                        provider_data: None,
+                    })],
+                    provider: "test".into(),
+                    api: "scripted".into(),
+                    model: "m".into(),
+                    response_id: None,
+                    usage: Usage {
+                        input: 8_000,
+                        output: 50,
+                        ..Default::default()
+                    },
+                    stop_reason: StopReason::ToolUse,
+                    error: None,
+                    ts: 0,
+                    duration_ms: None,
+                }),
+                skills: Vec::new(),
+                skill: None,
+            },
+        };
+        let mut big_tool = tool(&"z".repeat(4_000));
+        big_tool.id = "tr1".into();
+        let before = measure_with(&[user("hi"), call.clone(), big_tool.clone()], &m, 1.0);
+        assert!(before.usage.tokens > 9_000, "pre-trim baseline={}", before.usage.tokens);
+        let trim = Entry {
+            id: "trim".into(),
+            parent: None,
+            ts: 1,
+            kind: EntryKind::ContextTrim { up_to: "tr1".into() },
+        };
+        let after = measure_with(&[user("hi"), call, big_tool, trim], &m, 1.0);
+        assert!(after.usage.tokens < 500, "post-trim estimate={}", after.usage.tokens);
     }
 
     #[test]

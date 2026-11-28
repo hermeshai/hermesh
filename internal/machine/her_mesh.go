@@ -38,6 +38,8 @@ const (
 	kHerNews  = "her_news"
 	// herNewsRetry is how often news her could not take is tried again.
 	herNewsRetry = 5 * time.Second
+	// herNewsBatchWait coalesces concurrent turn_done news targeting the same Her conversation.
+	herNewsBatchWait = 1500 * time.Millisecond
 )
 
 func herKeyPath(dataDir string) string      { return filepath.Join(dataDir, "keys", "her.key") }
@@ -94,8 +96,9 @@ type HerLink interface {
 
 // herNews is one piece of news waiting for her.
 type herNews struct {
-	ID  string `json:"id"`
-	Bot string `json:"bot"`
+	ID   string `json:"id"`
+	Kind string `json:"kind,omitempty"`
+	Bot  string `json:"bot"`
 	// Conversation is the conversation of hers that takes it; empty: her
 	// main one.
 	Conversation string `json:"conversation,omitempty"`
@@ -111,11 +114,12 @@ type herMesh struct {
 	link  HerLink
 	// grant is her verified grant with its signed form; nil: none.
 	// local is true when grant is a synthetic standalone grant for this machine alone.
-	grant  *identityv1.Grant
-	signed *identityv1.Signed
-	local  bool
-	stop   context.CancelFunc // the link's Run, while it runs
-	kick   chan struct{}      // news waits
+	grant     *identityv1.Grant
+	signed    *identityv1.Signed
+	local     bool
+	stop      context.CancelFunc // the link's Run, while it runs
+	kick      chan struct{}      // news waits
+	batchWait time.Duration      // override for tests; 0 uses herNewsBatchWait
 }
 
 // openHerMesh makes Her's keys and her link, on a machine that can run her.
@@ -462,6 +466,12 @@ func (n *Machine) herTakes(m *inboxv1.Message) bool {
 // takeHerNews queues the news of one of Her's sessions for her
 // conversation. false: it could not be kept, and waits where it is.
 func (n *Machine) takeHerNews(m *inboxv1.Message) bool {
+	if sn := m.GetSessionNews(); sn.GetKind() == "question" {
+		if exp := sn.GetQuestion().GetExpiresAt(); exp != nil && !exp.AsTime().After(time.Now()) {
+			n.log.Info("dropping expired session question for Her", "news", m.MessageId, "session", sn.GetSessionId())
+			return true
+		}
+	}
 	bot, conversation, from, text, ok := n.mesh.link.Render(m)
 	if !ok {
 		return true // nothing she reads
@@ -477,7 +487,7 @@ func (n *Machine) takeHerNews(m *inboxv1.Message) bool {
 			return true
 		}
 	}
-	queue = append(queue, herNews{ID: m.MessageId, Bot: bot, Conversation: conversation, FromID: m.GetFrom().GetSession(), FromName: from, Text: text})
+	queue = append(queue, herNews{ID: m.MessageId, Kind: m.GetSessionNews().GetKind(), Bot: bot, Conversation: conversation, FromID: m.GetFrom().GetSession(), FromName: from, Text: text})
 	if err := n.setHerNewsLocked(queue); err != nil {
 		n.log.Warn("keeping news for Her", "err", err)
 		return false
@@ -541,6 +551,38 @@ func (n *Machine) deliverHerNews(ctx context.Context) {
 			continue
 		}
 		q := queue[0]
+		deliveredIDs := map[string]bool{q.ID: true}
+		combinedText := q.Text
+		if q.Kind == "turn_done" {
+			wait := n.mesh.batchWait
+			if wait == 0 {
+				wait = herNewsBatchWait
+			}
+			if wait > 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(wait):
+				}
+			}
+			n.mu.Lock()
+			queue = n.herNewsLocked()
+			n.mu.Unlock()
+			if len(queue) == 0 {
+				continue
+			}
+			q = queue[0]
+			deliveredIDs = map[string]bool{q.ID: true}
+			combinedText = q.Text
+			if q.Kind == "turn_done" {
+				for _, x := range queue[1:] {
+					if x.Kind == "turn_done" && x.Bot == q.Bot && x.Conversation == q.Conversation {
+						deliveredIDs[x.ID] = true
+						combinedText += "\n\n" + x.Text
+					}
+				}
+			}
+		}
 		// The news wakes Her in that conversation: its session follows her again, so that what she
 		// does is seen (docs/her-conversations.md §5.3).
 		if task := n.herTask(q.Conversation); task != "" {
@@ -548,7 +590,7 @@ func (n *Machine) deliverHerNews(ctx context.Context) {
 				n.log.Info("following Her's conversation again", "session", task, "err", err)
 			}
 		}
-		err := n.her.News(ctx, q.Bot, q.Conversation, q.ID, q.FromID, q.FromName, q.Text)
+		err := n.her.News(ctx, q.Bot, q.Conversation, q.ID, q.FromID, q.FromName, combinedText)
 		if err != nil && !errors.Is(err, herhost.ErrRefused) {
 			if ctx.Err() == nil {
 				n.log.Info("her did not take news yet", "news", q.ID, "err", err)
@@ -562,17 +604,17 @@ func (n *Machine) deliverHerNews(ctx context.Context) {
 		if err != nil {
 			n.log.Warn("her would not take news", "news", q.ID, "err", err)
 		} else {
-			n.log.Info("news in Her's conversation", "news", q.ID, "from", q.FromID)
+			n.log.Info("news in Her's conversation", "news", q.ID, "from", q.FromID, "count", len(deliveredIDs))
 		}
 		n.mu.Lock()
 		queue = n.herNewsLocked()
-		for i, x := range queue {
-			if x.ID == q.ID {
-				queue = append(queue[:i], queue[i+1:]...)
-				break
+		kept := queue[:0]
+		for _, x := range queue {
+			if !deliveredIDs[x.ID] {
+				kept = append(kept, x)
 			}
 		}
-		err = n.setHerNewsLocked(queue)
+		err = n.setHerNewsLocked(kept)
 		n.mu.Unlock()
 		if err != nil {
 			// Not removed: it would be delivered again without end.

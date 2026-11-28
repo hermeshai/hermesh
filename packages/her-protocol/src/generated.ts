@@ -862,7 +862,7 @@ export type CommandRule = {
   reason?: string | null;
 };
 
-export type CompactionReason = "manual" | "threshold" | "overflow" | "model_switch";
+export type CompactionReason = "manual" | "threshold" | "overflow" | "model_switch" | "idle";
 
 /** Why a task completed normally. */
 export type CompletionReason = "done" | "max_turns" | "output_limit" | "hook";

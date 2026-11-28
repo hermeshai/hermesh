@@ -641,9 +641,13 @@ public func isInterruption(_ f: Failure?) -> Bool { f?.kind == .interrupted }
 
 /// Who stopped an interrupted turn, as the machine recorded it: "owner" or an agent's client id.
 public func interrupter(_ f: Failure?) -> String? {
-    let prefix = "interrupted by "
-    guard let f, isInterruption(f), f.message.hasPrefix(prefix) else { return nil }
-    return String(f.message.dropFirst(prefix.count))
+    guard let f, isInterruption(f) else { return nil }
+    for prefix in ["interrupted by ", "steered by "] {
+        if f.message.hasPrefix(prefix) {
+            return String(f.message.dropFirst(prefix.count))
+        }
+    }
+    return nil
 }
 
 /// How a question was settled. name: who answered, by the id the machine recorded (the owner is "You").

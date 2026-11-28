@@ -366,6 +366,10 @@ private func kind(_ it: TranscriptItem) -> String {
     #expect(interrupter(f) == "owner")
     f.message = "interrupted by c_abc"
     #expect(interrupter(f) == "c_abc")
+    f.message = "steered by owner"
+    #expect(interrupter(f) == "owner")
+    f.message = "steered by c_abc"
+    #expect(interrupter(f) == "c_abc")
     f.message = "agent revoked"
     #expect(interrupter(f) == nil)
     f.kind = .rateLimit
