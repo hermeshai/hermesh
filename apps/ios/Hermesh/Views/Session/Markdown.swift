@@ -36,7 +36,7 @@ struct MarkdownText: View {
 /// finished blocks as they will stay, each parsed once, then the last one
 /// with what is still open closed, or without a table that has no delimiter
 /// row yet, so nothing shows as raw Markdown on its way.
-struct DraftMarkdownText: View {
+struct DraftMarkdownText: View, Equatable {
     let text: String
     var animatedFromBlock: Int = .max
 
@@ -56,25 +56,29 @@ struct DraftMarkdownText: View {
     }
 }
 
+private final class StreamingLatestBox {
+    var text = ""
+}
+
 /// Releases a live reply one visual row at a time with a left-to-right silk wipe mask,
 /// and settles to static `MarkdownText` with zero overhead on completed replies.
 struct StreamingMarkdownText: View {
-    private let rawText: String
+    private let text: String
     let streaming: Bool
     @Environment(\.accessibilityReduceMotion) private var still
     @State private var shownCount: Int = 0
     @State private var animating = false
     @State private var startBlock: Int = .max
     @State private var initialized = false
+    @State private var latestBox = StreamingLatestBox()
 
     init(text: String, streaming: Bool) {
-        self.rawText = text
+        self.text = unwrapCarousels(text)
         self.streaming = streaming
     }
 
-    private var text: String { unwrapCarousels(rawText) }
-
     var body: some View {
+        let _ = { latestBox.text = text }()
         if !streaming && !animating {
             MarkdownText(text: text)
                 .onChange(of: streaming) { _, now in
@@ -87,6 +91,7 @@ struct StreamingMarkdownText: View {
         } else {
             let visible = streaming && !still ? String(text.prefix(min(shownCount, text.count))) : text
             DraftMarkdownText(text: visible, animatedFromBlock: still ? .max : startBlock)
+                .equatable()
                 .onAppear {
                     guard !initialized else { return }
                     initialized = true
@@ -107,17 +112,25 @@ struct StreamingMarkdownText: View {
                         }
                     }
                 }
-                .task(id: "\(streaming)\0\(text)\0\(shownCount)") {
-                    guard streaming, !still, shownCount < text.count else { return }
-                    let idx = text.index(text.startIndex, offsetBy: min(shownCount, text.count))
-                    let ready = nextStreamRowEnd(text, from: idx, flushTail: false)
-                    let cadenceMs = text.count - shownCount > 220 ? 60 : 135
-                    try? await Task.sleep(for: .milliseconds(ready != nil ? cadenceMs : 175))
-                    guard !Task.isCancelled, streaming else { return }
-                    let curIdx = text.index(text.startIndex, offsetBy: min(shownCount, text.count))
-                    if let cut = nextStreamRowEnd(text, from: curIdx, flushTail: ready == nil) {
-                        let nextCount = text.distance(from: text.startIndex, to: cut)
-                        if nextCount > shownCount { shownCount = nextCount }
+                .task(id: streaming && !still) {
+                    guard streaming, !still else { return }
+                    while !Task.isCancelled, streaming {
+                        let cur = latestBox.text
+                        if shownCount >= cur.count {
+                            try? await Task.sleep(for: .milliseconds(50))
+                            continue
+                        }
+                        let idx = cur.index(cur.startIndex, offsetBy: min(shownCount, cur.count))
+                        let ready = nextStreamRowEnd(cur, from: idx, flushTail: false)
+                        let cadenceMs = cur.count - shownCount > 220 ? 55 : 120
+                        try? await Task.sleep(for: .milliseconds(ready != nil ? cadenceMs : 160))
+                        guard !Task.isCancelled, streaming else { return }
+                        let latest = latestBox.text
+                        let curIdx = latest.index(latest.startIndex, offsetBy: min(shownCount, latest.count))
+                        if let cut = nextStreamRowEnd(latest, from: curIdx, flushTail: ready == nil) {
+                            let nextCount = latest.distance(from: latest.startIndex, to: cut)
+                            if nextCount > shownCount { shownCount = nextCount }
+                        }
                     }
                 }
         }
@@ -234,16 +247,33 @@ struct MarkdownItem {
 
 /// Parsed replies, so a row laid out again parses nothing.
 @MainActor private var parsedReplies: [String: [MarkdownBlock]] = [:]
+@MainActor private var parsedRepliesOrder: [String] = []
+@MainActor private var parsedMemoryHookInstalled = false
 
 @MainActor private func parsed(_ text: String, basePath: String = "") -> [MarkdownBlock] {
+    if !parsedMemoryHookInstalled {
+        parsedMemoryHookInstalled = true
+        NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                parsedReplies.removeAll()
+                parsedRepliesOrder.removeAll()
+                fencedAnalysisCache.removeAll()
+            }
+        }
+    }
     let cacheKey = basePath.isEmpty ? text : "\(basePath)\u{0}\(text)"
     if let hit = parsedReplies[cacheKey] { return hit }
     // Footnotes come out of the source before Markdown reads it, which has none of its own, and show after it.
     let notes = liftFootnotes(unwrapCarousels(text))
     var blocks = markdownBlocks(notes.text, basePath: basePath)
     if !notes.notes.isEmpty { blocks.append(.footnotes(notes.notes.map { markdownBlocks($0, basePath: basePath) })) }
-    if parsedReplies.count > 400 { parsedReplies.removeAll() }
+    if parsedRepliesOrder.count >= 150 {
+        let dropCount = 60
+        for old in parsedRepliesOrder.prefix(dropCount) { parsedReplies.removeValue(forKey: old) }
+        parsedRepliesOrder.removeFirst(dropCount)
+    }
     parsedReplies[cacheKey] = blocks
+    parsedRepliesOrder.append(cacheKey)
     return blocks
 }
 
@@ -860,6 +890,32 @@ nonisolated private struct LongestWord: LayoutValueKey {
     static let defaultValue: CGFloat = 0
 }
 
+private struct FencedAnalysis {
+    let eff: EffectiveCodeLang
+    let secret: Bool
+    let masked: String
+    let copyTarget: String
+    let runnablePlan: RunnableShellPlan?
+    let hasHidden: Bool
+}
+
+@MainActor private var fencedAnalysisCache: [String: FencedAnalysis] = [:]
+
+@MainActor private func analyzeFenced(lang: String, text: String) -> FencedAnalysis {
+    let key = "\(lang)\u{0}\(text)"
+    if let hit = fencedAnalysisCache[key] { return hit }
+    let eff = effectiveCodeLang(lang: lang, text: text)
+    let secret = hasSecrets(text)
+    let masked = secret ? maskSecrets(text) : text
+    let copyTarget = eff.shell ? cleanShellCommand(text) : text
+    let runnablePlan = inspectRunnableShell(lang: lang, text: text)
+    let hasHidden = hiddenChars(text)
+    let result = FencedAnalysis(eff: eff, secret: secret, masked: masked, copyTarget: copyTarget, runnablePlan: runnablePlan, hasHidden: hasHidden)
+    if fencedAnalysisCache.count > 160 { fencedAnalysisCache.removeAll(keepingCapacity: true) }
+    fencedAnalysisCache[key] = result
+    return result
+}
+
 /// A fenced block, as on the Mac: keeps the original script or code intact on top,
 /// offers prompt-stripped Copy, secret masking, and 1-click workspace execution with
 /// a destructive-command confirmation bar and an attached bottom terminal output drawer.
@@ -875,11 +931,12 @@ struct FencedCode: View {
     @State private var confirming = false
 
     var body: some View {
-        let eff = effectiveCodeLang(lang: lang, text: text)
-        let secret = hasSecrets(text)
-        let shownText = (secret && !revealed) ? maskSecrets(text) : text
-        let copyTarget = eff.shell ? cleanShellCommand(text) : text
-        let plan = (!secret || revealed) ? inspectRunnableShell(lang: lang, text: text) : nil
+        let info = analyzeFenced(lang: lang, text: text)
+        let eff = info.eff
+        let secret = info.secret
+        let shownText = (secret && !revealed) ? info.masked : text
+        let copyTarget = info.copyTarget
+        let plan = (!secret || revealed) ? info.runnablePlan : nil
         let runState = CodeBlockRunStore.shared.state(sessionID: actions?.sessionID ?? "", blockText: text)
         let isRunning = runState?.status == .running
 
@@ -889,7 +946,7 @@ struct FencedCode: View {
                     if eff.shell { Image(systemName: "terminal") }
                     Text(verbatim: eff.lang).font(.caption.monospaced()).lineLimit(1)
                 }
-                if hiddenChars(text) {
+                if info.hasHidden {
                     Label("Hidden characters", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.orange)

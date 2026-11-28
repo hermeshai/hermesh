@@ -1,5 +1,6 @@
 import JavaScriptCore
 import SwiftUI
+import UIKit
 
 /// Code in the Mac app's colours, light or dark with the app: its Shiki and
 /// its theme, run in JavaScriptCore (scripts/highlighter). Plain until its
@@ -31,11 +32,9 @@ struct CodeText: View {
 
     private var attributed: AttributedString {
         guard let colored, text.hasPrefix(colored.text) else { return AttributedString(text) }
-        var out = AttributedString()
-        for (i, line) in colored.lines.enumerated() {
-            if i > 0 { out += AttributedString("\n") }
-            out += Highlighter.text(line, dark: scheme == .dark)
-        }
+        let base = Highlighter.shared.attributedBlock(colored.text, lang: lang, lines: colored.lines, dark: scheme == .dark)
+        if text.count == colored.text.count { return base }
+        var out = base
         out += AttributedString(text.dropFirst(colored.text.count))
         return out
     }
@@ -61,13 +60,38 @@ nonisolated final class Highlighter: @unchecked Sendable {
         init(_ lines: Lines) { self.lines = lines }
     }
 
+    private final class AttrBox {
+        let value: AttributedString
+        init(_ value: AttributedString) { self.value = value }
+    }
+
     private let queue = DispatchQueue(label: "hermesh.highlighter", qos: .userInitiated)
     private let cache = NSCache<NSString, Box>()
+    private let attrCache = NSCache<NSString, AttrBox>()
     /// On the queue: Shiki's highlight function, once loaded; nil if it can't be.
     private var highlight: JSValue?
     private var loaded = false
 
-    private init() { cache.countLimit = 200 }
+    private init() {
+        cache.countLimit = 160
+        attrCache.countLimit = 160
+        NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: nil) { [weak self] _ in
+            self?.cache.removeAllObjects()
+            self?.attrCache.removeAllObjects()
+        }
+    }
+
+    func attributedBlock(_ code: String, lang: String, lines: Lines, dark: Bool) -> AttributedString {
+        let k = "\(dark ? 1 : 0)\u{0}\(lang)\u{0}\(code)" as NSString
+        if let hit = attrCache.object(forKey: k) { return hit.value }
+        var out = AttributedString()
+        for (i, line) in lines.enumerated() {
+            if i > 0 { out += AttributedString("\n") }
+            out += Self.text(line, dark: dark)
+        }
+        attrCache.setObject(AttrBox(out), forKey: k)
+        return out
+    }
 
     /// The names it knows a language by, ids and aliases: "go", "rs", "yml", "dockerfile".
     static let languages: Set<String> = {

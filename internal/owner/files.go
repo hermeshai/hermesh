@@ -54,23 +54,47 @@ func (o *Owner) keepFiles(key, sessionID string, m proto.Message) {
 	if err != nil || int64(len(b)) > sessionFilesKeptMax/4 {
 		return
 	}
-	_, _ = o.st.db.Exec(`INSERT INTO session_files_kept(key, session_id, payload, size, used_at) VALUES(?, ?, ?, ?, ?)
-		ON CONFLICT(key) DO UPDATE SET payload = excluded.payload, size = excluded.size, used_at = excluded.used_at`,
-		key, sessionID, b, len(b), time.Now().UnixMilli())
-	var total int64
-	_ = o.st.db.QueryRow(`SELECT COALESCE(SUM(size), 0) FROM session_files_kept`).Scan(&total)
-	for total > sessionFilesKeptMax {
-		var oldest string
-		var size int64
-		if o.st.db.QueryRow(`SELECT key, size FROM session_files_kept ORDER BY used_at ASC LIMIT 1`).Scan(&oldest, &size) != nil {
+	now := time.Now().UnixMilli()
+	size := int64(len(b))
+	o.filesKeptMu.Lock()
+	defer o.filesKeptMu.Unlock()
+	if !o.filesKeptLoaded {
+		if o.st.db.QueryRow(`SELECT COALESCE(SUM(size), 0) FROM session_files_kept`).Scan(&o.filesKeptTotal) != nil {
 			return
 		}
-		_, _ = o.st.db.Exec(`DELETE FROM session_files_kept WHERE key = ?`, oldest)
-		total -= size
+		o.filesKeptLoaded = true
+	}
+	var prev int64
+	_ = o.st.db.QueryRow(`SELECT size FROM session_files_kept WHERE key = ?`, key).Scan(&prev)
+	if _, err := o.st.db.Exec(`INSERT INTO session_files_kept(key, session_id, payload, size, used_at) VALUES(?, ?, ?, ?, ?)
+		ON CONFLICT(key) DO UPDATE SET payload = excluded.payload, size = excluded.size, used_at = excluded.used_at`,
+		key, sessionID, b, len(b), now); err != nil {
+		return
+	}
+	o.filesKeptTotal += size - prev
+	for o.filesKeptTotal > sessionFilesKeptMax {
+		var oldest string
+		var gone int64
+		if o.st.db.QueryRow(`SELECT key, size FROM session_files_kept ORDER BY used_at ASC LIMIT 1`).Scan(&oldest, &gone) != nil {
+			o.filesKeptLoaded = false
+			return
+		}
+		if _, err := o.st.db.Exec(`DELETE FROM session_files_kept WHERE key = ?`, oldest); err != nil {
+			o.filesKeptLoaded = false
+			return
+		}
+		o.filesKeptTotal -= gone
 	}
 }
 
 func (o *Owner) forgetFiles(sessionID string) {
+	o.filesKeptMu.Lock()
+	defer o.filesKeptMu.Unlock()
+	if o.filesKeptLoaded {
+		var dropped int64
+		_ = o.st.db.QueryRow(`SELECT COALESCE(SUM(size), 0) FROM session_files_kept WHERE session_id = ?`, sessionID).Scan(&dropped)
+		o.filesKeptTotal = max(0, o.filesKeptTotal-dropped)
+	}
 	_, _ = o.st.db.Exec(`DELETE FROM session_files_kept WHERE session_id = ?`, sessionID)
 }
 

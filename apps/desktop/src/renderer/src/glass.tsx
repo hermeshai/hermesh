@@ -14,14 +14,23 @@ const split = 3;
 /** How tall the bending edge is. */
 const rim = 14;
 
-/** The displacement map: mid grey (no shift) everywhere but the bottom rim, where blue falls to 0 (a pull from above, inside the bar). */
-function displacementMap(w: number, h: number): string {
+/**
+ * The displacement map: mid grey (no shift) everywhere but the bottom rim, where blue falls to 0
+ * (a pull from above, inside the bar). 1 px wide and stretched horizontally via preserveAspectRatio="none"
+ * so resizing the bar's width never re-encodes or re-decodes the SVG image.
+ */
+const mapByHeight = new Map<number, string>();
+function displacementMap(h: number): string {
+  let cached = mapByHeight.get(h);
+  if (cached) return cached;
   const from = Math.max(0, (h - rim) / h);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="${h}">
 <defs><linearGradient id="y" x1="0" y1="0" x2="0" y2="1"><stop offset="${from}" stop-color="rgb(128,128,128)"/><stop offset="1" stop-color="rgb(128,128,0)"/></linearGradient></defs>
-<rect width="${w}" height="${h}" fill="url(#y)"/>
+<rect width="1" height="${h}" fill="url(#y)"/>
 </svg>`;
-  return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+  cached = "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+  mapByHeight.set(h, cached);
+  return cached;
 }
 
 /** One colour of the blurred backdrop, shifted by the map. */
@@ -49,22 +58,31 @@ export function GlassBar({ children, className = "", flat = false }: { children:
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
+    let frame = 0;
     const measure = () => {
       const w = Math.round(el.offsetWidth);
       const h = Math.round(el.offsetHeight);
       setSize((old) => (w <= 0 || h <= 0 ? null : old && old.w === w && old.h === h ? old : { w, h }));
     };
     measure();
-    const ro = new ResizeObserver(measure);
+    const ro = new ResizeObserver(() => {
+      frame ||= requestAnimationFrame(() => {
+        frame = 0;
+        measure();
+      });
+    });
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      ro.disconnect();
+    };
   }, []);
   return (
     <div ref={ref} className={`glassbar ${flat ? "flat " : ""}${className}`} style={size && !flat ? { backdropFilter: `url(#${id})` } : undefined}>
       {size && (
         <svg className="glass-defs" aria-hidden width="0" height="0">
           <filter id={id} x="0" y="0" width={size.w} height={size.h} filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
-            <feImage x="0" y="0" width={size.w} height={size.h} preserveAspectRatio="none" href={displacementMap(size.w, size.h)} result="map" />
+            <feImage x="0" y="0" width={size.w} height={size.h} preserveAspectRatio="none" href={displacementMap(size.h)} result="map" />
             <feGaussianBlur in="SourceGraphic" stdDeviation="9" edgeMode="duplicate" result="blurred" />
             <feColorMatrix in="blurred" type="saturate" values="1.8" result="soft" />
             <Channel scale={bend} keep="r" />

@@ -154,9 +154,12 @@ type Owner struct {
 	netGen         atomic.Uint64            // incremented on network switch / drop so direct failure cooldown resets
 	cellularOnly   atomic.Bool              // true when device has only cellular (no Wi-Fi/wired): skip RFC1918 LAN addrs
 
-	sessionMu   sync.Mutex
-	sessionWake chan struct{}
-	sessionSubs map[chan *sessionv1.WatchSessionsResponse]struct{}
+	sessionMu       sync.Mutex
+	sessionWake     chan struct{}
+	sessionSubs     map[chan *sessionv1.WatchSessionsResponse]struct{}
+	filesKeptMu     sync.Mutex
+	filesKeptLoaded bool
+	filesKeptTotal  int64
 
 	devCacheMu   sync.Mutex
 	devCacheRoot *identityv1.RootCert

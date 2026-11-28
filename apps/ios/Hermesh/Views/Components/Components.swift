@@ -94,104 +94,8 @@ struct AgentLogo: View {
         if still {
             ring.strokeBorder(Color.accentColor.opacity(0.8), lineWidth: lineWidth)
         } else {
-            TimelineView(.animation(paused: paused)) { timeline in
-                let uHead = (timeline.date.timeIntervalSinceReferenceDate / 1.65).truncatingRemainder(dividingBy: 1)
-                Canvas { ctx, s in
-                    let span = s.width - lineWidth
-                    let rCenter = max(1, cornerRadius - lineWidth / 2)
-                    let cx = s.width / 2
-                    let cy = s.height / 2
-                    let centerRect = CGRect(x: lineWidth / 2, y: lineWidth / 2, width: span, height: span)
-                    let trackPath = RoundedRectangle(cornerRadius: rCenter, style: .continuous).path(in: centerRect)
-                    ctx.stroke(trackPath, with: .color(Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05)), lineWidth: lineWidth)
-
-                    let arc = 0.36
-                    let steps = 56
-                    var comet = Path()
-                    for i in 0 ... steps {
-                        let p = Self.pointOnRoundedSquare(cx: cx, cy: cy, w: span, radius: rCenter, u: uHead - arc + Double(i) / Double(steps) * arc)
-                        if i == 0 { comet.move(to: p) } else { comet.addLine(to: p) }
-                    }
-
-                    let pT = Self.pointOnRoundedSquare(cx: cx, cy: cy, w: span, radius: rCenter, u: uHead - arc)
-                    let pH = Self.pointOnRoundedSquare(cx: cx, cy: cy, w: span, radius: rCenter, u: uHead)
-                    let aT = atan2(pT.y - cy, pT.x - cx)
-                    let aH = atan2(pH.y - cy, pH.x - cx)
-                    var turnSpan = (aH - aT) / (.pi * 2)
-                    turnSpan -= floor(turnSpan)
-                    let capPad = min(0.032, (1 - turnSpan) * 0.45)
-                    let crest = colorScheme == .dark
-                        ? Color(red: 0.72, green: 0.78, blue: 1.0)
-                        : Color(red: 0.01, green: 0.52, blue: 0.78)
-
-                    var stops: [Gradient.Stop] = [.init(color: .accentColor.opacity(0), location: 0)]
-                    let samples = 8
-                    for k in 1 ... samples {
-                        let t = Double(k) / Double(samples)
-                        let pos = turnSpan * t
-                        if pos <= 1 {
-                            let c: Color = t < 0.82 ? .accentColor : crest
-                            stops.append(.init(color: c.opacity(pow(t, 1.5)), location: pos))
-                        }
-                    }
-                    if turnSpan + capPad <= 1 {
-                        stops.append(.init(color: .accentColor, location: turnSpan + capPad))
-                    }
-                    if turnSpan + capPad + 0.015 <= 1 {
-                        stops.append(.init(color: .accentColor.opacity(0), location: turnSpan + capPad + 0.015))
-                    }
-
-                    ctx.drawLayer { layer in
-                        layer.stroke(comet, with: .color(.white), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
-                        layer.blendMode = .sourceIn
-                        layer.fill(
-                            Path(CGRect(origin: .zero, size: s)),
-                            with: .conicGradient(Gradient(stops: stops), center: CGPoint(x: cx, y: cy), angle: .radians(aT))
-                        )
-                    }
-                }
-            }
+            OrbitRingView(cornerRadius: cornerRadius, lineWidth: lineWidth, isDark: colorScheme == .dark, paused: paused)
         }
-    }
-
-    private static func pointOnRoundedSquare(cx: CGFloat, cy: CGFloat, w: CGFloat, radius: CGFloat, u: Double) -> CGPoint {
-        let r = max(0, min(radius, w / 2))
-        let straight = max(0, w - 2 * r)
-        let arc = 0.5 * .pi * r
-        let perim = 4 * straight + 4 * arc
-        let norm = u - floor(u)
-        var d = CGFloat(norm) * perim
-        let half = w / 2
-
-        if d <= straight / 2 { return CGPoint(x: cx + d, y: cy - half) }
-        d -= straight / 2
-        if d <= arc {
-            let a = -CGFloat.pi / 2 + d / r
-            return CGPoint(x: cx + half - r + cos(a) * r, y: cy - half + r + sin(a) * r)
-        }
-        d -= arc
-        if d <= straight { return CGPoint(x: cx + half, y: cy - half + r + d) }
-        d -= straight
-        if d <= arc {
-            let a = d / r
-            return CGPoint(x: cx + half - r + cos(a) * r, y: cy + half - r + sin(a) * r)
-        }
-        d -= arc
-        if d <= straight { return CGPoint(x: cx + half - r - d, y: cy + half) }
-        d -= straight
-        if d <= arc {
-            let a = CGFloat.pi / 2 + d / r
-            return CGPoint(x: cx - half + r + cos(a) * r, y: cy + half - r + sin(a) * r)
-        }
-        d -= arc
-        if d <= straight { return CGPoint(x: cx - half, y: cy + half - r - d) }
-        d -= straight
-        if d <= arc {
-            let a = CGFloat.pi + d / r
-            return CGPoint(x: cx - half + r + cos(a) * r, y: cy - half + r + sin(a) * r)
-        }
-        d -= arc
-        return CGPoint(x: cx - half + r + d, y: cy - half)
     }
 
     /// A color for a name without a logo, the same every time.
@@ -265,30 +169,204 @@ extension View {
     }
 }
 
+private struct OrbitRingView: UIViewRepresentable {
+    let cornerRadius: CGFloat
+    let lineWidth: CGFloat
+    let isDark: Bool
+    let paused: Bool
+
+    func makeUIView(context: Context) -> OrbitRingUIView {
+        OrbitRingUIView()
+    }
+
+    func updateUIView(_ view: OrbitRingUIView, context: Context) {
+        view.configure(cornerRadius: cornerRadius, lineWidth: lineWidth, isDark: isDark, paused: paused)
+    }
+
+    final class OrbitRingUIView: UIView {
+        private let trackLayer = CAShapeLayer()
+        private let maskLayer = CAShapeLayer()
+        private let conicHolder = CALayer()
+        private let conicLayer = CAGradientLayer()
+        private var cornerRadius: CGFloat = 0
+        private var lineWidth: CGFloat = 0
+        private var isDark = false
+        private var paused = false
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+            backgroundColor = .clear
+            trackLayer.fillColor = UIColor.clear.cgColor
+            maskLayer.fillColor = UIColor.clear.cgColor
+            conicLayer.type = .conic
+            conicLayer.startPoint = CGPoint(x: 0.5, y: 0.5)
+            conicLayer.endPoint = CGPoint(x: 1.0, y: 0.5)
+            conicHolder.mask = maskLayer
+            conicHolder.addSublayer(conicLayer)
+            layer.addSublayer(trackLayer)
+            layer.addSublayer(conicHolder)
+        }
+
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            syncAnimation()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            let s = bounds.size
+            guard s.width > lineWidth, s.height > lineWidth else { return }
+            let centerRect = bounds.insetBy(dx: lineWidth / 2, dy: lineWidth / 2)
+            let rCenter = max(1, cornerRadius - lineWidth / 2)
+            let path = UIBezierPath(roundedRect: centerRect, cornerRadius: rCenter).cgPath
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            trackLayer.frame = bounds
+            trackLayer.path = path
+            trackLayer.lineWidth = lineWidth
+            conicHolder.frame = bounds
+            maskLayer.frame = bounds
+            maskLayer.path = path
+            maskLayer.lineWidth = lineWidth
+            let diag = hypot(s.width, s.height)
+            conicLayer.bounds = CGRect(x: 0, y: 0, width: diag, height: diag)
+            conicLayer.position = CGPoint(x: s.width / 2, y: s.height / 2)
+            CATransaction.commit()
+            syncAnimation()
+        }
+
+        func configure(cornerRadius: CGFloat, lineWidth: CGFloat, isDark: Bool, paused: Bool) {
+            let styleChanged = self.cornerRadius != cornerRadius || self.lineWidth != lineWidth || self.isDark != isDark
+            self.cornerRadius = cornerRadius
+            self.lineWidth = lineWidth
+            self.isDark = isDark
+            self.paused = paused
+            if styleChanged {
+                let trait = UITraitCollection(userInterfaceStyle: isDark ? .dark : .light)
+                let accent = UIColor.tintColor.resolvedColor(with: trait)
+                let crest = isDark
+                    ? UIColor(red: 0.72, green: 0.78, blue: 1.0, alpha: 1)
+                    : UIColor(red: 0.01, green: 0.52, blue: 0.78, alpha: 1)
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                trackLayer.strokeColor = UIColor.label.resolvedColor(with: trait).withAlphaComponent(isDark ? 0.07 : 0.05).cgColor
+                conicLayer.colors = [
+                    accent.withAlphaComponent(0).cgColor,
+                    accent.withAlphaComponent(0.18).cgColor,
+                    accent.withAlphaComponent(0.65).cgColor,
+                    crest.cgColor,
+                    accent.cgColor,
+                    accent.withAlphaComponent(0).cgColor,
+                    accent.withAlphaComponent(0).cgColor,
+                ]
+                conicLayer.locations = [0, 0.12, 0.27, 0.34, 0.36, 0.38, 1.0]
+                CATransaction.commit()
+                setNeedsLayout()
+            }
+            syncAnimation()
+        }
+
+        private func syncAnimation() {
+            let shouldRun = !paused && window != nil && bounds.width > 0
+            if shouldRun {
+                guard conicLayer.animation(forKey: "orbit") == nil else { return }
+                let rot = CABasicAnimation(keyPath: "transform.rotation.z")
+                rot.fromValue = 0
+                rot.toValue = Double.pi * 2
+                rot.duration = 1.65
+                rot.repeatCount = .infinity
+                rot.isRemovedOnCompletion = false
+                conicLayer.add(rot, forKey: "orbit")
+            } else if conicLayer.animation(forKey: "orbit") != nil {
+                conicLayer.removeAnimation(forKey: "orbit")
+            }
+        }
+    }
+}
+
 private struct Shimmer: ViewModifier {
     let on: Bool
     let paused: Bool
     @Environment(\.accessibilityReduceMotion) private var still
 
     func body(content: Content) -> some View {
-        if on && !still {
+        if on && !still && !paused {
             content.mask {
-                TimelineView(.animation(paused: paused)) { timeline in
-                    // The band's middle runs from half the view's width before it to half after; it is 0.72 of it
-                    // wide, and lets 0.3 through (the label's colour to the tertiary label's).
-                    let t = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3.2)
-                    let x = -0.5 + 2 * ease(min(t / 3, 1))
-                    LinearGradient(colors: [.black, .black.opacity(0.3), .black],
-                                   startPoint: UnitPoint(x: x - 0.36, y: 0.5), endPoint: UnitPoint(x: x + 0.36, y: 0.5))
-                }
+                ShimmerMaskView()
             }
         } else {
             content
         }
     }
+}
 
-    /// CSS's ease-in-out, near enough.
-    private func ease(_ x: Double) -> Double { x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2 }
+/// CoreAnimation RenderServer-driven shimmer mask (`0%` main-thread CPU while animating).
+private struct ShimmerMaskView: UIViewRepresentable {
+    func makeUIView(context: Context) -> ShimmerMaskUIView {
+        ShimmerMaskUIView()
+    }
+
+    func updateUIView(_ uiView: ShimmerMaskUIView, context: Context) {}
+
+    final class ShimmerMaskUIView: UIView {
+        override class var layerClass: AnyClass { CAGradientLayer.self }
+        private var grad: CAGradientLayer { layer as! CAGradientLayer }
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+            backgroundColor = .clear
+            grad.colors = [
+                UIColor.black.cgColor,
+                UIColor.black.withAlphaComponent(0.3).cgColor,
+                UIColor.black.cgColor,
+            ]
+            grad.locations = [0, 0.5, 1]
+            grad.startPoint = CGPoint(x: -0.86, y: 0.5)
+            grad.endPoint = CGPoint(x: -0.14, y: 0.5)
+        }
+
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            syncAnimation()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            syncAnimation()
+        }
+
+        private func syncAnimation() {
+            if window != nil && bounds.width > 0 {
+                guard grad.animation(forKey: "shimmer") == nil else { return }
+                let s = CABasicAnimation(keyPath: "startPoint.x")
+                s.fromValue = -0.86
+                s.toValue = 1.14
+                s.duration = 3.0
+                s.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+                let e = CABasicAnimation(keyPath: "endPoint.x")
+                e.fromValue = -0.14
+                e.toValue = 1.86
+                e.duration = 3.0
+                e.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+                let group = CAAnimationGroup()
+                group.animations = [s, e]
+                group.duration = 3.2
+                group.repeatCount = .infinity
+                group.isRemovedOnCompletion = false
+                grad.add(group, forKey: "shimmer")
+            } else {
+                grad.removeAnimation(forKey: "shimmer")
+            }
+        }
+    }
 }
 
 /// The Hermesh mark: three translucent beams at 0°, 60° and 120°, each 10

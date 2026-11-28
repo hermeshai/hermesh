@@ -369,8 +369,12 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         // Mostly over the menu: the page's edge is where its swipe back starts.
         grip.frame = CGRect(x: pageX - 16, y: 0, width: 22, height: b.height)
         grip.isHidden = wide == nil || railed
-        // Out of view, the menu is out of VoiceOver's way too.
-        if !railed || peek { menu.view.isHidden = false } else if !sliding { menu.view.isHidden = true }
+        // Out of view, the menu is hidden from layout/rendering and out of VoiceOver's way too.
+        if arrangement == .beside {
+            if !railed || peek { menu.view.isHidden = false } else if !sliding { menu.view.isHidden = true }
+        } else {
+            menu.view.isHidden = !isOpen && moving == nil
+        }
         let bars: Bool = if #available(iOS 27.1, *) { traitCollection.verticalBarEdge != .unspecified } else { false }
         if wide != layout || bars != verticalBars {
             layout = wide
@@ -516,6 +520,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         pinMargins()
         clip.layer.cornerRadius = radius
         dim.isHidden = false
+        menu.view.isHidden = false
         menu.view.accessibilityElementsHidden = false
     }
 
@@ -539,7 +544,8 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         clip.layer.cornerRadius = 0
         dim.isHidden = true
         standDown()
-        // Under the page, the menu is out of VoiceOver's reach.
+        // Under the page, the menu is hidden from layout/compositing and out of VoiceOver's reach.
+        menu.view.isHidden = arrangement != .beside
         menu.view.accessibilityElementsHidden = arrangement != .beside
     }
 

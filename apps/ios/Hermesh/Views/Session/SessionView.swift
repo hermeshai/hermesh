@@ -1,7 +1,9 @@
 import HermeshProto
 import HermeshSessions
+import ImageIO
 import QuickLook
 import SwiftUI
+import UIKit
 
 // Shared conversation row, ending, scroll-follow, toolbar, and failure components used by
 // SessionPage and Her sub-agent records (ProgressPage).
@@ -76,11 +78,10 @@ struct StepView: View {
     @ViewBuilder private func row(_ item: TranscriptItem) -> some View {
         switch item {
         case .turn(_, _, let at, let wakeReason):
-            // A time line before a turn, only for the first one and after a pause; plus any background task wake line.
-            if let line = at.flatMap({ turnTimeLine($0, previous: previousTurn, now: model.now) }) {
-                Text(line).font(.caption).foregroundStyle(.tertiary).frame(maxWidth: .infinity)
-                    .padding(.top, 8)
-                    .accessibilityIdentifier("turn-time-line")
+            // A time line before a turn, only for the first one and after a pause; isolated into TurnTimeLine so StepView
+            // does not read model.now directly on every clock tick.
+            if let at, turnTimeLine(at, previous: previousTurn, now: at) != nil {
+                TurnTimeLine(at: at, previousTurn: previousTurn)
             }
             if !wakeReason.isEmpty {
                 Button {
@@ -293,19 +294,58 @@ struct PromptSender {
     let client: Client?
 }
 
+private struct TurnTimeLine: View {
+    @Environment(AppModel.self) private var model
+    let at: Date
+    let previousTurn: Date?
+
+    var body: some View {
+        if let line = turnTimeLine(at, previous: previousTurn, now: model.now) {
+            Text(line).font(.caption).foregroundStyle(.tertiary).frame(maxWidth: .infinity)
+                .padding(.top, 8)
+                .accessibilityIdentifier("turn-time-line")
+        }
+    }
+}
+
 /// Keeps decoded user-message attachment thumbnails and preview files on the main actor so a photo just sent in the
 /// composer shows in the bubble at 0 ms with no flash, and attachments from earlier or remote turns load once by sha256.
 @MainActor @Observable final class SessionAttachmentStore {
     static let shared = SessionAttachmentStore()
 
-    private let maxEntries = 64
+    private let maxEntries = 32
     private(set) var pictures: [String: UIImage?] = [:]
     @ObservationIgnored private var order: [String] = []
     @ObservationIgnored private var inFlight: Set<String> = []
 
+    private init() {
+        NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.pictures.removeAll()
+                self?.order.removeAll()
+            }
+        }
+    }
+
+    private nonisolated static func downsampleThumbnail(_ data: Data, maxPixelSize: Int = 320) -> UIImage? {
+        guard !data.isEmpty,
+              let src = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary)
+        else { return nil }
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+        ]
+        if let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) {
+            return UIImage(cgImage: cg)
+        }
+        return UIImage(data: data)
+    }
+
     func keep(sha256: String, name: String, data: Data, picture: UIImage?) {
         guard !sha256.isEmpty else { return }
-        if let img = picture ?? UIImage(data: data) {
+        if let img = Self.downsampleThumbnail(data) ?? picture {
             store(sha256: sha256, picture: img)
         }
         _ = try? writeTemp(sha256: sha256, name: name, data: data)
@@ -319,7 +359,10 @@ struct PromptSender {
         do {
             let data = try await api.downloadBlob(sessionID, sha256: sha, machineID: machineID)
             _ = try? writeTemp(sha256: sha, name: ref.name, data: data)
-            store(sha256: sha, picture: UIImage(data: data))
+            let thumb = await Task.detached(priority: .userInitiated) {
+                Self.downsampleThumbnail(data)
+            }.value
+            store(sha256: sha, picture: thumb)
         } catch {
             store(sha256: sha, picture: nil)
         }
@@ -724,16 +767,14 @@ private struct SidePanelButton: View {
 
     private func toggle(_ files: SessionFilesModel) {
         hideKeyboard()
-        withAnimation(.snappy) {
-            if files.panelOpen {
-                files.panelOpen = false
-                files.panelMax = false
-                files.panelDrawer = false
-            } else if files.tabs.isEmpty {
-                files.openProject()
-            } else {
-                files.panelOpen = true
-            }
+        if files.panelOpen {
+            files.panelOpen = false
+            files.panelMax = false
+            files.panelDrawer = false
+        } else if files.tabs.isEmpty {
+            files.openProject()
+        } else {
+            files.panelOpen = true
         }
         if files.panelOpen { model.menuRail = true }
     }
@@ -833,7 +874,7 @@ private struct SessionDuoWideItems: ToolbarContent {
             SidePanelButton(sessionID: session.sessionID, inBar: true)
             if files.panelOpen {
                 Button {
-                    withAnimation(.snappy) { files.panelMax.toggle() }
+                    files.panelMax.toggle()
                 } label: {
                     Image(systemName: files.panelMax ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
                 }
@@ -1092,6 +1133,7 @@ struct ConversationScrollFinder: UIViewRepresentable {
 
 private struct ScrollLayout: Equatable {
     let contentHeight: CGFloat
+    let containerWidth: CGFloat
     let containerHeight: CGFloat
     let topInset: CGFloat
     let bottomInset: CGFloat
@@ -1128,7 +1170,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
     @State private var away = false
     @State private var scrolling = false
     @State private var positioned = false
-    @State private var layout = ScrollLayout(contentHeight: 0, containerHeight: 0, topInset: 0, bottomInset: 0)
+    @State private var layout = ScrollLayout(contentHeight: 0, containerWidth: 0, containerHeight: 0, topInset: 0, bottomInset: 0)
     @State private var alignTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var still
 
@@ -1186,6 +1228,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
             .onScrollGeometryChange(for: ScrollLayout.self) { g in
                 ScrollLayout(
                     contentHeight: g.contentSize.height,
+                    containerWidth: g.containerSize.width,
                     containerHeight: g.containerSize.height,
                     topInset: g.contentInsets.top,
                     bottomInset: g.contentInsets.bottom
@@ -1194,7 +1237,11 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
                 layout = next
                 guard atEnd, !userInteracting else { return }
                 if ready {
-                    scheduleAlign(markPositioned: !positioned)
+                    if !positioned {
+                        scheduleAlign(markPositioned: true)
+                    } else {
+                        alignOnce()
+                    }
                 } else if next.contentHeight > 0 {
                     scheduleAlign(markPositioned: false)
                 }
@@ -1257,8 +1304,20 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
         }
     }
 
+    private func alignOnce() {
+        guard atEnd, !userInteracting, let sv = scrollBox.view else { return }
+        guard !sv.isTracking, !sv.isDragging, !sv.isDecelerating else { return }
+        let uikitTargetY = sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height
+        let layoutTargetY = layout.containerHeight > 0 ? layout.contentHeight - layout.containerHeight - layout.topInset : uikitTargetY
+        let targetY = max(-sv.adjustedContentInset.top, max(uikitTargetY, layoutTargetY))
+        if sv.bounds.height > 0, abs(sv.contentOffset.y - targetY) > 1 {
+            sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetY), animated: false)
+        }
+    }
+
     private func alignToBottom() {
         guard atEnd, !userInteracting else { return }
+        position.scrollTo(edge: .bottom)
         if let sv = scrollBox.view {
             sv.layoutIfNeeded()
             guard !sv.isTracking, !sv.isDragging, !sv.isDecelerating else { return }
@@ -1268,8 +1327,6 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
             if sv.bounds.height > 0, abs(sv.contentOffset.y - targetY) > 1 {
                 sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetY), animated: false)
             }
-        } else {
-            position.scrollTo(edge: .bottom)
         }
     }
 }

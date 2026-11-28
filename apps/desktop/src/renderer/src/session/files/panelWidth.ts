@@ -55,20 +55,33 @@ export function usePanelWidth(key: string, room: () => number): PanelWidth {
     e.preventDefault();
   };
 
-  // Dragging the left edge; the width is kept once it is let go.
+  // Dragging the left edge; coalesced to one layout pass per animation frame and kept once let go.
   const onPointerDown = (e: ReactPointerEvent) => {
     e.preventDefault();
     const right = panel.current?.getBoundingClientRect().right ?? window.innerWidth;
     const most = maxWidth();
     setResizing(true);
-    const move = (ev: PointerEvent) => setWidth(clamp(right - ev.clientX, most));
+    let frame = 0;
+    let nextWidth: number | null = null;
+    const move = (ev: PointerEvent) => {
+      nextWidth = clamp(right - ev.clientX, most);
+      frame ||= requestAnimationFrame(() => {
+        frame = 0;
+        if (nextWidth !== null) setWidth(nextWidth);
+      });
+    };
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      if (frame) {
+        cancelAnimationFrame(frame);
+        frame = 0;
+      }
       setResizing(false);
       setWidth((w) => {
-        if (w !== null) localStorage.setItem(key, String(w));
-        return w;
+        const final = nextWidth ?? w;
+        if (final !== null) localStorage.setItem(key, String(final));
+        return final;
       });
     };
     window.addEventListener("pointermove", move);

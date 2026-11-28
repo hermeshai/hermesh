@@ -119,10 +119,22 @@ nonisolated private enum SessionImageDecoder {
         case failed(String)
     }
 
-    private let maxEntries = 64
+    private let maxEntries = 28
     private let maxInFlight = 3
     private(set) var entries: [String: State] = [:]
     @ObservationIgnored private var order: [String] = []
+
+    private init() {
+        NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                for k in self.order where !self.inFlightKeys.contains(k) && !self.queuedKeys.contains(k) {
+                    self.entries.removeValue(forKey: k)
+                }
+                self.order.removeAll { !self.inFlightKeys.contains($0) && !self.queuedKeys.contains($0) }
+            }
+        }
+    }
     private struct Job {
         let key: String
         let api: AppAPI
@@ -230,7 +242,7 @@ nonisolated private enum SessionImageDecoder {
             if res.kind == .image, !res.image.isEmpty {
                 let raw = res.image
                 let decoded = await Task.detached(priority: .userInitiated) {
-                    SessionImageDecoder.decode(data: raw, maxPixelSize: 960)
+                    SessionImageDecoder.decode(data: raw, maxPixelSize: 768)
                 }.value
                 if let decoded {
                     store(job.key, .ready(Loaded(

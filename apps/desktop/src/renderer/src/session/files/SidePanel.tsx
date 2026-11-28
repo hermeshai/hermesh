@@ -5,9 +5,9 @@ import { FileIcon, Icon } from "../../icons";
 import { machineName } from "../../Sidebar";
 import { useStore } from "../../store";
 import { FilesHomeContext, FilesRunContext, sizeText, type FilesHome } from "./files";
-import { AttachmentBody, Card, fileError, Loading, PageBody, PdfBody, TextBody, VersionBar } from "./FileView";
+import { AttachmentBody, Card, fileError, Loading, PageBody, PdfBody, preloadCodeView, TextBody, VersionBar } from "./FileView";
 import { fileMenu } from "./open";
-import { activate, closeTab, openProject, refreshTree, setMax, setOpen, setPageTitle, setPreview, setTree, switchRun, usePanel, type Panel, type Tab } from "./panel";
+import { activate, closeTab, markOrRefreshTree, openProject, setMax, setOpen, setPageTitle, setPreview, setTree, switchRun, usePanel, type Panel, type Tab } from "./panel";
 import { usePanelWidth } from "./panelWidth";
 import { Tree } from "./Tree";
 
@@ -30,28 +30,34 @@ export function SidePanel({ home, running }: { home: FilesHome; running: boolean
   const { panel, width, resizing, style, grip } = usePanelWidth("hermesh.filePanelWidth", conversationRoom);
   const add = useRef<HTMLButtonElement>(null);
 
-  // The folder read again when a turn ends, and when the window comes back.
+  // The folder read again when a turn ends, and when the window comes back (deferred while hidden).
   useEffect(() => {
-    if (!running) refreshTree(p);
+    if (!running) markOrRefreshTree(p);
   }, [running]);
   useEffect(() => {
-    const back = () => refreshTree(p);
+    const back = () => markOrRefreshTree(p);
     window.addEventListener("focus", back);
     return () => window.removeEventListener("focus", back);
   }, [p]);
+  useEffect(() => {
+    if (p.open) preloadCodeView();
+  }, [p.open]);
 
-  if (!p.open) return null;
+  if (!p.open && p.tabs.length === 0) return null;
   // A new tab, of a kind: today only 项目文件; a terminal or a browser joins this menu.
   const newTab = async () => {
     const r = add.current?.getBoundingClientRect();
     const id = await window.hermesh?.popupMenu([{ id: "files", label: t("files.tree") }], r ? { x: Math.round(r.left), y: Math.round(r.bottom + 4) } : undefined);
     if (id === "files") openProject(p);
   };
+  const baseStyle = style(p.max);
   return (
     <aside
       ref={panel}
       className={`sfp ${p.max ? "max" : width !== null ? "sized" : ""} ${resizing ? "resizing" : ""}`}
-      style={style(p.max)}
+      style={p.open ? baseStyle : { ...baseStyle, display: "none" }}
+      hidden={!p.open}
+      aria-hidden={!p.open || undefined}
       aria-label={t("panel.title")}
       data-testid="side-panel"
     >
@@ -99,7 +105,7 @@ export function SidePanel({ home, running }: { home: FilesHome; running: boolean
           title={t("page.hidePanel")}
           aria-label={t("panel.title")}
           aria-pressed
-          data-testid="toolbar-panel-btn"
+          data-testid={p.open ? "toolbar-panel-btn" : undefined}
           onClick={() => setOpen(p, false)}
         >
           <Icon name="panelRight" />
@@ -193,12 +199,12 @@ function Bar({ home, p, tab }: { home: FilesHome; p: Panel; tab: Tab }) {
 function Body({ home, p, tab }: { home: FilesHome; p: Panel; tab: Tab }) {
   const onTitle = (title: string) => setPageTitle(p, tab, title);
   if (!tab.file.path) return <Tree p={p} activePath={null} wide />;
-  if (tab.kind === "attachment") return <AttachmentBody key={tab.key} file={tab.file} onTitle={onTitle} />;
-  if (tab.kind === "page") return <FileBody home={home} tab={tab} onTitle={onTitle} />;
+  if (tab.kind === "attachment") return <AttachmentBody key={tab.key} file={tab.file} open={p.open} onTitle={onTitle} />;
+  if (tab.kind === "page") return <FileBody home={home} tab={tab} open={p.open} onTitle={onTitle} />;
   return (
     <>
       <div className="sfp-main">
-        <FileBody home={home} tab={tab} onTitle={onTitle} />
+        <FileBody home={home} tab={tab} open={p.open} onTitle={onTitle} />
       </div>
       {tab.tree && <Tree p={p} activePath={tab.file.path} />}
     </>
@@ -206,13 +212,13 @@ function Body({ home, p, tab }: { home: FilesHome; p: Panel; tab: Tab }) {
 }
 
 /** The open file: its code, what it looks like (Markdown, SVG, a picture, a PDF, a page), or why it is not shown. */
-function FileBody({ home, tab, onTitle }: { home: FilesHome; tab: Tab; onTitle?: (title: string) => void }) {
+function FileBody({ home, tab, open, onTitle }: { home: FilesHome; tab: Tab; open: boolean; onTitle?: (title: string) => void }) {
   const st = useStore();
   if (!tab.read) return <Loading />;
   if ("error" in tab.read) return <Card name={tab.name} text={fileError(tab.read.error, machineName(st, home.machine))} />;
   const view = fileView(tab.file.path);
   if (view === "pdf") return <PdfBody key={tab.file.path} file={tab.file} name={tab.name} />;
-  if (view === "page") return <PageBody file={tab.file} onTitle={onTitle} />;
+  if (view === "page") return <PageBody file={tab.file} open={open} onTitle={onTitle} />;
   return (
     <div className="sfp-file" key={`${tab.file.run}\0${tab.file.path}\0${tab.target?.seq ?? 0}`}>
       <TextBody res={tab.read.res} file={tab.file} name={tab.name} line={tab.target?.line} endLine={tab.target?.endLine} source={!tab.preview} />

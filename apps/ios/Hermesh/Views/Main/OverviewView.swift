@@ -27,6 +27,11 @@ struct OverviewView: View {
     @State private var frontIndex = 0
     /// Moves when the card in front changes: the map shows where it is.
     @State private var spot = 0
+    @State private var onScreen = true
+
+    private var liveAwake: Bool {
+        onScreen && phase == .active && model.path.isEmpty && model.sheet == nil && !model.accountPresented && (!model.drawerOpen || model.menuBeside)
+    }
 
     var body: some View {
         let team = teamState(model.sessions, requests: 0)
@@ -94,7 +99,8 @@ struct OverviewView: View {
             stats.shown = stats.segment == .usage
             if stats.shown { await stats.load(model.api, now: Date()) }
         }
-        .onDisappear { stats.shown = false }
+        .onAppear { onScreen = true }
+        .onDisappear { onScreen = false; stats.shown = false }
         .refreshable { if stats.segment == .usage { await stats.load(model.api, now: Date()) } }
         .task(id: phase) {
             guard phase == .active, !model.isDemo else { return }
@@ -137,12 +143,12 @@ struct OverviewView: View {
             if model.isDemo { demo }
             if !list.isEmpty { NeedsDeck(needs: list, team: team, step: step, front: $front) }
             LinkMapView(map: map, lit: picked.map { map.touched(by: $0, sessions: team.waiting + team.failed + team.running + team.finished) },
-                        mine: about.nodes, mineLine: about.line, spot: spot, awake: phase == .active, picked: $picked)
+                        mine: about.nodes, mineLine: about.line, spot: spot, awake: liveAwake, picked: $picked)
                 .padding(.horizontal, 16)
             if let picked, let node = (map.senders + map.environments).first(where: { $0.id == picked }) {
                 through(node, team: team)
             } else {
-                RunningTiles(sessions: team.running)
+                RunningTiles(sessions: team.running, paused: !liveAwake)
                 finished(team)
                 if team.running.isEmpty && team.finished.isEmpty && team.waiting.isEmpty && team.failed.isEmpty && !model.machines.isEmpty { first }
             }
@@ -288,6 +294,7 @@ struct OverviewCard<Content: View>: View {
 struct RunningTiles: View {
     @Environment(AppModel.self) private var model
     let sessions: [Session]
+    var paused = false
 
     var body: some View {
         if !sessions.isEmpty {
@@ -307,18 +314,18 @@ struct RunningTiles: View {
     private func tile(_ s: Session, alone: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                AgentLogo(id: s.agent, size: 22)
+                AgentLogo(id: s.agent, size: 22, paused: paused)
                 Spacer()
                 if let start = s.turnStartedDate { Text(start, style: .timer).font(.footnote).foregroundStyle(.secondary).monospacedDigit() }
             }
-            ShimmerText(s.displayTitle, paused: false).font(.subheadline.weight(.semibold)).lineLimit(alone ? 1 : 2)
+            ShimmerText(s.displayTitle, paused: paused).font(.subheadline.weight(.semibold)).lineLimit(alone ? 1 : 2)
                 .multilineTextAlignment(.leading).padding(.top, 10)
             Text(model.senderLine(s)).font(.caption).foregroundStyle(.secondary).lineLimit(1).padding(.top, 3)
             if !s.progress.currentTool.isEmpty {
                 Text(s.progress.currentTool).font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(1).padding(.top, 6)
             }
             Spacer(minLength: 12)
-            ActivityBar()
+            ActivityBar(paused: paused)
         }
         .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 14)
         .frame(maxWidth: .infinity, minHeight: alone ? nil : 146, alignment: .topLeading)
@@ -332,6 +339,7 @@ struct RunningTiles: View {
 /// A bar that says something is at work: a run of it going across, moved by
 /// the render server (an offset, animated once).
 private struct ActivityBar: View {
+    var paused = false
     @Environment(\.accessibilityReduceMotion) private var still
     @State private var across = false
 
@@ -339,14 +347,25 @@ private struct ActivityBar: View {
         GeometryReader { geo in
             Capsule().fill(Color.live)
                 .frame(width: geo.size.width * 0.38)
-                .offset(x: still ? geo.size.width * 0.31 : across ? geo.size.width : -geo.size.width * 0.38)
+                .offset(x: (still || paused) ? geo.size.width * 0.31 : across ? geo.size.width : -geo.size.width * 0.38)
         }
         .frame(height: 3)
         .background(Color(.tertiarySystemFill), in: Capsule())
         .clipShape(Capsule())
         .onAppear {
-            guard !still else { return }
+            guard !still, !paused else { return }
             withAnimation(.easeInOut(duration: 1.7).repeatForever(autoreverses: false)) { across = true }
+        }
+        .onChange(of: paused) { _, isPaused in
+            guard !still else { return }
+            if isPaused {
+                var tx = Transaction()
+                tx.disablesAnimations = true
+                withTransaction(tx) { across = false }
+            } else {
+                across = false
+                withAnimation(.easeInOut(duration: 1.7).repeatForever(autoreverses: false)) { across = true }
+            }
         }
     }
 }

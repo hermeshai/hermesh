@@ -34,6 +34,17 @@ final class DiagramRenderer: NSObject, WKNavigationDelegate {
     private var order: [String] = []
     private var last: Task<Void, Never>?
 
+    override private init() {
+        super.init()
+        NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.kept.removeAll()
+                self?.order.removeAll()
+                self?.page = nil
+            }
+        }
+    }
+
     func cached(_ source: String, dark: Bool) -> Drawing? { kept["\(dark)\u{0}\(source)"] }
 
     func drawing(_ source: String, dark: Bool) async throws -> Drawing {
@@ -47,7 +58,7 @@ final class DiagramRenderer: NSObject, WKNavigationDelegate {
             let drawing = try await draw(source, dark: dark)
             kept[key] = drawing
             order.append(key)
-            if order.count > 30 { kept[order.removeFirst()] = nil }
+            if order.count > 16 { kept[order.removeFirst()] = nil }
             return drawing
         }
         last = Task { _ = try? await work.value }
@@ -112,7 +123,7 @@ final class DiagramRenderer: NSObject, WKNavigationDelegate {
 
     /// A PDF's first page as a picture: for the conversation no finer than the screen, and opened
     /// large (`zoom`) fine enough to pinch into; its longer side at most `pixels`.
-    static func picture(_ pdf: Data, zoom: CGFloat = 1, pixels: CGFloat = 2400) -> UIImage? {
+    static func picture(_ pdf: Data, zoom: CGFloat = 1, pixels: CGFloat = 1280) -> UIImage? {
         guard let page = PDFDocument(data: pdf)?.page(at: 0) else { return nil }
         let box = page.bounds(for: .mediaBox)
         guard box.width > 0, box.height > 0 else { return nil }

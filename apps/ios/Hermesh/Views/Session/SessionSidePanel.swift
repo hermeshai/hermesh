@@ -1,6 +1,7 @@
 import HermeshKit
 import HermeshProto
 import HermeshSessions
+import os
 import SwiftUI
 import UIKit
 import WebKit
@@ -19,30 +20,8 @@ struct SessionTree: View {
     var sizes = false
     let pick: (String) -> Void
 
-    private struct Row: Identifiable {
-        let path: String
-        let name: String
-        let dir: Bool
-        let size: UInt64
-        let depth: Int
-        var id: String { path }
-    }
-
-    private var rows: [Row] {
-        var out: [Row] = []
-        func walk(_ dir: String, _ depth: Int) {
-            guard case .success(let res)? = files.dirs[dir] else { return }
-            for e in res.entries {
-                let path = dir.isEmpty ? e.name : "\(dir)/\(e.name)"
-                out.append(Row(path: path, name: e.name, dir: e.dir, size: e.size, depth: depth))
-                if e.dir, files.expanded.contains(path) { walk(path, depth + 1) }
-            }
-        }
-        walk("", 0)
-        return out
-    }
-
     var body: some View {
+        let rows = files.treeRows
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -71,10 +50,9 @@ struct SessionTree: View {
         .accessibilityIdentifier("file-tree")
     }
 
-    private func row(_ r: Row) -> some View {
+    private func row(_ r: SessionTreeRow) -> some View {
         let on = r.path == activePath
-        let open = files.expanded.contains(r.path)
-        let appearance = fileAppearance(r.name, dir: r.dir)
+        let open = r.dir && files.expanded.contains(r.path)
         return Button {
             if r.dir { files.toggleDir(r.path) } else { pick(r.path) }
         } label: {
@@ -89,7 +67,7 @@ struct SessionTree: View {
                     .truncationMode(.middle)
                 Spacer(minLength: 6)
                 if sizes, !r.dir {
-                    Text(verbatim: sessionFileSizeText(r.size))
+                    Text(verbatim: r.sizeLabel)
                         .font(.caption.monospaced())
                         .foregroundStyle(.tertiary)
                 }
@@ -111,7 +89,7 @@ struct SessionTree: View {
             }
             .background(on ? Color.accentColor.opacity(0.13) : .clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .contentShape(.rect)
-            .opacity(appearance.dimmed && !on ? 0.68 : 1)
+            .opacity(r.dimmed && !on ? 0.68 : 1)
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(on ? .isSelected : [])
@@ -328,7 +306,7 @@ struct SessionSidePanel: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(String(localized: "New Tab"))
                     .accessibilityIdentifier("side-panel-new")
-                    Button { withAnimation(.snappy) { files.panelMax.toggle() } } label: {
+                    Button { files.panelMax.toggle() } label: {
                         Image(systemName: files.panelMax ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
                             .font(.subheadline.weight(.medium)).frame(width: 36, height: 36)
                     }
@@ -336,11 +314,9 @@ struct SessionSidePanel: View {
                     .accessibilityLabel(files.panelMax ? String(localized: "Shrink") : String(localized: "Enlarge"))
                     .accessibilityIdentifier("side-panel-max")
                     Button {
-                        withAnimation(.snappy) {
-                            files.panelOpen = false
-                            files.panelMax = false
-                            files.panelDrawer = false
-                        }
+                        files.panelOpen = false
+                        files.panelMax = false
+                        files.panelDrawer = false
                     } label: {
                         sidePanelHideImage().foregroundStyle(Color.accentColor).frame(width: 36, height: 36)
                     }
@@ -421,7 +397,13 @@ struct SessionSidePanel: View {
             }
             Text(verbatim: title(t)).font(.subheadline).lineLimit(1).truncationMode(.middle)
             if on {
-                Button { withAnimation(.snappy) { files.closeTab(t.id) } } label: {
+                Button {
+                    if files.tabs.count > 1 {
+                        withAnimation(.snappy(duration: 0.2)) { files.closeTab(t.id) }
+                    } else {
+                        files.closeTab(t.id)
+                    }
+                } label: {
                     Image(systemName: "xmark").font(.caption2.weight(.bold)).foregroundStyle(.secondary).frame(width: 22, height: 22)
                 }
                 .buttonStyle(.plain)
@@ -680,5 +662,454 @@ private struct AttachmentWeb: UIViewRepresentable {
 
     func updateUIView(_ web: WKWebView, context: Context) {
         context.coordinator.onTitle = onTitle
+    }
+}
+
+// MARK: Native UIKit trailing panel host (wide screens & iPhone Duo unfolded)
+
+enum WideTrailingPanelKind: Equatable {
+    case none
+    case files
+    case background
+}
+
+@MainActor private protocol WideSidePanelHitTarget: AnyObject {
+    func hits(_ point: CGPoint, with event: UIEvent?) -> Bool
+}
+
+private final class WidePanelPassthroughView: UIView {
+    weak var target: WideSidePanelHitTarget?
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        target?.hits(point, with: event) ?? false
+    }
+}
+
+/// Native UIKit container driving the session's trailing side panel (`SessionSidePanel` and `BackgroundTasksPanel`)
+/// via CoreAnimation RenderServer springs (`UIView.animate(springDuration:bounce:)`), keeping the `UIHostingController`
+/// warm across toggles and isolating the conversation `ScrollView` from per-frame width reflows.
+struct WideSidePanelHost<FilesContent: View, BackgroundContent: View>: UIViewControllerRepresentable {
+    let kind: WideTrailingPanelKind
+    let splitWidth: CGFloat
+    let isMax: Bool
+    let reduceMotion: Bool
+    let filesKey: ObjectIdentifier
+    let sideBars: Bool
+    let makeFiles: () -> FilesContent
+    let makeBackground: () -> BackgroundContent
+    let onSettled: (Bool) -> Void
+    let onCloseFiles: () -> Void
+    let onCloseBackground: () -> Void
+
+    func makeUIViewController(context: Context) -> WideSidePanelController<FilesContent, BackgroundContent> {
+        WideSidePanelController()
+    }
+
+    func updateUIViewController(_ c: WideSidePanelController<FilesContent, BackgroundContent>, context: Context) {
+        c.update(
+            kind: kind,
+            splitWidth: splitWidth,
+            isMax: isMax,
+            reduceMotion: reduceMotion,
+            filesKey: filesKey,
+            sideBars: sideBars,
+            makeFiles: makeFiles,
+            makeBackground: makeBackground,
+            onSettled: onSettled,
+            onCloseFiles: onCloseFiles,
+            onCloseBackground: onCloseBackground
+        )
+    }
+}
+
+final class WideSidePanelController<FilesContent: View, BackgroundContent: View>: UIViewController, UIGestureRecognizerDelegate, WideSidePanelHitTarget {
+    private let card = UIView()
+    private let clip = UIView()
+    private let divider = UIView()
+    private let grip = UIView()
+    private let pill = UIView()
+    private let edgePan = UIPanGestureRecognizer()
+    private let dismissTap = UITapGestureRecognizer()
+    private let dismissPan = UIPanGestureRecognizer()
+
+    private var filesHost: UIHostingController<FilesContent>?
+    private var bgHost: UIHostingController<BackgroundContent>?
+    private var filesKey: ObjectIdentifier?
+    private var sideBars = false
+
+    private var currentKind: WideTrailingPanelKind = .none
+    private var shownKind: WideTrailingPanelKind = .files
+    private var splitWidth: CGFloat = 360
+    private var isMax = false
+    private var reduceMotion = false
+    private var hasLaidOut = false
+    private var closingFromSwipe = false
+    private var isDraggingEdge = false
+    private var generation = 0
+
+    private var onSettled: (Bool) -> Void = { _ in }
+    private var onCloseFiles: () -> Void = {}
+    private var onCloseBackground: () -> Void = {}
+
+    private let signposter = OSSignposter(subsystem: "io.hermesh.ios", category: "side-panel")
+    private var moving: OSSignpostIntervalState?
+
+    override func loadView() {
+        let passthrough = WidePanelPassthroughView()
+        passthrough.backgroundColor = .clear
+        passthrough.target = self
+        view = passthrough
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        card.backgroundColor = .systemBackground
+        card.isHidden = true
+        card.accessibilityElementsHidden = true
+        card.layer.shadowColor = UIColor.black.cgColor
+        card.layer.shadowRadius = 14
+        card.layer.shadowOffset = CGSize(width: -5, height: 0)
+        card.layer.shadowOpacity = 0
+        view.addSubview(card)
+
+        clip.clipsToBounds = true
+        card.addSubview(clip)
+
+        divider.backgroundColor = .separator
+        card.addSubview(divider)
+
+        pill.backgroundColor = .quaternaryLabel
+        pill.layer.cornerRadius = 1.75
+        pill.layer.cornerCurve = .continuous
+        pill.isUserInteractionEnabled = false
+        grip.addSubview(pill)
+        grip.isAccessibilityElement = true
+        grip.accessibilityIdentifier = "side-panel-edge-grip"
+        card.addSubview(grip)
+
+        edgePan.addTarget(self, action: #selector(handleEdgePan(_:)))
+        edgePan.delegate = self
+        grip.addGestureRecognizer(edgePan)
+
+        dismissTap.addTarget(self, action: #selector(handleDismissTap))
+        dismissTap.cancelsTouchesInView = false
+        dismissTap.delaysTouchesBegan = false
+        dismissTap.delaysTouchesEnded = false
+        dismissTap.delegate = self
+        card.addGestureRecognizer(dismissTap)
+
+        dismissPan.addTarget(self, action: #selector(handleDismissPan(_:)))
+        dismissPan.cancelsTouchesInView = false
+        dismissPan.delaysTouchesBegan = false
+        dismissPan.delaysTouchesEnded = false
+        dismissPan.delegate = self
+        card.addGestureRecognizer(dismissPan)
+    }
+
+    func hits(_ point: CGPoint, with event: UIEvent?) -> Bool {
+        guard currentKind != .none, !card.isHidden else { return false }
+        return card.bounds.contains(card.convert(point, from: view))
+    }
+
+    private func targetWidth(in bounds: CGRect) -> CGFloat {
+        if shownKind == .files && isMax { return bounds.width }
+        return min(bounds.width, max(280, splitWidth))
+    }
+
+    private func layoutCard(width w: CGFloat, in b: CGRect) {
+        let h = b.height
+        let panelBounds = CGRect(x: 0, y: 0, width: w, height: h)
+        // Bounds + center (never frame) so active CGAffineTransform slides remain exact.
+        card.bounds = panelBounds
+        card.center = CGPoint(x: b.width - w / 2, y: b.midY)
+        card.layer.shadowPath = UIBezierPath(rect: panelBounds).cgPath
+        clip.frame = panelBounds
+        filesHost?.view.frame = panelBounds
+        bgHost?.view.frame = panelBounds
+        let hairline = 1 / max(traitCollection.displayScale, 1)
+        divider.frame = CGRect(x: 0, y: 0, width: hairline, height: h)
+        let fullBleed = shownKind == .files && isMax
+        divider.isHidden = fullBleed
+        grip.frame = CGRect(x: 0, y: 0, width: 18, height: h)
+        grip.isHidden = fullBleed || currentKind == .none
+        pill.frame = CGRect(x: (18 - 3.5) / 2, y: (h - 36) / 2, width: 3.5, height: 36)
+        card.bringSubviewToFront(divider)
+        card.bringSubviewToFront(grip)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let b = view.bounds
+        guard b.width > 0, b.height > 0 else { return }
+        if !hasLaidOut {
+            hasLaidOut = true
+            if currentKind != .none {
+                shownKind = currentKind
+                layoutCard(width: targetWidth(in: b), in: b)
+                card.transform = .identity
+                card.isHidden = false
+                card.accessibilityElementsHidden = false
+                card.layer.shadowOpacity = 0
+                DispatchQueue.main.async { [weak self] in self?.onSettled(true) }
+            } else {
+                card.isHidden = true
+                card.accessibilityElementsHidden = true
+            }
+            return
+        }
+        if !card.isHidden {
+            layoutCard(width: targetWidth(in: b), in: b)
+        }
+    }
+
+    func update(
+        kind: WideTrailingPanelKind,
+        splitWidth: CGFloat,
+        isMax: Bool,
+        reduceMotion: Bool,
+        filesKey: ObjectIdentifier,
+        sideBars: Bool,
+        makeFiles: () -> FilesContent,
+        makeBackground: () -> BackgroundContent,
+        onSettled: @escaping (Bool) -> Void,
+        onCloseFiles: @escaping () -> Void,
+        onCloseBackground: @escaping () -> Void
+    ) {
+        self.onSettled = onSettled
+        self.onCloseFiles = onCloseFiles
+        self.onCloseBackground = onCloseBackground
+        self.reduceMotion = reduceMotion
+
+        switch kind {
+        case .files:
+            if let host = filesHost {
+                if self.filesKey != filesKey || self.sideBars != sideBars {
+                    host.rootView = makeFiles()
+                    self.filesKey = filesKey
+                    self.sideBars = sideBars
+                }
+            } else {
+                let host = UIHostingController(rootView: makeFiles())
+                host.sizingOptions = []
+                host.view.backgroundColor = .systemBackground
+                addChild(host)
+                clip.addSubview(host.view)
+                host.didMove(toParent: self)
+                filesHost = host
+                self.filesKey = filesKey
+                self.sideBars = sideBars
+            }
+        case .background:
+            if let host = bgHost {
+                host.rootView = makeBackground()
+            } else {
+                let host = UIHostingController(rootView: makeBackground())
+                host.sizingOptions = []
+                host.view.backgroundColor = .clear
+                addChild(host)
+                clip.addSubview(host.view)
+                host.didMove(toParent: self)
+                bgHost = host
+            }
+        case .none:
+            break
+        }
+
+        let prevKind = currentKind
+        let prevMax = self.isMax
+        let prevSplit = self.splitWidth
+        currentKind = kind
+        self.isMax = isMax
+        self.splitWidth = splitWidth
+
+        if kind != .none {
+            shownKind = kind
+            filesHost?.view.isHidden = (kind != .files)
+            filesHost?.view.accessibilityElementsHidden = (kind != .files)
+            bgHost?.view.isHidden = (kind != .background)
+            bgHost?.view.accessibilityElementsHidden = (kind != .background)
+            grip.accessibilityIdentifier = (kind == .background) ? "bg-panel-edge-grip" : "side-panel-edge-grip"
+        }
+
+        let b = view.bounds
+        guard hasLaidOut, b.width > 0, b.height > 0 else { return }
+
+        if prevKind == .none && kind != .none {
+            hideKeyboard()
+            closingFromSwipe = false
+            isDraggingEdge = false
+            generation += 1
+            let gen = generation
+            let wasSlidingClosed = !card.isHidden
+            let w = targetWidth(in: b)
+            layoutCard(width: w, in: b)
+            card.layoutIfNeeded()
+            card.isHidden = false
+            card.accessibilityElementsHidden = false
+            if reduceMotion {
+                card.layer.removeAllAnimations()
+                card.transform = .identity
+                card.layer.shadowOpacity = 0
+                endSignpost()
+                DispatchQueue.main.async { [weak self] in self?.onSettled(true) }
+            } else {
+                beginSignpost()
+                if !wasSlidingClosed {
+                    card.transform = CGAffineTransform(translationX: w + 16, y: 0)
+                }
+                card.layer.shadowOpacity = 0.14
+                UIView.animate(springDuration: 0.26, bounce: 0, initialSpringVelocity: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+                    self.card.transform = .identity
+                } completion: { _ in
+                    guard self.generation == gen, self.currentKind != .none else { return }
+                    self.card.layer.shadowOpacity = 0
+                    self.endSignpost()
+                    self.onSettled(true)
+                }
+            }
+        } else if prevKind != .none && kind == .none {
+            isDraggingEdge = false
+            card.accessibilityElementsHidden = true
+            grip.isHidden = true
+            DispatchQueue.main.async { [weak self] in self?.onSettled(false) }
+            if closingFromSwipe {
+                closingFromSwipe = false
+            } else if reduceMotion {
+                generation += 1
+                finishClose()
+            } else {
+                generation += 1
+                let gen = generation
+                beginSignpost()
+                let distance = card.bounds.width + 16
+                card.layer.shadowOpacity = 0.14
+                UIView.animate(springDuration: 0.25, bounce: 0, initialSpringVelocity: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+                    self.card.transform = CGAffineTransform(translationX: distance, y: 0)
+                } completion: { _ in
+                    guard self.generation == gen, self.currentKind == .none else { return }
+                    self.finishClose()
+                }
+            }
+        } else if kind != .none {
+            let newW = targetWidth(in: b)
+            if prevMax != isMax && !reduceMotion && !isDraggingEdge {
+                UIView.animate(springDuration: 0.26, bounce: 0, initialSpringVelocity: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+                    self.layoutCard(width: newW, in: b)
+                    self.card.layoutIfNeeded()
+                }
+            } else if abs(newW - card.bounds.width) > 0.5 || prevKind != kind || abs(prevSplit - splitWidth) > 0.5 {
+                layoutCard(width: newW, in: b)
+            }
+        }
+    }
+
+    private func finishClose() {
+        card.layer.removeAllAnimations()
+        card.transform = .identity
+        card.layer.shadowOpacity = 0
+        card.isHidden = true
+        card.accessibilityElementsHidden = true
+        endSignpost()
+    }
+
+    private func beginSignpost() {
+        if moving == nil { moving = signposter.beginInterval("move") }
+    }
+
+    private func endSignpost() {
+        if let m = moving {
+            signposter.endInterval("move", m)
+            moving = nil
+        }
+    }
+
+    @objc private func handleDismissTap() {
+        hideKeyboard()
+    }
+
+    @objc private func handleDismissPan(_ pan: UIPanGestureRecognizer) {
+        if pan.state == .began { hideKeyboard() }
+    }
+
+    @objc private func handleEdgePan(_ pan: UIPanGestureRecognizer) {
+        guard currentKind != .none, !(shownKind == .files && isMax) else { return }
+        let dx = max(0, pan.translation(in: view).x)
+        let vx = pan.velocity(in: view).x
+        switch pan.state {
+        case .began:
+            isDraggingEdge = true
+            generation += 1
+            beginSignpost()
+            hideKeyboard()
+            card.layer.shadowOpacity = 0.14
+            onSettled(false)
+            card.transform = CGAffineTransform(translationX: dx, y: 0)
+        case .changed:
+            guard isDraggingEdge else { return }
+            card.transform = CGAffineTransform(translationX: dx, y: 0)
+        case .ended, .cancelled:
+            guard isDraggingEdge else { return }
+            isDraggingEdge = false
+            let projected = dx + vx * 0.18
+            if pan.state != .cancelled && (dx > 72 || projected > 140) {
+                let distance = card.bounds.width + 16
+                let remaining = max(1, distance - dx)
+                let v0 = min(18, max(0, vx / remaining))
+                let closedKind = currentKind
+                closingFromSwipe = true
+                card.accessibilityElementsHidden = true
+                grip.isHidden = true
+                generation += 1
+                let gen = generation
+                if closedKind == .files { onCloseFiles() } else { onCloseBackground() }
+                if reduceMotion {
+                    finishClose()
+                } else {
+                    UIView.animate(springDuration: 0.24, bounce: 0, initialSpringVelocity: v0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+                        self.card.transform = CGAffineTransform(translationX: distance, y: 0)
+                    } completion: { _ in
+                        guard self.generation == gen, self.currentKind == .none else { return }
+                        self.finishClose()
+                    }
+                }
+            } else {
+                generation += 1
+                let gen = generation
+                UIView.animate(springDuration: 0.24, bounce: 0, initialSpringVelocity: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+                    self.card.transform = .identity
+                } completion: { _ in
+                    guard self.generation == gen, self.currentKind != .none else { return }
+                    self.card.layer.shadowOpacity = 0
+                    self.endSignpost()
+                    self.onSettled(true)
+                }
+            }
+        default:
+            break
+        }
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer === edgePan {
+            guard currentKind != .none, !(shownKind == .files && isMax) else { return false }
+            let v = edgePan.velocity(in: view)
+            return abs(v.x) > abs(v.y) && v.x >= 0
+        }
+        return true
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        gestureRecognizer === dismissTap || gestureRecognizer === dismissPan
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        if gestureRecognizer === dismissTap || gestureRecognizer === dismissPan {
+            var v: UIView? = touch.view
+            while let cur = v, cur !== card {
+                if cur is UITextField || cur is UITextView || cur is WKWebView { return false }
+                v = cur.superview
+            }
+        }
+        return true
     }
 }

@@ -283,3 +283,60 @@ func TestResolveFilesKeptForFinishedTurn(t *testing.T) {
 		t.Fatalf("expected local kept ReadFile answer for settled turn while machine online, got %+v, err=%v", cachedRead, err)
 	}
 }
+
+func TestKeepFilesIncrementalCapAndForget(t *testing.T) {
+	prevMax := sessionFilesKeptMax
+	sessionFilesKeptMax = 400
+	t.Cleanup(func() { sessionFilesKeptMax = prevMax })
+
+	d, err := Open(Config{DataDir: t.TempDir(), NoLocalMachine: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	o := d.owner()
+
+	checkTotal := func(step string) {
+		t.Helper()
+		var dbTotal int64
+		if err := o.st.db.QueryRow(`SELECT COALESCE(SUM(size), 0) FROM session_files_kept`).Scan(&dbTotal); err != nil {
+			t.Fatalf("%s: query sum: %v", step, err)
+		}
+		if o.filesKeptTotal != dbTotal {
+			t.Fatalf("%s: filesKeptTotal=%d, want db sum=%d", step, o.filesKeptTotal, dbTotal)
+		}
+		if dbTotal > sessionFilesKeptMax {
+			t.Fatalf("%s: db sum=%d exceeds cap=%d", step, dbTotal, sessionFilesKeptMax)
+		}
+	}
+
+	msg := func(n int) *sessionv1.ReadFileResponse {
+		return &sessionv1.ReadFileResponse{Text: string(make([]byte, n))}
+	}
+
+	o.keepFiles("k1", "s1", msg(80))
+	time.Sleep(2 * time.Millisecond)
+	o.keepFiles("k2", "s1", msg(80))
+	time.Sleep(2 * time.Millisecond)
+	o.keepFiles("k1", "s1", msg(90)) // overwrite k1 -> k2 becomes oldest
+	checkTotal("after overwrite")
+
+	time.Sleep(2 * time.Millisecond)
+	o.keepFiles("k3", "s2", msg(90))
+	time.Sleep(2 * time.Millisecond)
+	o.keepFiles("k4", "s2", msg(90))
+	time.Sleep(2 * time.Millisecond)
+	o.keepFiles("k5", "s2", msg(90)) // exceeds 400 -> evicts oldest (k2)
+	checkTotal("after eviction")
+
+	var out sessionv1.ReadFileResponse
+	if o.keptFiles("k2", &out) {
+		t.Fatal("expected oldest entry k2 to be evicted")
+	}
+	if !o.keptFiles("k1", &out) {
+		t.Fatal("expected updated entry k1 to remain kept")
+	}
+
+	o.forgetFiles("s2")
+	checkTotal("after forgetFiles")
+}

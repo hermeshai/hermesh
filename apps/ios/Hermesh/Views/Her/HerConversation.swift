@@ -257,7 +257,7 @@ private struct HerRows: View, Equatable {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        LazyVStack(alignment: .leading, spacing: 0) {
             // Earlier messages (her opens it on its last 100), read once this shows at the top, as on the Mac.
             if earlier {
                 ProgressView().frame(maxWidth: .infinity).padding(.bottom, 21)
@@ -526,9 +526,23 @@ struct HerBubble: View {
     var quote: HerQuote?
     @State private var lightbox: SessionLightboxPresentation?
 
+    private static let bubbleImageCache: NSCache<NSString, UIImage> = {
+        let c = NSCache<NSString, UIImage>()
+        c.countLimit = 48
+        return c
+    }()
+
+    private static func decodedBubbleImage(_ b64: String) -> UIImage? {
+        let key = "\(b64.count):\(b64.prefix(48)):\(b64.suffix(48))" as NSString
+        if let hit = bubbleImageCache.object(forKey: key) { return hit }
+        guard let data = Data(base64Encoded: b64), let img = UIImage(data: data) else { return nil }
+        bubbleImageCache.setObject(img, forKey: key)
+        return img
+    }
+
     var body: some View {
         // The owner's own pictures: large in the app's one picture viewer, stepping together, with no menu.
-        let pictures = images.compactMap { Data(base64Encoded: $0.data).flatMap(UIImage.init(data:)) }
+        let pictures = images.compactMap { Self.decodedBubbleImage($0.data) }
         VStack(alignment: .trailing, spacing: 6) {
             if !images.isEmpty || !files.isEmpty {
                 HerWrap(spacing: 6) {
