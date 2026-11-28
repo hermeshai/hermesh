@@ -24,7 +24,8 @@ final class DuoUITests: XCTestCase {
         XCTAssertTrue(app.buttons["try-demo"].waitForExistence(timeout: 20))
         shot("onboarding")
         tap("try-demo")
-        tap("menu"); tap("overview-place")
+        if !app.buttons["overview-place"].isHittable { tap("menu") }
+        tap("overview-place")
         XCTAssertTrue(app.buttons["run-demo-task"].waitForExistence(timeout: 20))
         sleep(2)
         walk("")
@@ -140,15 +141,22 @@ final class DuoUITests: XCTestCase {
         sleep(1)
         shot("search" + suffix)
         closeSearch()
-        openMenu()
+        if !app.buttons["her-place"].isHittable { openMenu() }
         tap("her-place")
         sleep(1)
         shot("her" + suffix)
-        openMenu()
+        if !app.buttons["overview-place"].isHittable { openMenu() }
         app.buttons["overview-place"].firstMatch.tap()
-        tap("new")
-        sleep(1)
-        shot("new" + suffix)
+        if app.buttons["new"].exists {
+            tap("new")
+            sleep(1)
+            shot("new" + suffix)
+        } else {
+            openMenu()
+            tap("account")
+            sleep(1)
+            shot("new" + suffix)
+        }
         app.buttons["添加环境…"].firstMatch.tap()
         sleep(2)
         shot("add-machine" + suffix)
@@ -224,27 +232,43 @@ final class DuoUITests: XCTestCase {
         let button = menu.frame
         let onTheSide = button.midX > frame.midX // in the bar on the trailing side, not at the top's leading end
         if onTheSide {
-            XCTAssertGreaterThan(button.midY, frame.midY, "menu button in the bottom-right thumb capsule")
+            XCTAssertLessThan(button.midY, frame.midY, "menu button at the top of the vertical bar")
             XCTAssertFalse(app.buttons["account"].exists, "account is shown only while the sidebar is open")
+            XCTAssertFalse(app.buttons["new-session-place"].exists, "no create button in the page's feature UITabBar")
+            XCTAssertFalse(app.buttons["new"].exists, "no + button on pages when sidebar is closed on Duo")
+            if !app.descendants(matching: .any)["sessions-hub"].exists {
+                XCTAssertFalse(app.buttons["search"].exists && app.buttons["view-options"].exists,
+                               "sidebar search and sort buttons hidden while sidebar is closed outside Sessions Hub")
+            }
+            for id in ["conversations-place", "sessions-place", "her-place", "overview-place"] {
+                let tab = app.buttons[id]
+                XCTAssertTrue(tab.isHittable, "\(id) in the vertical UITabBar thumb zone")
+                XCTAssertGreaterThan(tab.frame.midY, frame.midY, "\(id) in the bottom thumb zone")
+            }
         }
         menu.tap()
         sleep(1)
         let close = app.buttons["menu-close"]
         if onTheSide {
-            XCTAssertTrue(close.isHittable, "the menu's own Close, in the bar on the side")
+            XCTAssertTrue(close.isHittable, "the menu's own Collapse button, in the bar on the side")
             XCTAssertEqual(close.frame.midX, button.midX, accuracy: 4, "in the vertical bar's column")
-            XCTAssertLessThan(close.frame.midY, frame.midY, "Close at the top of the vertical bar")
+            XCTAssertEqual(close.frame.midY, button.midY, accuracy: 4, "where the menu button was")
             XCTAssertFalse(menu.isHittable, "the page gone from view")
-            // Search and View Options sit under Close; New, Her, Overview and the account menu sit in the thumb zone at the bottom.
-            let options = app.buttons["view-options"]
-            XCTAssertTrue(options.isHittable, "the view menu, in the bar on the side")
-            XCTAssertEqual(options.frame.midX, close.frame.midX, accuracy: 4, "in the bar's column")
-            XCTAssertGreaterThan(options.frame.minY, app.buttons["search"].frame.maxY - 1, "under Search")
-            for id in ["new-session-place", "her-place", "overview-place", "account"] {
+            XCTAssertFalse(app.buttons["session-more"].exists, "session ⋯ must not bleed into vertical bar while sidebar is open")
+            for id in ["conversations-place", "sessions-place", "her-place", "overview-place"] {
+                XCTAssertFalse(app.buttons[id].isHittable, "page UITabBar (\(id)) hidden while sidebar is open")
+            }
+            for id in ["search", "view-options"] {
+                let topItem = app.buttons[id]
+                XCTAssertTrue(topItem.isHittable, "\(id) in the sidebar's top vertical bar")
+                XCTAssertEqual(topItem.frame.midX, close.frame.midX, accuracy: 8, "\(id) in the vertical bar's column")
+                XCTAssertLessThan(topItem.frame.midY, frame.midY, "\(id) in the top half of the vertical bar")
+            }
+            // Only Account and + New Session sit in the sidebar's bottom-right thumb zone.
+            for id in ["account", "new-session-place"] {
                 let item = app.buttons[id]
-                XCTAssertTrue(item.isHittable, "\(id) in the vertical bar's thumb zone")
-                XCTAssertEqual(item.frame.midX, close.frame.midX, accuracy: 4, "\(id) aligned in the vertical bar")
-                XCTAssertGreaterThan(item.frame.minY, options.frame.maxY, "\(id) below the top tools")
+                XCTAssertTrue(item.isHittable, "\(id) in the sidebar's bottom-right thumb zone")
+                XCTAssertGreaterThan(item.frame.midY, frame.midY, "\(id) in the bottom thumb zone")
             }
         } else {
             XCTAssertFalse(close.exists)

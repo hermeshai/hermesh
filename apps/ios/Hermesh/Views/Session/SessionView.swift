@@ -936,6 +936,7 @@ extension View {
 
 private struct SessionBarTop: ViewModifier {
     @Environment(\.barsOnTheSide) private var sideBars
+    @Environment(\.menuCoversPage) private var menuCoversPage
     let session: Session?
     @Binding var renaming: Bool
     @Binding var deleting: Bool
@@ -943,6 +944,7 @@ private struct SessionBarTop: ViewModifier {
     let starting: SessionBar.Starting?
 
     func body(content: Content) -> some View {
+        let ownsVerticalBar = sideBars && !menuCoversPage
         content
             // The soft edge, asked for by name: what scrolls under the bar blurs and dims away with no line. Left to
             // choose, iOS 27 draws a bar of its own the hard one (a band with a line under it); iOS 26 the soft.
@@ -950,10 +952,10 @@ private struct SessionBarTop: ViewModifier {
             .safeAreaBar(edge: .top) {
                 SessionBar(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks, starting: starting)
             }
-            .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
+            .toolbar(ownsVerticalBar ? .visible : .hidden, for: .navigationBar)
             .background { if !sideBars { SwipesBack() } }
             .toolbar {
-                if sideBars { SessionSideItems(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks) }
+                if ownsVerticalBar { SessionSideItems(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks) }
             }
     }
 }

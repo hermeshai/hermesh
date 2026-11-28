@@ -1,6 +1,7 @@
 import HermeshHer
 import HermeshSessions
 import SwiftUI
+import UIKit
 
 /// The side menu (docs/her-team.md §16), as the Mac's sidebar: search at the top, Her and the overview, then
 /// every session as the view lays them out (grouped, each group collapsible, the view menu by the heading), and
@@ -11,93 +12,136 @@ struct DrawerView: View {
     /// The size of the menu's buttons: the system's toolbar buttons, and the smallest target the HIG asks for.
     private let button: CGFloat = 44
 
-    /// Where the system stands the bars on the side (iPhone Duo closed), the menu takes the page's place and the
-    /// bar is the menu's: Close, Search and View Options at its top; New, Her, Overview and the account menu in the
-    /// thumb zone at its bottom.
+    /// Where the system stands the bars on the side and the menu covers the page (iPhone Duo closed), the vertical
+    /// bar is exclusively the sidebar's while open (and completely hidden while closed so nothing bleeds onto root
+    /// pages): Collapse (`sidebarMenuUIImage`), Search and View Options at its top, and only `Account` + `+` New
+    /// Session as two separate Liquid Glass circles at its bottom.
     @Environment(\.barsOnTheSide) private var sideBars
 
+    private var menuOwnsBar: Bool { sideBars && !model.menuBeside }
+
     var body: some View {
-        if sideBars {
+        if menuOwnsBar {
             NavigationStack {
-                menu.toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Close the menu", systemImage: "xmark") { model.drawerOpen = false }
-                            .accessibilityIdentifier("menu-close")
+                menu
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar(model.drawerOpen ? .visible : .hidden, for: .navigationBar, .bottomBar)
+                    .toolbar {
+                        if model.drawerOpen {
+                            duoToolbar
+                        }
                     }
-                    if #available(iOS 27.1, *) {
-                        ToolbarItemGroup(placement: .topBarTrailing) {
-                            Button("Search", systemImage: "magnifyingglass") { model.sheet = .search }
-                                .accessibilityIdentifier("search")
-                            ViewMenu(inBar: true)
-                        }
-                        .axisBehavior(.verticalPreferred)
-                        ToolbarItemGroup(placement: .bottomBar) {
-                            DuoNewButton()
-                            DuoHerButton()
-                            DuoOverviewButton()
-                        }
-                        .axisBehavior(.verticalPreferred)
-                        ToolbarSpacer(.fixed, placement: .bottomBar)
-                        ToolbarItem(placement: .bottomBar) {
-                            AccountMenuButton(inBar: true)
-                        }
-                        .axisBehavior(.verticalPreferred)
-                    } else {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Search", systemImage: "magnifyingglass") { model.sheet = .search }
-                                .accessibilityIdentifier("search")
-                        }
-                        ToolbarItem(placement: .topBarTrailing) { ViewMenu(inBar: true) }
-                    }
-                }
             }
         } else {
             menu
         }
     }
 
-    private var menu: some View {
-        let placesInBar = sideBars || model.verticalBars
-        return ZStack(alignment: .bottomLeading) {
-            VStack(spacing: 0) {
-                // The top stays: search and the menu's own button whatever the list's length.
-                top
-                List {
-                    if !placesInBar {
-                        newSessionPlace.plainRow()
-                        herPlace.plainRow()
-                        overviewPlace.plainRow()
-                    }
-                    if !sideBars {
-                        sessionsHeading.plainRow()
-                    }
-                    MenuSessions()
-                    if !sideBars {
-                        Color.clear.frame(height: 90).plainRow() // room under the account's button
-                    }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .environment(\.defaultMinListRowHeight, 0)
-                .scrollIndicators(.hidden)
-                .scrollDismissesKeyboard(.immediately)
-                .onScrollPhaseChange { _, phase in if phase == .interacting { hideKeyboard() } }
+    @ToolbarContentBuilder private var duoToolbar: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button {
+                model.drawerOpen = false
+            } label: {
+                Image(uiImage: sidebarMenuUIImage)
             }
-            if !sideBars {
-                bottomBar
+            .accessibilityLabel("Close the menu")
+            .accessibilityIdentifier("menu-close")
+        }
+        if #available(iOS 27.1, *) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button("Search", systemImage: "magnifyingglass") { model.sheet = .search }
+                    .accessibilityIdentifier("search")
+                ViewMenu(inBar: true)
+            }
+            .axisBehavior(.verticalPreferred)
+            ToolbarItem(placement: .bottomBar) { AccountMenuButton(inBar: true) }
+                .axisBehavior(.verticalPreferred)
+            ToolbarSpacer(.fixed, placement: .bottomBar)
+            ToolbarItem(placement: .bottomBar) { duoNewBarButton }
+                .axisBehavior(.verticalPreferred)
+        } else {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Search", systemImage: "magnifyingglass") { model.sheet = .search }
+                    .accessibilityIdentifier("search")
+            }
+            ToolbarItem(placement: .topBarTrailing) { ViewMenu(inBar: true) }
+            ToolbarItem(placement: .bottomBar) { AccountMenuButton(inBar: true) }
+            ToolbarSpacer(.fixed, placement: .bottomBar)
+            ToolbarItem(placement: .bottomBar) { duoNewBarButton }
+        }
+    }
+
+    private var duoNewBarButton: some View {
+        let current: Bool = if case .newSession = model.root { model.path.isEmpty } else { false }
+        return Button {
+            model.open(.newSession("", ""))
+        } label: {
+            Image(systemName: "plus")
+        }
+        .accessibilityLabel("New")
+        .accessibilityAddTraits(current ? .isSelected : [])
+        .accessibilityIdentifier("new-session-place")
+    }
+
+    @ViewBuilder private var menu: some View {
+        if model.menuBeside {
+            sessionList
+                .scrollEdgeEffectStyle(.soft, for: .top)
+                .safeAreaBar(edge: .top) { top }
+                .scrollEdgeEffectStyle(.soft, for: .bottom)
+                .safeAreaBar(edge: .bottom) { unfoldedBottomBar }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.menuBackground))
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("drawer")
+        } else {
+            ZStack(alignment: .bottomLeading) {
+                VStack(spacing: 0) {
+                    // The top stays: search and the menu's own button whatever the list's length.
+                    top
+                    sessionList
+                }
+                if !menuOwnsBar {
+                    AccountMenuButton()
+                        .padding(.leading, 16).padding(.bottom, 8)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.menuBackground))
+            .ignoresSafeArea(edges: menuOwnsBar ? .top : [])
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("drawer")
+        }
+    }
+
+    private var sessionList: some View {
+        List {
+            if !menuOwnsBar {
+                if !model.menuBeside {
+                    newSessionPlace.plainRow()
+                }
+                herPlace.plainRow()
+                overviewPlace.plainRow()
+                sessionsHeading.plainRow()
+            }
+            MenuSessions()
+            if !menuOwnsBar && !model.menuBeside {
+                Color.clear.frame(height: 90).plainRow() // room under the floating account button
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.menuBackground))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("drawer")
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .environment(\.defaultMinListRowHeight, 0)
+        .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.immediately)
+        .onScrollPhaseChange { _, phase in if phase == .interacting { hideKeyboard() } }
     }
 
     private var top: some View {
         HStack {
             Wordmark()
             Spacer()
-            if !sideBars {
+            if !menuOwnsBar {
                 Button {
                     model.sheet = .search
                 } label: {
@@ -112,7 +156,7 @@ struct DrawerView: View {
             }
         }
         .frame(minHeight: button)
-        .padding(.leading, 24).padding(.trailing, 16).padding(.top, 8).padding(.bottom, 14)
+        .padding(.leading, 24).padding(.trailing, 16).padding(.top, menuOwnsBar ? 24 : 8).padding(.bottom, 14)
     }
 
     /// New Session, over Her (docs/thread-composer.md §4.6): the composer, on the machine and project used last.
@@ -121,7 +165,7 @@ struct DrawerView: View {
             model.open(.newSession("", ""))
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: "square.and.pencil").frame(width: 28)
+                Image(systemName: "plus").frame(width: 28)
                 Text("New")
                 Spacer(minLength: 0)
             }
@@ -141,9 +185,7 @@ struct DrawerView: View {
             model.open(.her)
         } label: {
             HStack(spacing: 12) {
-                // The Mac's 16-point icon at 22 points, its 1.25 line grown alike, beside the symbols.
-                HerRobot().stroke(style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
-                    .frame(width: 22, height: 22).frame(width: 28)
+                Image(uiImage: herCatUIImage).frame(width: 28)
                 Text("Her")
                 Spacer(minLength: 0)
                 if off {
@@ -169,7 +211,7 @@ struct DrawerView: View {
             model.open(.overview)
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: "square.grid.2x2").frame(width: 28)
+                Image(systemName: overviewSymbol).frame(width: 28)
                 Text("Overview")
                 Spacer(minLength: 0)
                 if waits {
@@ -185,25 +227,45 @@ struct DrawerView: View {
         .accessibilityIdentifier("overview-place")
     }
 
-    /// "Sessions", and the view menu at its end (in the bar, where the system stands it on the side).
+    /// "Sessions", and the view menu at its end (in the vertical bar instead on iPhone Duo closed).
     private var sessionsHeading: some View {
         HStack {
             Text("Sessions").font(.footnote).foregroundStyle(.secondary)
             Spacer()
-            if !sideBars { ViewMenu().frame(width: button, height: button) }
+            ViewMenu().frame(width: button, height: button)
         }
         .frame(minHeight: button)
         .padding(.leading, 26).padding(.trailing, 14)
     }
 
-    private var bottomBar: some View {
-        AccountMenuButton()
-            .padding(.leading, 16).padding(.bottom, 8)
+    private var unfoldedBottomBar: some View {
+        let isNew: Bool = if case .newSession = model.root { model.path.isEmpty } else { false }
+        return HStack {
+            AccountMenuButton()
+            Spacer()
+            Button {
+                model.open(.newSession("", ""))
+            } label: {
+                Image(systemName: "plus")
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(isNew ? Color.accentColor : .primary)
+                    .frame(width: 44, height: 44)
+                    .padding(4)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("New")
+            .accessibilityAddTraits(isNew ? .isSelected : [])
+            .accessibilityIdentifier("new-session-place")
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
     }
 }
 
-/// The account menu at the sidebar's foot (or in iPhone Duo's bottom-right vertical bar, shown only while the sidebar
-/// is open): places to switch to from the bottom of a long list, pairing actions as on the Mac, and Settings.
+/// The account menu at the sidebar's foot (or in iPhone Duo's vertical bar while the sidebar is open): pairing actions
+/// as on the Mac, and Settings.
 struct AccountMenuButton: View {
     @Environment(AppModel.self) private var model
     var id = "account"
@@ -222,36 +284,10 @@ struct AccountMenuButton: View {
     }
 
     private var menu: some View {
-        let unread = herUnread(model.machines)
-        let off = herEnvironments(model.machines).isEmpty
-        let team = teamState(model.sessions, requests: model.pairings.count)
-        let waits = team.waiting.count + team.requests
         let account = model.status.hosted && !model.status.account.isEmpty
         let who = account ? model.status.account : model.status.hosted ? String(localized: "Hermesh service") : String(localized: "Your own server")
         let state = model.status.relayConnected ? String(localized: "Connected") : String(localized: "Not connected")
         return Menu {
-            Section {
-                Button { model.open(.newSession("", "")) } label: {
-                    Label("New Session", systemImage: "square.and.pencil")
-                }
-                .accessibilityIdentifier("account-menu-new")
-                Button { model.open(.her) } label: {
-                    Text("Her")
-                    if off {
-                        Text("Not on")
-                    } else if unread > 0 {
-                        Text("\(unread) unread")
-                    }
-                    Image(systemName: "sparkles")
-                }
-                .accessibilityIdentifier("account-menu-her")
-                Button { model.open(.overview) } label: {
-                    Text("Overview")
-                    if waits > 0 { Text("\(waits) need you") }
-                    Image(systemName: "square.grid.2x2")
-                }
-                .accessibilityIdentifier("account-menu-overview")
-            }
             Section {
                 NewMenuItems()
             }
@@ -265,7 +301,7 @@ struct AccountMenuButton: View {
             }
         } label: {
             if inBar {
-                AccountPicture(status: model.status).frame(width: 32, height: 32)
+                AccountPicture(status: model.status).frame(width: 30, height: 30)
             } else {
                 AccountPicture(status: model.status).frame(width: 44, height: 44)
                     .padding(4)
@@ -276,82 +312,13 @@ struct AccountMenuButton: View {
     }
 }
 
-/// New Session in iPhone Duo's bottom-right vertical bar capsule.
-struct DuoNewButton: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        let current: Bool = if case .newSession = model.root { model.path.isEmpty } else { false }
-        Button {
-            model.open(.newSession("", ""))
-        } label: {
-            Image(systemName: "square.and.pencil")
-                .foregroundStyle(current ? Color.accentColor : .primary)
-        }
-        .accessibilityLabel("New")
-        .accessibilityAddTraits(current ? .isSelected : [])
-        .accessibilityIdentifier("new-session-place")
-    }
-}
-
-/// Her in iPhone Duo's bottom-right vertical bar capsule, with her unread or off mark.
-struct DuoHerButton: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        let unread = herUnread(model.machines)
-        let off = herEnvironments(model.machines).isEmpty
-        let current = model.root == .her && model.path.isEmpty
-        Button {
-            model.open(.her)
-        } label: {
-            HerRobot()
-                .stroke(current ? Color.accentColor : .primary, style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
-                .frame(width: 20, height: 20)
-                .overlay(alignment: .topTrailing) {
-                    if off {
-                        Circle().strokeBorder(.tertiary, lineWidth: 1.5).frame(width: 8, height: 8).offset(x: 5, y: -4)
-                    } else if unread > 0 {
-                        Circle().fill(Color.accentColor).frame(width: 8, height: 8).offset(x: 5, y: -4)
-                    }
-                }
-        }
-        .accessibilityLabel(off ? Text("Her, not on") : unread > 0 ? Text("Her, \(unread) unread") : Text("Her"))
-        .accessibilityAddTraits(current ? .isSelected : [])
-        .accessibilityIdentifier("her-place")
-    }
-}
-
-/// Overview in iPhone Duo's bottom-right vertical bar capsule, with an orange dot when something waits on the owner.
-struct DuoOverviewButton: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        let team = teamState(model.sessions, requests: model.pairings.count)
-        let waits = !team.waiting.isEmpty || team.requests > 0
-        let current = model.root == .overview && model.path.isEmpty
-        Button {
-            model.open(.overview)
-        } label: {
-            Image(systemName: "square.grid.2x2")
-                .foregroundStyle(current ? Color.accentColor : .primary)
-                .overlay(alignment: .topTrailing) {
-                    if waits {
-                        Circle().fill(.orange).frame(width: 8, height: 8).offset(x: 5, y: -4)
-                    }
-                }
-        }
-        .accessibilityLabel(Text([String(localized: "Overview"), waits ? String(localized: "\(team.waiting.count + team.requests) need you") : "", team.running.isEmpty ? "" : String(localized: "\(team.running.count) working")].filter { !$0.isEmpty }.joined(separator: ", ")))
-        .accessibilityAddTraits(current ? .isSelected : [])
-        .accessibilityIdentifier("overview-place")
-    }
-}
-
 /// Every session, as the view lays them out (docs/her-team.md §16): by status, In Progress stays while nothing
 /// runs, saying so; with no session at all, what will show here. Older ones load as the end comes into view;
-/// archived ones on request.
-private struct MenuSessions: View {
+/// archived ones on request. Shared by `DrawerView` and iPhone Duo's standalone `SessionsHubView`.
+struct MenuSessions: View {
     @Environment(AppModel.self) private var model
+    var machineFilter: String? = nil
+    var metadataOverride: Bool? = nil
     @State private var expandedGroup: SessionGrouping?
     @State private var expandedLimits: [String: Int] = [:]
     @State private var expandedTrees: Set<String> = []
@@ -365,9 +332,11 @@ private struct MenuSessions: View {
     }
 
     var body: some View {
+        let baseSessions = machineFilter.map { id in model.sessions.filter { $0.machineID == id } } ?? model.sessions
         let machines = model.machines.sorted { $0.machineName.localizedStandardCompare($1.machineName) == .orderedAscending }.map(\.machineID)
-        let sections = sessionSections(model.sessions, view: model.listView, archived: model.showArchived, now: model.now, machines: machines, alwaysActive: true, pinnedOrder: model.pinnedOrder, activeOrder: model.activeOrder)
-        let allTrees = herChildren(model.showArchived ? model.sessions : model.sessions.filter { $0.status != .archived })
+        let filteredMachines = machineFilter.map { [$0] } ?? machines
+        let sections = sessionSections(baseSessions, view: model.listView, archived: model.showArchived, now: model.now, machines: filteredMachines, alwaysActive: true, pinnedOrder: model.pinnedOrder, activeOrder: model.activeOrder)
+        let allTrees = herChildren(model.showArchived ? baseSessions : baseSessions.filter { $0.status != .archived })
         let trees = model.listView.nest ? allTrees : [:]
         let limits = expandedGroup == model.listView.group ? expandedLimits : [:]
         let rendered = sections.map { section in
@@ -567,9 +536,9 @@ private struct MenuSessions: View {
     @ViewBuilder private func rowView(_ r: SectionRow) -> some View {
         switch r {
         case .session(let s, let twistShut, let mark):
-            SessionListRow(session: s, twistShut: twistShut, collapsedMark: mark, onTwist: twistShut != nil ? { toggleTree(s.sessionID) } : nil)
+            SessionListRow(session: s, twistShut: twistShut, collapsedMark: mark, metadataOverride: metadataOverride, onTwist: twistShut != nil ? { toggleTree(s.sessionID) } : nil)
         case .child(let k, let first, let last):
-            SessionListRow(session: k, isChild: true, childFirst: first, childLast: last)
+            SessionListRow(session: k, isChild: true, childFirst: first, childLast: last, metadataOverride: metadataOverride)
                 .moveDisabled(true)
         case .moreKids(let parentID, let hiddenCount):
             Button {
@@ -650,18 +619,89 @@ struct RowStyle: ButtonStyle {
     }
 }
 
-/// The Mac's Her icon (icons.tsx `her`): a robot's head with its antenna,
-/// ears and eyes, drawn on the same 16-point grid.
-nonisolated struct HerRobot: Shape {
-    func path(in rect: CGRect) -> Path {
-        let k = min(rect.width, rect.height) / 16
-        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * k, y: rect.minY + y * k) }
-        var path = Path()
-        path.addRoundedRect(in: CGRect(origin: p(2.9, 4.6), size: CGSize(width: 10.2 * k, height: 8.2 * k)), cornerSize: CGSize(width: 2.3 * k, height: 2.3 * k))
-        for (x, y0, y1) in [(8, 2, 4.6), (1.3, 7.9, 9.6), (14.7, 7.9, 9.6), (6.1, 7.8, 9.5), (9.9, 7.8, 9.5)] as [(CGFloat, CGFloat, CGFloat)] {
-            path.move(to: p(x, y0))
-            path.addLine(to: p(x, y1))
-        }
-        return path
-    }
-}
+let overviewSymbol = "gauge.with.dots.needle.bottom.50percent"
+
+/// Unified staggered three-line sidebar toggle icon (two full-width round-cap strokes + shorter bottom stroke) shared
+/// across root pages, Duo's slid-out sidebar Collapse button, and wide split-screen expand/collapse controls.
+let sidebarMenuUIImage: UIImage = {
+    let size: CGFloat = 22
+    let format = UIGraphicsImageRendererFormat.default()
+    format.opaque = false
+    format.scale = 3
+    return UIGraphicsImageRenderer(size: CGSize(width: size, height: size), format: format).image { ctx in
+        let cg = ctx.cgContext
+        cg.setStrokeColor(UIColor.black.cgColor)
+        cg.setLineWidth(1.8)
+        cg.setLineCap(.round)
+        cg.move(to: CGPoint(x: 3.6, y: 6.2))
+        cg.addLine(to: CGPoint(x: 18.4, y: 6.2))
+        cg.move(to: CGPoint(x: 3.6, y: 11.0))
+        cg.addLine(to: CGPoint(x: 18.4, y: 11.0))
+        cg.move(to: CGPoint(x: 3.6, y: 15.8))
+        cg.addLine(to: CGPoint(x: 12.2, y: 15.8))
+        cg.strokePath()
+    }.withRenderingMode(.alwaysTemplate)
+}()
+
+/// Outline speech-bubble template image for Duo's `Conversations` feature tab so `UITabBar` keeps a clean stroke
+/// matching `herCatUIImage` and `overviewSymbol` instead of substituting `bubble.left.fill`.
+let conversationsTabUIImage: UIImage = {
+    let sym = UIImage(systemName: "bubble.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .medium))!
+    let format = UIGraphicsImageRendererFormat.default()
+    format.opaque = false
+    format.scale = 3
+    return UIGraphicsImageRenderer(size: sym.size, format: format).image { _ in
+        sym.draw(in: CGRect(origin: .zero, size: sym.size))
+    }.withRenderingMode(.alwaysTemplate)
+}()
+
+/// Code-brackets (`</>`) template image for Duo's standalone `Sessions` hub tab (`chevron.left.forwardslash.chevron.right`),
+/// rendered at matching optical weight alongside `conversationsTabUIImage`, `herCatUIImage` and `overviewSymbol`.
+let sessionsHubTabUIImage: UIImage = {
+    let sym = UIImage(systemName: "chevron.left.forwardslash.chevron.right",
+                      withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .medium))!
+    let format = UIGraphicsImageRendererFormat.default()
+    format.opaque = false
+    format.scale = 3
+    return UIGraphicsImageRenderer(size: sym.size, format: format).image { _ in
+        sym.draw(in: CGRect(origin: .zero, size: sym.size))
+    }.withRenderingMode(.alwaysTemplate)
+}()
+
+/// Monochrome template cat glyph for Her across the sidebar, collapsed rail and iPhone Duo's native `UITabBar`:
+/// rendered as an `.alwaysTemplate` `UIImage` so UIKit's Liquid Glass tab bar and SwiftUI rows tint it identically.
+let herCatUIImage: UIImage = {
+    let size: CGFloat = 22
+    let k = size / 20
+    func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * k, y: y * k) }
+    let format = UIGraphicsImageRendererFormat.default()
+    format.opaque = false
+    format.scale = 3
+    return UIGraphicsImageRenderer(size: CGSize(width: size, height: size), format: format).image { ctx in
+        let cg = ctx.cgContext
+        let outline = UIBezierPath()
+        outline.move(to: p(5.2, 7.2))
+        outline.addLine(to: p(4.3, 3.4))
+        outline.addLine(to: p(7.9, 5.4))
+        outline.addQuadCurve(to: p(12.1, 5.4), controlPoint: p(10.0, 4.85))
+        outline.addLine(to: p(15.7, 3.4))
+        outline.addLine(to: p(14.8, 7.2))
+        outline.addQuadCurve(to: p(16.6, 12.0), controlPoint: p(16.35, 9.1))
+        outline.addCurve(to: p(10.0, 16.8), controlPoint1: p(16.6, 15.1), controlPoint2: p(14.0, 16.8))
+        outline.addCurve(to: p(3.4, 12.0), controlPoint1: p(6.0, 16.8), controlPoint2: p(3.4, 15.1))
+        outline.addQuadCurve(to: p(5.2, 7.2), controlPoint: p(3.65, 9.1))
+        outline.close()
+
+        cg.setStrokeColor(UIColor.black.cgColor)
+        cg.setLineWidth(1.65 * k)
+        cg.setLineCap(.round)
+        cg.setLineJoin(.round)
+        cg.addPath(outline.cgPath)
+        cg.strokePath()
+
+        cg.setFillColor(UIColor.black.cgColor)
+        let r = 1.05 * k
+        cg.fillEllipse(in: CGRect(x: 7.8 * k - r, y: 11.3 * k - r, width: r * 2, height: r * 2))
+        cg.fillEllipse(in: CGRect(x: 12.2 * k - r, y: 11.3 * k - r, width: r * 2, height: r * 2))
+    }.withRenderingMode(.alwaysTemplate)
+}()

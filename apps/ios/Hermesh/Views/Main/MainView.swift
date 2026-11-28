@@ -1,3 +1,4 @@
+import HermeshHer
 import HermeshSessions
 import SwiftUI
 import UIKit
@@ -41,14 +42,17 @@ struct MainView: View {
 /// The page under the menu: the navigation stack.
 private struct PageView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.barsOnTheSide) private var sideBars
 
     var body: some View {
         @Bindable var model = model
+        let menuCoversPage = sideBars && !model.menuBeside && model.drawerOpen
         NavigationStack(path: $model.path) {
             rootPage.navigationDestination(for: Route.self) { routePage($0) }
         }
+        .environment(\.menuCoversPage, menuCoversPage)
         .overlay(alignment: .top) { // in the middle of a root page's bar while its title is large
-            if model.path.isEmpty && model.root.titleLarge && !model.rootTitleSmall && model.shownSync != nil {
+            if !menuCoversPage && model.path.isEmpty && model.root.titleLarge && !model.rootTitleSmall && model.shownSync != nil {
                 SyncLine().frame(height: 44)
             }
         }
@@ -59,6 +63,7 @@ private struct PageView: View {
         switch model.root {
         case .her: HerView()
         case .overview: OverviewView()
+        case .sessions: SessionsHubView()
         case .grants: GrantsView()
         case .machines: EnvironmentsView()
         case .newSession(let machine, let project): SessionPage(machineID: machine, projectID: project).id("new/\(machine)/\(project)")
@@ -135,15 +140,16 @@ private struct SideMenu: UIViewControllerRepresentable {
     @Binding var open: Bool
     let panAnywhere: Bool
 
-    func makeUIViewController(context: Context) -> SideMenuController {
-        SideMenuController(
+    func makeUIViewController(context: Context) -> DuoTabController {
+        DuoTabController(sideMenu: SideMenuController(
             menu: UIHostingController(rootView: DrawerView().environment(model)),
             rail: UIHostingController(rootView: RailView().environment(model)),
             page: UIHostingController(rootView: PageView().environment(model)),
-            width: 322)
+            width: 322))
     }
 
-    func updateUIViewController(_ c: SideMenuController, context: Context) {
+    func updateUIViewController(_ tbc: DuoTabController, context: Context) {
+        let c = tbc.sideMenu
         c.panAnywhere = panAnywhere
         c.onChange = { open = $0 }
         c.onLayout = { model.wide = $0; model.verticalBars = $1 }
@@ -152,6 +158,194 @@ private struct SideMenu: UIViewControllerRepresentable {
         c.set(width: model.menuWidth)
         c.set(rail: model.menuRail)
         c.set(open: open)
+
+        tbc.onPick = { id in
+            switch id {
+            case "conversations": model.open(.newSession("", ""))
+            case "sessions": model.open(.sessions)
+            case "her": model.open(.her)
+            case "overview": model.open(.overview)
+            default: break
+            }
+        }
+        let activeID: String? = switch model.root {
+        case .newSession: "conversations"
+        case .sessions, .session: "sessions"
+        case .her: "her"
+        case .overview: "overview"
+        default: nil
+        }
+        let unread = herUnread(model.machines)
+        let off = herEnvironments(model.machines).isEmpty
+        let herLabel = off ? String(localized: "Her, not on") : unread > 0 ? String(localized: "Her, \(unread) unread") : String(localized: "Her")
+        let team = teamState(model.sessions, requests: model.pairings.count)
+        let waits = team.waiting.count + team.requests
+        let sessionsLabel = [String(localized: "notificationSettings.sessions"),
+                             team.waiting.isEmpty ? "" : String(localized: "\(team.waiting.count) need you"),
+                             team.running.isEmpty ? "" : String(localized: "\(team.running.count) working")].filter { !$0.isEmpty }.joined(separator: ", ")
+        let overviewLabel = [String(localized: "Overview"), waits > 0 ? String(localized: "\(waits) need you") : "",
+                             team.running.isEmpty ? "" : String(localized: "\(team.running.count) working")].filter { !$0.isEmpty }.joined(separator: ", ")
+        tbc.sync(activeID: activeID, menuBeside: model.menuBeside, drawerOpen: model.drawerOpen,
+                 sessionsLabel: sessionsLabel, herLabel: herLabel, overviewLabel: overviewLabel)
+    }
+}
+
+/// Hosts `SideMenuController` inside the active tab's view controller of a native `UITabBarController` so iPhone Duo
+/// closed (`verticalBarEdge != .unspecified && !menuBeside`) renders the system's Liquid Glass vertical `UITabBar` of
+/// four pure features (`[ Conversations -> New Session | Sessions </> | Her | Overview ]`) while a page is in view:
+/// `Conversations` opens and locks onto New Session, while `Sessions </>` opens the standalone `SessionsHubView` and
+/// stays locked while viewing any active or historical session so a single thumb tap returns to the session list.
+final class DuoTabController: UITabBarController, UITabBarControllerDelegate {
+    static let testDuoTabs = ProcessInfo.processInfo.arguments.contains("-HermeshTestDuoTabs")
+
+    let sideMenu: SideMenuController
+    var onPick: (String) -> Void = { _ in }
+
+    private let conversationsSlot = UIViewController()
+    private let sessionsSlot = UIViewController()
+    private let herSlot = UIViewController()
+    private let overviewSlot = UIViewController()
+    private let conversationsTab: UITab
+    private let sessionsTab: UITab
+    private let herTab: UITab
+    private let overviewTab: UITab
+    private var syncing = false
+    private var menuBeside = false
+    private var drawerOpen = false
+
+    init(sideMenu: SideMenuController) {
+        self.sideMenu = sideMenu
+        let conversationsSlot = self.conversationsSlot
+        let sessionsSlot = self.sessionsSlot
+        let herSlot = self.herSlot
+        let overviewSlot = self.overviewSlot
+        conversationsTab = UITab(title: String(localized: "Conversations"), image: conversationsTabUIImage, identifier: "conversations") { _ in conversationsSlot }
+        conversationsTab.accessibilityIdentifier = "conversations-place"
+        sessionsTab = UITab(title: String(localized: "notificationSettings.sessions"), image: sessionsHubTabUIImage, identifier: "sessions") { _ in sessionsSlot }
+        sessionsTab.accessibilityIdentifier = "sessions-place"
+        herTab = UITab(title: String(localized: "Her"), image: herCatUIImage, identifier: "her") { _ in herSlot }
+        herTab.accessibilityIdentifier = "her-place"
+        overviewTab = UITab(title: String(localized: "Overview"), image: UIImage(systemName: overviewSymbol), identifier: "overview") { _ in overviewSlot }
+        overviewTab.accessibilityIdentifier = "overview-place"
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    @available(iOS 27.1, *)
+    override var childForPreferredVerticalBarBehavior: UIViewController? { sideMenu }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        mode = .tabBar
+        tabBarMinimizeBehavior = .never
+        delegate = self
+        attachSideMenu(to: herSlot)
+        syncing = true
+        tabs = [conversationsTab, sessionsTab, herTab, overviewTab]
+        selectedTab = herTab
+        isTabBarHidden = !showsVerticalTabBar
+        syncing = false
+
+        if #available(iOS 27.1, *) {
+            registerForTraitChanges(UITraitCollection.systemTraitsAffectingVerticalBarEdge) { (self: Self, _) in
+                self.updateTabBarVisibility(animated: false)
+            }
+        }
+    }
+
+    private func slot(for tab: UITab) -> UIViewController {
+        if tab === conversationsTab { return conversationsSlot }
+        if tab === sessionsTab { return sessionsSlot }
+        if tab === overviewTab { return overviewSlot }
+        return herSlot
+    }
+
+    private func attachSideMenu(to host: UIViewController) {
+        guard sideMenu.parent !== host else {
+            sideMenu.view.frame = host.view.bounds
+            return
+        }
+        if sideMenu.parent != nil {
+            sideMenu.willMove(toParent: nil)
+            sideMenu.view.removeFromSuperview()
+            sideMenu.removeFromParent()
+        }
+        host.addChild(sideMenu)
+        sideMenu.view.frame = host.view.bounds
+        sideMenu.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        host.view.addSubview(sideMenu.view)
+        sideMenu.didMove(toParent: host)
+    }
+
+    private var hasVerticalBar: Bool {
+        if Self.testDuoTabs { return true }
+        if #available(iOS 27.1, *) { return traitCollection.verticalBarEdge != .unspecified }
+        return false
+    }
+
+    private var showsVerticalTabBar: Bool {
+        hasVerticalBar && !menuBeside && !drawerOpen
+    }
+
+    private func updateTabBarVisibility(animated: Bool) {
+        let hidden = !showsVerticalTabBar
+        if isTabBarHidden != hidden {
+            setTabBarHidden(hidden, animated: animated && view.window != nil)
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateTabBarVisibility(animated: false)
+    }
+
+    func sync(activeID: String?, menuBeside: Bool, drawerOpen: Bool, sessionsLabel: String, herLabel: String, overviewLabel: String) {
+        syncing = true
+        defer { syncing = false }
+        let visibilityChanged = self.menuBeside != menuBeside || self.drawerOpen != drawerOpen
+        self.menuBeside = menuBeside
+        self.drawerOpen = drawerOpen
+        if visibilityChanged {
+            updateTabBarVisibility(animated: !menuBeside)
+        }
+        if sessionsTab.accessibilityLabel != sessionsLabel {
+            sessionsTab.accessibilityLabel = sessionsLabel
+        }
+        if herTab.accessibilityLabel != herLabel {
+            herTab.accessibilityLabel = herLabel
+        }
+        if overviewTab.accessibilityLabel != overviewLabel {
+            overviewTab.accessibilityLabel = overviewLabel
+        }
+        let target: UITab? = switch activeID {
+        case "conversations": conversationsTab
+        case "sessions": sessionsTab
+        case "her": herTab
+        case "overview": overviewTab
+        default: nil
+        }
+        if let target, selectedTab !== target {
+            attachSideMenu(to: slot(for: target))
+            selectedTab = target
+        }
+    }
+
+    func tabBarController(_ tabBarController: UITabBarController, shouldSelectTab tab: UITab) -> Bool {
+        guard !syncing else { return true }
+        if tab === tabBarController.selectedTab {
+            let id = tab.identifier
+            DispatchQueue.main.async { [weak self] in self?.onPick(id) }
+        } else {
+            attachSideMenu(to: slot(for: tab))
+        }
+        return true
+    }
+
+    func tabBarController(_ tabBarController: UITabBarController, didSelectTab selectedTab: UITab, previousTab: UITab?) {
+        guard !syncing, selectedTab !== previousTab else { return }
+        let id = selectedTab.identifier
+        DispatchQueue.main.async { [weak self] in self?.onPick(id) }
     }
 }
 
@@ -233,6 +427,11 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    @available(iOS 27.1, *)
+    override var childForPreferredVerticalBarBehavior: UIViewController? {
+        arrangement == .cover && isOpen ? menu : page
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -318,6 +517,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     /// The arrangement that fits the screen as it is.
     private var fitting: Arrangement {
         if traitCollection.horizontalSizeClass == .regular && view.bounds.width > view.bounds.height { return .beside }
+        if DuoTabController.testDuoTabs { return .cover }
         if #available(iOS 27.1, *), traitCollection.verticalBarEdge != .unspecified { return .cover }
         return .drawer
     }
@@ -370,8 +570,8 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         grip.frame = CGRect(x: pageX - 16, y: 0, width: 22, height: b.height)
         grip.isHidden = wide == nil || railed
         // Out of view, the menu is out of VoiceOver's way too.
-        if !railed || peek { menu.view.isHidden = false } else if !sliding { menu.view.isHidden = true }
-        let bars: Bool = if #available(iOS 27.1, *) { traitCollection.verticalBarEdge != .unspecified } else { false }
+        if arrangement == .cover { menu.view.isHidden = !isOpen && moving == nil } else if !railed || peek { menu.view.isHidden = false } else if !sliding { menu.view.isHidden = true }
+        let bars: Bool = if DuoTabController.testDuoTabs { true } else if #available(iOS 27.1, *) { traitCollection.verticalBarEdge != .unspecified } else { false }
         if wide != layout || bars != verticalBars {
             layout = wide
             verticalBars = bars
@@ -395,6 +595,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         }
         let wasOpen = isOpen
         isOpen = false
+        if #available(iOS 27.1, *) { setNeedsUpdateOfVerticalBarConfiguration() }
         // After the layout pass: this writes the app's state, which lays views out again.
         if wasOpen { DispatchQueue.main.async { [self] in onChange(false) } }
     }
@@ -516,6 +717,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         pinMargins()
         clip.layer.cornerRadius = radius
         dim.isHidden = false
+        menu.view.isHidden = false
         menu.view.accessibilityElementsHidden = false
     }
 
@@ -539,6 +741,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         clip.layer.cornerRadius = 0
         dim.isHidden = true
         standDown()
+        if arrangement == .cover { menu.view.isHidden = true }
         // Under the page, the menu is out of VoiceOver's reach.
         menu.view.accessibilityElementsHidden = arrangement != .beside
     }
@@ -577,6 +780,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     /// velocity is relative to the distance left to go, as UIKit's springs take it.
     private func animate(open: Bool, velocity: CGFloat) {
         isOpen = open
+        if #available(iOS 27.1, *) { setNeedsUpdateOfVerticalBarConfiguration() }
         generation += 1
         let g = generation
         startMoving()
@@ -724,7 +928,7 @@ struct MenuButton: View {
         Button {
             model.drawerOpen = true
         } label: {
-            Image(systemName: "line.3.horizontal")
+            Image(uiImage: sidebarMenuUIImage)
                 .overlay(alignment: .topTrailing) {
                     if model.attentionCount > 0 {
                         Circle().fill(.orange).frame(width: 8, height: 8).offset(x: 5, y: -4)
@@ -740,8 +944,13 @@ extension EnvironmentValues {
     /// Whether the system stands this view's bars on the side, not along the top (iPhone Duo closed, or open and
     /// on its side): what a view that draws its own top reads, to leave its buttons to the system's bar.
     var barsOnTheSide: Bool {
-        if #available(iOS 27.1, *) { toolbarVerticalEdge != nil } else { false }
+        if DuoTabController.testDuoTabs { return true }
+        if #available(iOS 27.1, *) { return toolbarVerticalEdge != nil }
+        return false
     }
+    /// True inside `PageView` while iPhone Duo's sidebar is slid out over the page (`barsOnTheSide && !menuBeside && drawerOpen`),
+    /// hiding the underlying page's navigation/bottom bars and toolbar items so they never merge into the sidebar's vertical bar.
+    @Entry var menuCoversPage = false
     /// Full hardware screen width of the root container, used to align split boundaries with iPhone Duo's center fold.
     @Entry var screenWidth: CGFloat = 0
 }
@@ -758,11 +967,11 @@ struct WidenPageButton: View {
             model.menuRail = true
         } label: {
             if glass {
-                Image(systemName: "arrow.up.left.and.arrow.down.right").font(.body.weight(.medium)).frame(width: 44, height: 44)
+                Image(uiImage: sidebarMenuUIImage).frame(width: 44, height: 44)
                     .glassEffect(.regular.interactive(), in: .circle)
                     .contentShape(.circle)
             } else {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                Image(uiImage: sidebarMenuUIImage)
             }
         }
         .accessibilityLabel("Collapse the menu")
@@ -770,26 +979,13 @@ struct WidenPageButton: View {
     }
 }
 
-/// In a root page's bar: where the system stands the bars on the side (iPhone Duo), the thumb-zone Liquid Glass
-/// capsule at the bottom of the vertical bar (`[ Menu | Her | Overview ]` when closed, `[ Her | Overview ]` when
-/// unfolded beside the menu, with no low-frequency avatar outside the sidebar); elsewhere the menu button at the top
-/// leading end, or the button that widens the page over the expanded menu.
+/// In a root page's bar: the menu button (at the top of the vertical bar on iPhone Duo closed, or top leading
+/// elsewhere); beside the expanded menu, the button that widens the page over it; none beside the menu's rail.
 struct MenuToolbarItem: ToolbarContent {
     @Environment(AppModel.self) private var model
-    @Environment(\.barsOnTheSide) private var sideBars
 
     var body: some ToolbarContent {
-        if #available(iOS 27.1, *), sideBars {
-            if model.menuBeside && model.menuInView {
-                ToolbarItem(placement: .topBarLeading) { WidenPageButton() }
-            }
-            ToolbarItemGroup(placement: .bottomBar) {
-                if !model.menuBeside { MenuButton() }
-                DuoHerButton()
-                DuoOverviewButton()
-            }
-            .axisBehavior(.verticalPreferred)
-        } else if !model.menuBeside {
+        if !model.menuBeside {
             ToolbarItem(placement: .topBarLeading) { MenuButton() }
         } else if model.menuInView {
             ToolbarItem(placement: .topBarLeading) { WidenPageButton() }
@@ -810,6 +1006,7 @@ extension View {
 
 private struct RootToolbar: ViewModifier {
     @Environment(AppModel.self) private var model
+    @Environment(\.menuCoversPage) private var menuCoversPage
     let sync: Bool
 
     func body(content: Content) -> some View {
@@ -818,9 +1015,12 @@ private struct RootToolbar: ViewModifier {
                 model.rootTitleSmall = small
             }
             .onAppear { model.rootTitleSmall = false } // a root page shows from its top
+            .toolbar(menuCoversPage ? .hidden : .automatic, for: .navigationBar, .bottomBar)
             .toolbar {
-                MenuToolbarItem()
-                if sync && (model.rootTitleSmall || !model.root.titleLarge) && model.shownSync != nil { ToolbarItem(placement: .principal) { SyncLine() } }
+                if !menuCoversPage {
+                    MenuToolbarItem()
+                    if sync && (model.rootTitleSmall || !model.root.titleLarge) && model.shownSync != nil { ToolbarItem(placement: .principal) { SyncLine() } }
+                }
             }
     }
 }

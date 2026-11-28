@@ -1,0 +1,990 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>独立「会话」主页 Demo（100% 复用侧栏分组·排序·Her 子会话树）</title>
+<style>
+:root {
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+[data-theme="dark"] {
+  --page: #0a0b0e;
+  --page-fg: #f2f2f7;
+  --page-fg2: rgba(235,235,245,.62);
+  --ctl-bg: rgba(22,23,29,.92);
+  --ctl-bd: rgba(255,255,255,.10);
+
+  --i-bg: #000000;
+  --i-card: #151519;
+  --i-card2: #1e1e24;
+  --i-vbar: #000000;
+  --i-l1: #ffffff;
+  --i-l2: rgba(235,235,245,.60);
+  --i-l3: rgba(235,235,245,.34);
+  --i-sep: rgba(255,255,255,.10);
+  --i-fill: rgba(120,120,132,.22);
+  --i-me: #4a66ff;
+  --i-tint: #7d96ff;
+
+  --lg-surface: linear-gradient(180deg, rgba(44,44,49,.88) 0%, rgba(28,28,33,.92) 100%);
+  --lg-pill-sel: rgba(12,12,15,.82);
+  --lg-rim-hi: rgba(255,255,255,.20);
+  --lg-rim-lo: rgba(255,255,255,.07);
+  --lg-shadow: 0 8px 22px rgba(0,0,0,.55);
+  --lg-menu-bg: rgba(30,30,36,.95);
+
+  --fab-bg: #f5f5f7;
+  --fab-fg: #0a0a0c;
+
+  --orange: #ff9f2e;
+  --red: #ff5b6b;
+  --green: #4ade80;
+  --git-pushed: #5ec28f;
+  --git-merged: #a385ff;
+}
+[data-theme="light"] {
+  --page: #e9ebf2;
+  --page-fg: #16171d;
+  --page-fg2: rgba(60,60,67,.66);
+  --ctl-bg: rgba(255,255,255,.92);
+  --ctl-bd: rgba(0,0,0,.08);
+
+  --i-bg: #ffffff;
+  --i-card: #f3f4f7;
+  --i-card2: #e8e9ef;
+  --i-vbar: #f6f6f9;
+  --i-l1: #000000;
+  --i-l2: rgba(60,60,67,.62);
+  --i-l3: rgba(60,60,67,.35);
+  --i-sep: rgba(0,0,0,.09);
+  --i-fill: rgba(118,118,128,.12);
+  --i-me: #3d5bff;
+  --i-tint: #3d5bff;
+
+  --lg-surface: linear-gradient(180deg, rgba(255,255,255,.92) 0%, rgba(238,239,245,.90) 100%);
+  --lg-pill-sel: rgba(0,0,0,.09);
+  --lg-rim-hi: rgba(255,255,255,.96);
+  --lg-rim-lo: rgba(0,0,0,.10);
+  --lg-shadow: 0 8px 22px rgba(0,0,0,.10);
+  --lg-menu-bg: rgba(248,248,252,.97);
+
+  --fab-bg: #141417;
+  --fab-fg: #ffffff;
+
+  --orange: #e07a08;
+  --red: #e11d48;
+  --green: #16a34a;
+  --git-pushed: #1f8f58;
+  --git-merged: #7c3aed;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--page); color: var(--page-fg);
+  font: 14px/1.42 var(--font); -webkit-font-smoothing: antialiased;
+  min-height: 100vh; display: flex; flex-direction: column;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+svg { display: block; flex: none; }
+
+/* ---------- Top Prototype Bar ---------- */
+.proto-bar {
+  position: sticky; top: 0; z-index: 120;
+  background: var(--ctl-bg); border-bottom: .5px solid var(--ctl-bd);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  padding: 8px 12px;
+}
+.proto-inner { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 6px; }
+.proto-row { display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.proto-row::-webkit-scrollbar { display: none; }
+.proto-lbl { font-size: 11.5px; font-weight: 600; color: var(--page-fg2); white-space: nowrap; margin-right: 2px; }
+.chip {
+  padding: 4.5px 10px; border-radius: 999px; background: var(--i-fill);
+  color: var(--page-fg); font-size: 12px; font-weight: 550; white-space: nowrap;
+}
+.chip.on { background: var(--i-me); color: #fff; }
+
+/* ---------- Stage ---------- */
+.stage {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  padding: 12px 10px 26px; gap: 14px;
+}
+.stage.immersive { padding: 0; }
+
+.duo-shell {
+  width: min(454px, calc(100vw - 16px));
+  height: min(726px, calc(100vh - 104px));
+  min-height: 600px;
+  border-radius: 42px; padding: 8px;
+  background: #1b1c22;
+  box-shadow: 0 24px 64px rgba(0,0,0,.52), inset 0 0 0 1.5px #353742;
+  position: relative; user-select: none;
+}
+.scr {
+  position: relative; width: 100%; height: 100%; border-radius: 35px;
+  overflow: hidden; background: var(--i-bg); color: var(--i-l1); display: flex;
+}
+.immersive-wrap {
+  width: 100%; max-width: 520px; min-height: calc(100vh - 82px);
+  background: var(--i-bg); color: var(--i-l1); position: relative; display: flex; flex-direction: column;
+}
+
+/* ---------- Right Vertical Bar ---------- */
+.dvbar {
+  flex: none; width: 74px; background: var(--i-vbar);
+  padding: 14px 0; display: flex; flex-direction: column; align-items: center; gap: 9px;
+  z-index: 40; position: relative;
+}
+.vmoon { width: 13px; height: 13px; color: var(--i-l1); margin-bottom: -4px; }
+.vclock { font-size: 14.5px; font-weight: 700; letter-spacing: -.3px; font-variant-numeric: tabular-nums; margin-bottom: -3px; }
+.vring { width: 40px; height: 40px; position: relative; display: grid; place-items: center; margin-bottom: 2px; }
+.vring svg.arc { position: absolute; inset: 0; width: 40px; height: 40px; }
+.vring .wifi-ic { width: 16px; height: 16px; margin-top: -1px; }
+.vring .dots { position: absolute; bottom: 1px; display: flex; gap: 2.8px; align-items: center; }
+.vring .dots i { width: 3.2px; height: 3.2px; border-radius: 50%; background: var(--i-l1); display: block; }
+.vring .dots i.dim { opacity: .28; }
+.vbar-spacer { flex: 1; min-height: 6px; }
+
+.vbar-circle {
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--lg-surface);
+  backdrop-filter: blur(28px) saturate(1.8); -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  box-shadow: inset 0 1px .5px var(--lg-rim-hi), inset 0 -.8px .5px var(--lg-rim-lo), 0 0 0 .5px rgba(255,255,255,.08), var(--lg-shadow);
+  display: flex; align-items: center; justify-content: center; color: var(--i-l1); position: relative;
+}
+.vbar-circle:active { transform: scale(.92); }
+
+.vbar-group {
+  width: 48px; border-radius: 24px; padding: 4px;
+  background: var(--lg-surface);
+  backdrop-filter: blur(28px) saturate(1.8); -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  box-shadow: inset 0 1px .5px var(--lg-rim-hi), inset 0 -.8px .5px var(--lg-rim-lo), 0 0 0 .5px rgba(255,255,255,.08), var(--lg-shadow);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.vbar-group button {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--i-l1); position: relative;
+}
+.vbar-group button.on { color: var(--i-tint); background: rgba(125,150,255,.16); }
+
+.vbar-tabcapsule {
+  width: 50px; border-radius: 25px; padding: 4px;
+  background: var(--lg-surface);
+  backdrop-filter: blur(32px) saturate(1.9); -webkit-backdrop-filter: blur(32px) saturate(1.9);
+  box-shadow: inset 0 1.1px .6px var(--lg-rim-hi), inset 0 -.9px .6px var(--lg-rim-lo), 0 0 0 .5px rgba(255,255,255,.09), var(--lg-shadow);
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+.vtab-btn {
+  width: 42px; height: 46px; border-radius: 21px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--i-l1); opacity: .75; position: relative;
+}
+.vtab-btn.sel {
+  opacity: 1; color: var(--i-tint); background: var(--lg-pill-sel);
+  box-shadow: inset 0 .5px .5px rgba(255,255,255,.10);
+}
+.dot-badge {
+  position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--orange); box-shadow: 0 0 0 1.6px #18181d;
+}
+
+/* ---------- Standalone Conversations Page (Reusing MenuSessions + Claude Top Polish) ---------- */
+.hub-page {
+  flex: 1; min-width: 0; height: 100%; background: var(--i-bg);
+  display: flex; flex-direction: column; position: relative;
+}
+.hub-top {
+  padding: 22px 16px 10px 22px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.hub-title { font-size: 25px; font-weight: 700; letter-spacing: -.45px; }
+.hub-inline-tools { display: flex; gap: 6px; }
+
+.hub-search {
+  margin: 0 14px 8px 18px; height: 38px; border-radius: 12px;
+  background: var(--i-card); border: .5px solid var(--i-sep);
+  display: flex; align-items: center; gap: 8px; padding: 0 12px;
+}
+.hub-search input { flex: 1; background: none; border: 0; outline: 0; color: var(--i-l1); font: 14px var(--font); }
+
+.hub-scroll {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 0 10px 88px 10px; scrollbar-width: none;
+}
+.hub-scroll::-webkit-scrollbar { display: none; }
+
+/* Optional Claude-style Environment Pills Strip */
+.env-block { padding: 2px 12px 8px; }
+.env-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12.5px; color: var(--i-l2); font-weight: 500; margin-bottom: 8px;
+}
+.env-strip { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.env-strip::-webkit-scrollbar { display: none; }
+.env-pill {
+  flex: none; height: 36px; padding: 0 13px; border-radius: 999px;
+  border: 1px solid var(--i-sep); background: transparent;
+  display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 550;
+}
+.env-pill.sel { background: var(--i-card2); border-color: rgba(125,150,255,.5); }
+.env-icon-wrap { position: relative; display: grid; place-items: center; }
+.env-dot {
+  position: absolute; top: -2px; left: -2px; width: 6.5px; height: 6.5px; border-radius: 50%;
+  background: var(--green); box-shadow: 0 0 0 1.6px var(--i-bg);
+}
+.env-dot.off { background: var(--i-l3); }
+
+/* ---------- Exact MenuSessions Group Headings + Rows + Her Sub-session Tree ---------- */
+.grp-hdr-wrap {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 12px 4px 14px;
+}
+.grp-toggle {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; color: var(--i-l2); font-weight: 500;
+}
+.grp-chev { transition: transform .16s; color: var(--i-l3); }
+.grp-chev.shut { transform: rotate(-90deg); }
+.grp-plus {
+  width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: var(--i-l2);
+}
+.grp-plus:active { background: var(--i-fill); color: var(--i-l1); }
+
+/* Parent & Child Session Rows (1:1 SessionsView.swift SessionListRow + MenuSessionRow) */
+.s-row-outer {
+  position: relative; display: flex; align-items: center;
+}
+.s-row-outer.child {
+  padding-left: 26px;
+}
+.tree-line {
+  position: absolute; left: 19px; top: 0; bottom: 0; width: 1.5px;
+  background: rgba(255,255,255,.13); pointer-events: none;
+}
+[data-theme="light"] .tree-line { background: rgba(0,0,0,.12); }
+.tree-line.first { top: 6px; }
+.tree-line.last { bottom: 6px; }
+
+.twist-btn {
+  width: 24px; height: 42px; display: grid; place-items: center; flex: none;
+  color: var(--i-l2); margin-left: 2px;
+}
+.twist-btn svg { transition: transform .16s; }
+.twist-btn.shut svg { transform: rotate(-90deg); }
+
+.s-row-btn {
+  flex: 1; min-width: 0; border-radius: 16px;
+  padding: 9px 12px; display: flex; align-items: flex-start; gap: 11px;
+  text-align: left; transition: background .12s;
+}
+.s-row-outer.has-twist .s-row-btn { padding-left: 4px; }
+.s-row-outer.child .s-row-btn { padding: 7px 12px 7px 10px; border-radius: 14px; }
+.s-row-btn:active, .s-row-btn.sel { background: var(--i-fill); }
+
+.s-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2.5px; }
+.s-line1 { display: flex; align-items: center; gap: 8px; }
+.s-title {
+  flex: 1; min-width: 0; font-size: 15.5px; font-weight: 480; color: var(--i-l1);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.s-row-outer.child .s-title { font-size: 14.2px; }
+.s-title.archived { color: var(--i-l2); }
+
+.s-line2 {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; color: var(--i-l2);
+}
+.s-sender { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-sender.wait { color: var(--orange); }
+.s-time { flex: none; font-variant-numeric: tabular-nums; color: var(--i-l3); font-size: 12px; }
+.s-time.live { color: var(--i-tint); font-weight: 550; }
+
+.more-kids-btn {
+  margin-left: 26px; padding: 6px 12px 6px 34px; width: calc(100% - 26px);
+  text-align: left; font-size: 12.5px; color: var(--i-l2); border-radius: 12px;
+  position: relative;
+}
+.more-kids-btn:active { background: var(--i-fill); }
+
+.footer-arch {
+  padding: 18px 12px 8px; text-align: center; font-size: 12.5px; color: var(--i-l2);
+}
+.footer-arch button { color: var(--i-tint); font-weight: 550; }
+
+/* Agent / Her Logos */
+.ag-logo {
+  width: 22px; height: 22px; border-radius: 6px; flex: none; margin-top: 1px;
+  display: grid; place-items: center; font-size: 11px; font-weight: 700; position: relative;
+}
+.s-row-outer.child .ag-logo { width: 19px; height: 19px; font-size: 10px; }
+.ag-logo.her { background: rgba(243,166,97,.18); color: #f3a661; border-radius: 50%; }
+.ag-logo.gpt { background: #ffffff; color: #111; border: .5px solid rgba(0,0,0,.14); }
+.ag-logo.agy { background: #eef2ff; color: #3656f5; }
+.ag-logo.claude { background: #d97757; color: #fff; }
+.ag-logo.orbit::after {
+  content: ""; position: absolute; inset: -2.5px; border-radius: 8px;
+  border: 1.6px solid var(--i-tint);
+}
+.ag-logo.her.orbit::after { border-radius: 50%; }
+
+/* Marks */
+.m-dot { width: 8.5px; height: 8.5px; border-radius: 50%; flex: none; }
+.m-dot.orange { background: var(--orange); }
+.m-dot.red { background: var(--red); }
+.git-ic { width: 14px; height: 14px; flex: none; stroke-width: 1.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Floating "+ 新建会话" Pill (1:1 Claude 08:37) */
+.new-fab {
+  position: absolute; right: 14px; bottom: 16px; z-index: 35;
+  height: 46px; padding: 0 18px; border-radius: 999px;
+  background: var(--fab-bg); color: var(--fab-fg);
+  font-size: 15px; font-weight: 650; letter-spacing: -.2px;
+  display: inline-flex; align-items: center; gap: 7px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.48), inset 0 1px .5px rgba(255,255,255,.6);
+  transition: transform .13s cubic-bezier(.2,.9,.3,1);
+}
+.new-fab:active { transform: scale(.94); }
+
+/* ---------- Native ViewMenu Popover (Exact SessionsView.swift ViewMenu!) ---------- */
+.pop-backdrop { position: absolute; inset: 0; z-index: 65; background: rgba(0,0,0,.22); }
+.ios-menu {
+  position: absolute; right: 80px; top: 96px; z-index: 70; width: 236px; border-radius: 20px; overflow: hidden;
+  background: var(--lg-menu-bg);
+  backdrop-filter: blur(40px) saturate(1.9); -webkit-backdrop-filter: blur(40px) saturate(1.9);
+  box-shadow: inset 0 1px .5px var(--lg-rim-hi), 0 20px 52px rgba(0,0,0,.58), 0 0 0 .5px rgba(255,255,255,.12);
+  animation: popIn .15s cubic-bezier(.2,.9,.3,1);
+}
+.immersive-wrap .ios-menu { right: 16px; top: 64px; }
+@keyframes popIn { from { opacity: 0; transform: scale(.92) translateY(-6px); } to { opacity: 1; transform: none; } }
+.m-sec-lbl {
+  padding: 8px 14px 4px; font-size: 11px; font-weight: 600; color: var(--i-l2);
+  text-transform: uppercase; letter-spacing: .3px;
+}
+.m-item {
+  width: 100%; padding: 9.5px 14px; display: flex; align-items: center; justify-content: space-between;
+  font-size: 14px; color: var(--i-l1); text-align: left; border-bottom: .5px solid var(--i-sep);
+}
+.m-item:last-child { border-bottom: 0; }
+.m-item:active { background: var(--i-fill); }
+.m-sep { height: 6px; background: rgba(0,0,0,.18); border-bottom: .5px solid var(--i-sep); }
+.chk { color: var(--i-tint); font-weight: 700; width: 16px; }
+
+/* ---------- Long-press SessionGitPreviewCard Preview ---------- */
+.preview-wrap {
+  position: absolute; inset: 0; z-index: 80; background: rgba(0,0,0,.52);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 18px; gap: 10px;
+}
+.git-card {
+  width: 100%; max-width: 312px; border-radius: 20px; padding: 14px;
+  background: var(--lg-menu-bg); border: .5px solid var(--lg-rim-hi);
+  box-shadow: 0 20px 50px rgba(0,0,0,.55);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.git-box {
+  border-radius: 11px; padding: 9px 10px; background: rgba(94,194,143,.10);
+  border: .5px solid rgba(94,194,143,.24); display: flex; flex-direction: column; gap: 5px;
+}
+.ctx-actions {
+  width: 220px; border-radius: 16px; overflow: hidden; background: var(--lg-menu-bg);
+  border: .5px solid var(--lg-rim-hi); align-self: flex-start; margin-left: 8px;
+}
+
+.toast {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 150;
+  padding: 8px 16px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  background: var(--lg-menu-bg); color: var(--i-l1);
+  backdrop-filter: blur(24px); box-shadow: 0 10px 28px rgba(0,0,0,.45), inset 0 1px .5px var(--lg-rim-hi);
+  white-space: nowrap; pointer-events: none;
+}
+
+.ic { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ic-sm { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+</head>
+<body>
+
+<header class="proto-bar">
+  <div class="proto-inner" id="proto-ctl"></div>
+</header>
+
+<main class="stage" id="stage"></main>
+
+<script>
+const S = {
+  frameMode: "shell",       // "shell" | "immersive"
+  showEnvBar: true,         // 顶部是否保留 Claude 式「环境」快捷筛选胶囊
+  envFilter: "all",         // "all" | "homebook" | "studio"
+  group: "status",          // "status" | "project" | "date" | "agent" | "machine"  (1:1 SessionGrouping!)
+  sort: "default",          // "default" | "updated" | "created"                    (1:1 SessionSort!)
+  newestFirst: true,
+  metadata: true,           // 独立会话页默认开启元数据（发起方·项目·实时秒表），也可在 ViewMenu 关掉
+  nest: true,               // 1:1 嵌套 Her 子会话树开关！
+  showArchived: false,
+  collapsedGroups: {},
+  collapsedTrees: {},       // Her 父会话折叠状态
+  expandedTrees: {},        // Her 子会话 Show more 展开状态
+  viewMenuOpen: false,
+  searchOpen: false,
+  query: "",
+  previewId: null,
+  selectedId: "p1",
+  theme: "dark",
+  toast: ""
+};
+
+const ENVS = [
+  { id: "homebook", name: "HomeBook", online: true },
+  { id: "studio",   name: "Mac Studio", online: true },
+  { id: "linux",    name: "Linux Box", online: false }
+];
+
+/* 真实还原 Hermesh 数据模型：含置顶、Her 父会话及其派发的多个子会话树、各代理状态与 Git 交付标记 */
+const SESSIONS = [
+  {
+    id: "p1",
+    pinned: true,
+    isHer: true,
+    agent: "her",
+    title: "重构双屏导航并同步验证全端 UI 测试",
+    senderLine: "Her · HomeBook · 2 个子任务运行中",
+    env: "homebook", envName: "HomeBook", project: "Her", dateBucket: "今天",
+    status: "running",
+    time: "04:18",
+    updatedOrder: 1, createdOrder: 2
+  },
+  /* p1 (Her) 派发的 4 个子会话（默认展示前 3 个 + "显示更多 (1)"，收起树时自动聚合橙色待确认点！） */
+  {
+    id: "c1", parentId: "p1",
+    agent: "agy",
+    title: "排查 iOS 27.1 右侧共享竖栏串位与顶栏跳变",
+    senderLine: "Her → Antigravity · hermesh",
+    waitingText: "等待确认 · 独立会话页是否保留顶部环境胶囊？",
+    env: "homebook", envName: "HomeBook", project: "hermesh", dateBucket: "今天",
+    status: "waiting",
+    branch: "hermesh/duo-bar", add: 94, del: 22, commit: "a41c90e",
+    time: "刚刚",
+    updatedOrder: 2, createdOrder: 3
+  },
+  {
+    id: "c2", parentId: "p1",
+    agent: "claude",
+    title: "补充 SidebarUITests 滑动无跳变与零串位断言",
+    senderLine: "Her → Claude Code · hermesh",
+    env: "homebook", envName: "HomeBook", project: "hermesh", dateBucket: "今天",
+    status: "running",
+    branch: "hermesh/duo-tests", add: 62, del: 14, commit: "8f03d12",
+    time: "01:42",
+    updatedOrder: 3, createdOrder: 4
+  },
+  {
+    id: "c3", parentId: "p1",
+    agent: "gpt",
+    title: "对齐展开内屏液态玻璃底栏渐进模糊效果",
+    senderLine: "Her → Codex · hermesh",
+    env: "homebook", envName: "HomeBook", project: "hermesh", dateBucket: "今天",
+    status: "idle", git: "pushed",
+    branch: "hermesh/glass-footer", add: 48, del: 19, commit: "7b2e91f",
+    time: "18m",
+    updatedOrder: 5, createdOrder: 5
+  },
+  {
+    id: "c4", parentId: "p1",
+    agent: "claude",
+    title: "更新 docs/iphone-app.md 双屏适配章节文档",
+    senderLine: "Her → Claude Code · hermesh",
+    env: "homebook", envName: "HomeBook", project: "hermesh", dateBucket: "今天",
+    status: "idle", git: "merged",
+    branch: "main", add: 31, del: 12, commit: "3d91a04",
+    time: "35m",
+    updatedOrder: 6, createdOrder: 6
+  },
+
+  /* 独立编码会话 */
+  {
+    id: "s2",
+    agent: "claude",
+    title: "Fix thread-v2 spec after structured output",
+    senderLine: "你 → Claude Code · Mac Studio / hermesh",
+    env: "studio", envName: "Mac Studio", project: "hermesh", dateBucket: "今天",
+    status: "running",
+    branch: "fix/thread-v2", add: 142, del: 38, commit: "d0aea60",
+    time: "02:15",
+    updatedOrder: 4, createdOrder: 1
+  },
+  {
+    id: "s3",
+    agent: "agy",
+    title: "合并附件与 HTML 文件手机端直开交互流程",
+    senderLine: "你 → Antigravity · HomeBook / hermesh",
+    env: "homebook", envName: "HomeBook", project: "hermesh", dateBucket: "今天",
+    status: "idle", git: "merged",
+    branch: "main", add: 118, del: 24, commit: "e8cb24d",
+    time: "2h",
+    updatedOrder: 7, createdOrder: 7
+  },
+  {
+    id: "s4",
+    agent: "gpt",
+    title: "优化官网首页移动端响应式排版与动画",
+    senderLine: "你 → Codex · Mac Studio / hermesh-web",
+    env: "studio", envName: "Mac Studio", project: "hermesh-web", dateBucket: "昨天",
+    status: "idle", git: "pushed",
+    branch: "feat/web-hero", add: 210, del: 95, commit: "51ac09b",
+    time: "昨天",
+    updatedOrder: 8, createdOrder: 8
+  },
+  {
+    id: "s5",
+    agent: "claude",
+    title: "旧版实验性浮动底栏草稿归档",
+    senderLine: "你 → Claude Code · HomeBook / hermesh",
+    env: "homebook", envName: "HomeBook", project: "hermesh", dateBucket: "昨天",
+    status: "archived",
+    branch: "archive/old-bar", add: 15, del: 40, commit: "190fa11",
+    time: "2天前",
+    updatedOrder: 9, createdOrder: 9
+  }
+];
+
+function ic(name, cls = "ic") {
+  const map = {
+    moon: `<path d="M14.5 12.6A6 6 0 0 1 7.4 5.5a6.2 6.2 0 1 0 7.1 7.1Z" fill="currentColor" stroke="none"/>`,
+    menu: `<path d="M3.6 6.2h14.8M3.6 11h14.8M3.6 15.8h8.6"/>`,
+    search: `<circle cx="9" cy="9" r="5.3"/><path d="M13.2 13.2L16.5 16.5"/>`,
+    sort: `<path d="M7 4.5v11M7 4.5L4.3 7.2M7 4.5l2.7 2.7M13 15.5v-11M13 15.5l-2.7-2.7M13 15.5l2.7-2.7"/>`,
+    plus: `<path d="M10 4.3v11.4M4.3 10h11.4" stroke-width="2.1"/>`,
+    chev: `<path d="M5.5 7.8L10 12.3l4.5-4.5" stroke-width="2"/>`,
+    laptop: `<rect x="3.2" y="4.5" width="13.6" height="9" rx="1.6"/><path d="M1.8 15.5h16.4"/>`,
+    chat: `<path d="M10 3.6c-3.9 0-7 2.65-7 5.95 0 1.65.8 3.14 2.1 4.22-.16 1.05-.65 2.02-1.25 2.63 1.35-.12 2.72-.58 3.68-1.18.78.2 1.61.3 2.47.3 3.9 0 7-2.66 7-5.97S13.9 3.6 10 3.6Z"/>`,
+    catLine: `<path d="M5.2 7.2L4.3 3.4L7.9 5.4Q10 4.85 12.1 5.4L15.7 3.4L14.8 7.2Q16.35 9.1 16.6 12C16.6 15.1 14 16.8 10 16.8C6 16.8 3.4 15.1 3.4 12Q3.65 9.1 5.2 7.2Z"/><circle cx="7.8" cy="11.3" r="1.05" fill="currentColor" stroke="none"/><circle cx="12.2" cy="11.3" r="1.05" fill="currentColor" stroke="none"/>`,
+    gauge: `<path d="M4.1 14.3a7.2 7.2 0 1 1 11.8 0"/><path d="M10 10.8l3.1-3.1" stroke-width="2"/><circle cx="10" cy="11.2" r="1.35" fill="currentColor" stroke="none"/><circle cx="6.2" cy="14.6" r=".85" fill="currentColor" stroke="none"/><circle cx="10" cy="15.3" r=".85" fill="currentColor" stroke="none"/><circle cx="13.8" cy="14.6" r=".85" fill="currentColor" stroke="none"/>`,
+    close: `<path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/>`,
+    info: `<circle cx="10" cy="10" r="7.2"/><path d="M10 9.2v4.2"/><circle cx="10" cy="6.5" r=".9" fill="currentColor" stroke="none"/>`
+  };
+  return `<svg class="${cls}" viewBox="0 0 20 20">${map[name] || ""}</svg>`;
+}
+
+function gitGlyph(kind) {
+  if (kind === "pushed") {
+    return `<svg class="git-ic" style="stroke:var(--git-pushed)" viewBox="0 0 16 16"><circle cx="5" cy="4" r="1.7"/><circle cx="5" cy="12" r="1.7"/><path d="M5 5.7v4.6M9.5 6.5L12 4l2.5 2.5M12 4v7"/></svg>`;
+  }
+  return `<svg class="git-ic" style="stroke:var(--git-merged)" viewBox="0 0 16 16"><circle cx="4.5" cy="4" r="1.7"/><circle cx="4.5" cy="12" r="1.7"/><circle cx="11.5" cy="9.5" r="1.7"/><path d="M4.5 5.7v4.6M4.5 5.7c0 2.5 3.5 3.8 5.3 3.8"/></svg>`;
+}
+
+function agentLogo(kind, running) {
+  if (kind === "her") {
+    return `<span class="ag-logo her ${running ? "orbit" : ""}">${ic("catLine", "ic-sm")}</span>`;
+  }
+  const glyph = kind === "gpt" ? "◎" : kind === "claude" ? "✳" : "A";
+  return `<span class="ag-logo ${kind} ${running ? "orbit" : ""}">${glyph}</span>`;
+}
+
+function showToast(msg) {
+  S.toast = msg;
+  render();
+  clearTimeout(window._t);
+  window._t = setTimeout(() => { S.toast = ""; render(); }, 2100);
+}
+
+/* 1:1 复刻 MenuSessions 的分组、排序与 Her 子会话树展开逻辑 */
+function buildSections() {
+  let pool = SESSIONS.filter(s => {
+    if (!S.showArchived && s.status === "archived") return false;
+    if (S.envFilter !== "all" && s.env !== S.envFilter) return false;
+    if (S.query.trim()) {
+      const q = S.query.toLowerCase();
+      return s.title.toLowerCase().includes(q) || s.senderLine.toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const childrenMap = {};
+  pool.forEach(s => {
+    if (s.parentId) (childrenMap[s.parentId] = childrenMap[s.parentId] || []).push(s);
+  });
+
+  // 如果开启嵌套子任务，子会话跟随父会话显示，不单独作为顶层行重复出现（除非父会话不在当前过滤池）
+  const poolIds = new Set(pool.map(x => x.id));
+  let topLevel = S.nest ? pool.filter(s => !s.parentId || !poolIds.has(s.parentId)) : pool;
+
+  const cmp = (a, b) => {
+    const key = S.sort === "created" ? "createdOrder" : "updatedOrder";
+    return S.newestFirst ? a[key] - b[key] : b[key] - a[key];
+  };
+  topLevel.sort(cmp);
+
+  const agentNames = { her: "Her", agy: "Antigravity", claude: "Claude Code", gpt: "Codex" };
+  const sections = [];
+  const pushSec = (id, title, items, isProject = false) => {
+    if (!items.length && !(S.group === "status" && id === "active")) return;
+    sections.push({ id, title, items, isProject });
+  };
+
+  if (S.group === "status") {
+    pushSec("pinned", "置顶", topLevel.filter(s => s.pinned));
+    pushSec("waiting", "待你处理", topLevel.filter(s => !s.pinned && s.status === "waiting"));
+    pushSec("active", "进行中", topLevel.filter(s => !s.pinned && s.status === "running"));
+    pushSec("idle", "最近", topLevel.filter(s => !s.pinned && s.status === "idle"));
+    if (S.showArchived) pushSec("archived", "已归档", topLevel.filter(s => !s.pinned && s.status === "archived"));
+  } else if (S.group === "project") {
+    const byP = {};
+    topLevel.forEach(s => (byP[s.project] = byP[s.project] || []).push(s));
+    Object.entries(byP).forEach(([k, v]) => pushSec("proj-" + k, k, v, k !== "Her"));
+  } else if (S.group === "date") {
+    ["今天", "昨天"].forEach(d => pushSec("date-" + d, d, topLevel.filter(s => s.dateBucket === d)));
+  } else if (S.group === "agent") {
+    ["her", "agy", "claude", "gpt"].forEach(a => pushSec("ag-" + a, agentNames[a], topLevel.filter(s => s.agent === a)));
+  } else if (S.group === "machine") {
+    ENVS.forEach(e => pushSec("m-" + e.id, e.name, topLevel.filter(s => s.env === e.id)));
+  }
+
+  return { sections, childrenMap };
+}
+
+function renderSessionRow(s, opts = {}) {
+  const { isChild = false, childFirst = false, childLast = false, kids = [], shut = false } = opts;
+  const hasKids = S.nest && kids.length > 0;
+  const kidsWaiting = kids.some(k => k.status === "waiting");
+  const kidsRunning = kids.some(k => k.status === "running");
+  const isRunning = s.status === "running" || (!shut && kidsRunning);
+
+  let markHtml = "";
+  if (shut && kidsWaiting) {
+    markHtml = `<span class="m-dot orange" title="收起的子会话中有待确认项"></span>`;
+  } else if (s.status === "waiting") {
+    markHtml = `<span class="m-dot orange"></span>`;
+  } else if (s.git) {
+    markHtml = gitGlyph(s.git);
+  }
+
+  const subText = s.waitingText || s.senderLine;
+  const isWaitText = Boolean(s.waitingText);
+
+  return `
+    <div class="s-row-outer ${isChild ? "child" : ""} ${hasKids ? "has-twist" : ""}">
+      ${isChild ? `<i class="tree-line ${childFirst ? "first" : ""} ${childLast ? "last" : ""}"></i>` : ""}
+      ${hasKids ? `
+        <button class="twist-btn ${shut ? "shut" : ""}" data-twist="${s.id}" title="${shut ? "展开 Her 子会话" : "折叠 Her 子会话"}">
+          ${ic("chev", "ic-sm")}
+        </button>` : ""}
+      <div class="s-row-btn ${S.selectedId === s.id ? "sel" : ""}" data-opensess="${s.id}">
+        ${agentLogo(s.agent, isRunning)}
+        <div class="s-body">
+          <div class="s-line1">
+            <span class="s-title ${s.status === "archived" ? "archived" : ""}">${s.title}</span>
+            ${markHtml}
+            ${!S.metadata ? `<span class="s-time ${isRunning ? "live" : ""}">${s.time}</span>` : ""}
+          </div>
+          ${S.metadata ? `
+            <div class="s-line2">
+              <span class="s-sender ${isWaitText ? "wait" : ""}">${subText}</span>
+              <span class="s-time ${isRunning ? "live" : ""}">${s.time}</span>
+            </div>` : ""}
+        </div>
+        <button class="grp-plus" style="width:24px;height:24px;margin:-2px -4px 0 0;opacity:.65" data-preview="${s.id}" title="预览 Git 分支与交付卡片（真机长按触发）">
+          ${ic("info", "ic-sm")}
+        </button>
+      </div>
+    </div>`;
+}
+
+function renderHubPage() {
+  const { sections, childrenMap } = buildSections();
+  const groupLabels = { status: "按状态", project: "按项目", date: "按日期", agent: "按代理", machine: "按环境" };
+
+  return `
+    <div class="hub-page">
+      <div class="hub-top">
+        <span class="hub-title">会话</span>
+        ${S.frameMode === "immersive" ? `
+          <div class="hub-inline-tools">
+            <button class="vbar-circle" style="width:38px;height:38px" data-togglesearch="1">${ic("search", "ic-sm")}</button>
+            <button class="vbar-circle" style="width:38px;height:38px" data-toggleviewmenu="1">${ic("sort", "ic-sm")}</button>
+          </div>` : `<span style="font-size:12px;color:var(--i-l2)">${groupLabels[S.group]} · ${S.nest ? "子会话已嵌套" : "平铺"}</span>`}
+      </div>
+
+      ${S.searchOpen ? `
+        <div class="hub-search">
+          ${ic("search", "ic-sm")}
+          <input id="q-input" placeholder="搜索会话、子任务或项目…" value="${S.query}">
+          <button data-closesearch="1" style="color:var(--i-l2)">${ic("close", "ic-sm")}</button>
+        </div>` : ""}
+
+      <div class="hub-scroll">
+        ${S.showEnvBar ? `
+          <div class="env-block">
+            <div class="env-hdr">
+              <span>设备与环境</span>
+              <button class="grp-plus" data-toast="打开：添加环境 / 连接代理" title="添加环境">${ic("plus", "ic-sm")}</button>
+            </div>
+            <div class="env-strip">
+              <button class="env-pill ${S.envFilter === "all" ? "sel" : ""}" data-env="all">全部</button>
+              ${ENVS.map(e => `
+                <button class="env-pill ${S.envFilter === e.id ? "sel" : ""}" data-env="${e.id}">
+                  <span class="env-icon-wrap">${ic("laptop", "ic-sm")}<i class="env-dot ${e.online ? "" : "off"}"></i></span>
+                  <span>${e.name}</span>
+                </button>`).join("")}
+            </div>
+          </div>` : ""}
+
+        ${sections.map(sec => {
+          const open = !S.collapsedGroups[sec.id];
+          return `
+            <div class="grp-hdr-wrap">
+              <button class="grp-toggle" data-togglegroup="${sec.id}">
+                <span>${sec.title}</span>
+                <span class="grp-chev ${open ? "" : "shut"}">${ic("chev", "ic-sm")}</span>
+              </button>
+              ${sec.isProject ? `<button class="grp-plus" data-toast="在项目 ${sec.title} 中新建会话">${ic("plus", "ic-sm")}</button>` : ""}
+            </div>
+            ${open ? (sec.items.length === 0
+              ? `<div style="padding:6px 26px;font-size:13px;color:var(--i-l3)">当前没有运行中的会话</div>`
+              : sec.items.map(s => {
+                  const kids = childrenMap[s.id] || [];
+                  const shut = Boolean(S.collapsedTrees[s.id]);
+                  let html = renderSessionRow(s, { kids, shut });
+                  if (S.nest && kids.length && !shut) {
+                    const expanded = Boolean(S.expandedTrees[s.id]);
+                    const limit = expanded ? kids.length : 3;
+                    const shown = kids.slice(0, limit);
+                    const hiddenCount = kids.length - shown.length;
+                    html += shown.map((k, idx) => renderSessionRow(k, {
+                      isChild: true,
+                      childFirst: idx === 0,
+                      childLast: hiddenCount === 0 && idx === shown.length - 1
+                    })).join("");
+                    if (hiddenCount > 0) {
+                      html += `
+                        <button class="more-kids-btn" data-expandkids="${s.id}">
+                          <i class="tree-line last" style="left:-7px"></i>
+                          显示更多 (${hiddenCount})
+                        </button>`;
+                    }
+                  }
+                  return html;
+                }).join("")
+            ) : ""}
+          `;
+        }).join("")}
+
+        <div class="footer-arch">
+          没有更早的会话 · <button data-togglearch="1">${S.showArchived ? "隐藏已归档" : "显示已归档"}</button>
+        </div>
+      </div>
+
+      ${S.viewMenuOpen ? renderViewMenuPopover() : ""}
+      ${S.previewId ? renderGitPreviewModal(S.previewId) : ""}
+    </div>`;
+}
+
+/* 1:1 复刻 SessionsView.swift 的 ViewMenu 菜单内容 */
+function renderViewMenuPopover() {
+  const gOpts = [
+    ["status", "按状态（置顶/待处理/进行中）"],
+    ["project", "按项目（组头带 + 新建）"],
+    ["date", "按日期"],
+    ["agent", "按编码代理"],
+    ["machine", "按环境机器"]
+  ];
+  const sOpts = [
+    ["default", "默认（进行中按创建）"],
+    ["updated", "按最近活跃"],
+    ["created", "按创建时间"]
+  ];
+  return `
+    <div class="pop-backdrop" data-closeviewmenu="1"></div>
+    <div class="ios-menu">
+      <div class="m-sec-lbl">分组 (Group)</div>
+      ${gOpts.map(([k, lbl]) => `
+        <button class="m-item" data-setgroup="${k}">
+          <span>${lbl}</span><span class="chk">${S.group === k ? "✓" : ""}</span>
+        </button>`).join("")}
+      <div class="m-sep"></div>
+      <div class="m-sec-lbl">排序 (Sort)</div>
+      ${sOpts.map(([k, lbl]) => `
+        <button class="m-item" data-setsort="${k}">
+          <span>${lbl}</span><span class="chk">${S.sort === k ? "✓" : ""}</span>
+        </button>`).join("")}
+      <button class="m-item" data-toggleorder="1">
+        <span>${S.newestFirst ? "最新在前" : "最早在前"}</span><span style="font-size:12px;color:var(--i-tint)">切换</span>
+      </button>
+      <div class="m-sep"></div>
+      <div class="m-sec-lbl">显示 (Show)</div>
+      <button class="m-item" data-togglemeta="1">
+        <span>元数据（发起方·项目·时间）</span><span class="chk">${S.metadata ? "✓" : ""}</span>
+      </button>
+      <button class="m-item" data-togglenest="1">
+        <span>嵌套子任务（Her 子会话树）</span><span class="chk">${S.nest ? "✓" : ""}</span>
+      </button>
+    </div>`;
+}
+
+/* 1:1 复刻长按弹出的 SessionGitPreviewCard + 上下文菜单 */
+function renderGitPreviewModal(id) {
+  const s = SESSIONS.find(x => x.id === id) || SESSIONS[1];
+  return `
+    <div class="preview-wrap" data-closepreview="1">
+      <div class="git-card" onclick="event.stopPropagation()">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          ${agentLogo(s.agent, s.status === "running")}
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:650;font-size:14.5px;line-height:1.35">${s.title}</div>
+            <div style="font-size:12px;color:var(--i-l2);margin-top:2px">${s.senderLine} · ${s.time}</div>
+          </div>
+        </div>
+        ${s.branch ? `
+          <div class="git-box">
+            <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600">
+              <span style="color:var(--git-pushed)">${s.git === "merged" ? "已合并至 main" : "已提交并同步分支"}</span>
+              <span style="font-family:var(--mono)"><span style="color:var(--git-pushed)">+${s.add || 42}</span> <span style="color:var(--red)">−${s.del || 8}</span></span>
+            </div>
+            <div style="font-family:var(--mono);font-size:11.5px;color:var(--i-l2)">${s.branch} · ${s.commit || "7b2e91f"}</div>
+          </div>` : ""}
+      </div>
+      <div class="ctx-actions" onclick="event.stopPropagation()">
+        <button class="m-item" data-opensess="${s.id}"><span>进入此会话</span></button>
+        <button class="m-item" data-toast="已切换置顶"><span>${s.pinned ? "取消置顶" : "置顶会话"}</span></button>
+        <button class="m-item" data-toast="重命名会话"><span>重命名…</span></button>
+        <button class="m-item" style="color:var(--red)" data-closepreview="1"><span>归档会话</span></button>
+      </div>
+    </div>`;
+}
+
+function renderVerticalBar() {
+  return `
+    <aside class="dvbar">
+      <span class="vmoon">${ic("moon")}</span>
+      <div class="vclock">11:42</div>
+      <div class="vring">
+        <svg class="arc" viewBox="0 0 44 44" fill="none">
+          <path d="M 10.5 33.5 A 16.5 16.5 0 1 1 33.5 33.5" stroke="currentColor" stroke-opacity=".24" stroke-width="2.6" stroke-linecap="round"/>
+          <path d="M 10.5 33.5 A 16.5 16.5 0 1 1 35.8 29" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+        </svg>
+        <svg class="ic wifi-ic" viewBox="0 0 20 20">
+          <path d="M4.2 8.6a8.2 8.2 0 0 1 11.6 0M6.8 11.4a4.6 4.6 0 0 1 6.4 0"/>
+          <circle cx="10" cy="14" r="1.15" fill="currentColor" stroke="none"/>
+        </svg>
+        <span class="dots"><i></i><i></i><i></i><i class="dim"></i></span>
+      </div>
+
+      <button class="vbar-circle" data-toast="滑出左侧菜单（与本页共享同一套分组/排序状态）" title="展开侧边栏">
+        ${ic("menu")}
+      </button>
+
+      <div class="vbar-group" title="直接复用侧边栏同款 Search + ViewMenu（分组/排序/子任务开关）！">
+        <button class="${S.searchOpen ? "on" : ""}" data-togglesearch="1" title="搜索会话">
+          ${ic("search")}
+        </button>
+        <button class="${S.viewMenuOpen ? "on" : ""}" data-toggleviewmenu="1" title="打开 ViewMenu（分组·排序·子会话树）">
+          ${ic("sort")}
+        </button>
+      </div>
+
+      <div class="vbar-spacer"></div>
+
+      <nav class="vbar-tabcapsule">
+        <button class="vtab-btn" data-toast="切换到：新会话窗口">
+          ${ic("chat")}
+        </button>
+        <button class="vtab-btn sel" data-toast="当前锁定：独立「会话列表」主页（在具体会话中也锁定此键，一键返回列表）">
+          <svg class="ic" viewBox="0 0 20 20"><path d="M6.5 6.5L3 10l3.5 3.5M13.5 6.5L17 10l-3.5 3.5M11.2 4.8l-2.4 10.4"/></svg>
+          <span class="dot-badge"></span>
+        </button>
+        <button class="vtab-btn" data-toast="切换到：Her">
+          ${ic("catLine")}
+        </button>
+        <button class="vtab-btn" data-toast="切换到：概览">
+          ${ic("gauge")}
+        </button>
+      </nav>
+    </aside>`;
+}
+
+function renderControls() {
+  return `
+    <div class="proto-row">
+      <span class="proto-lbl">核心开关体验</span>
+      <button class="chip ${S.viewMenuOpen ? "on" : ""}" data-toggleviewmenu="1">⇅ 点此试分组/排序菜单 (${S.group})</button>
+      <button class="chip ${S.showEnvBar ? "on" : ""}" data-toggleenvbar="1">💻 顶部环境栏：${S.showEnvBar ? "开启（Claude风）" : "隐藏（纯列表）"}</button>
+      <button class="chip ${S.metadata ? "on" : ""}" data-togglemeta="1">📝 双行详情元数据：${S.metadata ? "开" : "关"}</button>
+    </div>
+    <div class="proto-row">
+      <span class="proto-lbl">视角与主题</span>
+      <button class="chip ${S.frameMode === "shell" ? "on" : ""}" data-frame="shell">📱 含右侧竖栏全貌</button>
+      <button class="chip ${S.frameMode === "immersive" ? "on" : ""}" data-frame="immersive">🖥 真机全屏贴合</button>
+      <button class="chip" data-theme="1">${S.theme === "dark" ? "☀️ 浅色" : "🌙 深色"}</button>
+    </div>`;
+}
+
+function render() {
+  document.documentElement.setAttribute("data-theme", S.theme);
+  document.getElementById("proto-ctl").innerHTML = renderControls();
+  const stage = document.getElementById("stage");
+  stage.className = `stage ${S.frameMode === "immersive" ? "immersive" : ""}`;
+
+  stage.innerHTML = S.frameMode === "immersive"
+    ? `<div class="immersive-wrap">${renderHubPage()}</div>${S.toast ? `<div class="toast">${S.toast}</div>` : ""}`
+    : `<div class="duo-shell"><div class="scr">${renderHubPage()}${renderVerticalBar()}</div></div>${S.toast ? `<div class="toast">${S.toast}</div>` : ""}`;
+
+  const input = document.getElementById("q-input");
+  if (input) {
+    input.addEventListener("input", (e) => {
+      S.query = e.target.value;
+      const pos = e.target.selectionStart;
+      render();
+      const next = document.getElementById("q-input");
+      if (next) { next.focus(); next.setSelectionRange(pos, pos); }
+    });
+  }
+}
+
+document.addEventListener("click", (e) => {
+  const previewBtn = e.target.closest("[data-preview]");
+  if (previewBtn) {
+    e.stopPropagation();
+    S.previewId = previewBtn.dataset.preview;
+    render();
+    return;
+  }
+  const twistBtn = e.target.closest("[data-twist]");
+  if (twistBtn) {
+    e.stopPropagation();
+    const id = twistBtn.dataset.twist;
+    S.collapsedTrees[id] = !S.collapsedTrees[id];
+    if (S.collapsedTrees[id]) delete S.expandedTrees[id];
+    render();
+    return;
+  }
+
+  const el = e.target.closest("[data-frame],[data-toggleenvbar],[data-env],[data-togglegroup],[data-expandkids],[data-togglearch],[data-toggleviewmenu],[data-closeviewmenu],[data-setgroup],[data-setsort],[data-toggleorder],[data-togglemeta],[data-togglenest],[data-togglesearch],[data-closesearch],[data-closepreview],[data-opensess],[data-theme],[data-toast]");
+  if (!el) return;
+
+  if (el.dataset.frame) { S.frameMode = el.dataset.frame; render(); }
+  else if (el.dataset.toggleenvbar) { S.showEnvBar = !S.showEnvBar; render(); }
+  else if (el.dataset.env) { S.envFilter = el.dataset.env; render(); }
+  else if (el.dataset.togglegroup) { const g = el.dataset.togglegroup; S.collapsedGroups[g] = !S.collapsedGroups[g]; render(); }
+  else if (el.dataset.expandkids) { S.expandedTrees[el.dataset.expandkids] = true; render(); }
+  else if (el.dataset.togglearch) { S.showArchived = !S.showArchived; render(); }
+  else if (el.dataset.toggleviewmenu) { S.viewMenuOpen = !S.viewMenuOpen; render(); }
+  else if (el.dataset.closeviewmenu) { S.viewMenuOpen = false; render(); }
+  else if (el.dataset.setgroup) { S.group = el.dataset.setgroup; S.viewMenuOpen = false; render(); }
+  else if (el.dataset.setsort) { S.sort = el.dataset.setsort; S.viewMenuOpen = false; render(); }
+  else if (el.dataset.toggleorder) { S.newestFirst = !S.newestFirst; render(); }
+  else if (el.dataset.togglemeta) { S.metadata = !S.metadata; render(); }
+  else if (el.dataset.togglenest) { S.nest = !S.nest; render(); }
+  else if (el.dataset.togglesearch) { S.searchOpen = !S.searchOpen; if (!S.searchOpen) S.query = ""; render(); }
+  else if (el.dataset.closesearch) { S.searchOpen = false; S.query = ""; render(); }
+  else if (el.dataset.closepreview) { S.previewId = null; render(); }
+  else if (el.dataset.opensess) { S.selectedId = el.dataset.opensess; S.previewId = null; showToast("进入会话：" + (SESSIONS.find(x => x.id === el.dataset.opensess)?.title || "")); }
+  else if (el.dataset.theme) { S.theme = S.theme === "dark" ? "light" : "dark"; render(); }
+  else if (el.dataset.toast) { showToast(el.dataset.toast); }
+});
+
+render();
+</script>
+</body>
+</html>

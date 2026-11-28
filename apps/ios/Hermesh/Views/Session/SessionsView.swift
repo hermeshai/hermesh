@@ -16,6 +16,7 @@ struct SessionListRow: View {
     var childLast = false
     var twistShut: Bool?
     var collapsedMark: TreeMark?
+    var metadataOverride: Bool? = nil
     var onTwist: (() -> Void)?
     @State private var renaming = false
     @State private var deleting = false
@@ -24,6 +25,7 @@ struct SessionListRow: View {
         let selected = model.chosenSession == session.sessionID
         let sender = model.senderLine(session, child: isChild)
         let now = model.now
+        let showMetadata = metadataOverride ?? model.listView.metadata
         let base = HStack(spacing: 0) {
             if let twistShut {
                 Button {
@@ -42,7 +44,7 @@ struct SessionListRow: View {
                 .accessibilityIdentifier("twist-\(session.displayTitle)")
             }
             Button { model.open(.session(session.sessionID)) } label: {
-                MenuSessionRow(session: session, metadata: model.listView.metadata, selected: selected, isChild: isChild, hasTwist: twistShut != nil, collapsedMark: collapsedMark)
+                MenuSessionRow(session: session, metadata: showMetadata, selected: selected, isChild: isChild, hasTwist: twistShut != nil, collapsedMark: collapsedMark)
             }
             .buttonStyle(RowStyle(selected: selected))
             .contentShape(.contextMenuPreview, .capsule)
@@ -87,6 +89,8 @@ struct SessionListRow: View {
 struct MenuSessionRow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var phase
+    @Environment(\.menuCoversPage) private var menuCoversPage
     let session: Session
     var metadata = false
     var selected = false
@@ -99,9 +103,19 @@ struct MenuSessionRow: View {
         return (kids.isEmpty ? (session.isActive && !session.needsAttention) : treeStatus(session, children: kids) == .active) && collapsedMark == nil
     }
 
+    private var subtitleLine: String {
+        let base = model.senderLine(session, child: isChild)
+        if session.isActive && !session.needsAttention && !session.progress.currentTool.isEmpty {
+            return "\(session.progress.currentTool) · \(base)"
+        }
+        return base
+    }
+
     var body: some View {
         let running = isRowRunning
-        let paused = !(model.drawerOpen || model.menuInView)
+        let visibleInDrawer = !menuCoversPage && (model.drawerOpen || model.menuInView)
+        let visibleInHub = !menuCoversPage && model.root == .sessions && model.path.isEmpty
+        let paused = phase != .active || !(visibleInDrawer || visibleInHub)
         let logoSize: CGFloat = isChild ? 19 : 22
         HStack(alignment: .top, spacing: isChild ? 10 : 12) {
             AgentLogo(id: session.agent, size: logoSize, running: running, paused: paused).frame(width: isChild ? 24 : 28, height: logoSize)
@@ -118,7 +132,7 @@ struct MenuSessionRow: View {
                 }
                 if metadata {
                     HStack(spacing: 8) {
-                        Text(model.senderLine(session, child: isChild)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        Text(subtitleLine).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                         time.monospacedDigit()
                     }
                     .font(.footnote).foregroundStyle(.secondary)
@@ -715,6 +729,7 @@ struct ViewMenu: View {
     @Environment(AppModel.self) private var model
     /// In the system's bar: its symbol alone, the bar drawing the glass as for its other buttons.
     var inBar = false
+    var metadata: Binding<Bool>? = nil
 
     var body: some View {
         // The bar draws its buttons' glass and colour: the plain style only for the menu's own glass.
@@ -760,7 +775,7 @@ struct ViewMenu: View {
                 Text(model.listView.newestFirst ? "Newest First" : "Oldest First")
             }
             Menu {
-                Toggle("Metadata", isOn: $model.listView.metadata)
+                Toggle("Metadata", isOn: metadata ?? $model.listView.metadata)
                 Toggle("Nest subtasks", isOn: $model.listView.nest)
             } label: {
                 Text("Show")
@@ -780,7 +795,7 @@ struct ViewMenu: View {
     }
 
     private var showValue: LocalizedStringKey {
-        switch (model.listView.metadata, model.listView.nest) {
+        switch (metadata?.wrappedValue ?? model.listView.metadata, model.listView.nest) {
         case (true, true): "Metadata, nested"
         case (true, false): "Metadata"
         case (false, true): "Nested"

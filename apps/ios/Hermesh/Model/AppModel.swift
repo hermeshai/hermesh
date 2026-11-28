@@ -13,15 +13,15 @@ private let appConnLog = Logger(subsystem: "ai.hermesh.app", category: "connecti
 
 /// Where the side menu leads.
 enum Root: Hashable {
-    case her, overview, grants, machines
+    case her, overview, sessions, grants, machines
     /// A new session: on a machine and in a project when its entry named them ("" else).
     case newSession(String, String)
     case session(String)
 
-    /// A page with a large title (Her's, the overview's and a session's are in the bar).
+    /// A page with a large title (Her's, the overview's, the sessions hub's and a session's are in the bar or custom).
     var titleLarge: Bool {
         switch self {
-        case .her, .overview, .session, .newSession: false
+        case .her, .overview, .sessions, .session, .newSession: false
         default: true
         }
     }

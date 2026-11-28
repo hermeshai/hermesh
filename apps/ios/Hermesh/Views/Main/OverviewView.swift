@@ -17,6 +17,8 @@ import UserNotifications
 struct OverviewView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var phase
+    @Environment(\.barsOnTheSide) private var sideBars
+    @Environment(\.menuCoversPage) private var menuCoversPage
     @AppStorage("hideSecondDevice") private var hideSecondDevice = false
     @AppStorage(Guide.key) private var guide = ""
     @State private var notificationsOff = false
@@ -87,7 +89,9 @@ struct OverviewView: View {
         .navigationBarTitleDisplayMode(.inline)
         .rootToolbar()
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { NewMenu() }
+            if !(sideBars && !model.menuBeside) && !menuCoversPage {
+                ToolbarItem(placement: .topBarTrailing) { NewMenu() }
+            }
         }
         // Usage asks only while it shows, again for each state, and when the counts move (AppModel.workChanged).
         .task(id: "\(dayKey(model.now)) \(stats.segment) \(stats.period) \(stats.filter) \(stats.group)") {

@@ -3,377 +3,448 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Sidebar 与大拇指热区 · iPhone Duo 规范优化 Demo v2</title>
+<title>iPhone Duo 原生右侧竖栏双态设计 · 没滑出 Sidebar vs 滑出 Sidebar</title>
 <style>
 :root {
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
 }
-[data-theme="light"] {
-  --page: #e7e8ee; --page-fg: #18191f; --page-fg2: #5e606c; --card: #ffffff; --card-bd: rgba(0,0,0,.08);
-  --i-bg: #ffffff; --i-menu: #ffffff; --i-bg2: #f2f2f7; --i-vbar: #f4f4f8;
-  --i-l1: #000000; --i-l2: rgba(60,60,67,.64); --i-l3: rgba(60,60,67,.36); --i-sep: rgba(0,0,0,.09);
-  --i-fill: rgba(118,118,128,.11); --i-fill2: rgba(118,118,128,.18);
-  --i-me: #3d5bff; --i-tint: #3d5bff; --i-tint-bg: rgba(61,91,255,.14);
-  --i-glass: rgba(252,252,255,.78); --i-glass-hi: rgba(255,255,255,.8); --i-glass-bd: rgba(0,0,0,.09);
-  --i-pop: rgba(248,248,252,.90); --scrim: rgba(0,0,0,.22);
-  --orange: #ff8c1a; --blue-dot: #3d5bff;
-  --warn-bg: rgba(230,90,40,.11); --warn-fg: #c94518; --ok-bg: rgba(32,163,90,.12); --ok-fg: #178245;
-}
 [data-theme="dark"] {
-  --page: #0a0b0f; --page-fg: #ededf2; --page-fg2: #9699a6; --card: #15161c; --card-bd: rgba(255,255,255,.08);
-  --i-bg: #000000; --i-menu: #121212; --i-bg2: #1c1c1e; --i-vbar: #08080a;
-  --i-l1: #f5f5f7; --i-l2: rgba(235,235,245,.62); --i-l3: rgba(235,235,245,.34); --i-sep: rgba(255,255,255,.11);
-  --i-fill: rgba(118,118,128,.24); --i-fill2: rgba(118,118,128,.34);
-  --i-me: #4a66ff; --i-tint: #7b93ff; --i-tint-bg: rgba(123,147,255,.22);
-  --i-glass: rgba(42,42,48,.76); --i-glass-hi: rgba(255,255,255,.18); --i-glass-bd: rgba(255,255,255,.13);
-  --i-pop: rgba(34,34,40,.88); --scrim: rgba(0,0,0,.48);
-  --orange: #ff9f2e; --blue-dot: #6f8aff;
-  --warn-bg: rgba(255,105,65,.15); --warn-fg: #ff8c6b; --ok-bg: rgba(63,207,134,.14); --ok-fg: #5ce09b;
+  --page: #08090c;
+  --page-fg: #f2f2f7;
+  --page-fg2: rgba(235,235,245,.62);
+  --card: #13141a;
+  --card-bd: rgba(255,255,255,.09);
+
+  --i-bg: #050506;
+  --i-menu: #070709;
+  --i-bg2: #18181c;
+  --i-vbar: #050506;
+  --i-l1: #ffffff;
+  --i-l2: rgba(235,235,245,.62);
+  --i-l3: rgba(235,235,245,.34);
+  --i-sep: rgba(255,255,255,.10);
+  --i-fill: rgba(120,120,132,.22);
+  --i-me: #4a66ff;
+  --i-tint: #7d96ff;
+
+  /* Calibrated 1:1 to Claude Duo screenshots (08:36 & 08:37) */
+  --lg-surface: linear-gradient(180deg, rgba(42,42,46,.88) 0%, rgba(28,28,32,.92) 100%);
+  --lg-pill-sel: rgba(14,14,17,.78);
+  --lg-rim-hi: rgba(255,255,255,.20);
+  --lg-rim-lo: rgba(255,255,255,.07);
+  --lg-shadow: 0 8px 22px rgba(0,0,0,.55);
+  --lg-menu-bg: rgba(32,32,36,.92);
+
+  --prominent-bg: #f5f5f7;
+  --prominent-fg: #0b0b0d;
+
+  --orange: #ff9f2e;
+  --blue-dot: #4b8bff;
+  --ok-bg: rgba(56,209,130,.15);
+  --ok-fg: #5ee39d;
+}
+[data-theme="light"] {
+  --page: #e8eaf0;
+  --page-fg: #16171d;
+  --page-fg2: rgba(60,60,67,.66);
+  --card: #ffffff;
+  --card-bd: rgba(0,0,0,.08);
+
+  --i-bg: #ffffff;
+  --i-menu: #f6f6f9;
+  --i-bg2: #f2f2f7;
+  --i-vbar: #f4f4f7;
+  --i-l1: #000000;
+  --i-l2: rgba(60,60,67,.62);
+  --i-l3: rgba(60,60,67,.34);
+  --i-sep: rgba(0,0,0,.09);
+  --i-fill: rgba(118,118,128,.12);
+  --i-me: #3d5bff;
+  --i-tint: #3d5bff;
+
+  --lg-surface: linear-gradient(180deg, rgba(255,255,255,.90) 0%, rgba(238,239,245,.88) 100%);
+  --lg-pill-sel: rgba(0,0,0,.09);
+  --lg-rim-hi: rgba(255,255,255,.96);
+  --lg-rim-lo: rgba(0,0,0,.10);
+  --lg-shadow: 0 8px 22px rgba(0,0,0,.10);
+  --lg-menu-bg: rgba(248,248,252,.94);
+
+  --prominent-bg: #141417;
+  --prominent-fg: #ffffff;
+
+  --orange: #f08210;
+  --blue-dot: #2f6bff;
+  --ok-bg: rgba(32,163,90,.12);
+  --ok-fg: #167e43;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; padding: 0; }
 body {
   background: var(--page); color: var(--page-fg);
-  font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased;
-  min-height: 100vh; padding-bottom: 92px;
+  font: 14px/1.48 var(--font); -webkit-font-smoothing: antialiased;
+  min-height: 100vh; padding-bottom: 36px;
 }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 svg { display: block; flex: none; }
-code { font: 12px var(--mono); background: var(--i-fill); padding: 1px 5px; border-radius: 5px; }
+code { font: 12px var(--mono); background: var(--i-fill); padding: 1px 6px; border-radius: 5px; }
 
-/* ---------- Header ---------- */
+/* ---------- Top Header & Controls ---------- */
 .hdr {
-  max-width: 1460px; margin: 0 auto; padding: 16px 20px 8px;
-  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  max-width: 1320px; margin: 0 auto; padding: 14px 16px 8px;
+  display: flex; flex-direction: column; gap: 10px;
 }
-.hdr-title { display: flex; flex-direction: column; gap: 3px; }
-.hdr-title h1 { font-size: 18px; font-weight: 650; margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hdr-title h1 {
+  font-size: 17px; font-weight: 650; margin: 0 0 4px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
 .badge { font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--ok-bg); color: var(--ok-fg); }
 .hdr-title p { margin: 0; font-size: 12.5px; color: var(--page-fg2); }
 
-.mode-tabs {
-  display: inline-flex; flex-wrap: wrap; gap: 3px; padding: 3px;
-  background: var(--card); border: 1px solid var(--card-bd); border-radius: 12px;
+.panel-ctl {
+  background: var(--card); border: 1px solid var(--card-bd); border-radius: 16px;
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
 }
-.mode-tabs button {
-  padding: 6px 12px; border-radius: 9px; font-size: 12.5px; font-weight: 500;
-  color: var(--page-fg2); transition: background .15s, color .15s;
+.ctl-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; }
+.ctl-lbl { color: var(--page-fg2); font-weight: 600; min-width: 110px; font-size: 12px; }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 5px; }
+.seg button {
+  padding: 5px 10px; border-radius: 9px; background: var(--i-fill);
+  color: var(--page-fg); font-size: 12px; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: background .14s, color .14s;
 }
-.mode-tabs button.on { background: var(--i-me); color: #fff; }
+.seg button.on { background: var(--i-me); color: #fff; }
 
 /* ---------- Stage ---------- */
 .stage {
-  max-width: 1480px; margin: 0 auto; padding: 8px 16px 20px;
-  display: flex; flex-direction: column; align-items: center; gap: 22px;
+  max-width: 1320px; margin: 0 auto; padding: 10px 12px 16px;
+  display: flex; flex-direction: column; align-items: center; gap: 24px;
 }
 .row-stage {
-  width: 100%; display: flex; gap: 28px; align-items: flex-start; justify-content: center; flex-wrap: wrap;
+  width: 100%; display: flex; gap: 26px; align-items: flex-start; justify-content: center; flex-wrap: wrap;
 }
 .dev-col { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 100%; }
 .dev-tag {
-  font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
-  background: var(--card); border: 1px solid var(--card-bd); color: var(--page-fg2);
+  font-size: 12px; font-weight: 600; padding: 3.5px 12px; border-radius: 999px;
+  background: var(--ok-bg); color: var(--ok-fg); text-align: center;
 }
-.dev-tag.good { background: var(--ok-bg); color: var(--ok-fg); border-color: transparent; }
-.dev-tag.bad { background: var(--warn-bg); color: var(--warn-fg); border-color: transparent; }
-.cap { font-size: 12px; color: var(--page-fg2); text-align: center; max-width: 460px; line-height: 1.55; }
-
-/* ---------- Liquid Glass ---------- */
-.iglass {
-  background: var(--i-glass);
-  backdrop-filter: blur(28px) saturate(1.7); -webkit-backdrop-filter: blur(28px) saturate(1.7);
-  box-shadow: inset 0 .75px 0 var(--i-glass-hi), 0 0 0 .5px var(--i-glass-bd), 0 8px 24px rgba(0,0,0,.22);
-}
-.igb {
-  width: 44px; height: 44px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--i-l1); transition: transform .12s, background .15s, color .15s; position: relative;
-}
-.igb:active { transform: scale(.92); }
-.igb.on { background: var(--i-tint-bg); color: var(--i-tint); }
-
-.vcapsule {
-  width: 48px; border-radius: 24px; padding: 3px;
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-}
-.vcapsule .igb { width: 42px; height: 42px; box-shadow: none; background: transparent; backdrop-filter: none; }
-.vcapsule .igb.on { background: var(--i-tint-bg); color: var(--i-tint); }
-.vcapsule .vsep { width: 22px; height: .5px; background: var(--i-sep); margin: 1px 0; }
-
-.badge-dot {
-  position: absolute; top: 8px; right: 8px; width: 7.5px; height: 7.5px; border-radius: 50%;
-  box-shadow: 0 0 0 1.5px rgba(18,18,22,.85);
-}
-[data-theme="light"] .badge-dot { box-shadow: 0 0 0 1.5px rgba(255,255,255,.9); }
-.badge-dot.blue { background: var(--blue-dot); }
-.badge-dot.orange { background: var(--orange); }
-
-.ic {
-  width: 20px; height: 20px; fill: none; stroke: currentColor;
-  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
-}
+.cap { font-size: 12px; color: var(--page-fg2); text-align: center; max-width: 444px; line-height: 1.55; }
 
 /* ---------- Device Shells ---------- */
 .duo-outer {
-  width: 448px; height: 648px; border-radius: 46px; padding: 11px;
-  background: #1a1b20;
-  box-shadow: 0 28px 75px rgba(0,0,0,.45), inset 0 0 0 1.5px #383a44;
+  width: min(444px, calc(100vw - 24px));
+  height: 668px;
+  border-radius: 44px; padding: 10px;
+  background: #191a1f;
+  box-shadow: 0 26px 70px rgba(0,0,0,.52), inset 0 0 0 1.5px #353741;
   position: relative; user-select: none; flex: none;
 }
-.duo {
-  width: 920px; height: 648px; border-radius: 40px; padding: 11px;
-  background: #1a1b20;
-  box-shadow: 0 28px 75px rgba(0,0,0,.45), inset 0 0 0 1.5px #383a44;
-  position: relative; user-select: none; flex: none;
+.duo-wide {
+  width: min(914px, calc(100vw - 24px));
+  height: 636px;
+  border-radius: 38px; padding: 10px;
+  background: #191a1f;
+  box-shadow: 0 26px 70px rgba(0,0,0,.52), inset 0 0 0 1.5px #353741;
+  position: relative; user-select: none; overflow-x: auto;
 }
-.duo::before {
-  content: ""; position: absolute; left: 50%; top: 5px; bottom: 5px; width: 2px; margin-left: -1px;
-  background: linear-gradient(to bottom, rgba(255,255,255,.16), rgba(255,255,255,.03) 15%, rgba(255,255,255,.03) 85%, rgba(255,255,255,.16));
+.duo-wide::before {
+  content: ""; position: absolute; left: 50%; top: 6px; bottom: 6px; width: 2px; margin-left: -1px;
+  background: linear-gradient(to bottom, rgba(255,255,255,.16), rgba(255,255,255,.03) 18%, rgba(255,255,255,.03) 82%, rgba(255,255,255,.16));
   z-index: 90; pointer-events: none;
 }
-.phone {
-  width: 396px; height: 780px; border-radius: 54px; padding: 11px;
-  background: #1a1b20;
-  box-shadow: 0 28px 75px rgba(0,0,0,.45), inset 0 0 0 1.5px #383a44;
-  position: relative; user-select: none; flex: none;
-}
-
 .scr {
   position: relative; width: 100%; height: 100%; border-radius: 35px;
   overflow: hidden; background: var(--i-bg); color: var(--i-l1);
-  font: 15.5px/1.38 var(--font); letter-spacing: -.15px; display: flex;
+  font: 15px/1.36 var(--font); letter-spacing: -.15px; display: flex;
 }
-.duo .scr { border-radius: 30px; }
-.phone .scr { border-radius: 44px; display: block; }
+.duo-wide .scr { min-width: 760px; border-radius: 29px; }
 
-/* ---------- Right System Vertical Bar (iPhone Duo) ---------- */
+/* ---------- Native Right Vertical Bar (dvbar) ---------- */
 .dvbar {
-  flex: none; width: 70px; background: var(--i-vbar); border-left: .5px solid var(--i-sep);
-  padding: 15px 0 15px; display: flex; flex-direction: column; align-items: center; gap: 9px;
+  flex: none; width: 78px;
+  background: var(--i-vbar);
+  padding: 16px 0 16px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
   z-index: 40; position: relative;
 }
-.dvbar.menu-bg { background: var(--i-menu); border-left-color: transparent; }
-.vclock { font-size: 14.5px; font-weight: 650; letter-spacing: -.2px; font-variant-numeric: tabular-nums; }
-.vring {
-  width: 42px; height: 42px; border-radius: 50%;
-  border: 2.2px solid var(--i-l1); border-bottom-color: transparent;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  position: relative; margin-bottom: 2px;
-}
-.vring .dots { position: absolute; bottom: -2px; font-size: 8px; letter-spacing: 2px; color: var(--i-l1); }
+.dvbar.menu-bg { background: var(--i-menu); }
+
+.vmoon { width: 14px; height: 14px; color: var(--i-l1); margin-bottom: -4px; }
+.vclock { font-size: 15.5px; font-weight: 700; letter-spacing: -.3px; font-variant-numeric: tabular-nums; margin-bottom: -3px; }
+.vring { width: 42px; height: 42px; position: relative; display: grid; place-items: center; margin-bottom: 2px; }
+.vring svg.arc { position: absolute; inset: 0; width: 42px; height: 42px; }
+.vring .wifi-ic { width: 17px; height: 17px; margin-top: -1px; }
+.vring .dots { position: absolute; bottom: 1px; display: flex; gap: 3px; align-items: center; }
+.vring .dots i { width: 3.4px; height: 3.4px; border-radius: 50%; background: var(--i-l1); display: block; }
+.vring .dots i.dim { opacity: .28; }
 .vbar-spacer { flex: 1; min-height: 8px; }
 
-/* Thumb Zone Callout Bracket */
-.thumb-callout {
-  position: absolute; right: 64px; bottom: 18px; pointer-events: none;
-  display: flex; flex-direction: column; align-items: flex-end; gap: 4px; z-index: 45;
+/* ---------- Native Bar Button Items (1:1 Claude Duo Screenshots) ---------- */
+/* 1. Single Liquid Glass Circle Button (ToolbarItem + ToolbarSpacer(.fixed)) */
+.vbar-circle {
+  width: 50px; height: 50px; border-radius: 50%;
+  background: var(--lg-surface);
+  backdrop-filter: blur(28px) saturate(1.8); -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  box-shadow:
+    inset 0 1px 0.5px var(--lg-rim-hi),
+    inset 0 -0.8px 0.5px var(--lg-rim-lo),
+    0 0 0 0.5px rgba(255,255,255,.08),
+    var(--lg-shadow);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--i-l1); position: relative;
+  transition: transform .13s cubic-bezier(.2,.9,.3,1), filter .13s;
 }
-.thumb-pill-hint {
-  font-size: 11px; padding: 3px 9px; border-radius: 8px; white-space: nowrap;
-  background: rgba(74,102,255,.18); color: #a5b5ff; border: .5px solid rgba(123,147,255,.35);
-  backdrop-filter: blur(12px);
+.vbar-circle:active { transform: scale(.92); filter: brightness(1.12); }
+.vbar-circle.on {
+  box-shadow: inset 0 1px 0.8px rgba(255,255,255,.42), 0 0 0 1.5px var(--i-tint), var(--lg-shadow);
 }
-[data-theme="light"] .thumb-pill-hint { background: rgba(61,91,255,.11); color: #2b47d6; }
 
-/* ---------- Identicon Avatar ---------- */
-.identicon {
-  width: 34px; height: 34px; border-radius: 50%; overflow: hidden;
-  background: #6cc5b8; display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(5, 1fr);
-  padding: 4px; gap: 1px; flex: none;
-  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.28);
+/* 2. Prominent Solid White Circle Button (UIBarButtonItemStyleProminent — Bottom New Session in Screenshot 2!) */
+.vbar-prominent {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: var(--prominent-bg);
+  color: var(--prominent-fg);
+  box-shadow:
+    0 10px 26px rgba(0,0,0,.55),
+    inset 0 1px 0.5px rgba(255,255,255,.8);
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  transition: transform .13s cubic-bezier(.2,.9,.3,1), filter .13s;
 }
-.identicon i { background: transparent; border-radius: 1px; }
+.vbar-prominent:active { transform: scale(.92); filter: brightness(.92); }
+
+/* 3. Grouped Top-Trailing Toolbar Capsule (like [ 🕒 | ▽ | Q ] in Screenshot 1) */
+.vbar-group {
+  width: 50px; border-radius: 25px; padding: 4px;
+  background: var(--lg-surface);
+  backdrop-filter: blur(28px) saturate(1.8); -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  box-shadow:
+    inset 0 1px 0.5px var(--lg-rim-hi),
+    inset 0 -0.8px 0.5px var(--lg-rim-lo),
+    0 0 0 0.5px rgba(255,255,255,.08),
+    var(--lg-shadow);
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+.vbar-group button {
+  width: 42px; height: 42px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--i-l1); position: relative;
+}
+.vbar-group button:active { background: var(--i-fill); }
+
+/* 4. Native Vertical UITabBar Capsule (Screenshot 1 idle icon capsule -> expands with labels & lens on press/drag!) */
+.vbar-tabcapsule {
+  width: 52px; border-radius: 26px; padding: 4px;
+  background: var(--lg-surface);
+  backdrop-filter: blur(32px) saturate(1.9); -webkit-backdrop-filter: blur(32px) saturate(1.9);
+  box-shadow:
+    inset 0 1.1px 0.6px var(--lg-rim-hi),
+    inset 0 -0.9px 0.6px var(--lg-rim-lo),
+    0 0 0 0.5px rgba(255,255,255,.09),
+    var(--lg-shadow);
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  position: relative; touch-action: none;
+  transition: width .18s cubic-bezier(.2,.9,.3,1), border-radius .18s;
+}
+.vbar-tabcapsule.lens-active {
+  width: 68px; border-radius: 34px; padding: 5px 4px;
+}
+.vtab-btn {
+  width: 44px; height: 48px; border-radius: 22px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  color: var(--i-l1); opacity: .78; position: relative; z-index: 2;
+  transition: all .16s cubic-bezier(.2,.9,.3,1);
+}
+.vtab-btn svg { width: 21px; height: 21px; }
+.vtab-btn .tlbl {
+  display: none; font-size: 10px; font-weight: 600; line-height: 1.05; letter-spacing: -.1px;
+}
+.vbar-tabcapsule.lens-active .vtab-btn {
+  width: 60px; height: 58px; border-radius: 29px;
+}
+.vbar-tabcapsule.lens-active .vtab-btn .tlbl { display: block; }
+.vtab-btn.sel {
+  opacity: 1;
+  background: var(--lg-pill-sel);
+  box-shadow: inset 0 0.5px 0.5px rgba(255,255,255,.10);
+}
+.vbar-tabcapsule.lens-active .vtab-btn.sel { background: transparent; box-shadow: none; }
+.vtab-btn.lens-focus { opacity: 1; transform: scale(1.12); z-index: 6; }
+
+.lg-lens {
+  position: absolute; left: -9px; width: 86px; height: 72px; border-radius: 36px;
+  pointer-events: none; z-index: 5;
+  background: radial-gradient(110% 100% at 50% 24%, rgba(255,255,255,.24) 0%, rgba(255,255,255,.07) 48%, rgba(20,20,25,.30) 100%);
+  backdrop-filter: blur(8px) saturate(2.1) brightness(1.12); -webkit-backdrop-filter: blur(8px) saturate(2.1) brightness(1.12);
+  box-shadow:
+    inset 0 1.6px 1px rgba(255,255,255,.55),
+    inset 0 -1.5px 1.2px rgba(255,255,255,.22),
+    inset 2.2px 0 2px rgba(255,95,70,.34),
+    inset -2.2px 0 2px rgba(65,180,255,.36),
+    0 12px 28px rgba(0,0,0,.55);
+  transition: top .13s cubic-bezier(.2,.9,.3,1);
+}
+
+/* Separate Buttons Stack in Thumb Zone when Sidebar IS Slid Out (Screenshot 2!) */
+.vbar-sep-stack {
+  display: flex; flex-direction: column; align-items: center; gap: 11px;
+}
+
+.dot-badge {
+  position: absolute; top: 8px; right: 9px; width: 7.5px; height: 7.5px; border-radius: 50%;
+  box-shadow: 0 0 0 1.8px #1d1d22;
+}
+.dot-badge.orange { background: var(--orange); }
+.dot-badge.blue { background: var(--blue-dot); }
+
+/* ---------- Identicon / Avatar Badge ---------- */
+.identicon {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: #6cc9bf;
+  display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(5, 1fr);
+  padding: 4px; gap: 1px; flex: none;
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.35);
+}
+.identicon i { background: transparent; border-radius: 0.7px; }
 .identicon i.f { background: #f2f8f7; }
 
-.legacy-avatar-float {
-  position: absolute; left: 16px; bottom: 12px; z-index: 30;
-  width: 52px; height: 52px; border-radius: 50%; padding: 4px;
-  display: flex; align-items: center; justify-content: center;
-}
-.legacy-avatar-float .identicon { width: 44px; height: 44px; }
-.legacy-collide-ring {
-  position: absolute; inset: -5px; border-radius: 50%;
-  border: 2px dashed #ff6b4a; pointer-events: none;
-  animation: pulseWarn 1.8s ease-in-out infinite;
-}
-@keyframes pulseWarn { 0%,100%{opacity:.9;transform:scale(1)} 50%{opacity:.4;transform:scale(1.06)} }
-
-/* ---------- Sidebar (DrawerView) ---------- */
+/* ---------- Slid-out Sidebar Content (100% Pure List, Like Claude Screenshot 2!) ---------- */
 .drawer-wrap {
   flex: 1; min-width: 0; height: 100%; background: var(--i-menu);
   display: flex; flex-direction: column; position: relative;
 }
 .drawer-top {
-  padding: 14px 16px 8px 22px; display: flex; align-items: center; justify-content: space-between; flex: none;
+  padding: 20px 16px 12px 22px; display: flex; align-items: center; justify-content: space-between; flex: none;
 }
-.wordmark { display: flex; align-items: center; gap: 9px; font-size: 21px; font-weight: 700; letter-spacing: -.3px; }
+.wordmark { display: flex; align-items: center; gap: 9px; font-size: 22px; font-weight: 700; letter-spacing: -.35px; }
 .drawer-scroll {
-  flex: 1; min-height: 0; overflow-y: auto; padding: 0 10px 18px;
-  scrollbar-width: none;
+  flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px 24px; scrollbar-width: none;
 }
 .drawer-scroll::-webkit-scrollbar { display: none; }
 
-.nav-row {
-  width: 100%; height: 46px; border-radius: 23px; padding: 0 16px;
-  display: flex; align-items: center; gap: 12px; font-size: 16px; color: var(--i-l1);
-  margin-bottom: 3px; text-align: left;
-}
-.nav-row.pill-bg { background: var(--i-fill); }
-.nav-row:hover { background: var(--i-fill); }
-.nav-row.sel { background: var(--i-fill2); font-weight: 600; }
-.nav-row .r-mark { margin-left: auto; width: 8.5px; height: 8.5px; border-radius: 50%; }
-
-.sec-label {
-  font-size: 13px; color: var(--i-l2); padding: 6px 16px 2px;
-  display: flex; align-items: center; justify-content: space-between;
-}
 .grp-head {
-  width: 100%; padding: 10px 16px 4px; font-size: 13px; color: var(--i-l2);
-  display: flex; align-items: center; gap: 5px; text-align: left;
+  width: 100%; padding: 12px 10px 6px; font-size: 13px; color: var(--i-l2); font-weight: 500;
+  display: flex; align-items: center; justify-content: space-between; text-align: left;
 }
 .s-row {
-  width: 100%; min-height: 44px; padding: 8px 14px; border-radius: 22px;
-  display: flex; align-items: center; gap: 11px; text-align: left;
+  width: 100%; min-height: 46px; padding: 8px 10px; border-radius: 14px;
+  display: flex; align-items: center; gap: 12px; text-align: left;
   color: var(--i-l1); font-size: 15.5px; transition: background .12s;
 }
-.s-row:hover { background: rgba(128,128,140,.10); }
+.s-row:hover { background: rgba(255,255,255,.04); }
 .s-row.sel { background: var(--i-fill); font-weight: 550; }
-.s-row .s-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.s-row.running .s-title {
-  background: linear-gradient(90deg, var(--i-l1) 30%, rgba(150,175,255,.45) 50%, var(--i-l1) 70%);
-  background-size: 220% 100%;
-  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-  animation: shimmer 3s linear infinite;
-}
-@keyframes shimmer { 0%{background-position:100% 0} 100%{background-position:-100% 0} }
+.s-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue-dot); flex: none; }
 
 .ag-logo {
-  width: 24px; height: 24px; border-radius: 7px; flex: none;
-  display: grid; place-items: center; font-size: 12px; font-weight: 700; position: relative;
+  width: 23px; height: 23px; border-radius: 6.5px; flex: none;
+  display: grid; place-items: center; font-size: 11.5px; font-weight: 700; position: relative;
 }
-.ag-logo.gpt { background: #ffffff; color: #111; border: .5px solid rgba(0,0,0,.12); }
-.ag-logo.agy { background: #ffffff; color: #2b5cff; border: .5px solid rgba(0,0,0,.12); }
+.ag-logo.gpt { background: #ffffff; color: #111; }
+.ag-logo.agy { background: #f2f4ff; color: #3656f5; }
 .ag-logo.claude { background: #d97757; color: #fff; }
 .ag-logo.orbit::after {
-  content: ""; position: absolute; inset: -2.5px; border-radius: 9px;
-  border: 1.8px solid transparent; border-top-color: #5b7dff; border-right-color: rgba(91,125,255,.45);
-  animation: spin 1.8s linear infinite; pointer-events: none;
+  content: ""; position: absolute; inset: -2.5px; border-radius: 8.5px;
+  border: 1.6px solid var(--i-tint); opacity: .9;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---------- Liquid Glass Pull-Up Menu ---------- */
-.pop-backdrop { position: absolute; inset: 0; z-index: 65; background: rgba(0,0,0,.08); }
-.lg-menu {
-  position: absolute; z-index: 70; width: 236px; border-radius: 22px; padding: 6px;
-  background: var(--i-pop);
-  backdrop-filter: blur(34px) saturate(1.8); -webkit-backdrop-filter: blur(34px) saturate(1.8);
-  box-shadow: inset 0 .75px 0 var(--i-glass-hi), 0 0 0 .5px var(--i-glass-bd), 0 18px 48px rgba(0,0,0,.42);
-  transform-origin: bottom right;
-  animation: popIn .18s cubic-bezier(.2, .9, .3, 1);
-}
-.lg-menu.origin-bl { transform-origin: bottom left; }
-@keyframes popIn { from { opacity: 0; transform: scale(.86) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-.lg-sec-hdr {
-  padding: 6px 12px 3px; font-size: 11.5px; font-weight: 600; color: var(--i-l2);
-  display: flex; align-items: center; justify-content: space-between;
-}
-.lg-sep { height: .5px; background: var(--i-sep); margin: 5px 10px; }
-.lg-item {
-  width: 100%; min-height: 39px; padding: 6px 12px; border-radius: 13px;
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  font-size: 14.5px; color: var(--i-l1); text-align: left;
-}
-.lg-item:hover, .lg-item:active { background: var(--i-fill); }
-.lg-item .sub { display: block; font-size: 11.5px; color: var(--i-l2); margin-top: 1px; }
-.lg-item .ic { width: 18px; height: 18px; color: var(--i-l1); opacity: .88; }
-
-/* ---------- Root Pages ---------- */
+/* ---------- Root Pages (When Sidebar is NOT Slid Out) ---------- */
 .root-page {
   flex: 1; min-width: 0; height: 100%; background: var(--i-bg);
   display: flex; flex-direction: column; position: relative;
 }
-.page-top { padding: 14px 16px 10px; display: flex; align-items: center; justify-content: center; position: relative; }
-.title-cap { padding: 6px 16px; border-radius: 22px; text-align: center; max-width: 240px; }
-.title-cap b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.title-cap span { display: block; font-size: 11px; color: var(--i-l2); }
-.chat-body { flex: 1; padding: 12px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.page-top {
+  padding: 18px 20px 8px; display: flex; align-items: center; justify-content: space-between; flex: none;
+}
+.page-serif-title { font-size: 24px; font-weight: 700; letter-spacing: -.4px; }
+.title-cap {
+  padding: 6px 15px; border-radius: 999px; background: var(--lg-surface);
+  box-shadow: inset 0 1px 0.5px var(--lg-rim-hi), 0 4px 14px rgba(0,0,0,.22);
+  display: flex; flex-direction: column; align-items: center; max-width: 280px; margin: 0 auto;
+}
+.title-cap b { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px; }
+.title-cap span { font-size: 11px; color: var(--i-l2); }
+
+.chat-body {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 12px 18px;
+  display: flex; flex-direction: column; gap: 11px;
+}
 .bub-me {
-  align-self: flex-end; max-width: 82%; padding: 10px 14px; border-radius: 18px 18px 4px 18px;
-  background: var(--i-me); color: #fff; font-size: 14.5px;
+  align-self: flex-end; max-width: 85%; padding: 9px 13px; border-radius: 18px 18px 5px 18px;
+  background: var(--i-me); color: #fff; font-size: 14px; line-height: 1.45;
 }
-.bub-ai { font-size: 14.5px; line-height: 1.55; color: var(--i-l1); }
+.bub-ai {
+  align-self: flex-start; max-width: 95%; padding: 11px 14px; border-radius: 16px;
+  background: var(--i-bg2); color: var(--i-l1); font-size: 13.5px; line-height: 1.56;
+}
 .composer-mock {
-  margin: 8px 14px 14px; height: 44px; border-radius: 22px; padding: 0 14px;
-  display: flex; align-items: center; justify-content: space-between; color: var(--i-l2); font-size: 14px;
+  margin: 6px 16px 16px; height: 44px; border-radius: 22px; padding: 0 14px;
+  background: var(--lg-surface);
+  box-shadow: inset 0 1px 0.5px var(--lg-rim-hi), 0 4px 16px rgba(0,0,0,.25);
+  display: flex; align-items: center; justify-content: space-between; color: var(--i-l2); font-size: 13.5px;
 }
-.her-hero { display: flex; flex-direction: column; align-items: center; padding-top: 16px; gap: 6px; }
-.her-orb {
-  width: 64px; height: 64px; border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #9db4ff, #4a66ff 60%, #25348a);
-  box-shadow: 0 8px 26px rgba(74,102,255,.42); display: grid; place-items: center; color: #fff;
-}
-.ov-cards { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
-.ov-card { padding: 13px 15px; border-radius: 20px; background: var(--i-bg2); display: flex; flex-direction: column; gap: 4px; }
 
-.sheet-modal {
-  position: absolute; inset: 18px 10px 0 10px; z-index: 80;
-  background: var(--i-bg2); border-radius: 28px 28px 0 0;
-  box-shadow: 0 -10px 40px rgba(0,0,0,.5); display: flex; flex-direction: column; overflow: hidden;
-  animation: slideUp .22s cubic-bezier(.2,.9,.3,1);
+.ov-cards { padding: 8px 18px; display: flex; flex-direction: column; gap: 10px; }
+.ov-card {
+  padding: 13px 15px; border-radius: 18px; background: var(--i-bg2);
+  display: flex; flex-direction: column; gap: 4px; border: .5px solid var(--i-sep);
 }
-@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
-/* ---------- Unfolded Duo Left Sidebar / 74pt Rail ---------- */
+/* ---------- Unfolded Split Sidebar ---------- */
 .beside-side {
-  width: 288px; height: 100%; background: var(--i-menu); border-right: .5px solid var(--i-sep);
-  display: flex; flex-direction: column; position: relative; flex: none;
+  width: 296px; flex: none; height: 100%; background: var(--i-menu);
+  border-right: .5px solid var(--i-sep);
+  display: flex; flex-direction: column; position: relative;
+}
+.beside-foot {
+  padding: 8px 16px 14px; display: flex; align-items: center; justify-content: space-between;
 }
 .beside-rail {
-  width: 74px; height: 100%; background: var(--i-menu); border-right: .5px solid var(--i-sep);
-  padding: 14px 0 12px; display: flex; flex-direction: column; align-items: center; gap: 6px;
-  position: relative; flex: none;
+  width: 72px; flex: none; height: 100%; background: var(--i-menu);
+  border-right: .5px solid var(--i-sep);
+  padding: 14px 0; display: flex; flex-direction: column; align-items: center; gap: 8px;
 }
 .rail-btn {
-  width: 48px; height: 48px; border-radius: 14px;
-  display: flex; align-items: center; justify-content: center; color: var(--i-l1); position: relative;
+  width: 46px; height: 46px; border-radius: 14px;
+  display: grid; place-items: center; color: var(--i-l2); position: relative;
 }
-.rail-btn:hover { background: var(--i-fill); }
-.rail-btn.sel { background: var(--i-fill); }
-.rail-btn.sel::before {
-  content: ""; position: absolute; left: -13px; top: 14px; bottom: 14px; width: 3px;
-  border-radius: 2px; background: var(--i-tint);
-}
-.rail-btn .r-dot { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; border-radius: 50%; }
+.rail-btn:hover { background: var(--i-fill); color: var(--i-l1); }
+.rail-btn.sel { background: var(--i-fill); color: var(--i-l1); }
 
-/* ---------- Spec Summary Cards ---------- */
-.spec-grid {
-  width: 100%; max-width: 1320px; display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px;
+/* ---------- Native Pull-up Menu ---------- */
+.pop-backdrop { position: absolute; inset: 0; z-index: 65; background: rgba(0,0,0,.18); }
+.ios-menu {
+  position: absolute; z-index: 70; width: 232px; border-radius: 22px; overflow: hidden;
+  background: var(--lg-menu-bg);
+  backdrop-filter: blur(40px) saturate(1.9); -webkit-backdrop-filter: blur(40px) saturate(1.9);
+  box-shadow: inset 0 1px 0.5px var(--lg-rim-hi), 0 20px 52px rgba(0,0,0,.58), 0 0 0 0.5px rgba(255,255,255,.12);
+  animation: menuPop .16s cubic-bezier(.2,.9,.3,1);
 }
-.scard { background: var(--card); border: 1px solid var(--card-bd); border-radius: 18px; padding: 16px 18px; }
-.scard h3 { margin: 0 0 8px; font-size: 14.5px; font-weight: 650; }
-.scard ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--page-fg2); line-height: 1.65; }
-.scard li { margin: 4px 0; }
-.scard b { color: var(--page-fg); }
-
-/* ---------- Bottom Control Bar ---------- */
-.ctl {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 120;
-  background: var(--card); border-top: 1px solid var(--card-bd);
-  padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; justify-content: center;
-  font-size: 12.5px;
+@keyframes menuPop {
+  from { opacity: 0; transform: scale(.90) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
 }
-.ctl-grp { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-.ctl-grp span { color: var(--page-fg2); font-weight: 500; margin-right: 2px; }
-.ctl button { padding: 5px 11px; border-radius: 8px; background: var(--i-fill); color: var(--page-fg); font-weight: 500; }
-.ctl button.on { background: var(--i-me); color: #fff; }
+.ios-menu-item {
+  width: 100%; padding: 11px 16px; display: flex; align-items: center; gap: 12px;
+  font-size: 14.5px; color: var(--i-l1); text-align: left;
+  border-bottom: .5px solid var(--i-sep);
+}
+.ios-menu-item:last-child { border-bottom: 0; }
+.ios-menu-item:active { background: var(--i-fill); }
+.ios-menu-item svg { width: 18px; height: 18px; color: var(--i-l1); opacity: .9; }
+.ios-menu-sep { height: 7px; background: rgba(0,0,0,.18); border-bottom: .5px solid var(--i-sep); }
+.ios-menu-item .sub { display: block; font-size: 11.5px; color: var(--i-l2); margin-top: 1px; line-height: 1.3; }
 
 .toast {
-  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
-  padding: 7px 14px; border-radius: 99px; font-size: 12.5px; font-weight: 500;
-  z-index: 95; white-space: nowrap; pointer-events: none;
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 95;
+  padding: 8px 16px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  background: var(--lg-menu-bg); color: var(--i-l1);
+  backdrop-filter: blur(28px); box-shadow: 0 10px 28px rgba(0,0,0,.45), inset 0 1px .5px var(--lg-rim-hi);
+  white-space: nowrap; pointer-events: none;
 }
+
+.ic { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.85; stroke-linecap: round; stroke-linejoin: round; }
 </style>
 </head>
 <body>
@@ -381,83 +452,104 @@ code { font: 12px var(--mono); background: var(--i-fill); padding: 1px 5px; bord
 <header class="hdr">
   <div class="hdr-title">
     <h1>
-      Sidebar 与大拇指热区 · iPhone Duo 规范优化 Demo v2
-      <span class="badge">Her & 概览全迁入右下角拇指位 · 左侧纯任务流</span>
+      iPhone Duo 原生右侧竖栏 · 滑出 Sidebar 前后双态设计
+      <span class="badge">1:1 对齐 Claude 原生侧栏双态逻辑</span>
     </h1>
-    <p>去掉生硬的横向并排胶囊：在 Duo 上把 <b>Her、概览、新建</b> 直接搬到右侧竖栏底部<b>大拇指液态玻璃胶囊</b>，左侧从头到尾纯粹是任务列表（省 ~156pt），<b>头像仅在 Sidebar 打开时显示</b>。</p>
+    <p>
+      全部按钮都在<b>右侧系统原生竖栏</b>，但<b>没滑出 Sidebar</b> 与<b>滑出 Sidebar</b> 完全不同：<br>
+      ① <b>没滑出时（左图）</b>：右下角是<b>连体功能胶囊 <code>UITabBar</code></b>（纯功能切换，无 <code>+</code> 创建、无头像）；② <b>滑出 Sidebar 时（右图）</b>：<code>UITabBar</code> 退场，右下角切换为<b>一列独立的原生圆钮</b>（用户头像 + 搜索/入口 + 最底部白底醒目新会话圆钮）！
+    </p>
   </div>
-  <div class="mode-tabs" id="pose-tabs">
-    <button data-pose="compare" class="on">① Duo 外屏：现状 vs 大拇指区方案</button>
-    <button data-pose="unfolded">② Duo 展开横放（分屏 + 右下角拇指区 / 左窄栏）</button>
-    <button data-pose="iphone">③ 直板 iPhone（保持自然竖排）</button>
-  </div>
+  <div class="panel-ctl" id="ctl"></div>
 </header>
 
 <main class="stage" id="stage"></main>
 
-<div class="ctl" id="ctl"></div>
-
 <script>
 const S = {
-  theme: "dark",
-  pose: "compare",          // "compare" | "unfolded" | "iphone"
-  duoScreen: "sidebar",     // "sidebar" | "session" | "her" | "overview" | "new"
-  newInList: false,         // false: 新建也收进右下角 [新建|Her|概览] (左侧100%纯任务); true: 左侧顶留单行[新建], 右下角 [Her|概览]
-  pageNavBar: "tabs",       // "tabs" (普通页右下角常驻 [≡会话|Her|概览], 无头像) | "minimal" (普通页仅右上 ≡)
-  unfoldedThumb: "right",   // "right" (展开态也把 Her/概览放右下角拇指区，左栏纯任务) | "left" (展开态左栏保留竖排)
-  menuOpen: false,
-  settingsOpen: false,
+  sidebarStack: "four4",    // "four4" (方案2: 头像 · Her · 概览 · 白底+) | "claude3" (头像 · 搜索 · 白底+)
+  activePage: "session",    // "session" | "her" | "overview" | "new"
+  selectedSession: "s1",
   railCollapsed: false,
-  railMenuOpen: false,
-  ipMenuOpen: false,
-  selectedSession: "s2",
-  toast: ""
+  menuOpenRight: false,
+  menuOpenUnfolded: false,
+  theme: "dark",
+  toast: "",
+  draggingId: null,
+  lensIndex: 0
 };
 
 const SESSIONS = {
   pinned: [
-    { id: "s1", agent: "gpt", title: "调研编程代理自动提交推送方案", running: false }
+    { id: "p1", agent: "gpt", title: "Fix thread-v2 spec after structured…", unread: true }
   ],
   active: [
-    { id: "s2", agent: "agy", title: "切换会话模型支持", running: true },
-    { id: "s3", agent: "agy", title: "修复 iPhone Duo 放大按钮失效", running: true },
-    { id: "s4", agent: "agy", title: "优化手机端输入框光影动画", running: true },
-    { id: "s5", agent: "agy", title: "优化手机端归档响应体验", running: false },
-    { id: "s6", agent: "gpt", title: "重设计手机端计划确认弹层", running: false },
-    { id: "s7", agent: "agy", title: "修复手机端文字截断", running: false },
-    { id: "s8", agent: "agy", title: "重设计后台任务展示", running: false },
-    { id: "s9", agent: "claude", title: "精简会话文件抽屉手势交互", running: false },
-    { id: "s10", agent: "gpt", title: "支持离线队列任务重发", running: false }
+    { id: "s1", agent: "agy", title: "iPhone Duo 原生侧栏双态重设计", running: true, unread: true },
+    { id: "s2", agent: "claude", title: "附件和HTML文件交互流程", running: false, unread: false },
+    { id: "s3", agent: "agy", title: "提供商自动安装与更新", running: true, unread: false },
+    { id: "s4", agent: "gpt", title: "优化手机端归档响应体验", running: false, unread: false },
+    { id: "s5", agent: "claude", title: "重设计手机端计划确认弹层", running: false, unread: false }
   ]
 };
 
 function ic(name) {
-  const paths = {
-    x: '<path d="M6 6l8 8M14 6l-8 8"/>',
-    search: '<circle cx="9" cy="9" r="5.5"/><path d="M13.2 13.2L17 17"/>',
-    sort: '<path d="M7 4v12M4 7l3-3 3 3M13 16V4M10 13l3 3 3-3"/>',
-    compose: '<path d="M11 4H5.5A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16h9a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M14.5 3.5a1.4 1.4 0 0 1 2 2L10 12l-2.5.5.5-2.5 6.5-6.5z"/>',
-    her: '<rect x="3.5" y="5.5" width="13" height="10" rx="3"/><path d="M10 2.5v3M1.8 9.5v2M18.2 9.5v2M7.5 9.5v2M12.5 9.5v2"/>',
-    grid: '<rect x="3.5" y="3.5" width="5.2" height="5.2" rx="1.2"/><rect x="11.3" y="3.5" width="5.2" height="5.2" rx="1.2"/><rect x="3.5" y="11.3" width="5.2" height="5.2" rx="1.2"/><rect x="11.3" y="11.3" width="5.2" height="5.2" rx="1.2"/>',
-    menu: '<path d="M4 6h12M4 10h12M4 14h12"/>',
-    more: '<circle cx="5" cy="10" r="1.2" fill="currentColor"/><circle cx="10" cy="10" r="1.2" fill="currentColor"/><circle cx="15" cy="10" r="1.2" fill="currentColor"/>',
-    wifi: '<path d="M4.5 8.5a8 8 0 0 1 11 0M7 11.2a4.5 4.5 0 0 1 6 0"/><circle cx="10" cy="13.8" r="1" fill="currentColor"/>',
-    chevD: '<path d="M6 8l4 4 4-4"/>',
-    gear: '<circle cx="10" cy="10" r="2.6"/><path d="M10 3.2v1.6M10 15.2v1.6M3.2 10h1.6M15.2 10h1.6M5.2 5.2l1.1 1.1M13.7 13.7l1.1 1.1M14.8 5.2l-1.1 1.1M6.3 13.7l-1.1 1.1"/>',
-    link: '<path d="M8.5 11.5l3-3M7 13l-1.3 1.3a2.8 2.8 0 0 1-4-4L3 9M13 7l1.3-1.3a2.8 2.8 0 0 1 4 4L17 11"/>',
-    laptop: '<rect x="3.5" y="4.5" width="13" height="8.5" rx="1.3"/><path d="M2 15.5h16"/>',
-    qr: '<rect x="3.5" y="3.5" width="5" height="5" rx=".8"/><rect x="11.5" y="3.5" width="5" height="5" rx=".8"/><rect x="3.5" y="11.5" width="5" height="5" rx=".8"/><path d="M12 12h2v2h-2zM15 14h1.5v2.5H14"/>',
-    sidebar: '<rect x="3" y="4" width="14" height="12" rx="2"/><path d="M8 4v12"/>',
-    widen: '<path d="M4 8V4h4M16 12v4h-4M4 4l5 5M16 16l-5-5"/>',
-    ecg: '<path d="M2.5 10h3l2-5 3 10 2.2-6 1.8 1h3"/>',
-    plus: '<path d="M10 4.5v11M4.5 10h11"/>',
-    up: '<path d="M10 15V5M6 9l4-4 4 4"/>'
+  const map = {
+    moon: `<path d="M14.5 12.6A6 6 0 0 1 7.4 5.5a6.2 6.2 0 1 0 7.1 7.1Z" fill="currentColor" stroke="none"/>`,
+    menu: `<path d="M4.2 6.8h11.6M4.2 10.2h11.6M4.2 13.6h7.2"/>`,
+    search: `<circle cx="9" cy="9" r="5.3"/><path d="M13.2 13.2L16.5 16.5"/>`,
+    sort: `<path d="M7 4.5v11M7 4.5L4.3 7.2M7 4.5l2.7 2.7M13 15.5v-11M13 15.5l-2.7-2.7M13 15.5l2.7-2.7"/>`,
+    plus: `<path d="M10 4.2v11.6M4.2 10h11.6" stroke-width="2.15"/>`,
+    compose: `<path d="M11.8 3.8l4.4 4.4M5 15l3.3-.7 7.2-7.2a1.5 1.5 0 0 0 0-2.1l-1.5-1.5a1.5 1.5 0 0 0-2.1 0L4.7 10.7 4 14Z"/><path d="M3.8 4.5h4.5M3.8 4.5v11a1.5 1.5 0 0 0 1.5 1.5h10.2a1.5 1.5 0 0 0 1.5-1.5V11" stroke-width="1.75"/>`,
+    chat: `<path d="M10 3.6c-3.9 0-7 2.65-7 5.95 0 1.65.8 3.14 2.1 4.22-.16 1.05-.65 2.02-1.25 2.63 1.35-.12 2.72-.58 3.68-1.18.78.2 1.61.3 2.47.3 3.9 0 7-2.66 7-5.97S13.9 3.6 10 3.6Z"/>`,
+    catLine: `
+      <path d="M4.2 9.4 L4.7 3.8 L8.3 6.5 Q10 6.1 11.7 6.5 L15.3 3.8 L15.8 9.4 C16.3 13.4 13.8 16.2 10 16.2 C6.2 16.2 3.7 13.4 4.2 9.4 Z"/>
+      <circle cx="7.7" cy="10.8" r="1.05" fill="currentColor" stroke="none"/>
+      <circle cx="12.3" cy="10.8" r="1.05" fill="currentColor" stroke="none"/>
+      <path d="M9.2 12.8 Q10 13.5 10.8 12.8" stroke-width="1.5"/>`,
+    catColor: `
+      <path d="M4.2 9.5 L4.8 3.8 L8.4 6.5 Q10 6.1 11.6 6.5 L15.2 3.8 L15.8 9.5 C16.3 13.5 13.8 16.3 10 16.3 C6.2 16.3 3.7 13.5 4.2 9.5 Z" fill="#f3a661" stroke="#f3a661" stroke-width="1.1"/>
+      <circle cx="7.7" cy="10.8" r="1.1" fill="#1d1814" stroke="none"/>
+      <circle cx="12.3" cy="10.8" r="1.1" fill="#1d1814" stroke="none"/>`,
+    gauge: `
+      <path d="M4.1 14.3a7.2 7.2 0 1 1 11.8 0"/>
+      <path d="M10 10.8l3.1-3.1" stroke-width="2"/>
+      <circle cx="10" cy="11.2" r="1.35" fill="currentColor" stroke="none"/>
+      <circle cx="6.2" cy="14.6" r=".85" fill="currentColor" stroke="none"/>
+      <circle cx="10" cy="15.3" r=".85" fill="currentColor" stroke="none"/>
+      <circle cx="13.8" cy="14.6" r=".85" fill="currentColor" stroke="none"/>`,
+    more: `<circle cx="5.5" cy="10" r="1.2" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="10" r="1.2" fill="currentColor" stroke="none"/>`,
+    sidebar: `<rect x="3" y="4" width="14" height="12" rx="2.6"/><path d="M7.6 4v12"/>`,
+    widen: `<path d="M8.2 8.2L4.2 4.2M4.2 4.2h3.5M4.2 4.2v3.5M11.8 11.8l4 4m0 0h-3.5m3.5 0v-3.5"/>`,
+    link: `<path d="M8.5 11.5l3-3M6.8 13.2l-1.3 1.3a2.8 2.8 0 0 1-4-4l1.3-1.3M13.2 6.8l1.3-1.3a2.8 2.8 0 0 1 4 4l-1.3 1.3" transform="translate(0.2,0.2) scale(0.95)"/>`,
+    laptop: `<rect x="3" y="4.2" width="14" height="9.4" rx="1.8"/><path d="M6.5 16.2h7M10 13.6v2.6"/>`,
+    qr: `<path d="M3.5 6.5v-2a1 1 0 0 1 1-1h2M13.5 3.5h2a1 1 0 0 1 1 1v2M16.5 13.5v2a1 1 0 0 1-1 1h-2M6.5 16.5h-2a1 1 0 0 1-1-1v-2"/><rect x="6.5" y="6.5" width="2.8" height="2.8" rx=".5"/><rect x="10.7" y="6.5" width="2.8" height="2.8" rx=".5"/><rect x="6.5" y="10.7" width="2.8" height="2.8" rx=".5"/><path d="M11 11h2.5v2.5H11z"/>`,
+    hash: `<path d="M4.5 7.5h11M4.5 12.5h11M8 4l-1 12M13 4l-1 12"/>`,
+    gear: `<circle cx="10" cy="10" r="2.6"/><path d="M10 3.2v1.6M10 15.2v1.6M3.2 10h1.6M15.2 10h1.6M5.2 5.2l1.1 1.1M13.7 13.7l1.1 1.1M14.8 5.2l-1.1 1.1M6.3 13.7l-1.1 1.1"/>`,
+    ecg: `<path d="M2.5 10h3.2l1.8-4.2 3 8.4 2.1-4.2h4.9"/>`,
+    up: `<path d="M10 14.5v-9M10 5.5L6.2 9.3M10 5.5l3.8 3.8" stroke-width="2.1"/>`
   };
-  return `<svg class="ic" viewBox="0 0 20 20">${paths[name] || ""}</svg>`;
+  return `<svg class="ic" viewBox="0 0 20 20">${map[name] || ""}</svg>`;
+}
+
+function statusHeader(clock) {
+  return `
+    <span class="vmoon">${ic("moon")}</span>
+    <div class="vclock">${clock}</div>
+    <div class="vring">
+      <svg class="arc" viewBox="0 0 44 44" fill="none">
+        <path d="M 10.5 33.5 A 16.5 16.5 0 1 1 33.5 33.5" stroke="currentColor" stroke-opacity=".24" stroke-width="2.6" stroke-linecap="round"/>
+        <path d="M 10.5 33.5 A 16.5 16.5 0 1 1 35.8 29" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+      </svg>
+      <svg class="ic wifi-ic" viewBox="0 0 20 20">
+        <path d="M4.2 8.6a8.2 8.2 0 0 1 11.6 0M6.8 11.4a4.6 4.6 0 0 1 6.4 0"/>
+        <circle cx="10" cy="14" r="1.15" fill="currentColor" stroke="none"/>
+      </svg>
+      <span class="dots"><i></i><i></i><i></i><i class="dim"></i></span>
+    </div>`;
 }
 
 function brandMark() {
-  return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+  return `<svg width="21" height="21" viewBox="0 0 24 24" fill="none">
     <path d="M7 4.5L14.5 19.5" stroke="#36c6b8" stroke-width="2.6" stroke-linecap="round"/>
     <path d="M17 4.5L9.5 19.5" stroke="#5378ff" stroke-width="2.6" stroke-linecap="round"/>
     <path d="M4.5 12H19.5" stroke="#8a5cff" stroke-width="2.6" stroke-linecap="round" opacity=".88"/>
@@ -465,13 +557,7 @@ function brandMark() {
 }
 
 function identiconHtml() {
-  const grid = [
-    0,1,1,1,0,
-    1,1,1,1,1,
-    1,1,0,1,1,
-    0,1,0,1,0,
-    1,0,1,0,1
-  ];
+  const grid = [0,1,1,1,0, 1,1,1,1,1, 1,1,0,1,1, 0,1,0,1,0, 1,0,1,0,1];
   return `<span class="identicon">${grid.map(v => `<i class="${v ? 'f' : ''}"></i>`).join("")}</span>`;
 }
 
@@ -484,98 +570,172 @@ function showToast(msg) {
   S.toast = msg;
   render();
   clearTimeout(window._toastTimer);
-  window._toastTimer = setTimeout(() => { S.toast = ""; render(); }, 2000);
+  window._toastTimer = setTimeout(() => { S.toast = ""; render(); }, 2200);
 }
 
-function renderSessionRows(clickable, hideHeading = false) {
+/* ---------- Pure Feature Tabs in UITabBar (NO '+' Create, NO Avatar!) ---------- */
+const FEATURE_TABS = [
+  { id: "session",  label: "会话", icon: "chat" },
+  { id: "her",      label: "Her",  icon: "catLine", badge: "blue" },
+  { id: "overview", label: "概览", icon: "gauge",   badge: "orange" }
+];
+
+function renderFeatureTabCapsule(domId) {
+  const activeId = S.activePage === "new" ? "session" : S.activePage;
+  return `
+    <nav class="vbar-tabcapsule" id="${domId}" title="按住上下拖动体验液态玻璃透镜！只放纯功能（会话 · Her · 概览），无 + 创建、无头像">
+      ${FEATURE_TABS.map((t, idx) => {
+        const sel = activeId === t.id;
+        return `
+          <button class="vtab-btn ${sel ? "sel" : ""}" data-setpage="${t.id}" data-tabidx="${idx}">
+            ${ic(t.icon)}
+            <span class="tlbl">${t.label}</span>
+            ${t.badge ? `<span class="dot-badge ${t.badge}" style="top:6px;right:7px"></span>` : ""}
+          </button>`;
+      }).join("")}
+    </nav>`;
+}
+
+function renderCleanAccountMenu(posStyle, closeAttr) {
+  return `
+    <div class="pop-backdrop" ${closeAttr}="1"></div>
+    <div class="ios-menu" style="${posStyle}">
+      <button class="ios-menu-item" data-toast="已打开：连接 agent…">${ic("link")}<span>连接 agent…</span></button>
+      <button class="ios-menu-item" data-toast="已打开：添加环境…">${ic("laptop")}<span>添加环境…</span></button>
+      <button class="ios-menu-item" data-toast="已调起相机扫码">${ic("qr")}<span>扫描配对码…</span></button>
+      <button class="ios-menu-item" data-toast="已打开：输入配对码…">${ic("hash")}<span>输入配对码…</span></button>
+      <div class="ios-menu-sep"></div>
+      <button class="ios-menu-item" data-toast="已打开：设置与账户">
+        ${ic("gear")}
+        <div>
+          <span>设置</span>
+          <span class="sub">yipengfei329@gmail.com · 已连接</span>
+        </div>
+      </button>
+    </div>`;
+}
+
+function renderSessionRows() {
   const rowHtml = (s) => `
-    <button class="s-row ${s.running ? "running" : ""} ${S.selectedSession === s.id && S.duoScreen === "session" ? "sel" : ""}"
-            ${clickable ? `data-opensess="${s.id}"` : ""}>
+    <button class="s-row ${s.selectedSession === s.id && S.activePage === "session" ? "sel" : ""}"
+            data-opensess="${s.id}">
       ${agentLogo(s.agent, s.running)}
       <span class="s-title">${s.title}</span>
+      ${s.unread ? `<span class="s-dot"></span>` : ""}
     </button>`;
   return `
-    ${hideHeading ? "" : `<div class="sec-label"><span>任务</span></div>`}
-    <button class="grp-head"><span>置顶</span>${ic("chevD")}</button>
+    <div class="grp-head"><span>置顶</span></div>
     ${SESSIONS.pinned.map(rowHtml).join("")}
-    <button class="grp-head"><span>进行中</span>${ic("chevD")}</button>
+    <div class="grp-head"><span>最近</span><span style="font-size:12px;color:var(--i-l2)">查看全部 ›</span></div>
     ${SESSIONS.active.map(rowHtml).join("")}
   `;
 }
 
-function renderLiquidGlassMenu(originClass = "") {
-  const posStyle = originClass === "origin-bl"
-    ? "left: 14px; bottom: 66px;"
-    : "right: 76px; bottom: 14px;";
-  return `
-    <div class="pop-backdrop" data-closemenu="1"></div>
-    <div class="lg-menu ${originClass}" style="${posStyle}">
-      <div class="lg-sec-hdr"><span>常驻导航（带完整文字说明）</span></div>
-      <button class="lg-item" data-go="new">
-        <span>新建任务</span>${ic("compose")}
-      </button>
-      <button class="lg-item" data-go="her">
-        <div>
-          <span>Her</span>
-          <span class="sub" style="color:var(--blue-dot)">● 2 条未读消息</span>
-        </div>
-        ${ic("her")}
-      </button>
-      <button class="lg-item" data-go="overview">
-        <div>
-          <span>概览</span>
-          <span class="sub" style="color:var(--orange)">● 1 项等待你确认</span>
-        </div>
-        ${ic("grid")}
-      </button>
-      <div class="lg-sep"></div>
-      <div class="lg-sec-hdr"><span>连接与配对（对齐 Mac 头像菜单）</span></div>
-      <button class="lg-item" data-toast="已打开：连接代理…"><span>连接代理…</span>${ic("link")}</button>
-      <button class="lg-item" data-toast="已打开：添加环境…"><span>添加环境…</span>${ic("laptop")}</button>
-      <button class="lg-item" data-toast="已调起相机扫码配对"><span>扫码或输入配对码…</span>${ic("qr")}</button>
-      <div class="lg-sep"></div>
-      <button class="lg-item" data-opensettings="1">
-        <div>
-          <span>设置与账户</span>
-          <span class="sub">pengfei@hermesh.io · 已连接</span>
-        </div>
-        ${ic("gear")}
-      </button>
-    </div>
-  `;
-}
+/* ========== LEFT PHONE: State 1 — Sidebar NOT Slid Out (对标截图 1 · 08:37) ========== */
+function renderClosedNotSlid() {
+  const cur = [...SESSIONS.pinned, ...SESSIONS.active].find(x => x.id === S.selectedSession) || SESSIONS.active[0];
+  let pageBody = "";
+  let pageTopTrailing = "";
 
-function renderSettingsSheet() {
-  if (!S.settingsOpen) return "";
-  return `
-    <div class="pop-backdrop" data-closesettings="1"></div>
-    <div class="sheet-modal">
-      <div style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:.5px solid var(--i-sep)">
-        <span style="width:36px"></span><b>设置</b>
-        <button class="igb iglass" style="width:32px;height:32px" data-closesettings="1">${ic("x")}</button>
-      </div>
-      <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
-        <div class="ov-card" style="background:var(--i-bg);flex-direction:row;align-items:center;gap:12px">
-          ${identiconHtml()}
-          <div><b>pengfei@hermesh.io</b><div style="font-size:12px;color:var(--i-l2)">Hermesh 服务 · 已连接</div></div>
+  if (S.activePage === "session") {
+    pageBody = `
+      <div class="root-page">
+        <div class="page-top"><div class="title-cap"><b>${cur.title}</b><span>HomeBook / hermesh</span></div></div>
+        <div class="chat-body">
+          <div class="bub-me">看我新发的截图：没滑出 Sidebar 和滑出 Sidebar 右侧原生按钮是不一样的！</div>
+          <div class="bub-ai">
+            <b>完全看懂了！对标截图 1（没滑出 Sidebar）：</b><br>
+            • <b>右上</b>：单颗圆形 <code>≡</code>（滑出 Sidebar）+ 当前页工具胶囊 <code>[ ◧ 侧栏 | ⋯ 更多 ]</code><br>
+            • <b>右下拇指区</b>：原生竖向 <code>UITabBar</code> 连体功能胶囊 <b><code>[ 💬 会话 · 🐱 Her · ⏲ 概览 ]</code></b>（静息只显示精炼图标，按住滑动展开文字与液态玻璃折射透镜；<b>绝不放 <code>+</code> 创建，绝不放常驻头像</b>！）
+          </div>
         </div>
-        <div class="ov-card" style="background:var(--i-bg);gap:10px;font-size:14px">
-          <div style="display:flex;justify-content:space-between"><span>通知</span><span style="color:var(--i-l2)">开启 ›</span></div>
-          <div style="height:.5px;background:var(--i-sep)"></div>
-          <div style="display:flex;justify-content:space-between"><span>外观</span><span style="color:var(--i-l2)">深色 ›</span></div>
-          <div style="height:.5px;background:var(--i-sep)"></div>
-          <div style="display:flex;justify-content:space-between"><span>网络诊断</span><span style="color:var(--ok-fg)">直连 · 4 ms ›</span></div>
+        <div class="composer-mock">
+          <span>发消息给代理…</span>
+          <span style="width:28px;height:28px;border-radius:50%;background:var(--i-me);color:#fff;display:grid;place-items:center">${ic("up")}</span>
         </div>
-      </div>
-    </div>
-  `;
-}
+      </div>`;
+    pageTopTrailing = `
+      <div class="vbar-group" title="当前会话页工具组">
+        <button data-toast="展开文件与变更侧面板">${ic("sidebar")}</button>
+        <button data-toast="会话更多操作">${ic("more")}</button>
+      </div>`;
+  } else if (S.activePage === "her") {
+    pageBody = `
+      <div class="root-page">
+        <div style="display:flex;flex-direction:column;align-items:center;padding-top:20px;gap:7px">
+          <div style="width:58px;height:58px;border-radius:50%;background:rgba(125,150,255,.14);display:grid;place-items:center">${ic("catColor")}</div>
+          <div class="title-cap" style="padding:4px 13px"><b>Her · 2 个代理运行中</b></div>
+        </div>
+        <div class="chat-body"><div class="bub-ai">没滑出 Sidebar 时，右下角连体功能胶囊随时在「会话 / Her / 概览」三个核心功能间秒切，不掺杂低频头像或新建按钮。</div></div>
+        <div class="composer-mock"><span>告诉 Her 接下来做什么…</span></div>
+      </div>`;
+    pageTopTrailing = `<button class="vbar-circle" data-toast="查看子代理进展">${ic("ecg")}</button>`;
+  } else if (S.activePage === "overview") {
+    pageBody = `
+      <div class="root-page">
+        <div class="page-top"><span class="page-serif-title">概览</span></div>
+        <div class="ov-cards">
+          <div class="ov-card">
+            <span style="font-size:12px;color:var(--orange);font-weight:600">● 需要你确认 (1)</span>
+            <b>提供商自动安装与更新</b>
+            <span style="font-size:12.5px;color:var(--i-l2)">等待确认：是否在远端机器自动升级 CLI？</span>
+          </div>
+          <div class="ov-card">
+            <span style="font-size:12px;color:var(--i-l2)">在线设备 · HomeBook</span>
+            <b>2 个活跃会话运行中</b>
+          </div>
+        </div>
+      </div>`;
+    pageTopTrailing = "";
+  } else {
+    pageBody = `
+      <div class="root-page">
+        <div class="page-top"><div class="title-cap"><b>新会话</b><span>HomeBook / hermesh</span></div></div>
+        <div class="chat-body" style="justify-content:center;align-items:center;color:var(--i-l2);text-align:center">
+          <div>由滑出 Sidebar 右下角醒目白底圆钮创建的新会话</div>
+        </div>
+        <div class="composer-mock"><span>描述要执行的任务…</span></div>
+      </div>`;
+    pageTopTrailing = "";
+  }
 
-/* ========== 1. Legacy Duo Outer ========== */
-function renderLegacyDuoOuter() {
   return `
   <div class="dev-col">
-    <span class="dev-tag bad">现状问题还原（你的真机截图）</span>
+    <span class="dev-tag">状态 ① 没滑出 Sidebar（对标截图 1：右下角连体纯功能 UITabBar，无 + 无头像）</span>
+    <div class="duo-outer">
+      <div class="scr">
+        ${pageBody}
+        <aside class="dvbar">
+          ${statusHeader("08:37")}
+          <button class="vbar-circle" data-toast="👉 看右侧手机：滑出 Sidebar 后的状态！" title="滑出 Sidebar">${ic("menu")}</button>
+          ${pageTopTrailing}
+          <div class="vbar-spacer"></div>
+          ${renderFeatureTabCapsule("vtab-page")}
+        </aside>
+        ${S.toast ? `<div class="toast">${S.toast}</div>` : ""}
+      </div>
+    </div>
+    <div class="cap">
+      <b>没滑出时</b>：右上 <code>≡</code> + 页面工具；右下角原生竖向 <code>UITabBar</code> 只放<b>纯功能模块</b> <code>[ 💬 会话 · 🐱 Her · ⏲ 概览 ]</code>（按住上下拖动可试透镜）。
+    </div>
+  </div>`;
+}
+
+/* ---------- RIGHT PHONE: State 2 — Sidebar SLID OUT (Dedicated Independent Controls!) ---------- */
+function renderClosedSlidOut() {
+  const bottomSeparateButtons = `
+    <div class="vbar-sep-stack" title="Sidebar 独立按钮体系：底部仅展示 头像 + 新建会话 液态玻璃圆钮">
+      <button class="vbar-circle ${S.menuOpenRight ? "on" : ""}" data-togglemenuright="1" title="用户头像（配对与设置菜单）">
+        ${identiconHtml()}
+      </button>
+      <button class="vbar-circle" data-setpage="new" title="新建会话（原生液态玻璃圆钮）">
+        ${ic("plus")}
+      </button>
+    </div>`;
+
+  return `
+  <div class="dev-col">
+    <span class="dev-tag">状态 ② 滑出 Sidebar 后（独立按钮体系：顶部仅常驻收起钮，底部仅 头像 + 新建会话！）</span>
     <div class="duo-outer">
       <div class="scr">
         <div class="drawer-wrap">
@@ -583,485 +743,241 @@ function renderLegacyDuoOuter() {
             <div class="wordmark">${brandMark()}<span>Hermesh</span></div>
           </div>
           <div class="drawer-scroll">
-            <button class="nav-row pill-bg">${ic("compose")}<span>新建</span></button>
-            <button class="nav-row">${ic("her")}<span>Her</span></button>
-            <button class="nav-row">${ic("grid")}<span>概览</span></button>
-            ${renderSessionRows(false, false)}
-            <div style="height:82px"></div>
-          </div>
-          <div class="legacy-avatar-float iglass">
-            ${identiconHtml()}
-            <div class="legacy-collide-ring"></div>
+            ${renderSessionRows()}
           </div>
         </div>
         <aside class="dvbar menu-bg">
-          <div class="vclock">21:20</div>
-          <div class="vring">${ic("wifi")}<span class="dots">••••</span></div>
-          <button class="igb iglass">${ic("x")}</button>
-          <div class="vcapsule iglass">
-            <button class="igb">${ic("search")}</button>
-            <div class="vsep"></div>
-            <button class="igb">${ic("sort")}</button>
+          ${statusHeader("08:36")}
+          <button class="vbar-circle" data-toast="收起 Sidebar 回到页面态" title="折叠收起侧边栏">${ic("menu")}</button>
+          <div class="vbar-group" title="Sidebar 顶部：搜索与会话分组排序">
+            <button data-toast="打开会话搜索">${ic("search")}</button>
+            <button data-toast="打开会话分组与排序菜单">${ic("sort")}</button>
           </div>
           <div class="vbar-spacer"></div>
-          <div style="width:42px;height:130px;border-radius:21px;border:1.5px dashed rgba(255,140,107,.45);display:grid;place-items:center;font-size:10.5px;color:var(--warn-fg);text-align:center;line-height:1.3;padding:4px">
-            大拇指<br>黄金区<br>全空置
-          </div>
+          ${bottomSeparateButtons}
         </aside>
+        ${S.menuOpenRight ? renderCleanAccountMenu("right: 86px; bottom: 88px;", "data-closemenuright") : ""}
+        ${S.toast ? `<div class="toast">${S.toast}</div>` : ""}
       </div>
     </div>
     <div class="cap">
-      ⚠️ <b>现状</b>：左上角「新建 + Her + 概览」竖占半屏且单手最难够到；左下角头像压住任务文字；右下角大拇指位反而全空。
+      <b>滑出 Sidebar 后</b>：页面底栏退场，Sidebar 拥有独立精简体系——顶部仅常驻 <code>收起侧边栏</code>，底部仅展示 <code>头像</code> + <code>+ 新建会话</code>，与页面态零冲突！
     </div>
   </div>`;
 }
 
-/* ========== 2. Optimized Duo Outer (Thumb-Zone Vertical Capsule!) ========== */
-function renderOptimizedDuoOuter() {
-  const inSidebar = S.duoScreen === "sidebar";
-  let leftContent = "";
-  let vbarTop = "";
-  let vbarBottom = "";
-
-  if (inSidebar) {
-    leftContent = `
-      <div class="drawer-wrap">
-        <div class="drawer-top">
-          <div class="wordmark">${brandMark()}<span>Hermesh</span></div>
-          <span style="font-size:11.5px;color:var(--ok-fg);background:var(--ok-bg);padding:2px 8px;border-radius:99px;font-weight:600">
-            ${S.newInList ? "省 ~105pt · 保留新建行" : "省 ~156pt · 纯任务列表"}
-          </span>
-        </div>
-        <div class="drawer-scroll" id="opt-drawer-scroll">
-          ${S.newInList ? `<button class="nav-row pill-bg" data-go="new" style="margin-bottom:6px">${ic("compose")}<span>新建</span></button>` : ""}
-          ${renderSessionRows(true, !S.newInList)}
-        </div>
-      </div>`;
-
-    vbarTop = `
-      <button class="igb iglass" data-go="session" title="关闭 Sidebar">${ic("x")}</button>
-      <div class="vcapsule iglass">
-        <button class="igb" data-toast="打开搜索面板">${ic("search")}</button>
-        <div class="vsep"></div>
-        <button class="igb" data-toast="打开分组与排序菜单">${ic("sort")}</button>
-      </div>`;
-
-    vbarBottom = `
-      <div class="vcapsule iglass" title="大拇指常驻去处胶囊 (ToolbarItemGroup .bottomBar)">
-        ${!S.newInList ? `
-          <button class="igb" data-go="new" title="新建任务">${ic("compose")}</button>
-          <div class="vsep"></div>` : ""}
-        <button class="igb" data-go="her" title="Her（2 条未读）">
-          ${ic("her")}<span class="badge-dot blue"></span>
-        </button>
-        <div class="vsep"></div>
-        <button class="igb" data-go="overview" title="概览（1 项等待你）">
-          ${ic("grid")}<span class="badge-dot orange"></span>
-        </button>
-      </div>
-      <button class="igb iglass ${S.menuOpen ? "on" : ""}" data-togglemenu="1" title="头像仅在 Sidebar 显示 · 点击弹出完整菜单与设置">
-        ${identiconHtml()}
-      </button>`;
-  } else {
-    const cur = [...SESSIONS.pinned, ...SESSIONS.active].find(x => x.id === S.selectedSession) || SESSIONS.active[0];
-    const hasBottomTabs = S.pageNavBar === "tabs";
-
-    if (S.duoScreen === "session") {
-      leftContent = `
-        <div class="root-page">
-          <div class="page-top">
-            <div class="title-cap iglass"><b>${cur.title}</b><span>Mac Studio / hermesh</span></div>
-          </div>
-          <div class="chat-body">
-            <div class="bub-me">把 Her 和概览都挪到右下角大拇指那个位置去，头像只在 Sidebar 出现时显示。</div>
-            <div class="bub-ai">
-              现在完全顺手了！看右侧竖栏底部大拇指区：<br><br>
-              ${hasBottomTabs
-                ? `• <b>非 Sidebar 页面</b>：右下角常驻 <code>[ ≡ 会话 | 🤖 Her | 吅 概览 ]</code> 竖向液态玻璃胶囊，右手拇指<b>一步秒切</b>三大高频去处，<b>不显示低频头像</b>（且省掉了右上角重复的 <code>≡</code>，弹起键盘也依然宽裕）。<br>• 点大拇指区的 <code>≡</code> 打开 Sidebar 时，底部才会出现<b>头像按钮</b>！`
-                : `• <b>极简页面模式</b>：普通页底部留空，点右上角 <code>≡</code> 打开 Sidebar 后，右下角大拇指区展示 <code>[ 新建 | Her | 概览 ] + [ 头像 ]</code>。`}
-            </div>
-          </div>
-          <div class="composer-mock iglass">
-            <span>发消息给代理…</span>
-            <span class="igb" style="width:30px;height:30px;background:var(--i-me);color:#fff">${ic("up")}</span>
-          </div>
-        </div>`;
-      vbarTop = hasBottomTabs
-        ? `<button class="igb iglass" data-toast="当前会话更多操作">${ic("more")}</button>`
-        : `<button class="igb iglass" data-go="sidebar">${ic("menu")}</button>
-           <button class="igb iglass" data-toast="当前会话更多操作">${ic("more")}</button>`;
-    } else if (S.duoScreen === "her") {
-      leftContent = `
-        <div class="root-page">
-          <div class="her-hero">
-            <div class="her-orb">${ic("her")}</div>
-            <div class="iglass" style="padding:5px 14px;border-radius:99px;font-size:13px;font-weight:600">
-              Her · <span style="color:var(--orange)">● 1 项等待你</span> · 3 个运行中
-            </div>
-          </div>
-          <div class="chat-body">
-            <div class="bub-ai">晚上好！现在「会话 / Her / 概览」都在你右手大拇指最舒服的右下角竖向胶囊里，点一下就能来回切；点 <code>≡</code> 进 Sidebar 才会露出头像菜单。</div>
-          </div>
-          <div class="composer-mock iglass"><span>告诉 Her 接下来做什么…</span></div>
-        </div>`;
-      vbarTop = hasBottomTabs
-        ? `<button class="igb iglass" data-toast="查看 Her 子代理进展">${ic("ecg")}</button>`
-        : `<button class="igb iglass" data-go="sidebar">${ic("menu")}</button>
-           <button class="igb iglass" data-toast="查看 Her 子代理进展">${ic("ecg")}</button>`;
-    } else if (S.duoScreen === "overview") {
-      leftContent = `
-        <div class="root-page" style="background:var(--i-bg2)">
-          <div class="page-top"><b>概览</b></div>
-          <div class="ov-cards">
-            <div class="ov-card" style="background:var(--i-bg)">
-              <span style="font-size:12px;color:var(--orange);font-weight:600">● 需要你确认 (1)</span>
-              <b>切换会话模型支持</b>
-              <span style="font-size:12.5px;color:var(--i-l2)">询问：是否在切换模型时保留上下文缓存？</span>
-            </div>
-            <div class="ov-card" style="background:var(--i-bg)">
-              <span style="font-size:12px;color:var(--i-l2)">进行中 · 3 个代理在工作</span>
-              <b>Mac Studio · 在线 (4 ms)</b>
-            </div>
-          </div>
-        </div>`;
-      vbarTop = hasBottomTabs
-        ? `<button class="igb iglass" data-toast="连接代理 / 添加环境">${ic("plus")}</button>`
-        : `<button class="igb iglass" data-go="sidebar">${ic("menu")}</button>
-           <button class="igb iglass" data-toast="连接代理 / 添加环境">${ic("plus")}</button>`;
-    } else {
-      leftContent = `
-        <div class="root-page">
-          <div class="page-top">
-            <div class="title-cap iglass"><b>新建任务</b><span>Mac Studio / hermesh</span></div>
-          </div>
-          <div class="chat-body" style="justify-content:center;align-items:center;color:var(--i-l2);text-align:center">
-            <div>直接输入任务描述，派发给 Claude / Codex / Antigravity<br><span style="font-size:12px">点右下角 ≡ 打开 Sidebar 切换其他会话</span></div>
-          </div>
-          <div class="composer-mock iglass"><span>输入新任务指令…</span></div>
-        </div>`;
-      vbarTop = hasBottomTabs ? "" : `<button class="igb iglass" data-go="sidebar">${ic("menu")}</button>`;
-    }
-
-    vbarBottom = hasBottomTabs
-      ? `<div class="vcapsule iglass" title="普通页右下角常驻 [ ≡ 会话 | Her | 概览 ]（无低频头像）">
-           <button class="igb ${S.duoScreen === "session" || S.duoScreen === "new" ? "on" : ""}" data-go="sidebar" title="打开 Sidebar 选择任务">${ic("menu")}</button>
-           <div class="vsep"></div>
-           <button class="igb ${S.duoScreen === "her" ? "on" : ""}" data-go="her" title="Her">
-             ${ic("her")}<span class="badge-dot blue"></span>
-           </button>
-           <div class="vsep"></div>
-           <button class="igb ${S.duoScreen === "overview" ? "on" : ""}" data-go="overview" title="概览">
-             ${ic("grid")}<span class="badge-dot orange"></span>
-           </button>
-         </div>`
-      : `<span style="font-size:10.5px;color:var(--i-l3);text-align:center;line-height:1.25">非 Sidebar<br>隐藏头像</span>`;
-  }
-
-  return `
-  <div class="dev-col">
-    <span class="dev-tag good">✨ 优化方案 v2（Her & 概览迁入右下角大拇指胶囊 · 左侧纯任务列表）</span>
-    <div class="duo-outer">
-      <div class="scr">
-        ${leftContent}
-        <aside class="dvbar ${inSidebar ? "menu-bg" : ""}">
-          <div class="vclock">21:20</div>
-          <div class="vring">${ic("wifi")}<span class="dots">••••</span></div>
-          ${vbarTop}
-          <div class="vbar-spacer"></div>
-          ${vbarBottom}
-        </aside>
-        ${inSidebar && !S.menuOpen && !S.settingsOpen ? `
-          <div class="thumb-callout">
-            <span class="thumb-pill-hint">新建 / Her / 概览全在大拇指区 👉</span>
-            <span class="thumb-pill-hint">头像仅 Sidebar 显示（点开有完整菜单）👉</span>
-          </div>` : ""}
-        ${inSidebar && S.menuOpen ? renderLiquidGlassMenu() : ""}
-        ${renderSettingsSheet()}
-        ${S.toast ? `<div class="toast iglass">${S.toast}</div>` : ""}
-      </div>
-    </div>
-    <div class="cap">
-      ✅ <b>无生硬横排</b>：左侧从上到下全是任务列表（首屏直接看 9～10 条任务！）；右手大拇指在右下角直接点 <b>新建 / Her / 概览 / 头像菜单</b>，进普通页后头像自动收起。
-    </div>
-  </div>`;
-}
-
-/* ========== 3. Unfolded Duo Landscape ========== */
-function renderUnfoldedDuo() {
+/* ========== BOTTOM: Duo Unfolded Landscape Split Screen (Conventional Mode, NO Thumb Bar!) ========== */
+function renderUnfoldedSplit() {
   const cur = [...SESSIONS.pinned, ...SESSIONS.active].find(x => x.id === S.selectedSession) || SESSIONS.active[0];
-  const rightThumbMode = S.unfoldedThumb === "right";
 
-  const leftPane = S.railCollapsed
-    ? `<nav class="beside-rail">
-         <button class="rail-btn" data-togglerail="0" title="展开左侧任务栏">${ic("sidebar")}</button>
-         <button class="rail-btn" data-go="new" title="新建任务">${ic("compose")}</button>
-         ${!rightThumbMode ? `
-           <button class="rail-btn" data-go="her" title="Her">${ic("her")}<span class="r-dot" style="background:var(--blue-dot)"></span></button>
-           <button class="rail-btn" data-go="overview" title="概览">${ic("grid")}<span class="r-dot" style="background:var(--orange)"></span></button>
-         ` : ""}
-         <button class="rail-btn" data-toast="打开搜索" title="搜索">${ic("search")}</button>
+  const leftSide = S.railCollapsed
+    ? `<nav class="beside-rail" title="收起为常规 74pt 窄栏">
+         <button class="rail-btn" data-togglerail="0" title="展开左侧 Sidebar">${ic("menu")}</button>
+         <button class="rail-btn" data-setpage="new" title="新建会话">${ic("plus")}</button>
+         <button class="rail-btn ${S.activePage === "her" ? "sel" : ""}" data-setpage="her" title="Her">${ic("catLine")}</button>
+         <button class="rail-btn ${S.activePage === "overview" ? "sel" : ""}" data-setpage="overview" title="概览">${ic("gauge")}</button>
+         <button class="rail-btn" data-toast="打开搜索">${ic("search")}</button>
          <div style="width:26px;height:1px;background:var(--i-sep);margin:4px 0"></div>
-         <button class="rail-btn sel" title="Antigravity · 3 个运行中">${agentLogo("agy", true)}</button>
-         <button class="rail-btn" title="Codex">${agentLogo("gpt", false)}</button>
+         <button class="rail-btn sel" data-opensess="s1">${agentLogo("agy", true)}</button>
          <div style="flex:1"></div>
-         <button class="igb iglass ${S.railMenuOpen ? "on" : ""}" data-togglerailmenu="1" title="左侧常驻栏底部头像菜单">
-           ${identiconHtml()}
-         </button>
+         <button class="vbar-circle" style="width:44px;height:44px" data-togglemenuunfolded="1">${identiconHtml()}</button>
        </nav>`
     : `<aside class="beside-side">
-         <div class="drawer-top" style="padding:12px 12px 8px 18px">
+         <div class="drawer-top" style="padding:16px 14px 8px 18px">
            <div class="wordmark" style="font-size:19px">${brandMark()}<span>Hermesh</span></div>
-           <button class="igb iglass" style="width:36px;height:36px" data-toast="打开搜索">${ic("search")}</button>
+           <div style="display:flex;gap:6px">
+             <button class="vbar-circle" style="width:38px;height:38px" data-toast="打开搜索">${ic("search")}</button>
+             <button class="vbar-circle" style="width:38px;height:38px" data-togglerail="1" title="收起侧栏">${ic("menu")}</button>
+           </div>
          </div>
-         <div class="drawer-scroll" style="padding:0 8px 10px">
-           ${!rightThumbMode ? `
-             <button class="nav-row pill-bg" data-go="new">${ic("compose")}<span>新建</span></button>
-             <button class="nav-row" data-go="her">${ic("her")}<span>Her</span><span class="r-mark" style="background:var(--blue-dot)"></span></button>
-             <button class="nav-row" data-go="overview">${ic("grid")}<span>概览</span><span class="r-mark" style="background:var(--orange)"></span></button>
-           ` : ""}
-           ${renderSessionRows(true, rightThumbMode)}
+         <div class="drawer-scroll">
+           <button class="s-row ${S.activePage === "her" ? "sel" : ""}" data-setpage="her">
+             ${ic("catLine")}<span class="s-title">Her</span><span class="s-dot"></span>
+           </button>
+           <button class="s-row ${S.activePage === "overview" ? "sel" : ""}" data-setpage="overview">
+             ${ic("gauge")}<span class="s-title">概览</span>
+           </button>
+           ${renderSessionRows()}
          </div>
-         <div style="padding:8px 14px 12px;border-top:.5px solid var(--i-sep);display:flex;align-items:center;justify-content:space-between">
-           <button class="igb iglass ${S.railMenuOpen ? "on" : ""}" data-togglerailmenu="1" title="点击弹出统一液态玻璃菜单">
+         <div class="beside-foot" style="backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);background:linear-gradient(to top, var(--i-menu) 20%, transparent)">
+           <button class="vbar-circle ${S.menuOpenUnfolded ? "on" : ""}" style="width:48px;height:48px" data-togglemenuunfolded="1" title="用户头像（原生液态玻璃）">
              ${identiconHtml()}
            </button>
-           <button class="igb iglass" data-go="new" title="新建任务">${ic("compose")}</button>
+           <button class="vbar-circle" style="width:48px;height:48px" data-setpage="new" title="新建会话（原生液态玻璃 + 底部边缘模糊）">
+             ${ic("plus")}
+           </button>
          </div>
        </aside>`;
 
   return `
   <div class="dev-col">
-    <span class="dev-tag good">iPhone Duo 展开横放（内屏分屏 · 可在底部切换 Her/概览放「右手竖栏底」或「左栏竖排」）</span>
-    <div class="duo">
+    <span class="dev-tag">③ Duo 展开内屏横屏（回到常规分栏模式：左栏含 Her/概览行 + 底栏左头像右白底新建；右侧竖栏无底部拇指区！）</span>
+    <div class="duo-wide">
       <div class="scr">
-        ${leftPane}
+        ${leftSide}
         <div class="root-page">
-          <div class="page-top" style="justify-content:space-between;padding:12px 18px">
-            ${!S.railCollapsed
-              ? `<button class="igb iglass" style="width:40px;height:40px" data-togglerail="1" title="收起左侧边栏">${ic("widen")}</button>`
-              : `<span style="width:40px"></span>`}
-            <div class="title-cap iglass"><b>${cur.title}</b><span>Mac Studio / hermesh</span></div>
+          <div class="page-top" style="padding:14px 18px">
+            <span style="width:40px"></span>
+            <div class="title-cap"><b>${S.activePage === "new" ? "新会话" : S.activePage === "her" ? "Her" : S.activePage === "overview" ? "概览" : cur.title}</b><span>HomeBook / hermesh</span></div>
             <span style="width:40px"></span>
           </div>
-          <div class="chat-body" style="padding:16px 28px">
-            <div class="bub-me">展开横放时，如果也把 Her 和概览放在右手大拇指竖栏底部会怎样？</div>
+          <div class="chat-body" style="padding:16px 26px">
             <div class="bub-ai">
-              体验非常统一！无论合上外屏还是展开内屏：<br><br>
-              • <b>右手大拇指记忆完全一致</b>：<code>Her / 概览</code> 永远在右下角系统竖栏底部胶囊，开合屏幕肌肉记忆不断裂。<br>
-              • <b>左屏彻底变纯任务列表</b>：不再有生硬的横排胶囊，左栏底部保留<b>头像菜单 + 新建</b>（收起成 74pt 窄栏时同样保留新建与头像）。你也可以点底部控制栏对比「展开态左栏保留竖排」。
+              <b>展开内屏回到常规分栏交互（对标案例图 08:55）：</b><br>
+              • <b>右侧系统竖栏</b>：只保留页面自己的右上工具按钮，<b>右下角完全留空，没有拇指按钮区</b>。<br>
+              • <b>左侧 Sidebar</b>：列表顶部回归常规的 <code>🐱 Her</code>、<code>⏲ 概览</code> 导航行，左下角为用户头像，左栏右下角为醒目白底 <code>+</code> 新会话圆钮。
             </div>
           </div>
-          <div class="composer-mock iglass" style="margin:10px 24px 16px"><span>发消息给代理…</span></div>
+          <div class="composer-mock" style="margin:10px 22px 16px"><span>发消息给代理…</span></div>
         </div>
         <aside class="dvbar">
-          <div class="vclock">21:20</div>
-          <div class="vring">${ic("wifi")}<span class="dots">••••</span></div>
-          <button class="igb iglass" data-toast="展开右侧代码文件面板">${ic("sidebar")}</button>
-          <button class="igb iglass" data-toast="当前会话更多菜单">${ic("more")}</button>
+          ${statusHeader("08:55")}
+          <div class="vbar-group">
+            <button data-toast="展开文件与变更侧面板">${ic("sidebar")}</button>
+            <button data-toast="会话更多操作">${ic("more")}</button>
+          </div>
           <div class="vbar-spacer"></div>
-          ${rightThumbMode ? `
-            <div class="vcapsule iglass" title="开合一致：右手大拇指常驻 Her / 概览">
-              <button class="igb" data-go="her" title="Her">${ic("her")}<span class="badge-dot blue"></span></button>
-              <div class="vsep"></div>
-              <button class="igb" data-go="overview" title="概览">${ic("grid")}<span class="badge-dot orange"></span></button>
-            </div>` : ""}
         </aside>
-        ${S.railMenuOpen ? renderLiquidGlassMenu("origin-bl") : ""}
-        ${renderSettingsSheet()}
-        ${S.toast ? `<div class="toast iglass">${S.toast}</div>` : ""}
+        ${S.menuOpenUnfolded ? renderCleanAccountMenu("left: 16px; bottom: 72px;", "data-closemenuunfolded") : ""}
       </div>
-    </div>
-  </div>`;
-}
-
-/* ========== 4. Standard Candy-Bar iPhone (Natural Vertical Rows!) ========== */
-function renderCandyBarPhone() {
-  return `
-  <div class="dev-col">
-    <span class="dev-tag good">直板 iPhone 竖屏抽屉（屏幕修长：保持自然竖排三行，仅优化底部独立栏 + 头像液态玻璃菜单）</span>
-    <div class="phone">
-      <div class="scr" style="display:flex">
-        <div class="drawer-wrap" style="width:322px;flex:none;border-right:.5px solid var(--i-sep)">
-          <div class="drawer-top" style="padding-top:22px">
-            <div class="wordmark">${brandMark()}<span>Hermesh</span></div>
-            <button class="igb iglass" style="width:40px;height:40px" data-toast="打开搜索">${ic("search")}</button>
-          </div>
-          <div class="drawer-scroll" style="padding:0 8px 12px">
-            <button class="nav-row pill-bg" data-toast="新建任务">${ic("compose")}<span>新建</span></button>
-            <button class="nav-row" data-toast="切换到 Her">${ic("her")}<span>Her</span><span class="r-mark" style="background:var(--blue-dot)"></span></button>
-            <button class="nav-row" data-toast="切换到概览">${ic("grid")}<span>概览</span><span class="r-mark" style="background:var(--orange)"></span></button>
-            ${renderSessionRows(true, false)}
-          </div>
-          <div style="padding:8px 16px 18px;border-top:.5px solid var(--i-sep);display:flex;align-items:center;justify-content:space-between">
-            <button class="igb iglass ${S.ipMenuOpen ? "on" : ""}" data-toggleipmenu="1" title="点击弹出统一液态玻璃菜单（不再压住任务文字）">
-              ${identiconHtml()}
-            </button>
-            <button class="igb iglass" data-toast="新建任务" title="拇指顺手新建">${ic("compose")}</button>
-          </div>
-        </div>
-        <div style="flex:1;background:var(--i-bg2);opacity:.45;padding:28px 10px;font-size:13px;color:var(--i-l2)">
-          主页面卡片退后半露
-        </div>
-        ${S.ipMenuOpen ? renderLiquidGlassMenu("origin-bl") : ""}
-        ${renderSettingsSheet()}
-        ${S.toast ? `<div class="toast iglass">${S.toast}</div>` : ""}
-      </div>
-    </div>
-  </div>`;
-}
-
-function renderSpecSummary() {
-  return `
-  <div class="spec-grid">
-    <div class="scard">
-      <h3>1. Duo 右下角大拇指液态玻璃区（告别横向胶囊）</h3>
-      <ul>
-        <li><b>Sidebar 打开态</b>：左侧彻底变成<b>纯粹的纵向任务列表</b>（立省 ~156pt，首屏展示 9～10 条任务）；右侧竖栏底部（<code>.bottomBar</code>）放竖向胶囊 <b><code>[ 📝 新建 | 🤖 Her | 吅 概览 ]</code> + <code>[ 头像 ]</code></b>，全部落在右手大拇指最顺手的位置。</li>
-        <li><b>非 Sidebar 普通页</b>：<b>自动隐藏低频头像</b>，右下角保留 <b><code>[ ≡ 会话 | 🤖 Her | 吅 概览 ]</code></b>，三大高频去处一步秒切。</li>
-      </ul>
-    </div>
-    <div class="scard">
-      <h3>2. 头像菜单兜底文字说明 + 全局配对入口</h3>
-      <ul>
-        <li><b>图标 + 菜单双保险</b>：右下角胶囊用精炼图标省空间，同时<b>点击头像弹出的液态玻璃菜单</b>里保留了带文字和状态副标题的「新建任务 / Her / 概览」+「连接代理 / 添加环境 / 扫码配对」+「设置」。</li>
-      </ul>
-    </div>
-    <div class="scard">
-      <h3>3. 因地制宜：Duo 用右竖栏拇指区，直板机保自然竖排</h3>
-      <ul>
-        <li><b>直板 iPhone</b>（无右侧系统竖栏、纵向屏幕长）：保留最自然的竖排三行，仅将底部头像改为独立底栏（不压任务图标）并统一头像弹出菜单。</li>
-        <li><b>Duo 展开横放</b>：支持开合一致（右手竖栏底继续放 <code>[ Her | 概览 ]</code>，左栏纯放任务列表 + 底部头像），并补齐 74pt <code>RailView</code> 的「新建」按钮。</li>
-      </ul>
     </div>
   </div>`;
 }
 
 function renderControls() {
-  if (S.pose === "unfolded") {
-    return `
-      <div class="ctl-grp">
-        <span>展开横放 Her/概览位置：</span>
-        <button data-unf="right" class="${S.unfoldedThumb === "right" ? "on" : ""}">推荐：也放右下角大拇指竖栏（开合肌肉记忆一致，左栏纯任务）</button>
-        <button data-unf="left" class="${S.unfoldedThumb === "left" ? "on" : ""}">左栏顶部保留竖排三行</button>
-      </div>
-      <div class="ctl-grp">
-        <button data-togglerail="${S.railCollapsed ? "0" : "1"}" class="${S.railCollapsed ? "on" : ""}">↔️ 切换左侧 74pt 窄栏</button>
-        <button data-theme-toggle="1">${S.theme === "dark" ? "☀️ 浅色" : "🌙 深色"}</button>
-      </div>
-    `;
-  }
   return `
-    <div class="ctl-grp">
-      <span>Duo 页面：</span>
-      <button data-setscreen="sidebar" class="${S.duoScreen === "sidebar" ? "on" : ""}">Sidebar（露头像）</button>
-      <button data-setscreen="session" class="${S.duoScreen === "session" ? "on" : ""}">会话页</button>
-      <button data-setscreen="her" class="${S.duoScreen === "her" ? "on" : ""}">Her</button>
-      <button data-setscreen="overview" class="${S.duoScreen === "overview" ? "on" : ""}">概览</button>
+    <div class="ctl-row">
+      <span class="ctl-lbl">滑出 Sidebar 右下角</span>
+      <div class="seg">
+        <button data-sbstack="claude3" class="${S.sidebarStack === "claude3" ? "on" : ""}">
+          ✨ 方案 1（1:1 对标截图 2）：独立 3 圆钮 [ 头像 · 搜索 · 白底 + 新会话 ]（因外面已有 Her/概览胶囊）
+        </button>
+        <button data-sbstack="four4" class="${S.sidebarStack === "four4" ? "on" : ""}">
+          🔘 方案 2：独立 4 圆钮 [ 头像 · 猫咪 Her · 概览 · 白底 + 新会话 ]（搜索与排序归顶栏）
+        </button>
+      </div>
     </div>
-    <div class="ctl-grp">
-      <span>「新建」位置：</span>
-      <button data-newpos="thumb" class="${!S.newInList ? "on" : ""}">全收进右下角 [ 新建 | Her | 概览 ]（推荐 · 左侧纯任务）</button>
-      <button data-newpos="list" class="${S.newInList ? "on" : ""}">左侧留「新建」胶囊 + 右下角 [ Her | 概览 ]</button>
-    </div>
-    <div class="ctl-grp">
-      <span>普通页右栏底：</span>
-      <button data-pagenav="tabs" class="${S.pageNavBar === "tabs" ? "on" : ""}">常驻 [ ≡ 会话 | Her | 概览 ]</button>
-      <button data-pagenav="minimal" class="${S.pageNavBar === "minimal" ? "on" : ""}">仅保留右上 ≡</button>
-    </div>
-    <div class="ctl-grp">
-      <button data-theme-toggle="1">${S.theme === "dark" ? "☀️ 浅色" : "🌙 深色"}</button>
+    <div class="ctl-row">
+      <span class="ctl-lbl">页面与外观体验</span>
+      <div class="seg">
+        <button data-setpage="session" class="${S.activePage === "session" ? "on" : ""}">💬 会话页</button>
+        <button data-setpage="her" class="${S.activePage === "her" ? "on" : ""}">🐱 Her 页</button>
+        <button data-setpage="overview" class="${S.activePage === "overview" ? "on" : ""}">⏲ 概览页</button>
+        <button data-togglerail="${S.railCollapsed ? "0" : "1"}" class="${S.railCollapsed ? "on" : ""}">↔️ 内屏窄栏：${S.railCollapsed ? "已收起（无头像）" : "展开态"}</button>
+        <button data-themetoggle="1">${S.theme === "dark" ? "☀️ 浅色" : "🌙 深色"}</button>
+      </div>
     </div>
   `;
 }
 
-function render() {
-  document.documentElement.setAttribute("data-theme", S.theme);
-  document.querySelectorAll("#pose-tabs button").forEach(b => {
-    b.classList.toggle("on", b.dataset.pose === S.pose);
+function bindTabLensDrag(domId) {
+  const bar = document.getElementById(domId);
+  if (!bar) return;
+  const items = [...bar.querySelectorAll(".vtab-btn")];
+  if (!items.length) return;
+
+  const idxFromClientY = (clientY) => {
+    const rect = bar.getBoundingClientRect();
+    const relY = clientY - rect.top - 5;
+    return Math.max(0, Math.min(items.length - 1, Math.floor(relY / 56)));
+  };
+
+  const syncLensDOM = (idx) => {
+    let lens = bar.querySelector(".lg-lens");
+    if (!lens) {
+      lens = document.createElement("div");
+      lens.className = "lg-lens";
+      bar.prepend(lens);
+    }
+    bar.classList.add("lens-active");
+    lens.style.top = `${5 + idx * 58 - 7}px`;
+    items.forEach((it, i) => it.classList.toggle("lens-focus", i === idx));
+  };
+
+  bar.addEventListener("pointerdown", (e) => {
+    const idx = idxFromClientY(e.clientY);
+    S.draggingId = domId;
+    S.lensIndex = idx;
+    bar.setPointerCapture(e.pointerId);
+    syncLensDOM(idx);
   });
 
-  const stage = document.getElementById("stage");
-  if (S.pose === "compare") {
-    stage.innerHTML = `<div class="row-stage">${renderLegacyDuoOuter()}${renderOptimizedDuoOuter()}</div>${renderSpecSummary()}`;
-  } else if (S.pose === "unfolded") {
-    stage.innerHTML = `<div class="row-stage">${renderUnfoldedDuo()}</div>${renderSpecSummary()}`;
-  } else {
-    stage.innerHTML = `<div class="row-stage">${renderCandyBarPhone()}</div>${renderSpecSummary()}`;
-  }
+  bar.addEventListener("pointermove", (e) => {
+    if (S.draggingId !== domId) return;
+    const idx = idxFromClientY(e.clientY);
+    if (idx !== S.lensIndex) {
+      S.lensIndex = idx;
+      syncLensDOM(idx);
+    }
+  });
 
+  const finish = (e) => {
+    if (S.draggingId !== domId) return;
+    const idx = idxFromClientY(e.clientY);
+    S.draggingId = null;
+    const target = FEATURE_TABS[idx];
+    if (target) S.activePage = target.id;
+    render();
+  };
+  bar.addEventListener("pointerup", finish);
+  bar.addEventListener("pointercancel", () => { S.draggingId = null; render(); });
+}
+
+function render() {
+  document.documentElement.setAttribute("data-theme", S.theme);
   document.getElementById("ctl").innerHTML = renderControls();
+  document.getElementById("stage").innerHTML = `
+    <div class="row-stage">
+      ${renderClosedNotSlid()}
+      ${renderClosedSlidOut()}
+    </div>
+    <div class="row-stage">
+      ${renderUnfoldedSplit()}
+    </div>`;
+  bindTabLensDrag("vtab-page");
+  bindTabLensDrag("vtab-unfolded");
 }
 
 document.addEventListener("click", (e) => {
-  const btn = e.target.closest("button, [data-closemenu], [data-closesettings]");
-  if (!btn) return;
+  const el = e.target.closest("button, [data-closemenuright], [data-closemenuunfolded]");
+  if (!el) return;
 
-  if (btn.dataset.pose) {
-    S.pose = btn.dataset.pose;
-    S.menuOpen = false; S.railMenuOpen = false; S.ipMenuOpen = false;
+  if (el.dataset.sbstack) {
+    S.sidebarStack = el.dataset.sbstack;
     render();
-  } else if (btn.dataset.togglemenu) {
-    S.menuOpen = !S.menuOpen;
+  } else if (el.dataset.setpage) {
+    S.activePage = el.dataset.setpage;
+    S.menuOpenRight = false;
+    S.menuOpenUnfolded = false;
     render();
-  } else if (btn.dataset.togglerailmenu) {
-    S.railMenuOpen = !S.railMenuOpen;
+  } else if (el.dataset.opensess) {
+    S.selectedSession = el.dataset.opensess;
+    S.activePage = "session";
+    S.menuOpenRight = false;
     render();
-  } else if (btn.dataset.toggleipmenu) {
-    S.ipMenuOpen = !S.ipMenuOpen;
+  } else if (el.dataset.togglerail !== undefined) {
+    S.railCollapsed = el.dataset.togglerail === "1";
+    S.menuOpenUnfolded = false;
     render();
-  } else if (btn.dataset.closemenu) {
-    S.menuOpen = false; S.railMenuOpen = false; S.ipMenuOpen = false;
-    render();
-  } else if (btn.dataset.opensettings) {
-    S.menuOpen = false; S.railMenuOpen = false; S.ipMenuOpen = false;
-    S.settingsOpen = true;
-    render();
-  } else if (btn.dataset.closesettings) {
-    S.settingsOpen = false;
-    render();
-  } else if (btn.dataset.go) {
-    if (S.pose === "unfolded" && btn.dataset.go !== "sidebar") {
-      showToast(`已切换到：${btn.dataset.go === "her" ? "Her" : btn.dataset.go === "overview" ? "概览" : "新建任务"}`);
-      S.railMenuOpen = false;
-      return;
-    }
-    S.duoScreen = btn.dataset.go;
-    S.menuOpen = false; S.railMenuOpen = false;
-    render();
-  } else if (btn.dataset.opensess) {
-    S.selectedSession = btn.dataset.opensess;
-    if (S.pose === "compare") S.duoScreen = "session";
-    S.menuOpen = false;
-    render();
-  } else if (btn.dataset.setscreen) {
-    S.pose = "compare";
-    S.duoScreen = btn.dataset.setscreen;
-    S.menuOpen = false;
-    render();
-  } else if (btn.dataset.newpos) {
-    S.pose = "compare";
-    S.duoScreen = "sidebar";
-    S.newInList = btn.dataset.newpos === "list";
-    render();
-  } else if (btn.dataset.pagenav) {
-    S.pose = "compare";
-    S.pageNavBar = btn.dataset.pagenav;
-    if (S.duoScreen === "sidebar") S.duoScreen = "session";
-    S.menuOpen = false;
-    render();
-  } else if (btn.dataset.unf) {
-    S.unfoldedThumb = btn.dataset.unf;
-    render();
-  } else if (btn.dataset.togglerail !== undefined) {
-    S.railCollapsed = btn.dataset.togglerail === "1";
-    S.railMenuOpen = false;
-    render();
-  } else if (btn.dataset.themeToggle) {
+  } else if (el.dataset.themetoggle) {
     S.theme = S.theme === "dark" ? "light" : "dark";
     render();
-  } else if (btn.dataset.toast) {
-    S.menuOpen = false; S.railMenuOpen = false; S.ipMenuOpen = false;
-    showToast(btn.dataset.toast);
+  } else if (el.dataset.togglemenuright) {
+    S.menuOpenRight = !S.menuOpenRight;
+    render();
+  } else if (el.dataset.closemenuright) {
+    S.menuOpenRight = false;
+    render();
+  } else if (el.dataset.togglemenuunfolded) {
+    S.menuOpenUnfolded = !S.menuOpenUnfolded;
+    render();
+  } else if (el.dataset.closemenuunfolded) {
+    S.menuOpenUnfolded = false;
+    render();
+  } else if (el.dataset.toast) {
+    S.menuOpenRight = false;
+    S.menuOpenUnfolded = false;
+    showToast(el.dataset.toast);
   }
 });
 

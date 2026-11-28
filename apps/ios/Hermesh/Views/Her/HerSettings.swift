@@ -689,7 +689,7 @@ struct HerFirstRun: View {
             .padding(.horizontal, 20).padding(.top, 8)
         }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { MenuToolbarItem() }
+        .rootToolbar(sync: false)
     }
 }
 

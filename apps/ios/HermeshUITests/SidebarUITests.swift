@@ -49,16 +49,16 @@ final class SidebarUITests: XCTestCase {
                       "tapping a row beside the floating account button should open its session")
     }
 
-    /// The avatar button opens a native pull-up menu with the permanent places (reachable even when scrolled to the
-    /// bottom of a long session list), pairing actions (as on the Mac), and Settings.
-    func testAccountMenuPlacesPairingAndSettings() {
+    /// The avatar button opens a clean pull-up menu with pairing actions (as on the Mac) and Settings, without
+    /// duplicating New Session / Her / Overview.
+    func testAccountMenuPairingAndSettingsWithoutRedundantPlaces() {
         launchDemo(["-DemoSessions", "24"])
         openDrawer()
         let drawer = app.descendants(matching: .any)["drawer"].firstMatch
         let account = app.buttons["account"]
         XCTAssertTrue(account.waitForExistence(timeout: 10))
 
-        // Scroll to the very bottom so the top list rows (New / Her / Overview) have scrolled out of sight.
+        // Scroll to the very bottom of the 24-session list.
         let lastRow = app.buttons["session-Sidebar Task 24"]
         for _ in 0..<8 where !lastRow.exists || !lastRow.isHittable {
             let start = drawer.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.72))
@@ -68,35 +68,188 @@ final class SidebarUITests: XCTestCase {
         }
         XCTAssertTrue(lastRow.isHittable, "scrolled to bottom of 24-session list")
 
-        // Open the native pull-up menu from the avatar button and verify all three sections.
+        // Open the native pull-up menu from the avatar button: pairing items and Settings exist, redundant places do not.
         account.tap()
-        for id in ["account-menu-new", "account-menu-her", "account-menu-overview", "account-settings-open"] {
-            XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5), "expected \(id) in account menu")
+        XCTAssertTrue(app.buttons["account-settings-open"].waitForExistence(timeout: 5), "expected account-settings-open in account menu")
+        for redundant in ["account-menu-new", "account-menu-her", "account-menu-overview"] {
+            XCTAssertFalse(app.buttons[redundant].exists, "redundant \(redundant) should not appear in account menu")
         }
         for title in ["Connect an Agent…", "Add Environment…", "Scan a Code…", "Enter a Pairing Code…"] {
             XCTAssertTrue(app.buttons[title].exists, "expected '\(title)' in account menu")
         }
         attach(XCUIScreen.main.screenshot(), name: "sidebar-account-menu")
 
-        // Jump straight to Overview from the bottom of the list via the account menu.
-        app.buttons["account-menu-overview"].tap()
-        XCTAssertTrue(app.navigationBars["Overview"].waitForExistence(timeout: 10), "switched to Overview from account menu")
-
-        // Reopen drawer and open Add Environment directly from the account menu (without needing Overview's + button).
-        openDrawer()
-        account.tap()
+        // Open Add Environment directly from the account menu.
         let addEnv = app.buttons["Add Environment…"]
-        XCTAssertTrue(addEnv.waitForExistence(timeout: 5))
         addEnv.tap()
         XCTAssertTrue(app.buttons["close"].waitForExistence(timeout: 10), "Add Environment sheet opened from account menu")
         app.buttons["close"].tap()
+    }
 
-        // Reopen drawer if needed and verify New Session from the account menu opens the composer.
-        if !drawer.isHittable { openDrawer() }
-        account.tap()
-        app.buttons["account-menu-new"].tap()
+    /// Exercises Duo's decoupled two-state vertical bar when closed (`[ Conversations -> New Session | Sessions </> | Her | Overview ]`
+    /// in `UITabBar` while a page is in view, locking `Sessions </>` while viewing any session so a single thumb tap returns
+    /// to `SessionsHubView` and `Conversations 💬` jumps straight to New Session; hiding `UITabBar` and all page toolbar items
+    /// when the sidebar slides out) and conventional split-view mode when unfolded beside the page.
+    func testDuoNativeTabBarAndUnfoldedSidebarFooter() {
+        launchDemo(["-HermeshTestDuoTabs", "YES", "-HermeshTestTurns", "YES"])
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 10), "native UITabBar shown on Duo closed page")
+        for id in ["conversations-place", "sessions-place", "her-place", "overview-place"] {
+            XCTAssertTrue(tabBar.buttons[id].exists, "expected \(id) in native 4-button UITabBar")
+        }
+        for forbiddenWhenClosed in ["account", "new-session-place", "new", "menu-close", "search", "view-options"] {
+            XCTAssertFalse(app.buttons[forbiddenWhenClosed].exists, "\(forbiddenWhenClosed) must not appear while sidebar is closed on Her")
+        }
+
+        // Overview tab opens Overview without any + button on Duo closed; Conversations bubble opens New Session.
+        tabBar.buttons["overview-place"].tap()
+        XCTAssertTrue(app.navigationBars["Overview"].waitForExistence(timeout: 10))
+        XCTAssertTrue(tabBar.buttons["overview-place"].isSelected)
+        XCTAssertFalse(app.buttons["new"].exists, "no + button on Overview when Duo sidebar is closed")
+
+        tabBar.buttons["conversations-place"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["new-session-title"].firstMatch.waitForExistence(timeout: 10),
-                      "account menu New Session opens New Session")
+                      "Conversations bubble opens New Session")
+        XCTAssertTrue(tabBar.buttons["conversations-place"].isSelected)
+        XCTAssertFalse(tabBar.buttons["sessions-place"].isSelected)
+
+        // Sessions </> tab opens the standalone SessionsHubView (with environment filter pills, Search + View Options,
+        // and no redundant floating + button).
+        tabBar.buttons["sessions-place"].tap()
+        let hub = app.descendants(matching: .any)["sessions-hub"].firstMatch
+        XCTAssertTrue(hub.waitForExistence(timeout: 10), "Sessions </> tab opens standalone SessionsHubView")
+        XCTAssertTrue(tabBar.buttons["sessions-place"].isSelected)
+        XCTAssertFalse(tabBar.buttons["conversations-place"].isSelected)
+        XCTAssertTrue(app.buttons["hub-env-all"].exists, "environment filter strip shown at top of SessionsHubView")
+        XCTAssertTrue(app.buttons["search"].exists && app.buttons["view-options"].exists,
+                      "Search and ViewMenu shown on SessionsHubView")
+        XCTAssertFalse(app.buttons["new-session-place"].exists && app.buttons["new"].exists,
+                       "no redundant + button on SessionsHubView since Conversations bubble is adjacent")
+
+        // Tapping a session row inside SessionsHubView opens that session AND keeps `sessions-place` (</>) locked!
+        app.buttons["session-Add a welcome page"].tap()
+        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10))
+        XCTAssertTrue(tabBar.buttons["sessions-place"].isSelected, "entering a session locks highlight onto Sessions </> tab")
+        XCTAssertFalse(tabBar.buttons["conversations-place"].isSelected, "Conversations bubble stays unlocked while viewing an existing session")
+
+        // Re-tapping `sessions-place` (</>) while inside a session returns directly to SessionsHubView!
+        tabBar.buttons["sessions-place"].tap()
+        XCTAssertTrue(hub.waitForExistence(timeout: 10), "re-tapping Sessions </> from a session returns straight to SessionsHubView")
+
+        // Sliding out the sidebar via top menu button switches to the sidebar's dedicated controls:
+        // top `[ Collapse, Search, View Options ]`, bottom `[ Account | + New ]`, and hides the page's UITabBar completely.
+        app.buttons["menu"].tap()
+        XCTAssertTrue(app.buttons["menu-close"].waitForExistence(timeout: 5), "top Collapse button shown in sidebar")
+        XCTAssertTrue(app.buttons["search"].exists && app.buttons["view-options"].exists,
+                      "Search and View Options shown in the sidebar's top vertical bar")
+        XCTAssertFalse(tabBar.isHittable, "page UITabBar hidden while sidebar is open")
+        XCTAssertFalse(app.buttons["her-place"].isHittable && app.buttons["overview-place"].isHittable,
+                       "no duplicate Her / Overview buttons in slid-out sidebar")
+        for id in ["account", "new-session-place"] {
+            XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5), "expected \(id) in slid-out sidebar bottom bar")
+        }
+        attach(XCUIScreen.main.screenshot(), name: "duo-closed-sidebar-clean")
+
+        // Tapping a session opens that session (`session-more` ⋯ appears while sidebar is closed, and disappears completely
+        // when the sidebar slides out again).
+        app.buttons["session-Add a welcome page"].tap()
+        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["session-more"].waitForExistence(timeout: 5), "session ⋯ shown on session page while sidebar is closed")
+        XCTAssertTrue(tabBar.buttons["sessions-place"].isSelected, "Sessions </> tab stays locked when opening session from sidebar")
+        XCTAssertFalse(app.buttons["account"].exists, "no avatar leaked on session page while sidebar is closed")
+        XCTAssertFalse(app.buttons["new-session-place"].exists, "no + leaked on session page while sidebar is closed")
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 5) && tabBar.isHittable, "page UITabBar returns on session page")
+
+        let wordmark = app.descendants(matching: .any)["drawer"].descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Hermesh")).firstMatch
+        app.buttons["menu"].tap()
+        XCTAssertTrue(app.buttons["menu-close"].waitForExistence(timeout: 5))
+        let wordmarkOpenY = wordmark.frame.minY
+        XCTAssertEqual(wordmarkOpenY, 35, accuracy: 2.5,
+                       "DrawerView ignores NavigationStack top safe area so Wordmark sits at fixed 24pt+11pt=35pt even when navigationBar is visible")
+        XCTAssertFalse(app.buttons["session-more"].exists, "session ⋯ must NOT bleed into vertical bar while sidebar is open")
+        XCTAssertTrue(app.buttons["search"].exists && app.buttons["view-options"].exists,
+                      "Search and View Options present at top of vertical bar while sidebar is open over a session")
+        app.buttons["menu-close"].tap()
+        XCTAssertTrue(app.buttons["session-more"].waitForExistence(timeout: 5), "session ⋯ returns once sidebar closes")
+        XCTAssertFalse(app.buttons["account"].exists && app.buttons["new-session-place"].exists,
+                       "sidebar bottom buttons disappear once sidebar closes")
+
+        // Swiping open the sidebar keeps Wordmark at the exact same Y without navigation-bar safe-area jitter.
+        swipeOpenDrawer()
+        XCTAssertTrue(app.buttons["menu-close"].waitForExistence(timeout: 5))
+        XCTAssertEqual(wordmark.frame.minY, wordmarkOpenY, accuracy: 0.5, "Wordmark Y stays stable across swipe and button open")
+        app.buttons["menu-close"].tap()
+        XCTAssertTrue(app.buttons["session-more"].waitForExistence(timeout: 5))
+
+        tabBar.buttons["conversations-place"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["new-session-title"].firstMatch.waitForExistence(timeout: 10),
+                      "tapping Conversations bubble from a session goes straight to New Session")
+
+        // When unfolded beside the page, Duo returns to conventional split-view mode: no thumb UITabBar, Her and
+        // Overview rows in the left sidebar list, and Liquid Glass [ Account ··· + New ] over a soft bottom edge blur.
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        sleep(2)
+        let drawer = app.descendants(matching: .any)["drawer"].firstMatch
+        if app.frame.width > app.frame.height, drawer.exists, !app.buttons["menu"].exists {
+            XCTAssertFalse(tabBar.isHittable, "no thumb UITabBar when unfolded beside the page")
+            XCTAssertTrue(drawer.buttons["her-place"].exists && drawer.buttons["overview-place"].exists,
+                          "Her and Overview return to the left sidebar list when unfolded")
+            let account = drawer.buttons["account"]
+            let plusNew = drawer.buttons["new-session-place"]
+            XCTAssertTrue(account.exists && plusNew.exists, "avatar and Liquid Glass + New sit at the unfolded sidebar's foot")
+            XCTAssertGreaterThan(plusNew.frame.minX, account.frame.maxX, "+ New sits to the right of the avatar")
+            XCTAssertEqual(plusNew.frame.midY, account.frame.midY, accuracy: 4, "+ New aligned horizontally with avatar")
+            attach(XCUIScreen.main.screenshot(), name: "duo-unfolded-liquid-glass-blur")
+        }
+    }
+
+    /// Verifies that standalone `SessionsHubView` runs live provider-orbit and shimmer animations (not frozen when
+    /// `drawerOpen == false`), reflects real disconnected/connecting Relay states on machine pills instead of stale
+    /// green dots, and opens `ConnectionDiagnosticsSheet` from its live sync banner.
+    func testDuoSessionsHubAnimationsAndNetworkStates() {
+        launchDemo(["-HermeshTestDuoTabs", "YES", "-DemoSidebarActivity", "YES"])
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 10))
+        tabBar.buttons["sessions-place"].tap()
+
+        let hub = app.descendants(matching: .any)["sessions-hub"].firstMatch
+        XCTAssertTrue(hub.waitForExistence(timeout: 10), "SessionsHubView opened")
+
+        // 1. Disconnected Relay (`DemoSidebarActivity` sets `relayConnected = false`):
+        //    sync banner appears and machine pill reports Connecting/Reconnecting rather than stale Online.
+        let syncLine = app.descendants(matching: .any)["sync-line"].firstMatch
+        XCTAssertTrue(syncLine.waitForExistence(timeout: 10), "live sync banner shown on SessionsHubView when Relay is down")
+        XCTAssertTrue(syncLine.label.contains("Connecting to Hermesh") || syncLine.label.contains("Can’t reach Hermesh"))
+
+        let macPill = app.buttons["hub-env-Mac mini"]
+        XCTAssertTrue(macPill.waitForExistence(timeout: 5))
+        let pillVal = (macPill.value as? String) ?? ""
+        XCTAssertTrue(pillVal.contains("Connecting") || pillVal.contains("Reconnecting"),
+                      "machine pill must reflect Connecting/Reconnecting when Relay is disconnected, got '\(pillVal)'")
+
+        // 2. Live running-session animation on SessionsHubView (`drawerOpen == false`):
+        //    provider logo squircle orbit actively animates over time (not frozen!).
+        let runningRow = app.buttons["session-Running sidebar task"]
+        XCTAssertTrue(runningRow.waitForExistence(timeout: 10), "running session row in SessionsHubView")
+        usleep(400_000)
+        let shot1 = XCUIScreen.main.screenshot()
+        usleep(380_000)
+        let shot2 = XCUIScreen.main.screenshot()
+        attach(shot1, name: "sessions-hub-live-orbit-and-connecting")
+
+        let leading = CGRect(x: runningRow.frame.minX + 12, y: runningRow.frame.midY - 18, width: 44, height: 36)
+        let orbit = blueOrbitStats(first: shot1.image, second: shot2.image, rectInPoints: leading)
+        XCTAssertGreaterThan(orbit.bluePixels, 8, "expected brand-blue orbit pixels on SessionsHubView running row (got \(orbit.bluePixels))")
+        XCTAssertGreaterThan(orbit.changedPixels, 6, "expected running row orbit animation to advance over time on SessionsHubView (got \(orbit.changedPixels))")
+
+        // 3. Tapping the sync banner opens ConnectionDiagnosticsSheet with Reconnect Now.
+        syncLine.tap()
+        XCTAssertTrue(app.navigationBars["Connection Diagnostics"].waitForExistence(timeout: 5),
+                      "tapping sync banner opens ConnectionDiagnosticsSheet")
+        let reconnect = app.buttons["connection-diagnostics-reconnect"]
+        for _ in 0..<3 where !reconnect.exists || !reconnect.isHittable { app.swipeUp() }
+        XCTAssertTrue(reconnect.waitForExistence(timeout: 5), "Reconnect Now available in ConnectionDiagnosticsSheet")
     }
 
     func testOverviewHidesTaskSpinnerAndKeepsConnectionNotice() {

@@ -18,7 +18,7 @@ struct HerView: View {
         } else if model.hasWorld {
             HerFirstRun()
         } else { // the machines are not read yet: whether she runs is not known
-            PageLoader(text: "Reading your machines…").toolbar { MenuToolbarItem() }
+            PageLoader(text: "Reading your machines…").rootToolbar(sync: false)
         }
     }
 }
@@ -34,6 +34,7 @@ private struct HerPage: View {
     @Environment(\.accessibilityReduceMotion) private var still
     /// With the bars on the side, the menu button is in the system's bar, as on every page; the top is still hers.
     @Environment(\.barsOnTheSide) private var sideBars
+    @Environment(\.menuCoversPage) private var menuCoversPage
     let machine: HerMachine
     /// The team panel shows.
     @State private var team = false
@@ -86,10 +87,10 @@ private struct HerPage: View {
                 .transition(.opacity)
             }
         }
-        .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
-        // With the bars on the side (iPhone Duo), the menu button and Progress are in the system's bar.
+        .toolbar(sideBars && !menuCoversPage ? .visible : .hidden, for: .navigationBar)
+        // With the bars on the side (iPhone Duo), the menu button and Progress are in the system's bar while in view.
         .toolbar {
-            if sideBars {
+            if sideBars && !menuCoversPage {
                 MenuToolbarItem()
                 if chat.bot != nil { ToolbarItem(placement: .topBarTrailing) { HerProgressButton(marks: herProgressMarks(chat), inBar: true) } }
             }
@@ -383,6 +384,7 @@ struct HerConversationPage: View {
     @Environment(\.scenePhase) private var phase
     @Environment(\.accessibilityReduceMotion) private var still
     @Environment(\.barsOnTheSide) private var sideBars
+    @Environment(\.menuCoversPage) private var menuCoversPage
     let sessionID: String
     @State private var team = false
     @State private var statusBar: CGFloat = 0
@@ -409,7 +411,7 @@ struct HerConversationPage: View {
         let convID = session.providerSessionRef
         let chat = model.her.chat(machine.machineID, conversation: convID, model: model)
         return conversationStage(session: session, machine: machine, chat: chat, convID: convID)
-            .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
+            .toolbar(sideBars && !menuCoversPage ? .visible : .hidden, for: .navigationBar)
             .background { if !sideBars { SwipesBack() } }
             .toolbar { sideBarItems(session: session, machine: machine, chat: chat, convID: convID) }
             .onChange(of: model.path) { team = false }
@@ -489,7 +491,7 @@ struct HerConversationPage: View {
 
     @ToolbarContentBuilder
     private func sideBarItems(session: Session, machine: HerMachine, chat: HerChat, convID: String) -> some ToolbarContent {
-        if sideBars {
+        if sideBars && !menuCoversPage {
             if model.path.isEmpty { MenuToolbarItem() }
             if chat.bot != nil && !convID.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) { HerProgressButton(marks: herProgressMarks(chat), inBar: true) }
@@ -533,7 +535,7 @@ struct HerConversationPage: View {
                 }
                 .padding(.horizontal, 16).padding(.bottom, 4)
             }
-            .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
+            .toolbar(sideBars && !menuCoversPage ? .visible : .hidden, for: .navigationBar)
     }
 
     private func header(session: Session, machine: HerMachine, chat: HerChat, convID: String) -> some View {
@@ -703,10 +705,10 @@ struct GlassMenuButton: View {
             Button {
                 model.drawerOpen = true
             } label: {
-                Image(systemName: "line.3.horizontal").font(.body.weight(.medium)).frame(width: 44, height: 44)
+                Image(uiImage: sidebarMenuUIImage).frame(width: 44, height: 44)
                     .overlay(alignment: .topTrailing) {
                         if model.attentionCount > 0 {
-                            Circle().fill(.orange).frame(width: 8, height: 8).offset(x: -9, y: 11)
+                            Circle().fill(.orange).frame(width: 8, height: 8).offset(x: -6, y: 7)
                         }
                     }
                     .glassEffect(.regular.interactive(), in: .circle)

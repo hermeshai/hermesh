@@ -8,6 +8,8 @@ import SwiftUI
 struct GrantsView: View {
     var isRoot = true
     @Environment(AppModel.self) private var model
+    @Environment(\.barsOnTheSide) private var sideBars
+    @Environment(\.menuCoversPage) private var menuCoversPage
 
     var body: some View {
         let active = model.clients.filter { !$0.revoked }
@@ -27,8 +29,10 @@ struct GrantsView: View {
         .navigationTitle("Grants")
         .rootToolbar(enabled: isRoot)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Connect an Agent", systemImage: "plus") { model.sheet = .connectAgent }
+            if !(isRoot && sideBars && !model.menuBeside) && !menuCoversPage {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Connect an Agent", systemImage: "plus") { model.sheet = .connectAgent }
+                }
             }
         }
     }

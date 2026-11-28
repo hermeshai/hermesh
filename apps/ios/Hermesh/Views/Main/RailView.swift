@@ -15,7 +15,7 @@ struct RailView: View {
             ScrollView {
                 VStack(spacing: 6) {
                     button("Expand the menu", id: "rail-expand") { model.drawerOpen = true } icon: {
-                        Image(systemName: "sidebar.left")
+                        Image(uiImage: sidebarMenuUIImage)
                     }
                     .padding(.bottom, 6)
                     places
@@ -45,14 +45,14 @@ struct RailView: View {
         button(Text("New Session"), id: "rail-new", current: isNew) {
             model.open(.newSession("", ""))
         } icon: {
-            Image(systemName: "square.and.pencil")
+            Image(systemName: "plus")
         } mark: {
             EmptyView()
         }
         button(off ? Text("Her, not on") : unread > 0 ? Text("Her, \(unread) unread") : Text("Her"), id: "rail-her", current: model.root == .her && model.path.isEmpty) {
             model.open(.her)
         } icon: {
-            HerRobot().stroke(style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round)).frame(width: 22, height: 22)
+            Image(uiImage: herCatUIImage)
         } mark: {
             if off {
                 Circle().strokeBorder(.tertiary, lineWidth: 1.5).frame(width: 10, height: 10)
@@ -64,7 +64,7 @@ struct RailView: View {
                id: "rail-overview", current: model.root == .overview && model.path.isEmpty) {
             model.open(.overview)
         } icon: {
-            Image(systemName: "square.grid.2x2").shimmer(waits == 0 && !work.running.isEmpty)
+            Image(systemName: overviewSymbol).shimmer(waits == 0 && !work.running.isEmpty)
         } mark: {
             if waits > 0 { Circle().fill(.orange).frame(width: 9, height: 9) }
         }

@@ -24,6 +24,8 @@ func machineAnswers(_ m: Machine, _ method: String) -> Bool? {
 struct EnvironmentsView: View {
     var isRoot = true
     @Environment(AppModel.self) private var model
+    @Environment(\.barsOnTheSide) private var sideBars
+    @Environment(\.menuCoversPage) private var menuCoversPage
 
     var body: some View {
         let trusted = Set(model.devices.map(\.machineID).filter { !$0.isEmpty })
@@ -35,8 +37,10 @@ struct EnvironmentsView: View {
         .navigationTitle("Environments")
         .rootToolbar(enabled: isRoot)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Add Environment…", systemImage: "plus") { model.sheet = .addMachine }
+            if !(isRoot && sideBars && !model.menuBeside) && !menuCoversPage {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Add Environment…", systemImage: "plus") { model.sheet = .addMachine }
+                }
             }
         }
     }
