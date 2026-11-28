@@ -35,6 +35,17 @@ extension EnvironmentValues {
     @Entry var filesRun: String = ""
 }
 
+/// Flattened visible entry in `SessionTree`, cached across non-tree state updates.
+struct SessionTreeRow: Identifiable {
+    let path: String
+    let name: String
+    let dir: Bool
+    let size: UInt64
+    let sizeLabel: String
+    let depth: Int
+    let dimmed: Bool
+    var id: String { path }
+}
 /// Keeps recent sessions' resolved file tags in memory across page opens, as `Conversations` keeps projections.
 @MainActor final class SessionFilesCache {
     private let keeps = 20
@@ -107,9 +118,41 @@ extension EnvironmentValues {
     // MARK: The folder's tree, as it is now (the drawer on a file's page, the side panel's tree)
 
     /// A folder's entries once read, or why not.
-    private(set) var dirs: [String: Result<Hermesh_Session_V1_ListFilesResponse, Error>] = [:]
+    private(set) var dirs: [String: Result<Hermesh_Session_V1_ListFilesResponse, Error>] = [:] {
+        didSet { cachedTreeRows = nil }
+    }
     /// The folders opened in the tree.
-    var expanded: Set<String> = []
+    var expanded: Set<String> = [] {
+        didSet { cachedTreeRows = nil }
+    }
+    @ObservationIgnored private var cachedTreeRows: [SessionTreeRow]?
+
+    var treeRows: [SessionTreeRow] {
+        let currentDirs = dirs
+        let currentExpanded = expanded
+        if let cachedTreeRows { return cachedTreeRows }
+        var out: [SessionTreeRow] = []
+        func walk(_ dir: String, _ depth: Int) {
+            guard case .success(let res)? = currentDirs[dir] else { return }
+            for e in res.entries {
+                let path = dir.isEmpty ? e.name : "\(dir)/\(e.name)"
+                let app = fileAppearance(e.name, dir: e.dir)
+                out.append(SessionTreeRow(
+                    path: path,
+                    name: e.name,
+                    dir: e.dir,
+                    size: e.size,
+                    sizeLabel: e.dir ? "" : sessionFileSizeText(e.size),
+                    depth: depth,
+                    dimmed: app.dimmed
+                ))
+                if e.dir, currentExpanded.contains(path) { walk(path, depth + 1) }
+            }
+        }
+        walk("", 0)
+        cachedTreeRows = out
+        return out
+    }
 
     func listDir(_ dir: String) async {
         guard let api, !sessionID.isEmpty else { return }
@@ -760,39 +803,47 @@ struct CodePage: View {
 
 // MARK: File icons, name hierarchy, and compact byte formatting (Scheme A)
 
+private func sessionFileToneUIColor(_ tone: FileTone, dark: Bool) -> UIColor {
+    let hex: UInt32 = switch tone {
+    case .folder: dark ? 0x6EA8FE : 0x356EE0
+    case .folderTest: dark ? 0x56C8D8 : 0x0F8A9E
+    case .cyan: dark ? 0x2BC0E4 : 0x0084A8
+    case .blue: dark ? 0x5C9DFF : 0x2563EB
+    case .orange: dark ? 0xF78C45 : 0xD4580F
+    case .green: dark ? 0x45CF8E : 0x168350
+    case .amber: dark ? 0xE8C14A : 0xB37D05
+    case .purple: dark ? 0xB589F2 : 0x7C45C4
+    case .doc: dark ? 0x79B8FF : 0x2D68C4
+    case .red: dark ? 0xF06B72 : 0xCF343D
+    case .slate: dark ? 0x8A93A6 : 0x646D80
+    }
+    return UIColor(
+        red: CGFloat((hex >> 16) & 0xFF) / 255,
+        green: CGFloat((hex >> 8) & 0xFF) / 255,
+        blue: CGFloat(hex & 0xFF) / 255,
+        alpha: 1
+    )
+}
+
 /// Semantic OKLCH-balanced icon palette shared across `SessionFolderPage`, `SessionTree`, and `SessionSidePanel` tabs.
 func sessionFileToneColor(_ tone: FileTone) -> Color {
     Color(UIColor { traits in
-        let dark = traits.userInterfaceStyle == .dark
-        let hex: UInt32 = switch tone {
-        case .folder: dark ? 0x6EA8FE : 0x356EE0
-        case .folderTest: dark ? 0x56C8D8 : 0x0F8A9E
-        case .cyan: dark ? 0x2BC0E4 : 0x0084A8
-        case .blue: dark ? 0x5C9DFF : 0x2563EB
-        case .orange: dark ? 0xF78C45 : 0xD4580F
-        case .green: dark ? 0x45CF8E : 0x168350
-        case .amber: dark ? 0xE8C14A : 0xB37D05
-        case .purple: dark ? 0xB589F2 : 0x7C45C4
-        case .doc: dark ? 0x79B8FF : 0x2D68C4
-        case .red: dark ? 0xF06B72 : 0xCF343D
-        case .slate: dark ? 0x8A93A6 : 0x646D80
-        }
-        return UIColor(
-            red: CGFloat((hex >> 16) & 0xFF) / 255,
-            green: CGFloat((hex >> 8) & 0xFF) / 255,
-            blue: CGFloat(hex & 0xFF) / 255,
-            alpha: 1
-        )
+        sessionFileToneUIColor(tone, dark: traits.userInterfaceStyle == .dark)
     })
 }
 
+@MainActor private var fileNameAttrCache: [String: AttributedString] = [:]
+
 /// Filename with primary stem, softened test/role suffix, and muted extension (`stem + sub + ext == name`).
-func sessionFileNameText(_ name: String, dir: Bool, active: Bool = false) -> Text {
+@MainActor func sessionFileNameText(_ name: String, dir: Bool, active: Bool = false) -> Text {
     if active {
         return Text(verbatim: name).fontWeight(.medium).foregroundStyle(Color.accentColor)
     }
     if dir {
         return Text(verbatim: name).fontWeight(.medium).foregroundStyle(.primary)
+    }
+    if let cached = fileNameAttrCache[name] {
+        return Text(cached)
     }
     let parts = splitFileName(name, dir: false)
     var out = AttributedString(parts.stem)
@@ -807,6 +858,8 @@ func sessionFileNameText(_ name: String, dir: Bool, active: Bool = false) -> Tex
         ext.foregroundColor = Color(UIColor.tertiaryLabel)
         out += ext
     }
+    if fileNameAttrCache.count > 2048 { fileNameAttrCache.removeAll(keepingCapacity: true) }
+    fileNameAttrCache[name] = out
     return Text(out)
 }
 
@@ -826,8 +879,275 @@ func sessionFileSizeText(_ bytes: UInt64) -> String {
     return "\(Int(v.rounded())) \(units[u])"
 }
 
+/// Native CoreGraphics rasterized `UIImage` cache for Scheme A file/folder glyphs (~40 small bitmaps total),
+/// eliminating per-row synchronous `Canvas` drawing and `.destinationOut` offscreen transparency layers.
+@MainActor private enum SessionFileIconCache {
+    private struct Key: Hashable {
+        let glyph: FileGlyph
+        let tone: FileTone
+        let isOpen: Bool
+        let dark: Bool
+        let sizeTenths: Int
+        let scaleTenths: Int
+    }
+
+    private static var cache: [Key: UIImage] = [:]
+
+    static func image(glyph: FileGlyph, tone: FileTone, isOpen: Bool, dark: Bool, size: CGFloat, scale: CGFloat) -> UIImage {
+        let s = max(size, 1)
+        let sc = max(scale, 1)
+        let key = Key(
+            glyph: glyph,
+            tone: tone,
+            isOpen: isOpen,
+            dark: dark,
+            sizeTenths: Int((s * 10).rounded()),
+            scaleTenths: Int((sc * 10).rounded())
+        )
+        if let hit = cache[key] { return hit }
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = sc
+        format.opaque = false
+        let color = sessionFileToneUIColor(tone, dark: dark)
+        let img = UIGraphicsImageRenderer(size: CGSize(width: s, height: s), format: format).image { ctx in
+            let cg = ctx.cgContext
+            let k = s / 20
+            func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * k, y: y * k) }
+            func rect(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
+                CGRect(x: x * k, y: y * k, width: w * k, height: h * k)
+            }
+            func fill(_ path: Path, alpha: CGFloat = 1) {
+                cg.saveGState()
+                cg.setFillColor((alpha < 1 ? color.withAlphaComponent(alpha) : color).cgColor)
+                cg.addPath(path.cgPath)
+                cg.fillPath()
+                cg.restoreGState()
+            }
+            func stroke(_ path: Path, width: CGFloat = 1.65) {
+                cg.saveGState()
+                cg.setStrokeColor(color.cgColor)
+                cg.setLineWidth(width * k)
+                cg.setLineCap(.round)
+                cg.setLineJoin(.round)
+                cg.addPath(path.cgPath)
+                cg.strokePath()
+                cg.restoreGState()
+            }
+
+            func closedFolderPath() -> Path {
+                var p = Path()
+                p.move(to: pt(2.2, 8.0))
+                p.addArc(tangent1End: pt(2.2, 3.3), tangent2End: pt(5.0, 3.3), radius: 2.1 * k)
+                p.addArc(tangent1End: pt(8.1, 3.3), tangent2End: pt(9.5, 4.9), radius: 1.2 * k)
+                p.addArc(tangent1End: pt(9.9, 5.2), tangent2End: pt(12.2, 5.2), radius: 1.0 * k)
+                p.addArc(tangent1End: pt(17.8, 5.2), tangent2End: pt(17.8, 8.0), radius: 2.1 * k)
+                p.addArc(tangent1End: pt(17.8, 16.6), tangent2End: pt(15.0, 16.6), radius: 2.1 * k)
+                p.addArc(tangent1End: pt(2.2, 16.6), tangent2End: pt(2.2, 13.8), radius: 2.1 * k)
+                p.closeSubpath()
+                return p
+            }
+
+            func drawOpenFolder() {
+                var back = Path()
+                back.move(to: pt(2.2, 7.6))
+                back.addArc(tangent1End: pt(2.2, 3.3), tangent2End: pt(5.0, 3.3), radius: 2.0 * k)
+                back.addArc(tangent1End: pt(8.1, 3.3), tangent2End: pt(9.5, 4.9), radius: 1.2 * k)
+                back.addArc(tangent1End: pt(9.9, 5.2), tangent2End: pt(12.2, 5.2), radius: 1.0 * k)
+                back.addArc(tangent1End: pt(17.4, 5.2), tangent2End: pt(17.4, 7.6), radius: 2.0 * k)
+                back.addLine(to: pt(17.4, 8.2))
+                back.addLine(to: pt(2.2, 8.2))
+                back.closeSubpath()
+                fill(back, alpha: 0.42)
+
+                var front = Path()
+                front.move(to: pt(2.4, 11.0))
+                front.addArc(tangent1End: pt(1.7, 7.6), tangent2End: pt(5.0, 7.6), radius: 1.5 * k)
+                front.addArc(tangent1End: pt(18.3, 7.6), tangent2End: pt(17.5, 11.2), radius: 1.5 * k)
+                front.addArc(tangent1End: pt(16.9, 16.6), tangent2End: pt(14.0, 16.6), radius: 1.9 * k)
+                front.addArc(tangent1End: pt(3.1, 16.6), tangent2End: pt(2.4, 13.5), radius: 1.9 * k)
+                front.closeSubpath()
+                fill(front)
+            }
+
+            func foldedSheetPath() -> (Path, Path) {
+                var sheet = Path()
+                sheet.move(to: pt(4.0, 8.0))
+                sheet.addArc(tangent1End: pt(4.0, 2.8), tangent2End: pt(8.0, 2.8), radius: 1.6 * k)
+                sheet.addLine(to: pt(11.4, 2.8))
+                sheet.addLine(to: pt(15.6, 7.0))
+                sheet.addArc(tangent1End: pt(15.6, 17.2), tangent2End: pt(12.0, 17.2), radius: 1.6 * k)
+                sheet.addArc(tangent1End: pt(4.0, 17.2), tangent2End: pt(4.0, 14.0), radius: 1.6 * k)
+                sheet.closeSubpath()
+                var fold = Path()
+                fold.move(to: pt(11.2, 3.0))
+                fold.addLine(to: pt(11.2, 7.1))
+                fold.addLine(to: pt(15.3, 7.1))
+                return (sheet, fold)
+            }
+
+            switch glyph {
+            case .folder:
+                if isOpen { drawOpenFolder() } else { fill(closedFolderPath()) }
+            case .folderTest:
+                if isOpen {
+                    drawOpenFolder()
+                } else {
+                    cg.saveGState()
+                    cg.beginTransparencyLayer(auxiliaryInfo: nil)
+                    fill(closedFolderPath())
+                    cg.setBlendMode(.destinationOut)
+                    var check = Path()
+                    check.move(to: pt(7.4, 11.3))
+                    check.addLine(to: pt(9.2, 13.1))
+                    check.addLine(to: pt(12.8, 9.4))
+                    cg.setStrokeColor(UIColor.black.cgColor)
+                    cg.setLineWidth(1.65 * k)
+                    cg.setLineCap(.round)
+                    cg.setLineJoin(.round)
+                    cg.addPath(check.cgPath)
+                    cg.strokePath()
+                    cg.endTransparencyLayer()
+                    cg.restoreGState()
+                }
+            case .go:
+                var p = Path()
+                p.move(to: pt(6.8, 6.5)); p.addLine(to: pt(3.2, 10)); p.addLine(to: pt(6.8, 13.5))
+                p.move(to: pt(13.2, 6.5)); p.addLine(to: pt(16.8, 10)); p.addLine(to: pt(13.2, 13.5))
+                stroke(p)
+                fill(Path(ellipseIn: rect(8.6, 8.6, 2.8, 2.8)))
+            case .test:
+                var p = Path()
+                p.move(to: pt(8.0, 3.2)); p.addLine(to: pt(12.0, 3.2))
+                p.move(to: pt(8.8, 3.2))
+                p.addLine(to: pt(8.8, 7.3))
+                p.addArc(tangent1End: pt(4.5, 16.6), tangent2End: pt(10.0, 16.6), radius: 1.7 * k)
+                p.addArc(tangent1End: pt(15.5, 16.6), tangent2End: pt(11.2, 7.3), radius: 1.7 * k)
+                p.addLine(to: pt(11.2, 7.3))
+                p.addLine(to: pt(11.2, 3.2))
+                p.move(to: pt(6.7, 12.3)); p.addLine(to: pt(13.3, 12.3))
+                stroke(p)
+            case .code:
+                var p = Path()
+                p.move(to: pt(6.8, 6.2)); p.addLine(to: pt(3.0, 10)); p.addLine(to: pt(6.8, 13.8))
+                p.move(to: pt(13.2, 6.2)); p.addLine(to: pt(17.0, 10)); p.addLine(to: pt(13.2, 13.8))
+                p.move(to: pt(11.2, 4.5)); p.addLine(to: pt(8.8, 15.5))
+                stroke(p)
+            case .braces:
+                var p = Path()
+                p.move(to: pt(7.4, 4.0))
+                p.addQuadCurve(to: pt(5.3, 6.1), control: pt(5.3, 4.0))
+                p.addLine(to: pt(5.3, 8.3))
+                p.addQuadCurve(to: pt(3.5, 10.0), control: pt(5.3, 9.7))
+                p.addQuadCurve(to: pt(5.3, 11.7), control: pt(5.3, 10.3))
+                p.addLine(to: pt(5.3, 13.9))
+                p.addQuadCurve(to: pt(7.4, 16.0), control: pt(5.3, 16.0))
+                p.move(to: pt(12.6, 4.0))
+                p.addQuadCurve(to: pt(14.7, 6.1), control: pt(14.7, 4.0))
+                p.addLine(to: pt(14.7, 8.3))
+                p.addQuadCurve(to: pt(16.5, 10.0), control: pt(14.7, 9.7))
+                p.addQuadCurve(to: pt(14.7, 11.7), control: pt(14.7, 10.3))
+                p.addLine(to: pt(14.7, 13.9))
+                p.addQuadCurve(to: pt(12.6, 16.0), control: pt(14.7, 16.0))
+                stroke(p)
+            case .sliders:
+                cg.saveGState()
+                cg.beginTransparencyLayer(auxiliaryInfo: nil)
+                var lines = Path()
+                for y: CGFloat in [6, 10, 14] {
+                    lines.move(to: pt(4, y)); lines.addLine(to: pt(16, y))
+                }
+                stroke(lines)
+                let knobs: [(CGFloat, CGFloat)] = [(7.5, 6), (13, 10), (8.5, 14)]
+                cg.setBlendMode(.destinationOut)
+                cg.setFillColor(UIColor.black.cgColor)
+                for (kx, ky) in knobs {
+                    cg.addPath(Path(ellipseIn: rect(kx - 1.8, ky - 1.8, 3.6, 3.6)).cgPath)
+                    cg.fillPath()
+                }
+                cg.setBlendMode(.normal)
+                for (kx, ky) in knobs {
+                    stroke(Path(ellipseIn: rect(kx - 1.7, ky - 1.7, 3.4, 3.4)))
+                }
+                cg.endTransparencyLayer()
+                cg.restoreGState()
+            case .markdown:
+                let box = Path(roundedRect: rect(2.6, 4.5, 14.8, 11.0), cornerRadius: 2.2 * k)
+                var m = Path()
+                m.move(to: pt(5.6, 12.6)); m.addLine(to: pt(5.6, 7.4)); m.addLine(to: pt(7.8, 10.1)); m.addLine(to: pt(10.0, 7.4)); m.addLine(to: pt(10.0, 12.6))
+                m.move(to: pt(13.8, 7.5)); m.addLine(to: pt(13.8, 12.5))
+                m.move(to: pt(12.1, 10.7)); m.addLine(to: pt(13.8, 12.5)); m.addLine(to: pt(15.5, 10.7))
+                stroke(box)
+                stroke(m, width: 1.5)
+            case .page:
+                stroke(Path(ellipseIn: rect(3.2, 3.2, 13.6, 13.6)))
+                stroke(Path(ellipseIn: rect(7.1, 3.2, 5.8, 13.6)))
+                var eq = Path()
+                eq.move(to: pt(3.4, 10)); eq.addLine(to: pt(16.6, 10))
+                stroke(eq)
+            case .terminal:
+                stroke(Path(roundedRect: rect(2.8, 4.0, 14.4, 12.0), cornerRadius: 2.4 * k))
+                var p = Path()
+                p.move(to: pt(6.2, 8.0)); p.addLine(to: pt(8.6, 10.1)); p.addLine(to: pt(6.2, 12.2))
+                p.move(to: pt(10.4, 12.2)); p.addLine(to: pt(13.6, 12.2))
+                stroke(p)
+            case .cube:
+                var hex = Path()
+                hex.move(to: pt(10.0, 2.8))
+                hex.addLine(to: pt(16.4, 6.4)); hex.addLine(to: pt(16.4, 13.6))
+                hex.addLine(to: pt(10.0, 17.2)); hex.addLine(to: pt(3.6, 13.6))
+                hex.addLine(to: pt(3.6, 6.4)); hex.closeSubpath()
+                var yLine = Path()
+                yLine.move(to: pt(3.6, 6.4)); yLine.addLine(to: pt(10.0, 10.0)); yLine.addLine(to: pt(16.4, 6.4))
+                yLine.move(to: pt(10.0, 10.0)); yLine.addLine(to: pt(10.0, 17.2))
+                stroke(hex)
+                stroke(yLine)
+            case .lock:
+                stroke(Path(roundedRect: rect(4.5, 9.0, 11.0, 7.5), cornerRadius: 2.0 * k))
+                var shackle = Path()
+                shackle.move(to: pt(7.0, 9.0))
+                shackle.addLine(to: pt(7.0, 6.6))
+                shackle.addArc(center: pt(10.0, 6.6), radius: 3.0 * k, startAngle: .degrees(180), endAngle: .degrees(0), clockwise: false)
+                shackle.addLine(to: pt(13.0, 9.0))
+                stroke(shackle)
+            case .git:
+                stroke(Path(ellipseIn: rect(4.4, 3.7, 3.6, 3.6)))
+                stroke(Path(ellipseIn: rect(4.4, 12.7, 3.6, 3.6)))
+                stroke(Path(ellipseIn: rect(12.0, 6.7, 3.6, 3.6)))
+                var branch = Path()
+                branch.move(to: pt(6.2, 7.3)); branch.addLine(to: pt(6.2, 12.7))
+                branch.move(to: pt(13.8, 10.3))
+                branch.addQuadCurve(to: pt(6.2, 13.1), control: pt(13.6, 13.1))
+                stroke(branch)
+            case .image:
+                stroke(Path(roundedRect: rect(3.0, 3.8, 14.0, 12.4), cornerRadius: 2.3 * k))
+                fill(Path(ellipseIn: rect(6.1, 6.5, 2.6, 2.6)))
+                var mtn = Path()
+                mtn.move(to: pt(4.2, 14.5)); mtn.addLine(to: pt(8.4, 10.4)); mtn.addLine(to: pt(11.4, 13.3))
+                mtn.addLine(to: pt(13.6, 11.3)); mtn.addLine(to: pt(16.0, 14.5))
+                stroke(mtn)
+            case .pdf:
+                let (sheet, fold) = foldedSheetPath()
+                var lines = fold
+                lines.move(to: pt(6.8, 10.2)); lines.addLine(to: pt(9.8, 10.2))
+                lines.move(to: pt(6.8, 12.8)); lines.addLine(to: pt(13.0, 12.8))
+                stroke(sheet)
+                stroke(lines)
+            case .doc, .swift:
+                let (sheet, fold) = foldedSheetPath()
+                stroke(sheet)
+                stroke(fold)
+            }
+        }
+        cache[key] = img
+        return img
+    }
+}
+
 /// Scheme A crisp 20×20 vector file/folder icon.
 struct SessionFileIcon: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.displayScale) private var displayScale
     let name: String
     var isDir = false
     var isOpen = false
@@ -835,217 +1155,22 @@ struct SessionFileIcon: View {
 
     var body: some View {
         let appearance = fileAppearance(name, dir: isDir)
-        let color = sessionFileToneColor(appearance.tone)
         Group {
             if appearance.glyph == .swift {
                 Image(systemName: "swift")
                     .resizable()
                     .scaledToFit()
                     .padding(size * 0.08)
-                    .foregroundStyle(color)
+                    .foregroundStyle(sessionFileToneColor(appearance.tone))
             } else {
-                Canvas(rendersAsynchronously: false) { ctx, canvasSize in
-                    let k = min(canvasSize.width, canvasSize.height) / 20
-                    func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * k, y: y * k) }
-                    func rect(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
-                        CGRect(x: x * k, y: y * k, width: w * k, height: h * k)
-                    }
-                    let stroke = StrokeStyle(lineWidth: 1.65 * k, lineCap: .round, lineJoin: .round)
-                    let shading = GraphicsContext.Shading.color(color)
-
-                    func closedFolderPath() -> Path {
-                        var p = Path()
-                        p.move(to: pt(2.2, 8.0))
-                        p.addArc(tangent1End: pt(2.2, 3.3), tangent2End: pt(5.0, 3.3), radius: 2.1 * k)
-                        p.addArc(tangent1End: pt(8.1, 3.3), tangent2End: pt(9.5, 4.9), radius: 1.2 * k)
-                        p.addArc(tangent1End: pt(9.9, 5.2), tangent2End: pt(12.2, 5.2), radius: 1.0 * k)
-                        p.addArc(tangent1End: pt(17.8, 5.2), tangent2End: pt(17.8, 8.0), radius: 2.1 * k)
-                        p.addArc(tangent1End: pt(17.8, 16.6), tangent2End: pt(15.0, 16.6), radius: 2.1 * k)
-                        p.addArc(tangent1End: pt(2.2, 16.6), tangent2End: pt(2.2, 13.8), radius: 2.1 * k)
-                        p.closeSubpath()
-                        return p
-                    }
-
-                    func drawOpenFolder() {
-                        var back = Path()
-                        back.move(to: pt(2.2, 7.6))
-                        back.addArc(tangent1End: pt(2.2, 3.3), tangent2End: pt(5.0, 3.3), radius: 2.0 * k)
-                        back.addArc(tangent1End: pt(8.1, 3.3), tangent2End: pt(9.5, 4.9), radius: 1.2 * k)
-                        back.addArc(tangent1End: pt(9.9, 5.2), tangent2End: pt(12.2, 5.2), radius: 1.0 * k)
-                        back.addArc(tangent1End: pt(17.4, 5.2), tangent2End: pt(17.4, 7.6), radius: 2.0 * k)
-                        back.addLine(to: pt(17.4, 8.2))
-                        back.addLine(to: pt(2.2, 8.2))
-                        back.closeSubpath()
-                        ctx.fill(back, with: .color(color.opacity(0.42)))
-
-                        var front = Path()
-                        front.move(to: pt(2.4, 11.0))
-                        front.addArc(tangent1End: pt(1.7, 7.6), tangent2End: pt(5.0, 7.6), radius: 1.5 * k)
-                        front.addArc(tangent1End: pt(18.3, 7.6), tangent2End: pt(17.5, 11.2), radius: 1.5 * k)
-                        front.addArc(tangent1End: pt(16.9, 16.6), tangent2End: pt(14.0, 16.6), radius: 1.9 * k)
-                        front.addArc(tangent1End: pt(3.1, 16.6), tangent2End: pt(2.4, 13.5), radius: 1.9 * k)
-                        front.closeSubpath()
-                        ctx.fill(front, with: shading)
-                    }
-
-                    func foldedSheetPath() -> (Path, Path) {
-                        var sheet = Path()
-                        sheet.move(to: pt(4.0, 8.0))
-                        sheet.addArc(tangent1End: pt(4.0, 2.8), tangent2End: pt(8.0, 2.8), radius: 1.6 * k)
-                        sheet.addLine(to: pt(11.4, 2.8))
-                        sheet.addLine(to: pt(15.6, 7.0))
-                        sheet.addArc(tangent1End: pt(15.6, 17.2), tangent2End: pt(12.0, 17.2), radius: 1.6 * k)
-                        sheet.addArc(tangent1End: pt(4.0, 17.2), tangent2End: pt(4.0, 14.0), radius: 1.6 * k)
-                        sheet.closeSubpath()
-                        var fold = Path()
-                        fold.move(to: pt(11.2, 3.0))
-                        fold.addLine(to: pt(11.2, 7.1))
-                        fold.addLine(to: pt(15.3, 7.1))
-                        return (sheet, fold)
-                    }
-
-                    switch appearance.glyph {
-                    case .folder:
-                        if isOpen { drawOpenFolder() } else { ctx.fill(closedFolderPath(), with: shading) }
-                    case .folderTest:
-                        if isOpen {
-                            drawOpenFolder()
-                        } else {
-                            ctx.drawLayer { layer in
-                                layer.fill(closedFolderPath(), with: shading)
-                                layer.blendMode = .destinationOut
-                                var check = Path()
-                                check.move(to: pt(7.4, 11.3))
-                                check.addLine(to: pt(9.2, 13.1))
-                                check.addLine(to: pt(12.8, 9.4))
-                                layer.stroke(check, with: .color(.black), style: stroke)
-                            }
-                        }
-                    case .go:
-                        var p = Path()
-                        p.move(to: pt(6.8, 6.5)); p.addLine(to: pt(3.2, 10)); p.addLine(to: pt(6.8, 13.5))
-                        p.move(to: pt(13.2, 6.5)); p.addLine(to: pt(16.8, 10)); p.addLine(to: pt(13.2, 13.5))
-                        ctx.stroke(p, with: shading, style: stroke)
-                        ctx.fill(Path(ellipseIn: rect(8.6, 8.6, 2.8, 2.8)), with: shading)
-                    case .test:
-                        var p = Path()
-                        p.move(to: pt(8.0, 3.2)); p.addLine(to: pt(12.0, 3.2))
-                        p.move(to: pt(8.8, 3.2))
-                        p.addLine(to: pt(8.8, 7.3))
-                        p.addArc(tangent1End: pt(4.5, 16.6), tangent2End: pt(10.0, 16.6), radius: 1.7 * k)
-                        p.addArc(tangent1End: pt(15.5, 16.6), tangent2End: pt(11.2, 7.3), radius: 1.7 * k)
-                        p.addLine(to: pt(11.2, 7.3))
-                        p.addLine(to: pt(11.2, 3.2))
-                        p.move(to: pt(6.7, 12.3)); p.addLine(to: pt(13.3, 12.3))
-                        ctx.stroke(p, with: shading, style: stroke)
-                    case .code:
-                        var p = Path()
-                        p.move(to: pt(6.8, 6.2)); p.addLine(to: pt(3.0, 10)); p.addLine(to: pt(6.8, 13.8))
-                        p.move(to: pt(13.2, 6.2)); p.addLine(to: pt(17.0, 10)); p.addLine(to: pt(13.2, 13.8))
-                        p.move(to: pt(11.2, 4.5)); p.addLine(to: pt(8.8, 15.5))
-                        ctx.stroke(p, with: shading, style: stroke)
-                    case .braces:
-                        var p = Path()
-                        p.move(to: pt(7.4, 4.0))
-                        p.addQuadCurve(to: pt(5.3, 6.1), control: pt(5.3, 4.0))
-                        p.addLine(to: pt(5.3, 8.3))
-                        p.addQuadCurve(to: pt(3.5, 10.0), control: pt(5.3, 9.7))
-                        p.addQuadCurve(to: pt(5.3, 11.7), control: pt(5.3, 10.3))
-                        p.addLine(to: pt(5.3, 13.9))
-                        p.addQuadCurve(to: pt(7.4, 16.0), control: pt(5.3, 16.0))
-                        p.move(to: pt(12.6, 4.0))
-                        p.addQuadCurve(to: pt(14.7, 6.1), control: pt(14.7, 4.0))
-                        p.addLine(to: pt(14.7, 8.3))
-                        p.addQuadCurve(to: pt(16.5, 10.0), control: pt(14.7, 9.7))
-                        p.addQuadCurve(to: pt(14.7, 11.7), control: pt(14.7, 10.3))
-                        p.addLine(to: pt(14.7, 13.9))
-                        p.addQuadCurve(to: pt(12.6, 16.0), control: pt(14.7, 16.0))
-                        ctx.stroke(p, with: shading, style: stroke)
-                    case .sliders:
-                        ctx.drawLayer { layer in
-                            var lines = Path()
-                            for y: CGFloat in [6, 10, 14] {
-                                lines.move(to: pt(4, y)); lines.addLine(to: pt(16, y))
-                            }
-                            layer.stroke(lines, with: shading, style: stroke)
-                            let knobs: [(CGFloat, CGFloat)] = [(7.5, 6), (13, 10), (8.5, 14)]
-                            layer.blendMode = .destinationOut
-                            for (kx, ky) in knobs {
-                                layer.fill(Path(ellipseIn: rect(kx - 1.8, ky - 1.8, 3.6, 3.6)), with: .color(.black))
-                            }
-                            layer.blendMode = .normal
-                            for (kx, ky) in knobs {
-                                layer.stroke(Path(ellipseIn: rect(kx - 1.7, ky - 1.7, 3.4, 3.4)), with: shading, style: stroke)
-                            }
-                        }
-                    case .markdown:
-                        let box = Path(roundedRect: rect(2.6, 4.5, 14.8, 11.0), cornerRadius: 2.2 * k)
-                        var m = Path()
-                        m.move(to: pt(5.6, 12.6)); m.addLine(to: pt(5.6, 7.4)); m.addLine(to: pt(7.8, 10.1)); m.addLine(to: pt(10.0, 7.4)); m.addLine(to: pt(10.0, 12.6))
-                        m.move(to: pt(13.8, 7.5)); m.addLine(to: pt(13.8, 12.5))
-                        m.move(to: pt(12.1, 10.7)); m.addLine(to: pt(13.8, 12.5)); m.addLine(to: pt(15.5, 10.7))
-                        ctx.stroke(box, with: shading, style: stroke)
-                        ctx.stroke(m, with: shading, style: StrokeStyle(lineWidth: 1.5 * k, lineCap: .round, lineJoin: .round))
-                    case .page:
-                        ctx.stroke(Path(ellipseIn: rect(3.2, 3.2, 13.6, 13.6)), with: shading, style: stroke)
-                        ctx.stroke(Path(ellipseIn: rect(7.1, 3.2, 5.8, 13.6)), with: shading, style: stroke)
-                        var eq = Path()
-                        eq.move(to: pt(3.4, 10)); eq.addLine(to: pt(16.6, 10))
-                        ctx.stroke(eq, with: shading, style: stroke)
-                    case .terminal:
-                        ctx.stroke(Path(roundedRect: rect(2.8, 4.0, 14.4, 12.0), cornerRadius: 2.4 * k), with: shading, style: stroke)
-                        var p = Path()
-                        p.move(to: pt(6.2, 8.0)); p.addLine(to: pt(8.6, 10.1)); p.addLine(to: pt(6.2, 12.2))
-                        p.move(to: pt(10.4, 12.2)); p.addLine(to: pt(13.6, 12.2))
-                        ctx.stroke(p, with: shading, style: stroke)
-                    case .cube:
-                        var hex = Path()
-                        hex.move(to: pt(10.0, 2.8))
-                        hex.addLine(to: pt(16.4, 6.4)); hex.addLine(to: pt(16.4, 13.6))
-                        hex.addLine(to: pt(10.0, 17.2)); hex.addLine(to: pt(3.6, 13.6))
-                        hex.addLine(to: pt(3.6, 6.4)); hex.closeSubpath()
-                        var yLine = Path()
-                        yLine.move(to: pt(3.6, 6.4)); yLine.addLine(to: pt(10.0, 10.0)); yLine.addLine(to: pt(16.4, 6.4))
-                        yLine.move(to: pt(10.0, 10.0)); yLine.addLine(to: pt(10.0, 17.2))
-                        ctx.stroke(hex, with: shading, style: stroke)
-                        ctx.stroke(yLine, with: shading, style: stroke)
-                    case .lock:
-                        ctx.stroke(Path(roundedRect: rect(4.5, 9.0, 11.0, 7.5), cornerRadius: 2.0 * k), with: shading, style: stroke)
-                        var shackle = Path()
-                        shackle.move(to: pt(7.0, 9.0))
-                        shackle.addLine(to: pt(7.0, 6.6))
-                        shackle.addArc(center: pt(10.0, 6.6), radius: 3.0 * k, startAngle: .degrees(180), endAngle: .degrees(0), clockwise: false)
-                        shackle.addLine(to: pt(13.0, 9.0))
-                        ctx.stroke(shackle, with: shading, style: stroke)
-                    case .git:
-                        ctx.stroke(Path(ellipseIn: rect(4.4, 3.7, 3.6, 3.6)), with: shading, style: stroke)
-                        ctx.stroke(Path(ellipseIn: rect(4.4, 12.7, 3.6, 3.6)), with: shading, style: stroke)
-                        ctx.stroke(Path(ellipseIn: rect(12.0, 6.7, 3.6, 3.6)), with: shading, style: stroke)
-                        var branch = Path()
-                        branch.move(to: pt(6.2, 7.3)); branch.addLine(to: pt(6.2, 12.7))
-                        branch.move(to: pt(13.8, 10.3))
-                        branch.addQuadCurve(to: pt(6.2, 13.1), control: pt(13.6, 13.1))
-                        ctx.stroke(branch, with: shading, style: stroke)
-                    case .image:
-                        ctx.stroke(Path(roundedRect: rect(3.0, 3.8, 14.0, 12.4), cornerRadius: 2.3 * k), with: shading, style: stroke)
-                        ctx.fill(Path(ellipseIn: rect(6.1, 6.5, 2.6, 2.6)), with: shading)
-                        var mtn = Path()
-                        mtn.move(to: pt(4.2, 14.5)); mtn.addLine(to: pt(8.4, 10.4)); mtn.addLine(to: pt(11.4, 13.3))
-                        mtn.addLine(to: pt(13.6, 11.3)); mtn.addLine(to: pt(16.0, 14.5))
-                        ctx.stroke(mtn, with: shading, style: stroke)
-                    case .pdf:
-                        let (sheet, fold) = foldedSheetPath()
-                        var lines = fold
-                        lines.move(to: pt(6.8, 10.2)); lines.addLine(to: pt(9.8, 10.2))
-                        lines.move(to: pt(6.8, 12.8)); lines.addLine(to: pt(13.0, 12.8))
-                        ctx.stroke(sheet, with: shading, style: stroke)
-                        ctx.stroke(lines, with: shading, style: stroke)
-                    case .doc, .swift:
-                        let (sheet, fold) = foldedSheetPath()
-                        ctx.stroke(sheet, with: shading, style: stroke)
-                        ctx.stroke(fold, with: shading, style: stroke)
-                    }
-                }
+                Image(uiImage: SessionFileIconCache.image(
+                    glyph: appearance.glyph,
+                    tone: appearance.tone,
+                    isOpen: isOpen,
+                    dark: colorScheme == .dark,
+                    size: size,
+                    scale: displayScale
+                ))
             }
         }
         .frame(width: size, height: size)

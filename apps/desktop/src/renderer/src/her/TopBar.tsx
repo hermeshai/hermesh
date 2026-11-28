@@ -23,7 +23,7 @@ import { useNow, useStore } from "../store";
  * looked at often, marked while her work waits or runs; then ⋯: task actions (when in a task conversation), the
  * environments, the environment's console, and another environment.
  */
-export function TopBar({ view, task }: { view?: SessionView | null; task?: Session } = {}) {
+export function TopBar({ view, task, greet = false, onGreetEnd }: { view?: SessionView | null; task?: Session; greet?: boolean; onGreetEnd?: () => void } = {}) {
   const { t } = useTranslation("her");
   const her = useHer();
   const bot = her.bot;
@@ -47,11 +47,11 @@ export function TopBar({ view, task }: { view?: SessionView | null; task?: Sessi
       <div className="her-id">
         {bot ? (
           <button className="her-id-av" title={label} aria-label={label} aria-pressed={!!panel} data-testid="her-avatar" onClick={() => her.setPanel(panel ? null : { kind: "settings" })}>
-            <BotAvatar bot={bot} size={56} busy={busy} />
+            <BotAvatar bot={bot} size={56} busy={busy} greet={greet} onGreetEnd={onGreetEnd} />
             {waits && <i className="her-id-dot" aria-hidden="true" />}
           </button>
         ) : (
-          <Avatar spec={{ kind: "mark" }} name="" size={56} />
+          <Avatar spec={{ kind: "mark" }} name="" size={56} greet={greet} onGreetEnd={onGreetEnd} />
         )}
         {/* The capsule is the team's name tag (docs/her-team.md §14.3): Her's name (or live status while she answers) and what the team does; it opens the team panel. */}
         <button ref={capsule} className={`her-cap ${teamOpen ? "on" : ""}`} aria-expanded={teamOpen} aria-haspopup="dialog" aria-label={t("head.team")} onClick={() => setTeamOpen(!teamOpen)}>

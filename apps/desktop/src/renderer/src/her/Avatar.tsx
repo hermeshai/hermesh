@@ -78,14 +78,35 @@ function usePicture(botId: string | undefined, rev: number | undefined): string 
 }
 
 /** The avatar of `spec`; `name` gives a letter avatar its character, `bot` an uploaded one its picture. `preview`: a picture not uploaded yet. */
-export function Avatar({ spec, name, size, busy = false, bot, preview }: { spec: AvatarSpec; name: string; size: AvatarSize; busy?: boolean; bot?: string; preview?: string }) {
+export function Avatar({
+  spec,
+  name,
+  size,
+  busy = false,
+  greet = false,
+  onGreetEnd,
+  bot,
+  preview,
+}: {
+  spec: AvatarSpec;
+  name: string;
+  size: AvatarSize;
+  busy?: boolean;
+  greet?: boolean;
+  onGreetEnd?: () => void;
+  bot?: string;
+  preview?: string;
+}) {
   const picture = usePicture(spec.kind === "image" && !preview ? bot : undefined, spec.kind === "image" ? spec.rev : undefined);
+  useEffect(() => {
+    if (greet && (spec.kind !== "mark" || size <= 28)) onGreetEnd?.();
+  }, [greet, spec.kind, size, onGreetEnd]);
   const cls = `bav s${size} ${busy ? "busy" : ""}`;
   switch (spec.kind) {
     case "mark":
       return (
         <span className={`bav s${size} cat-av`} aria-hidden="true">
-          <Cat small={size <= 28} busy={busy} />
+          <Cat small={size <= 28} busy={busy} greet={greet} onGreetEnd={onGreetEnd} />
         </span>
       );
     case "image": {
@@ -112,6 +133,6 @@ export function Avatar({ spec, name, size, busy = false, bot, preview }: { spec:
 }
 
 /** An assistant's own avatar, moving while it is busy. */
-export function BotAvatar({ bot, size, busy }: { bot: BotSummary; size: AvatarSize; busy?: boolean }) {
-  return <Avatar spec={bot.avatar} name={bot.name} size={size} busy={busy} bot={bot.id} />;
+export function BotAvatar({ bot, size, busy, greet, onGreetEnd }: { bot: BotSummary; size: AvatarSize; busy?: boolean; greet?: boolean; onGreetEnd?: () => void }) {
+  return <Avatar spec={bot.avatar} name={bot.name} size={size} busy={busy} greet={greet} onGreetEnd={onGreetEnd} bot={bot.id} />;
 }

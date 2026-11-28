@@ -151,7 +151,8 @@ struct SessionPage: View {
     @State private var providers: [Hermesh_Session_V1_ProviderInstance] = []
     @State private var providersStale = false
     @State private var ceiling: Hermesh_Identity_V1_RuntimeMode = .unspecified
-    @State private var draft = ""
+    @State private var composerState = SessionComposerState()
+    @State private var renderCache = SessionRenderCache()
     @State private var sending = false
     @State private var attached: [Attached] = []
     @State private var loadedDraftKey: String?
@@ -197,8 +198,8 @@ struct SessionPage: View {
     @State private var savedAgentMachineID = ""
     @State private var savedAgentProjectID = ""
     @Environment(\.accessibilityReduceMotion) private var still
-    /// Horizontal drag offset when swiping the side panel's leading edge right to put it away.
-    @GestureState private var panelDrag: CGFloat = 0
+    /// True once the wide trailing panel has settled open, so the conversation lays out once at rest rather than across every spring frame.
+    @State private var trailingSettled = false
     @State private var questionTyping = false
     @State private var boxOpen = false
     @State private var boxFocused = false
@@ -218,6 +219,13 @@ struct SessionPage: View {
     }
 
     private var isNew: Bool { sessionID.isEmpty }
+    private var draft: String {
+        get { composerState.text }
+        nonmutating set { composerState.text = newValue }
+    }
+    private var draftBinding: Binding<String> {
+        Binding(get: { composerState.text }, set: { composerState.text = $0 })
+    }
     private var draftKey: String {
         if !isNew { return ComposerDraftStore.key(sessionID: sessionID) }
         if let starting { return "starting:\(starting.request.commandID)" }
@@ -312,10 +320,6 @@ struct SessionPage: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { loadDraftIfNeeded(for: draftKey) }
         .onChange(of: draftKey) { _, key in loadDraftIfNeeded(for: key) }
-        .onChange(of: draft) { _, next in
-            guard loadedDraftKey == draftKey else { return }
-            model.drafts.save(ComposerDraft(text: next, attachments: attached.map(\.ref)), for: draftKey)
-        }
         .fullScreenCover(item: $boxLightbox) { SessionImageLightbox(presentation: $0) }
         .task(id: sessionID) { await start() }
         // Keep following while not background-paused; quick app switches (< 15 s) stay live with zero reconnect.
@@ -721,8 +725,10 @@ struct SessionPage: View {
     private func session(_ s: Session) -> some View {
         let activeProj = activeProjection
         let grant = model.grantLabel(s)
-        let steps = groupSteps(sessionTranscript(activeProj))
-        let writing = sessionLiveReplies(activeProj)
+        let memo = renderCache.resolve(activeProj, sessionID: s.sessionID)
+        let steps = memo.steps
+        let previousTurns = memo.previousTurns
+        let writing = memo.writing
         let files = model.sessionFiles.model(s.sessionID, api: model.api)
         let codeActions = codeActions(for: s)
         let pendingReq = s.status == .archived ? nil : pendingRequest(of: activeProj)
@@ -735,7 +741,7 @@ struct SessionPage: View {
         let hasInlineQuestion = pendingReq?.kind == .userInput || fallbackQuestion != nil
         let hasInlinePlan = pendingReq?.kind == .planReview
         let hasInlinePrompt = hasInlineQuestion || hasInlinePlan
-        let todos = activeTodoSteps(activeProj)
+        let todos = memo.todos
         let workStatus = sessionWorkStatus(activeProj, steps: steps)
         let todoWindow = windowTodoSteps(todos, workText: workStatus?.text)
         let todoEndSummary: TodoEndSummary? = todoWindow.flatMap { w in
@@ -744,16 +750,17 @@ struct SessionPage: View {
         // A wide screen: the side panel or background tasks beside the conversation (docs/session-files.md §15).
         let panel = model.wide != nil && files.panelOpen
         let wideBg = model.wide != nil && !panel && showingBackgroundTasks && !allBgTasks.isEmpty
+        let trailingKind: WideTrailingPanelKind = panel ? .files : wideBg ? .background : .none
         // Enlarged, the panel covers the conversation, which keeps its width and place underneath. On iPhone Duo
         // (`sideBars`), the split aligns with the physical center fold (`screenWidth / 2`).
         return GeometryReader { geo in
         let panelWidth = sidePanelWidth(geo)
         ZStack(alignment: .trailing) {
         ScrollView {
-            VStack(alignment: .leading, spacing: 13) {
+            ConversationStack(lazy: renderCache.useLazy(sessionID: s.sessionID, stepCount: steps.count)) {
                 if s.status == .archived { ArchivedNote(session: s) }
                 ForEach(Array(steps.enumerated()), id: \.element.id) { i, step in
-                    StepView(step: step, session: s, previousTurn: previousTurn(steps, before: i), live: writing.contains(step.id))
+                    StepView(step: step, session: s, previousTurn: previousTurns[i], live: writing.contains(step.id))
                 }
                 .environment(\.sessionFiles, files)
                 .environment(\.sessionCodeActions, codeActions)
@@ -841,14 +848,21 @@ struct SessionPage: View {
                         toggleBackgroundTasks(files: files)
                     })
         .sessionDialogs(s, renaming: $renaming, deleting: $deleting)
-        .padding(.trailing, (panel || wideBg) ? panelWidth : 0)
+        .padding(.trailing, (panel || wideBg) && trailingSettled ? panelWidth : 0)
+        .animation(nil, value: trailingSettled)
+        .accessibilityHidden(panel && files.panelMax)
         .onChange(of: files.panelOpen) { _, on in
             if on && showingBackgroundTasks { showingBackgroundTasks = false }
         }
-        if panel {
-            sidePanelColumn(files: files, width: files.panelMax ? geo.size.width : panelWidth)
-        } else if wideBg {
-            backgroundSideColumn(width: panelWidth)
+        .onChange(of: trailingKind) { _, next in
+            if next == .none, trailingSettled {
+                var tx = Transaction()
+                tx.disablesAnimations = true
+                withTransaction(tx) { trailingSettled = false }
+            }
+        }
+        if model.wide != nil {
+            wideTrailingPanel(for: s, files: files, kind: trailingKind, panelWidth: panelWidth)
         }
         }
         }
@@ -869,40 +883,67 @@ struct SessionPage: View {
         return min(470, round(geo.size.width * 0.54))
     }
 
-    private func sidePanelColumn(files: SessionFilesModel, width: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            Divider().ignoresSafeArea()
-            SessionSidePanel(files: files)
-        }
-        .frame(width: width)
-        .overlay(alignment: .leading) {
-            if !files.panelMax {
-                Capsule()
-                    .fill(.quaternary)
-                    .frame(width: 3.5, height: 36)
-                    .frame(width: 18)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(.rect)
-                    .gesture(
-                        DragGesture(minimumDistance: 8, coordinateSpace: .global)
-                            .updating($panelDrag) { v, s, _ in s = max(0, v.translation.width) }
-                            .onChanged { _ in hideKeyboard() }
-                            .onEnded { v in
-                                if v.translation.width > 72 || v.predictedEndTranslation.width > 140 {
-                                    withAnimation(.snappy(duration: 0.28)) {
-                                        files.panelOpen = false
-                                        files.panelMax = false
-                                        files.panelDrawer = false
-                                    }
-                                }
-                            }
-                    )
-                    .accessibilityIdentifier("side-panel-edge-grip")
+    private func wideTrailingPanel(for s: Session, files: SessionFilesModel, kind: WideTrailingPanelKind, panelWidth: CGFloat) -> some View {
+        WideSidePanelHost(
+            kind: kind,
+            splitWidth: panelWidth,
+            isMax: files.panelMax,
+            reduceMotion: still,
+            filesKey: ObjectIdentifier(files),
+            sideBars: sideBars,
+            makeFiles: { wideFilesRoot(for: s, files: files) },
+            makeBackground: { wideBackgroundRoot() },
+            onSettled: { settled in
+                guard trailingSettled != settled else { return }
+                var tx = Transaction()
+                tx.disablesAnimations = true
+                withTransaction(tx) { trailingSettled = settled }
+            },
+            onCloseFiles: {
+                files.panelOpen = false
+                files.panelMax = false
+                files.panelDrawer = false
+            },
+            onCloseBackground: {
+                showingBackgroundTasks = false
+                selectedBgTaskID = nil
             }
-        }
-        .offset(x: panelDrag)
-        .opacity(panelDrag > 0 ? max(0.38, 1 - Double(panelDrag) / 340) : 1)
-        .transition(.move(edge: .trailing))
+        )
+    }
+
+    private func wideFilesRoot(for s: Session, files: SessionFilesModel) -> some View {
+        SessionSidePanel(files: files)
+            .environment(model)
+            .environment(\.openURL, OpenURLAction { url in
+                guard let route = FileRefLink.route(url, session: s.sessionID) else { return .systemAction }
+                switch route {
+                case .sessionFile(_, let r, let p, let line, let end):
+                    if isSessionImage(p, line: line > 0 ? line : nil) {
+                        files.openLightbox(run: r, path: p, machineID: s.machineID)
+                    } else {
+                        files.openTab(run: r, path: p, line: line > 0 ? line : nil, endLine: end > 0 ? end : nil)
+                    }
+                case .sessionFolder(_, let dir):
+                    files.reveal("\(dir)/x")
+                    files.openProject()
+                default:
+                    model.path.append(route)
+                }
+                return .handled
+            })
+    }
+
+    private func wideBackgroundRoot() -> some View {
+        BackgroundTasksPanel(
+            tasks: allBgTasks,
+            selectedTaskID: $selectedBgTaskID,
+            onClose: {
+                showingBackgroundTasks = false
+                selectedBgTaskID = nil
+            },
+            onStop: stopBackgroundTask
+        )
+        .environment(model)
     }
 
     private func presentBackgroundTasks(focus reason: String = "") {
@@ -918,63 +959,26 @@ struct SessionPage: View {
             files.panelMax = false
             files.panelDrawer = false
             model.menuRail = true
+            showingBackgroundTasks = true
+        } else {
+            withAnimation(.snappy(duration: 0.26)) { showingBackgroundTasks = true }
         }
-        withAnimation(.snappy(duration: 0.26)) { showingBackgroundTasks = true }
     }
 
     private func toggleBackgroundTasks(files: SessionFilesModel) {
         if showingBackgroundTasks {
-            withAnimation(.snappy(duration: 0.24)) {
+            if model.wide != nil {
                 showingBackgroundTasks = false
                 selectedBgTaskID = nil
+            } else {
+                withAnimation(.snappy(duration: 0.24)) {
+                    showingBackgroundTasks = false
+                    selectedBgTaskID = nil
+                }
             }
         } else {
             presentBackgroundTasks()
         }
-    }
-
-    private func backgroundSideColumn(width: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            Divider().ignoresSafeArea()
-            BackgroundTasksPanel(
-                tasks: allBgTasks,
-                selectedTaskID: $selectedBgTaskID,
-                onClose: {
-                    withAnimation(.snappy(duration: 0.24)) {
-                        showingBackgroundTasks = false
-                        selectedBgTaskID = nil
-                    }
-                },
-                onStop: stopBackgroundTask
-            )
-        }
-        .frame(width: width)
-        .background(.background)
-        .overlay(alignment: .leading) {
-            Capsule()
-                .fill(.quaternary)
-                .frame(width: 3.5, height: 36)
-                .frame(width: 18)
-                .frame(maxHeight: .infinity)
-                .contentShape(.rect)
-                .gesture(
-                    DragGesture(minimumDistance: 8, coordinateSpace: .global)
-                        .updating($panelDrag) { v, s, _ in s = max(0, v.translation.width) }
-                        .onChanged { _ in hideKeyboard() }
-                        .onEnded { v in
-                            if v.translation.width > 72 || v.predictedEndTranslation.width > 140 {
-                                withAnimation(.snappy(duration: 0.28)) {
-                                    showingBackgroundTasks = false
-                                    selectedBgTaskID = nil
-                                }
-                            }
-                        }
-                )
-                .accessibilityIdentifier("bg-panel-edge-grip")
-        }
-        .offset(x: panelDrag)
-        .opacity(panelDrag > 0 ? max(0.38, 1 - Double(panelDrag) / 340) : 1)
-        .transition(.move(edge: .trailing))
     }
 
     @ViewBuilder private func inlineQuestionPanel(_ req: Hermesh_Session_V1_RuntimeRequest, _ s: Session) -> some View {
@@ -1014,7 +1018,7 @@ struct SessionPage: View {
                 let subline = [BackgroundTaskFormat.kindTitle(primary.kind), elapsed].filter { !$0.isEmpty }.joined(separator: " · ")
                 Button {
                     if model.wide != nil && showingBackgroundTasks {
-                        withAnimation(.snappy(duration: 0.24)) { showingBackgroundTasks = false }
+                        showingBackgroundTasks = false
                     } else {
                         presentBackgroundTasks()
                     }
@@ -1155,6 +1159,10 @@ struct SessionPage: View {
     }
 
     private var box: some View {
+        ComposerScope { composerBox }
+    }
+
+    private var composerBox: some View {
         let ready = !sending && starting == nil && uploading == 0 && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attached.isEmpty)
         let open = boxOpen
         let shellDraft = isShellDraft
@@ -1246,7 +1254,7 @@ struct SessionPage: View {
             }
             ZStack(alignment: .bottom) {
                 TextField(isNew && starting == nil ? (who == .her ? String(localized: "Message Her") : String(localized: "Describe what to build, debug or plan")) : running ? String(localized: "Say more; it goes to the next turn") : String(localized: "Keep going"),
-                          text: $draft, axis: .vertical)
+                          text: draftBinding, axis: .vertical)
                     .font(shellDraft ? .body.monospaced() : .body)
                     .lineLimit(open ? 2 ... 6 : 1 ... 6)
                     .focused($focused)
@@ -1309,6 +1317,10 @@ struct SessionPage: View {
                     boxFocused = focused
                 }
             }
+        }
+        .onChange(of: composerState.text) { _, next in
+            guard loadedDraftKey == draftKey else { return }
+            model.drafts.save(ComposerDraft(text: next, attachments: attached.map(\.ref)), for: draftKey)
         }
         .padding(.horizontal, 12)
         .photosPicker(isPresented: $pickingPhotos, selection: $photos, maxSelectionCount: 10, matching: .images)
@@ -3346,5 +3358,107 @@ private struct ComposerFocusHalo: View {
         .padding(-pad)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// Isolates composer text observation from `SessionPage.body` so keystrokes never re-evaluate or diff conversation rows.
+@Observable private final class SessionComposerState {
+    var text = ""
+}
+
+private struct ComposerScope<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    var body: some View { content() }
+}
+
+private struct ConversationStack<Content: View>: View {
+    let lazy: Bool
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        if lazy {
+            LazyVStack(alignment: .leading, spacing: 13, content: content)
+        } else {
+            VStack(alignment: .leading, spacing: 13, content: content)
+        }
+    }
+}
+
+/// Memoizes reduced transcript steps, O(N) `previousTurns` dates, live reply IDs, and todo steps across non-transcript UI updates.
+@MainActor private final class SessionRenderCache {
+    struct Key: Equatable {
+        let sessionID: String
+        let lastEventSeq: UInt64
+        let itemCount: Int
+        let lastItemID: String
+        let lastTextLen: Int
+        let lastStatus: String
+        let lastStreaming: Bool
+        let prevTextLen: Int
+        let runCount: Int
+        let lastRunStatus: Int
+        let reqCount: Int
+        let lastReqStatus: Int
+    }
+
+    private var key: Key?
+    private var steps: [Step] = []
+    private var previousTurns: [Date?] = []
+    private var writing: Set<UInt64> = []
+    private var todos: [TodoStepView] = []
+    private var latchedLazy: (sessionID: String, lazy: Bool)?
+
+    /// Latches `LazyVStack` vs `VStack` once a session's initial steps load so streaming growth never flips container identity mid-scroll.
+    func useLazy(sessionID: String, stepCount: Int) -> Bool {
+        if let latchedLazy, latchedLazy.sessionID == sessionID {
+            return latchedLazy.lazy
+        }
+        guard stepCount > 0 else { return false }
+        let lazy = stepCount > 100
+        latchedLazy = (sessionID, lazy)
+        return lazy
+    }
+
+    func resolve(
+        _ proj: Hermesh_Session_V1_SessionProjection?,
+        sessionID: String
+    ) -> (steps: [Step], previousTurns: [Date?], writing: Set<UInt64>, todos: [TodoStepView]) {
+        let items = proj?.items ?? []
+        let last = items.last
+        let prev = items.count >= 2 ? items[items.count - 2] : nil
+        let nextKey = Key(
+            sessionID: sessionID,
+            lastEventSeq: proj?.session.progress.lastEventSeq ?? 0,
+            itemCount: items.count,
+            lastItemID: last?.itemID ?? "",
+            lastTextLen: last?.text.utf8.count ?? 0,
+            lastStatus: last?.status ?? "",
+            lastStreaming: last?.streaming ?? false,
+            prevTextLen: prev?.text.utf8.count ?? 0,
+            runCount: proj?.runs.count ?? 0,
+            lastRunStatus: proj?.runs.last?.status.rawValue ?? 0,
+            reqCount: proj?.requests.count ?? 0,
+            lastReqStatus: proj?.requests.last?.status.rawValue ?? 0
+        )
+        if key == nextKey {
+            return (steps, previousTurns, writing, todos)
+        }
+        let builtSteps = groupSteps(sessionTranscript(proj))
+        var builtPrev = [Date?](repeating: nil, count: builtSteps.count)
+        var seenTurn: Date?
+        for (idx, step) in builtSteps.enumerated() {
+            builtPrev[idx] = seenTurn
+            if case .item(.turn(_, _, let at, _)) = step {
+                seenTurn = at
+            }
+        }
+        let builtWriting = sessionLiveReplies(proj)
+        let builtTodos = activeTodoSteps(proj)
+        key = nextKey
+        steps = builtSteps
+        previousTurns = builtPrev
+        writing = builtWriting
+        todos = builtTodos
+        return (builtSteps, builtPrev, builtWriting, builtTodos)
     }
 }

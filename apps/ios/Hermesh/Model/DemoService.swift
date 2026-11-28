@@ -9,12 +9,12 @@ import SwiftProtobuf
 /// It speaks the same messages as the core so the normal screens stay in use.
 final class DemoService {
     let herReview = HerReviewDemo()
-    private var world = Hermesh_Local_V1_WatchResponse()
-    private var projections: [String: Hermesh_Session_V1_SessionProjection] = [:]
-    private var events: [String: [SessionEvent]] = [:]
+    var world = Hermesh_Local_V1_WatchResponse()
+    var projections: [String: Hermesh_Session_V1_SessionProjection] = [:]
+    var events: [String: [SessionEvent]] = [:]
     private var watchers: [UUID: AsyncThrowingStream<Data, Error>.Continuation] = [:]
-    private var followers: [UUID: (String, AsyncThrowingStream<Data, Error>.Continuation)] = [:]
-    private var tasks: [String: Task<Void, Never>] = [:]
+    var followers: [UUID: (String, AsyncThrowingStream<Data, Error>.Continuation)] = [:]
+    var tasks: [String: Task<Void, Never>] = [:]
     #if DEBUG
     /// What was written to the demo's Her (DemoHer.swift).
     var herWaiting: [Hermesh_Local_V1_HerWaiting] = []
@@ -186,6 +186,9 @@ final class DemoService {
         if Self.linkMap {
             seedLinkMap()
         }
+        if Self.perfSuite {
+            seedPerfSuite()
+        }
         #endif
     }
 
@@ -204,7 +207,7 @@ final class DemoService {
         }
     }
 
-    private func machine(_ id: String, _ name: String, _ platform: String) -> Machine {
+    func machine(_ id: String, _ name: String, _ platform: String) -> Machine {
         .with {
             $0.machineID = id; $0.machineName = name; $0.online = true; $0.version = "Demo"
             $0.status = .with {
@@ -219,7 +222,7 @@ final class DemoService {
         }
     }
 
-    private func session(_ id: String, title: String, machine: String, status: SessionStatus) -> Session {
+    func session(_ id: String, title: String, machine: String, status: SessionStatus) -> Session {
         .with {
             $0.sessionID = id; $0.title = title; $0.machineID = machine; $0.projectID = "hello-world"
             $0.agent = "codex"; $0.createdBy = "demo-client"; $0.status = status
@@ -230,12 +233,12 @@ final class DemoService {
         }
     }
 
-    private func syncSession(_ id: String) {
+    func syncSession(_ id: String) {
         guard let s = world.sessions.first(where: { $0.sessionID == id }) else { return }
         projections[id, default: .init()].session = s
     }
 
-    private func emitEvent(_ id: String, _ build: (inout SessionEvent) -> Void) {
+    func emitEvent(_ id: String, _ build: (inout SessionEvent) -> Void) {
         let seq = UInt64(events[id, default: []].count + 1)
         if let i = world.sessions.firstIndex(where: { $0.sessionID == id }) {
             world.sessions[i].progress.lastEventSeq = seq
@@ -253,7 +256,7 @@ final class DemoService {
         }
     }
 
-    private func beginRun(_ id: String, runID: String, ordinal: UInt32, asker: String, status: Hermesh_Session_V1_RunStatus, startedAt: Date = .now) {
+    func beginRun(_ id: String, runID: String, ordinal: UInt32, asker: String, status: Hermesh_Session_V1_RunStatus, startedAt: Date = .now) {
         let actor: Hermesh_Session_V1_Actor = .with {
             $0.kind = asker == "owner" ? .owner : (asker.lowercased() == "her" ? .her : .externalAgent)
             $0.id = asker
@@ -269,7 +272,7 @@ final class DemoService {
     }
 
     @discardableResult
-    private func appendItem(_ id: String, runID: String, kind: Hermesh_Session_V1_TurnItemKind, _ more: (inout Hermesh_Session_V1_TurnItem) -> Void) -> Hermesh_Session_V1_TurnItem {
+    func appendItem(_ id: String, runID: String, kind: Hermesh_Session_V1_TurnItemKind, _ more: (inout Hermesh_Session_V1_TurnItem) -> Void) -> Hermesh_Session_V1_TurnItem {
         var p = projections[id, default: .init()]
         let itemSeq = UInt64((p.items.last?.seq ?? 0) + 1)
         var it = Hermesh_Session_V1_TurnItem()
@@ -426,6 +429,15 @@ final class DemoService {
     static let manyTools: Bool = {
         #if targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("-DemoManyTools")
+        #else
+        false
+        #endif
+    }()
+
+    // Simulator-only comprehensive stress-test dataset for PerfStressUITests.
+    static let perfSuite: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-DemoPerfSuite")
         #else
         false
         #endif
@@ -634,6 +646,9 @@ final class DemoService {
         let id = string("sessionId")
         #if DEBUG
         if Self.herDemoOn, let answer = try herDemo(rpc, r) { return answer }
+        #endif
+        #if targetEnvironment(simulator)
+        if Self.perfSuite, let answer = try perfSuiteCall(rpc, data: data, id: id) { return answer }
         #endif
         switch rpc {
         case "GetStatus": return try encoded(world.status)

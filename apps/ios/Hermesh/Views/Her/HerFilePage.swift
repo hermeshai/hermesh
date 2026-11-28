@@ -66,25 +66,30 @@ struct HerFilePage: View {
 /// Code in numbered lines, coloured as the Mac colours it once the highlighter has read it: plain until then, and
 /// for code too long to colour quickly.
 struct HerCodeLines: View {
-    let code: String
-    let lines: [Substring]
+    let rawText: String
     let lang: String
     /// Lines a reply pointed at, marked (a session's file, docs/session-files.md §4); each row is `.id` by its index.
     var target: ClosedRange<Int>?
     @Environment(\.colorScheme) private var scheme
+    @State private var split: (raw: String, code: String, lines: [Substring])?
     @State private var colored: Highlighter.Lines?
 
     init(text: String, lang: String, target: ClosedRange<Int>? = nil) {
-        self.target = target
-        // Its lines as the highlighter splits them, without an empty one after the last newline.
-        var code = text.replacingOccurrences(of: "\r\n", with: "\n")
-        if code.hasSuffix("\n") { code.removeLast() }
-        self.code = code
-        self.lines = code.split(separator: "\n", omittingEmptySubsequences: false)
+        self.rawText = text
         self.lang = lang
+        self.target = target
+    }
+
+    private static func makeSplit(_ text: String) -> (raw: String, code: String, lines: [Substring]) {
+        var code = text.contains("\r\n") ? text.replacingOccurrences(of: "\r\n", with: "\n") : text
+        if code.hasSuffix("\n") { code.removeLast() }
+        let lines = code.split(separator: "\n", omittingEmptySubsequences: false)
+        return (text, code, lines)
     }
 
     var body: some View {
+        let current = (split?.raw == rawText) ? split! : Self.makeSplit(rawText)
+        let lines = current.lines
         let widest = String(repeating: "0", count: String(lines.count).count)
         let colors = colored.flatMap { $0.count == lines.count ? $0 : nil }
         LazyVStack(alignment: .leading, spacing: 0) {
@@ -106,6 +111,10 @@ struct HerCodeLines: View {
             }
         }
         .font(.footnote.monospaced())
-        .task { colored = await Highlighter.shared.lines(code, lang: lang) }
+        .task(id: "\(lang)\u{0}\(rawText)") {
+            let built = (split?.raw == rawText) ? split! : Self.makeSplit(rawText)
+            if split?.raw != rawText { split = built }
+            colored = await Highlighter.shared.lines(built.code, lang: lang)
+        }
     }
 }

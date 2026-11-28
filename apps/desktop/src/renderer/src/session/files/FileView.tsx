@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { i18n } from "../../../../shared/i18n";
@@ -14,7 +14,32 @@ import { readAll, sizeText, type SessionFile } from "./files";
 import "../../her/preview/preview.css";
 import "./files.css";
 
-const CodeView = lazy(() => import("./CodeView"));
+type CodeViewProps = { text: string; name: string; line?: number; endLine?: number; wrap: boolean };
+let ResolvedCodeView: ComponentType<CodeViewProps> | null = null;
+let codeViewLoad: Promise<{ default: ComponentType<CodeViewProps> }> | null = null;
+
+function ensureCodeView() {
+  return (codeViewLoad ??= import("./CodeView").then((m) => {
+    ResolvedCodeView = m.default;
+    return m;
+  }));
+}
+
+const LazyCodeView = lazy(ensureCodeView);
+
+/** Warms the CodeMirror chunk once on idle so the first code file mounts synchronously without a Suspense flash. */
+export function preloadCodeView() {
+  void ensureCodeView();
+}
+
+function CodeBlock(props: CodeViewProps) {
+  if (ResolvedCodeView) return <ResolvedCodeView {...props} />;
+  return (
+    <Suspense fallback={<Loading />}>
+      <LazyCodeView {...props} />
+    </Suspense>
+  );
+}
 
 // What a side panel's tab shows of a session's file (docs/session-files.md §3.3, FinxWork's
 // preview/FilePreview): a page as it runs, a PDF as its pages, a picture, Markdown as it reads, code at
@@ -110,11 +135,7 @@ export function TextBody({ res, file, name, line, endLine, source }: { res: Read
       </div>
     );
   }
-  return (
-    <Suspense fallback={<Loading />}>
-      <CodeView text={res.text} name={shown.name} line={shown.line} endLine={shown.endLine} wrap={view === "markdown" || view === "text"} />
-    </Suspense>
-  );
+  return <CodeBlock text={res.text} name={shown.name} line={shown.line} endLine={shown.endLine} wrap={view === "markdown" || view === "text"} />;
 }
 
 /** A PDF, read whole from the session's machine, as pdf.js shows it. */
@@ -140,7 +161,7 @@ export function PdfBody({ file, name }: { file: SessionFile; name: string }) {
  * sent, and the bar under it says so when it refers to some), SVG as it looks, Markdown as it reads, code and text in
  * numbered lines.
  */
-export function AttachmentBody({ file, onTitle }: { file: SessionFile; onTitle?: (title: string) => void }) {
+export function AttachmentBody({ file, open = true, onTitle }: { file: SessionFile; open?: boolean; onTitle?: (title: string) => void }) {
   const { t } = useTranslation("session");
   const [got, setGot] = useState<{ text: string; url: string | null } | { error: unknown } | null>(null);
   const view = fileView(file.path);
@@ -166,7 +187,7 @@ export function AttachmentBody({ file, onTitle }: { file: SessionFile; onTitle?:
   if (view === "page") {
     return (
       <div className="sfv-att">
-        <PageBody file={file} onTitle={onTitle} />
+        <PageBody file={file} open={open} onTitle={onTitle} />
         {refersToOwnFiles(got.text) && (
           <div className="sfv-bar" data-testid="attachment-alone">
             <span>{t("files.attachmentAlone")}</span>
@@ -185,11 +206,7 @@ export function AttachmentBody({ file, onTitle }: { file: SessionFile; onTitle?:
       </div>
     );
   }
-  return (
-    <Suspense fallback={<Loading />}>
-      <CodeView text={got.text} name={file.path} wrap={view === "text"} />
-    </Suspense>
-  );
+  return <CodeBlock text={got.text} name={file.path} wrap={view === "text"} />;
 }
 
 /** Something of the app's over the window (a dialog, the Lightbox, a sheet): the page's view, drawn over the app, steps out of its way. */
@@ -198,10 +215,13 @@ const covered = () => document.querySelector('dialog[open], [role="dialog"]') !=
 /**
  * A page as it runs, in a view of its own over this room (main/sessionFiles.ts): a process apart from
  * the app, with no network, reading its own folder from the session's machine. It opens once the
- * room is laid out, and hides while something of the app's is over it.
+ * room is laid out, and hides while the side panel is hidden or something of the app's is over it.
  */
-export function PageBody({ file, onTitle }: { file: SessionFile; onTitle?: (title: string) => void }) {
+export function PageBody({ file, open = true, onTitle }: { file: SessionFile; open?: boolean; onTitle?: (title: string) => void }) {
   const room = useRef<HTMLDivElement>(null);
+  const openRef = useRef(open);
+  openRef.current = open;
+  const placeRef = useRef<(() => void) | null>(null);
   const onTitleRef = useRef(onTitle);
   onTitleRef.current = onTitle;
   useEffect(() => {
@@ -215,12 +235,24 @@ export function PageBody({ file, onTitle }: { file: SessionFile; onTitle?: (titl
       return { x: r.x, y: r.y, width: r.width, height: r.height };
     };
     const place = () => {
+      if (!openRef.current) {
+        if (opened) bridge.placeSessionPage(null);
+        return;
+      }
       const now = rect();
-      if (now.width === 0 || now.height === 0) return;
+      if (now.width === 0 || now.height === 0) {
+        if (opened) bridge.placeSessionPage(null);
+        return;
+      }
       if (opened) return bridge.placeSessionPage(covered() ? null : now);
       opened = true;
-      void bridge.openSessionPage(file, now).then(() => live && covered() && bridge.placeSessionPage(null));
+      void bridge.openSessionPage(file, now).then(() => {
+        if (!live) return;
+        const r = rect();
+        if (!openRef.current || r.width === 0 || r.height === 0 || covered()) bridge.placeSessionPage(null);
+      });
     };
+    placeRef.current = place;
     let frame = 0;
     const soon = () => void (frame ||= requestAnimationFrame(() => ((frame = 0), place())));
     const off = bridge.onSessionPage((event) => {
@@ -234,6 +266,7 @@ export function PageBody({ file, onTitle }: { file: SessionFile; onTitle?: (titl
     window.addEventListener("resize", place);
     return () => {
       live = false;
+      placeRef.current = null;
       cancelAnimationFrame(frame);
       sized.disconnect();
       overlays.disconnect();
@@ -242,5 +275,8 @@ export function PageBody({ file, onTitle }: { file: SessionFile; onTitle?: (titl
       bridge.closeSessionPage();
     };
   }, [file.run, file.path]);
+  useLayoutEffect(() => {
+    placeRef.current?.();
+  }, [open]);
   return <div ref={room} className="sfv-page" data-testid="panel-page" />;
 }

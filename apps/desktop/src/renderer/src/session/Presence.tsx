@@ -81,7 +81,7 @@ export function Presence({ who, onWho }: { who: Who; onWho: (who: Who) => void }
           title={who === "her" ? undefined : t("launch.toHer", { keys: shortcut })}
           onClick={() => onWho("her")}
         >
-          <Cat small={false} />
+          <Cat small={false} greet={who === "her"} />
         </button>
       </div>
       <div className="pr-name">{t(who === "her" ? "launch.roleHer" : "launch.roleAgent")}</div>

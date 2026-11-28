@@ -95,8 +95,9 @@ import { forgetHer, keepProjects, keepProviders, lastProjects, lastProviders, re
 import { ContentScope, SessionRunContext, type SessionCodeActions } from "./session/scope";
 import { stripTerminalEscapes } from "./session/terminalText";
 import { FilesHomeContext, type FilesHome } from "./session/files/files";
+import { preloadCodeView } from "./session/files/FileView";
 import { SidePanel } from "./session/files/SidePanel";
-import { setOpen as setPanelOpen, usePanel } from "./session/files/panel";
+import { panelOf, setOpen as setPanelOpen, usePanelOpen } from "./session/files/panel";
 import { Aurora, HerAsk, herMachine, nextWhoForKey, Presence, rememberedWho, rememberWho, type Who } from "./session/Presence";
 import "./session/composer.css";
 
@@ -882,8 +883,12 @@ export function SessionPage() {
   const { card } = layoutOf(st);
   // The side panel takes the session's right (docs/session-files.md §3.4): the cards step aside while it is
   // open, and the info card cannot be shown until it is put away.
-  const filePanel = usePanel(activeSessionId ?? "");
-  const filesOpen = !!activeSessionId && filePanel.open;
+  const filesOpen = usePanelOpen(activeSessionId ?? "");
+  useEffect(() => {
+    if (!activeSessionId) return;
+    const id = setTimeout(preloadCodeView, 120);
+    return () => clearTimeout(id);
+  }, [activeSessionId]);
   const info = card !== "hidden" && !background && !filesOpen;
   // The background card keeps the conversation clear of it as the info card does, when there is room for one.
   const dockBg = background && !filesOpen && layoutOf({ ...st, inspector: true, peek: null }).card === "docked";
@@ -1048,10 +1053,13 @@ export function SessionPage() {
   const handleOpenWakeTask = useCallback(
     (reason: string) => {
       const matched = allBgTasks.find((bt) => bt.title === reason || bt.command === reason);
-      if (filePanel.open) setPanelOpen(filePanel, false);
+      if (activeSessionId) {
+        const fp = panelOf(activeSessionId);
+        if (fp.open) setPanelOpen(fp, false);
+      }
       st.set({ background: true, bgTask: matched?.taskId ?? null });
     },
-    [allBgTasks, filePanel, st],
+    [activeSessionId, allBgTasks, st],
   );
   const writing = useMemo(() => sessionLiveReplies(activeProjection), [activeProjection]);
   // Whose files the replies' links are (docs/session-files.md §3): the session's machine, this Mac or another.
@@ -1201,7 +1209,7 @@ export function SessionPage() {
           aria-label={ts("panel.title")}
           aria-pressed={false}
           data-testid="toolbar-panel-btn"
-          onClick={() => setPanelOpen(filePanel, true)}
+          onClick={() => setPanelOpen(panelOf(activeSessionId), true)}
         >
           <Icon name="panelRight" />
         </button>
@@ -1384,7 +1392,7 @@ export function SessionPage() {
           </div>
         )}
       </div>
-      {activeSessionId && filesHome && <SidePanel home={filesHome} running={running} />}
+      {activeSessionId && filesHome && <SidePanel key={activeSessionId} home={filesHome} running={running} />}
     </div>
   );
 }

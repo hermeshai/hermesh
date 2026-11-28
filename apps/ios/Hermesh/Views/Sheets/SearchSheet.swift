@@ -51,24 +51,54 @@ struct SearchSheet: View {
 
     // MARK: Essential Filter Bar
 
-    private var visibleSessionsForChoices: [Session] {
-        filter.archived ? model.sessions : model.sessions.filter { $0.status != .archived }
+    private struct FilterFacets {
+        let projectChoices: [String]
+        let projectCounts: [String: Int]
+        let agentChoices: [String]
+        let agentCounts: [String: Int]
+        let stateCounts: [SearchState: Int]
+        let machineCounts: [String: Int]
+        let archivedCount: Int
     }
 
-    private var projectChoices: [String] {
-        var set = Set(visibleSessionsForChoices.map(\.projectID).filter { !$0.isEmpty })
-        for p in model.projects where !p.projectID.isEmpty { set.insert(p.projectID) }
-        if !filter.project.isEmpty { set.insert(filter.project) }
-        return set.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-    }
+    private var facets: FilterFacets {
+        var projCounts: [String: Int] = [:]
+        var agCounts: [String: Int] = [:]
+        var stCounts: [SearchState: Int] = [:]
+        var mCounts: [String: Int] = [:]
+        var archCount = 0
+        for s in model.sessions {
+            if s.status == .archived {
+                archCount += 1
+                if !filter.archived { continue }
+            }
+            if !s.projectID.isEmpty { projCounts[s.projectID, default: 0] += 1 }
+            if !s.agent.isEmpty { agCounts[s.agent, default: 0] += 1 }
+            if !s.machineID.isEmpty { mCounts[s.machineID, default: 0] += 1 }
+            for st in SearchState.allCases where st.matches(s) {
+                stCounts[st, default: 0] += 1
+            }
+        }
+        var projSet = Set(projCounts.keys)
+        for p in model.projects where !p.projectID.isEmpty { projSet.insert(p.projectID) }
+        if !filter.project.isEmpty { projSet.insert(filter.project) }
+        let projChoices = projSet.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
 
-    private var agentChoices: [String] {
-        var set = Set(visibleSessionsForChoices.map(\.agent).filter { !$0.isEmpty })
-        if !filter.agent.isEmpty { set.insert(filter.agent) }
-        return set.sorted { a, b in
+        var agSet = Set(agCounts.keys)
+        if !filter.agent.isEmpty { agSet.insert(filter.agent) }
+        let agChoices = agSet.sorted { a, b in
             if (a == herAgent) != (b == herAgent) { return a == herAgent }
             return agentTitle(a).localizedStandardCompare(agentTitle(b)) == .orderedAscending
         }
+        return FilterFacets(
+            projectChoices: projChoices,
+            projectCounts: projCounts,
+            agentChoices: agChoices,
+            agentCounts: agCounts,
+            stateCounts: stCounts,
+            machineCounts: mCounts,
+            archivedCount: archCount
+        )
     }
 
     private var showEnvironmentFilter: Bool {
@@ -76,19 +106,20 @@ struct SearchSheet: View {
     }
 
     private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        let f = facets
+        return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 7) {
-                if !projectChoices.isEmpty {
-                    projectChip
+                if !f.projectChoices.isEmpty {
+                    projectChip(f)
                 }
-                if !agentChoices.isEmpty {
-                    agentChip
+                if !f.agentChoices.isEmpty {
+                    agentChip(f)
                 }
-                statusChip
+                statusChip(f)
                 if showEnvironmentFilter {
-                    environmentChip
+                    environmentChip(f)
                 }
-                archivedChip
+                archivedChip(f)
                 if hasActiveFilter {
                     Button {
                         resetFilters()
@@ -108,7 +139,7 @@ struct SearchSheet: View {
         }
     }
 
-    private var projectChip: some View {
+    private func projectChip(_ f: FilterFacets) -> some View {
         let active = !filter.project.isEmpty
         return Menu {
             Button {
@@ -117,8 +148,8 @@ struct SearchSheet: View {
                 if !active { Label("All", systemImage: "checkmark") } else { Text("All") }
             }
             Divider()
-            ForEach(projectChoices, id: \.self) { proj in
-                let count = visibleSessionsForChoices.filter { $0.projectID == proj }.count
+            ForEach(f.projectChoices, id: \.self) { proj in
+                let count = f.projectCounts[proj] ?? 0
                 Button {
                     filter.project = filter.project == proj ? "" : proj
                 } label: {
@@ -140,7 +171,7 @@ struct SearchSheet: View {
         .accessibilityIdentifier("search-filter-project")
     }
 
-    private var agentChip: some View {
+    private func agentChip(_ f: FilterFacets) -> some View {
         let active = !filter.agent.isEmpty
         return Menu {
             Button {
@@ -149,8 +180,8 @@ struct SearchSheet: View {
                 if !active { Label("All", systemImage: "checkmark") } else { Text("All") }
             }
             Divider()
-            ForEach(agentChoices, id: \.self) { agent in
-                let count = visibleSessionsForChoices.filter { $0.agent == agent }.count
+            ForEach(f.agentChoices, id: \.self) { agent in
+                let count = f.agentCounts[agent] ?? 0
                 Button {
                     filter.agent = filter.agent == agent ? "" : agent
                 } label: {
@@ -172,7 +203,7 @@ struct SearchSheet: View {
         .accessibilityIdentifier("search-filter-agent")
     }
 
-    private var statusChip: some View {
+    private func statusChip(_ f: FilterFacets) -> some View {
         let active = selectedState != nil
         return Menu {
             Button {
@@ -182,7 +213,7 @@ struct SearchSheet: View {
             }
             Divider()
             ForEach(SearchState.allCases) { t in
-                let count = visibleSessionsForChoices.filter(t.matches).count
+                let count = f.stateCounts[t] ?? 0
                 Button {
                     selectedState = selectedState == t ? nil : t
                 } label: {
@@ -201,7 +232,7 @@ struct SearchSheet: View {
         .accessibilityIdentifier("search-filter-status")
     }
 
-    private var environmentChip: some View {
+    private func environmentChip(_ f: FilterFacets) -> some View {
         let active = !filter.machine.isEmpty
         return Menu {
             Button {
@@ -212,7 +243,7 @@ struct SearchSheet: View {
             Divider()
             ForEach(model.machines, id: \.machineID) { m in
                 let name = m.machineName.isEmpty ? model.machineName(m.machineID) : m.machineName
-                let count = visibleSessionsForChoices.filter { $0.machineID == m.machineID }.count
+                let count = f.machineCounts[m.machineID] ?? 0
                 Button {
                     filter.machine = filter.machine == m.machineID ? "" : m.machineID
                 } label: {
@@ -234,8 +265,8 @@ struct SearchSheet: View {
         .accessibilityIdentifier("search-filter-machine")
     }
 
-    private var archivedChip: some View {
-        let archivedCount = model.sessions.filter { $0.status == .archived }.count
+    private func archivedChip(_ f: FilterFacets) -> some View {
+        let archivedCount = f.archivedCount
         let title = archivedCount > 0 && !filter.archived
             ? String(localized: "Include Archived (\(archivedCount))")
             : String(localized: "Include archived")

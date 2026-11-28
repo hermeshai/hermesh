@@ -26,8 +26,8 @@ struct RootView: View {
             }
         }
         #if targetEnvironment(simulator)
-        // ToolStepsUITests' frame counts, in the Simulator's many-steps fixture only.
-        .overlay(alignment: .leading) { if DemoService.manyTools { FrameMeterView() } }
+        // ToolStepsUITests & PerfStressUITests frame/CPU/memory meter in Simulator fixtures only.
+        .overlay(alignment: .leading) { if DemoService.manyTools || DemoService.perfSuite { FrameMeterView() } }
         #endif
         // Signing: the confirmation for a batch the app had not asked for,
         // and the digits to type on a device just approved.

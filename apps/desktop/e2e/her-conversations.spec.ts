@@ -46,6 +46,7 @@ test("Her conversations: given to Her from a new session, the work she sends nes
   await expect(agent).toHaveAttribute("aria-pressed", "true");
   await expect(her).toHaveAttribute("title", "交给 Her · Tab");
   await expect(page.getByTestId("thread-page")).toHaveAttribute("data-who", "agent");
+  await expect(her.locator(".cat.greet")).toHaveCount(0);
   // Tilted provider tiles use alpha-following drop-shadow rather than a rectangular box-shadow around the PNG corners.
   const tileStyles = await agent.locator(".pr-tiles > *").evaluateAll((els) =>
     els.map((el) => {
@@ -67,9 +68,20 @@ test("Her conversations: given to Her from a new session, the work she sends nes
   await page.keyboard.press("Escape");
   await snap(page, "her-conv-new-agent");
 
-  // The small cat gives it to Her: her question, where she is, her model; ⌘N back to Agent and again to Her.
+  // The small cat gives it to Her: she waves hello with compositor-only layers, then settles back to 3 SVGs; ⌘N back to Agent and again to Her.
   await her.click();
   await expect(her).toHaveAttribute("aria-pressed", "true");
+  await expect(her.locator(".cat.greet")).toBeVisible();
+  const greetAnims = await her.locator(".cat.greet").evaluate((el) =>
+    el.getAnimations({ subtree: true }).map((a) => ({
+      name: a instanceof CSSAnimation ? a.animationName : "script",
+      props: [...new Set((a.effect as KeyframeEffect).getKeyframes().flatMap((k) => Object.keys(k)))].filter((p) => !["offset", "computedOffset", "easing", "composite"].includes(p)),
+    })),
+  );
+  expect(greetAnims.map((a) => a.name)).toEqual(expect.arrayContaining(["cat-wave-body", "cat-wave-arm"]));
+  for (const a of greetAnims) expect(a.props.every((p) => p === "transform" || p === "opacity"), `${a.name}: ${a.props}`).toBe(true);
+  await expect(her.locator(".cat.greet")).toHaveCount(0, { timeout: 3000 });
+  await expect(her.locator(".cat svg")).toHaveCount(3);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("要 Her 做什么？");
   await expect(page.getByTestId("launch-her-where")).toHaveText(/^Her 在 /);
   const box = page.getByTestId("thread-launch-card").getByRole("textbox");
@@ -109,11 +121,17 @@ test("Her conversations: given to Her from a new session, the work she sends nes
   await box.fill(`[[mock:mesh:session_start:${JSON.stringify({ project: "owner-mac/demo", prompt: "sleep 25s\nsay 做完了", title: "对话派的活" })}]] 开工`);
   await box.press("Enter");
   await expect(page.getByTestId("her-avatar")).toBeVisible({ timeout: 60_000 });
+  const convTopCat = page.getByTestId("her-avatar").locator(".cat");
+  await expect(convTopCat).toHaveClass(/\bgreet\b/);
   await expect(page.getByRole("button", { name: "团队" })).toBeVisible();
   await expect(page.getByTestId("her-progress")).toBeVisible();
   const log = page.getByRole("log", { name: "对话" });
   const approval = page.getByRole("region", { name: "等你批准" });
   await expect(approval).toContainText("owner-mac/demo", { timeout: 60_000 });
+  // Once the entry wave finishes while Her's live turn waits on approval, she transitions seamlessly into busy bobbing.
+  await expect(convTopCat).not.toHaveClass(/\bgreet\b/, { timeout: 3000 });
+  await expect(convTopCat).toHaveClass(/\bbusy\b/);
+  expect(await convTopCat.locator(".cat-body").evaluate((e) => getComputedStyle(e).animationName)).toBe("cat-bob");
   await snap(page, "her-conv-approval");
   await approval.getByRole("button", { name: /^允许/ }).click();
   await expect(log.getByRole("button", { name: "对话派的活" })).toBeVisible({ timeout: 60_000 });
@@ -153,6 +171,22 @@ test("Her conversations: given to Her from a new session, the work she sends nes
   await expect(page.getByRole("region", { name: "进行中" }).getByRole("button", { name: /对话派的活/ })).toBeVisible();
   await expect(page.getByRole("region", { name: "进行中" }).getByRole("button").filter({ hasText: "你 → Her" })).toBeVisible();
 
+  // Entering the Her conversation greets first, then settles to breathing; toggling her panel does not re-greet.
+  await convRow.click();
+  const topCat = page.getByTestId("her-avatar").locator(".cat");
+  await expect(topCat).toHaveClass(/\bgreet\b/);
+  expect(await topCat.locator(".cat-body").evaluate((e) => getComputedStyle(e).animationName)).toBe("cat-wave-body");
+  await expect(topCat).not.toHaveClass(/\bgreet\b/, { timeout: 3000 });
+  await expect(topCat.locator("svg")).toHaveCount(3);
+  expect(await topCat.locator(".cat-body").evaluate((e) => getComputedStyle(e).animationName)).toBe("cat-breathe");
+  await page.getByTestId("her-avatar").click();
+  await expect(page.getByTestId("her-panel")).toBeVisible();
+  await expect(topCat).not.toHaveClass(/\bgreet\b/);
+  await page.getByTestId("her-avatar").click();
+  await expect(page.getByTestId("her-panel")).toBeHidden();
+  await expect(topCat).not.toHaveClass(/\bgreet\b/);
+  await navTo(page, /^概览/);
+
   // Not archived while what it sent still runs; the work under it has no pin of its own.
   await convRow.hover();
   await expect(convRow.getByRole("button", { name: "归档" })).toHaveCount(0);
@@ -186,16 +220,19 @@ test("Her conversations: given to Her from a new session, the work she sends nes
   await view(/显示/, "显示", "嵌套子任务", "menuitemcheckbox");
   await expect(childRow).toBeVisible();
 
-  // The child's news comes back here, and her main conversation never hears of it.
+  // The child's news comes back here, and her main conversation never hears of it; entering either Her conversation waves hello.
   await convRow.click();
+  await expect(page.getByTestId("her-avatar").locator(".cat.greet")).toBeVisible();
   await expect(log.locator(".bm").filter({ hasText: "turn_done" })).toBeVisible({ timeout: 120_000 });
   await navTo(page, /^Her/);
+  await expect(page.getByTestId("her-avatar").locator(".cat.greet")).toBeVisible();
   await expect(page.getByText(/^你好，我是 .+，在 .+ 上为你做事/)).toBeVisible();
   await expect(page.getByRole("log", { name: "对话" })).toHaveCount(0);
 
-  // The next new session goes to Her again, and remembers an explicit Her model/effort choice across restarts.
+  // The next new session goes to Her again (waving on mount), and remembers an explicit Her model/effort choice across restarts.
   await newSession();
   await expect(her).toHaveAttribute("aria-pressed", "true");
+  await expect(her.locator(".cat.greet")).toBeVisible();
   await page.getByTestId("model-picker-trigger").click();
   await page.getByTestId("picker-model-mock/mock-2").click();
   await page.getByTestId("model-picker-trigger").click();

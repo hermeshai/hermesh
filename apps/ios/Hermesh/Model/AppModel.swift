@@ -152,22 +152,53 @@ final class AppModel {
         var at: Date
     }
 
+    @ObservationIgnored private var sessionsCacheRev: UInt64 = 0
+    @ObservationIgnored private var sessionsBuiltRev: UInt64 = .max
+    @ObservationIgnored private var cachedSessionsList: [Session] = []
+    @ObservationIgnored private var cachedSessionByID: [String: Session] = [:]
+    @ObservationIgnored private var cachedHerChildren: [String: [Session]] = [:]
+    @ObservationIgnored private var searchTextCache: [String: (rev: String, text: String)] = [:]
+
+    private func rebuildSessionsCacheIfNeeded() {
+        guard sessionsBuiltRev != sessionsCacheRev else { return }
+        let base = withKnownState(heldSessions, unreachable: Set(unreachable.map(\.machineID)))
+        let list: [Session]
+        if pendingArchived.isEmpty {
+            list = base
+        } else {
+            list = base.map { s in
+                guard let p = pendingArchived[s.sessionID], (s.status == .archived) != p.archived else { return s }
+                var copy = s
+                copy.status = p.archived ? .archived : .idle
+                copy.updatedAt = .init(date: p.at)
+                return copy
+            }
+        }
+        var byID: [String: Session] = [:]
+        byID.reserveCapacity(list.count)
+        for s in list { byID[s.sessionID] = s }
+        cachedSessionsList = list
+        cachedSessionByID = byID
+        cachedHerChildren = childrenOf(list, nest: true)
+        sessionsBuiltRev = sessionsCacheRev
+    }
+
     /// As screens show them, wherever they started: those of a machine that cannot be read now with their state unknown (withKnownState).
     var sessions: [Session] {
-        let base = withKnownState(heldSessions, unreachable: Set(unreachable.map(\.machineID)))
-        guard !pendingArchived.isEmpty else { return base }
-        return base.map { s in
-            guard let p = pendingArchived[s.sessionID], (s.status == .archived) != p.archived else { return s }
-            var copy = s
-            copy.status = p.archived ? .archived : .idle
-            copy.updatedAt = .init(date: p.at)
-            return copy
-        }
+        _ = heldSessions.count
+        _ = unreachable.count
+        _ = pendingArchived.count
+        rebuildSessionsCacheIfNeeded()
+        return cachedSessionsList
     }
     /// As hermeshd last told of them.
-    private var heldSessions: [Session] = []
+    private var heldSessions: [Session] = [] {
+        didSet { sessionsCacheRev &+= 1 }
+    }
     /// Optimistic archive/unarchive overrides while the RPC is in flight.
-    private var pendingArchived: [String: PendingArchiveState] = [:]
+    private var pendingArchived: [String: PendingArchiveState] = [:] {
+        didSet { sessionsCacheRev &+= 1 }
+    }
     @ObservationIgnored private var archiveOps: [String: UInt64] = [:]
     @ObservationIgnored private var archiveChain: Task<Void, Never>?
     @ObservationIgnored private var awaitingCleanupTitles: [String: String] = [:]
@@ -175,9 +206,14 @@ final class AppModel {
     var addedProject: AddedProject?
     var loadingOlder = false
     var noOlder = false
-    var unreachable: [Unreachable] = []
+    var unreachable: [Unreachable] = [] {
+        didSet { sessionsCacheRev &+= 1 }
+    }
     var machines: [Machine] = [] {
-        didSet { if herLater, machines.contains(where: \.her.enabled) { herLater = false } } // she runs now: the choice is over
+        didSet {
+            searchTextCache.removeAll(keepingCapacity: true)
+            if herLater, machines.contains(where: \.her.enabled) { herLater = false } // she runs now: the choice is over
+        }
     }
     // Read the last maintenance report while a machine is unreachable.
     func providerMachine(_ machine: Machine) -> Machine {
@@ -187,7 +223,9 @@ final class AppModel {
         held.online = false
         return held
     }
-    var clients: [Client] = []
+    var clients: [Client] = [] {
+        didSet { searchTextCache.removeAll(keepingCapacity: true) }
+    }
     var devices: [Device] = []
     var projects: [Project] = []
     var pairings: [PairingDetails] = []
@@ -849,11 +887,11 @@ final class AppModel {
         if let s = try? await api?.status() { status = s }
     }
 
-    /// The time, for what counts down (grants about to expire).
+    /// The time, for what counts down (grants about to expire) and relative minute/day labels.
     private func clock() async {
         while !Task.isCancelled {
             now = Date()
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(30))
         }
     }
 
@@ -1041,7 +1079,10 @@ final class AppModel {
 
     // MARK: Looking things up
 
-    func session(_ id: String) -> Session? { sessions.first { $0.sessionID == id } }
+    func session(_ id: String) -> Session? {
+        _ = sessions
+        return cachedSessionByID[id]
+    }
 
     func grant(id: String) -> Client? { clients.first { $0.grantID == id } }
 
@@ -1070,7 +1111,9 @@ final class AppModel {
 
     /// The work a conversation with Her sent, nested in the list or not: archived with it (docs/her-conversations.md D14).
     func sentFrom(_ s: Session) -> [Session] {
-        s.isHerConversation ? (childrenOf(sessions, nest: true)[s.sessionID] ?? []) : []
+        guard s.isHerConversation else { return [] }
+        _ = sessions
+        return cachedHerChildren[s.sessionID] ?? []
     }
 
     /// Whether a session can be archived now: a conversation with Her only once all it sent has stopped too (D14).
@@ -1101,7 +1144,9 @@ final class AppModel {
     }
 
     func searchText(_ s: Session) -> String {
-        [
+        let rev = "\(s.updatedAt.seconds):\(s.updatedAt.nanos):\(s.displayTitle):\(s.effectiveBranch):\(s.progress.lastMessageExcerpt.count)"
+        if let hit = searchTextCache[s.sessionID], hit.rev == rev { return hit.text }
+        let built = [
             s.displayTitle,
             s.projectID,
             grantLabel(s),
@@ -1112,6 +1157,9 @@ final class AppModel {
             s.effectiveBranch,
             s.searchExcerpt?.text ?? "",
         ].joined(separator: " ")
+        if searchTextCache.count > 600 { searchTextCache.removeAll(keepingCapacity: true) }
+        searchTextCache[s.sessionID] = (rev, built)
+        return built
     }
 
     // MARK: Navigation

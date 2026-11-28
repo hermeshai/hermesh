@@ -140,7 +140,7 @@ private struct HerPage: View {
             // Over the panel, it closes it: her page would open from under it.
             if team { showTeam(false) } else { model.path.append(.herSettings) }
         } label: {
-            HerAvatar(size: size, busy: chat.live.map(herBusy) ?? false)
+            HerAvatar(size: size, busy: chat.live.map(herBusy) ?? false, greet: true)
                 .overlay(alignment: .topTrailing) {
                     if waits {
                         Circle().fill(.orange).frame(width: size * 0.17, height: size * 0.17)
@@ -576,7 +576,7 @@ struct HerConversationPage: View {
                         model.path.append(.herSettings)
                     }
                 } label: {
-                    HerAvatar(size: 72, busy: chat.live.map(herBusy) ?? false)
+                    HerAvatar(size: 72, busy: chat.live.map(herBusy) ?? false, greet: true)
                         .overlay(alignment: .topTrailing) {
                             if waits {
                                 Circle().fill(.orange).frame(width: 72 * 0.17, height: 72 * 0.17)

@@ -50,6 +50,8 @@ export type Panel = {
   active: string | null;
   expanded: Set<string>;
   dirs: Map<string, Dir>;
+  /** True when folders changed or focus returned while the panel was hidden, so reopening refreshes lazily. */
+  staleTree?: boolean;
   rev: number;
 };
 
@@ -84,11 +86,26 @@ export function usePanel(session: string): Panel {
   return p;
 }
 
+/** Subscribes only to whether a session's side panel is open, keeping SessionPage quiet while tabs or folders change. */
+export function usePanelOpen(session: string): boolean {
+  return useSyncExternalStore(
+    (l) => (listeners.add(l), () => listeners.delete(l)),
+    () => (session ? panelOf(session).open : false),
+  );
+}
+
+function flushStaleTree(p: Panel) {
+  if (!p.staleTree) return;
+  p.staleTree = false;
+  refreshTree(p);
+}
+
 /** Opened with nothing in it, it starts with 项目文件. */
 export function setOpen(p: Panel, open: boolean) {
   if (open && p.tabs.length === 0) return openProject(p);
   p.open = open;
   if (!open) p.max = false;
+  else flushStaleTree(p);
   changed(p);
 }
 
@@ -144,6 +161,7 @@ export function openInPanel(file: SessionFile, at?: { line?: number; endLine?: n
   if (at?.line !== undefined) tab.target = { line: at.line, endLine: at.endLine, seq: ++seq };
   p.active = tab.key;
   p.open = true;
+  flushStaleTree(p);
   revealInTree(p, file.path);
   changed(p);
 }
@@ -171,6 +189,7 @@ export function openAttachment(file: SessionFile, size: bigint) {
   tab.size = size;
   p.active = tab.key;
   p.open = true;
+  flushStaleTree(p);
   changed(p);
 }
 
@@ -179,6 +198,7 @@ export function openProject(p: Panel) {
   const tab = p.tabs.find((t) => t.kind === "files" && !t.file.path) ?? add(p, "files", { session: p.session, run: "", path: "" }, true);
   p.active = tab.key;
   p.open = true;
+  flushStaleTree(p);
   changed(p);
 }
 
@@ -252,4 +272,10 @@ export function toggleDir(p: Panel, dir: string) {
 /** The folders shown read again (a turn ended, the window came back). */
 export function refreshTree(p: Panel) {
   for (const d of ["", ...p.expanded]) if (p.dirs.has(d)) void listDir(p, d);
+}
+
+/** Refreshes open folders immediately when the panel is visible; marks them stale without RPCs while hidden. */
+export function markOrRefreshTree(p: Panel) {
+  if (p.open) refreshTree(p);
+  else if (p.dirs.size > 0) p.staleTree = true;
 }
