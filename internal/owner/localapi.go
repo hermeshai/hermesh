@@ -384,6 +384,19 @@ func (l *localService) MaintainProvider(ctx context.Context, req *localv1.Mainta
 	if req.Operation == nil || req.MachineId == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("missing target or operation"))
 	}
+	if _, ok, _ := l.o().onlyMachine(); ok {
+		return nil, errNoRootKey("install or update coding agents")
+	}
+	if l.o().localOnly() {
+		if m := l.o().local(); m != nil {
+			if err := onlyThisMachine(m, req.MachineId); err != nil {
+				return nil, err
+			}
+			err := m.MaintainProviderLocal(req.Operation)
+			l.o().wrote(ctx, err, false, req.MachineId)
+			return &localv1.MaintainProviderResponse{}, err
+		}
+	}
 	_, err := l.o().admin(ctx, req.MachineId, func(c *identityv1.AdminCommand) {
 		c.Command = &identityv1.AdminCommand_MaintainProvider{MaintainProvider: req.Operation}
 	})

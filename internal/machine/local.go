@@ -88,6 +88,13 @@ func (l *Local) SetHerCommandConnectorLocal(ctx context.Context, c *identityv1.S
 	})
 }
 
+// MaintainProviderLocal starts a provider maintenance operation on this
+// machine in standalone or signed-out mode, without a root key signature or
+// relay.
+func (l *Local) MaintainProviderLocal(op *identityv1.MaintainProvider) error {
+	return l.n.startProviderOperation(op)
+}
+
 // ListProjects lists the projects, without their base branches (which the
 // owner's screens do not show, and which cost a git call each).
 func (l *Local) ListProjects(ctx context.Context) (*machinev1.ListProjectsResponse, error) {

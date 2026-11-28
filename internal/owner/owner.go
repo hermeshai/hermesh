@@ -1094,7 +1094,14 @@ func (o *Owner) rootKey(ctx context.Context, der []byte) (*ecdsa.PublicKey, erro
 func (o *Owner) signRoot(ctx context.Context, msgs ...proto.Message) ([]*identityv1.Signed, error) {
 	o.mu.Lock()
 	pub := o.rootPub
+	signedOut := o.signedOut
 	o.mu.Unlock()
+	if signedOut {
+		return nil, errSignedOut
+	}
+	if pub == nil {
+		return nil, o.requireInit()
+	}
 	return o.hub.signBatch(ctx, pub, msgs)
 }
 

@@ -455,3 +455,126 @@ func TestStandaloneHerFullLifecycle(t *testing.T) {
 	}
 	herSaid(t, env, "post-Leave session_news", `kind="turn_done"`, sessionID.FindString(said))
 }
+
+// TestLocalModeMaintainProviderAndHer verifies that MaintainProvider and SetHer
+// work locally against a real hermeshd binary without triggering any root-key
+// signing request both before first sign-in (cold start) and after SignOut.
+func TestLocalModeMaintainProviderAndHer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	bin := binaries(t)
+	daemonBin := filepath.Join(bin, "hermeshd"+exe)
+	relayBin := filepath.Join(bin, "hermesh-relay"+exe)
+
+	tmp := t.TempDir()
+	sockDir, err := os.MkdirTemp(shortTemp, "hmloc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(sockDir) })
+
+	dataDir := filepath.Join(tmp, "owner-mac")
+	sock := filepath.Join(sockDir, "o.sock")
+	var logs []*proc
+	t.Cleanup(func() {
+		if t.Failed() {
+			for _, p := range logs {
+				t.Logf("==== %s ====\n%s", p.name, p.output())
+			}
+		}
+	})
+
+	ownerProc := start(t, "owner-local", []string{"HERMESH_FAKE_PROVIDERS=1"}, daemonBin, "run", "--owner", "--data-dir", dataDir, "--socket", sock)
+	logs = append(logs, ownerProc)
+	t.Cleanup(ownerProc.stop)
+
+	lc := localClient(t, sock)
+	ctx := context.Background()
+
+	var localID string
+	eventually(t, 20*time.Second, "standalone machine ready", func() bool {
+		st, sErr := lc.GetStatus(ctx, &localv1.GetStatusRequest{})
+		if sErr != nil || !st.LocalMachineEnabled || st.LocalMachineId == "" {
+			return false
+		}
+		localID = st.LocalMachineId
+		return !st.Initialized && st.GetRelayHealth().GetPhase() == "local"
+	})
+
+	checkLocalOps := func(label, reqID string) {
+		t.Helper()
+		if _, err := lc.MaintainProvider(ctx, &localv1.MaintainProviderRequest{
+			MachineId: localID,
+			Operation: &identityv1.MaintainProvider{RequestId: reqID, Provider: "codex", Action: "verify"},
+		}); err != nil {
+			t.Fatalf("%s MaintainProvider: %v", label, err)
+		}
+		eventually(t, 20*time.Second, label+" provider verify completes", func() bool {
+			m := listedMachine(t, lc, localID)
+			if m == nil {
+				return false
+			}
+			for _, op := range m.GetStatus().GetProviderOperations() {
+				if op.GetRequest().GetRequestId() == reqID && (op.Phase == "succeeded" || op.Phase == "failed") {
+					return true
+				}
+			}
+			return false
+		})
+		if _, err := lc.SetHer(ctx, &localv1.SetHerRequest{MachineId: localID, Enabled: true}); err != nil {
+			t.Fatalf("%s SetHer(true): %v", label, err)
+		}
+		eventually(t, 10*time.Second, label+" Her enabled", func() bool {
+			m := listedMachine(t, lc, localID)
+			return m != nil && m.GetStatus().GetHer().GetEnabled()
+		})
+		if _, err := lc.SetHer(ctx, &localv1.SetHerRequest{MachineId: localID, Enabled: false}); err != nil {
+			t.Fatalf("%s SetHer(false): %v", label, err)
+		}
+		eventually(t, 10*time.Second, label+" Her disabled", func() bool {
+			m := listedMachine(t, lc, localID)
+			return m != nil && !m.GetStatus().GetHer().GetEnabled()
+		})
+	}
+
+	// 1. Cold start (not initialized, no signer connected).
+	checkLocalOps("cold-start", "e2e-verify-coldstart-001")
+
+	// 2. Setup, then SignOut: local ops must still succeed with zero additional signing requests.
+	port := freePort(t)
+	relayURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	relayData := filepath.Join(tmp, "relay")
+	relayProc := start(t, "relay", nil, relayBin, "serve", "--data-dir", relayData, "--listen", fmt.Sprintf("127.0.0.1:%d", port))
+	logs = append(logs, relayProc)
+	eventually(t, 20*time.Second, "relay listening", func() bool {
+		return strings.Contains(relayProc.output(), "relay listening")
+	})
+	claim := strings.TrimSpace(run(t, nil, 10*time.Second, relayBin, "claim-code", "--data-dir", relayData).stdout)
+
+	root, _ := identity.GenerateKey()
+	app := newTestApp(t, sock, root)
+	if _, err := app.client.Setup(ctx, &localv1.SetupRequest{
+		RelayUrl:         relayURL,
+		ClaimCode:        claim,
+		RootPublicKey:    rootPub(root),
+		RootLabel:        "local-mac",
+		RootPlatform:     "macos",
+		LocalMachineName: "local-mac",
+	}); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	signedBefore := len(app.signedTypes())
+	if _, err := app.client.SignOut(ctx, &localv1.SignOutRequest{}); err != nil {
+		t.Fatalf("SignOut: %v", err)
+	}
+	eventually(t, 10*time.Second, "signed-out local mode", func() bool {
+		st, sErr := lc.GetStatus(ctx, &localv1.GetStatusRequest{})
+		return sErr == nil && st.Initialized && st.SignedOut && st.GetRelayHealth().GetPhase() == "local"
+	})
+
+	checkLocalOps("signed-out", "e2e-verify-signedout-001")
+	if got := app.signedTypes(); len(got) != signedBefore {
+		t.Fatalf("signed-out local ops triggered signing: before=%d after=%d (%v)", signedBefore, len(got), got)
+	}
+}

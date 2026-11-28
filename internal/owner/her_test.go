@@ -631,9 +631,15 @@ func TestHerOnAMachineOnly(t *testing.T) {
 	o := d.owner()
 	o.st.set(kMachineOnly, []byte("1"))
 	ctx := context.Background()
+	ls := &localService{d: d}
+	_, mpErr := ls.MaintainProvider(ctx, &localv1.MaintainProviderRequest{
+		MachineId: "m_1",
+		Operation: &identityv1.MaintainProvider{RequestId: "machine-only-001", Provider: "codex", Action: "verify"},
+	})
 	for name, err := range map[string]error{
-		"Her on":      o.SetHer(ctx, "m_1", true, false),
-		"a connector": o.SetHerCommandConnector(ctx, "m_1", &identityv1.SetHerCommandConnector{Name: "x", Command: "y"}),
+		"Her on":            o.SetHer(ctx, "m_1", true, false),
+		"a connector":       o.SetHerCommandConnector(ctx, "m_1", &identityv1.SetHerCommandConnector{Name: "x", Command: "y"}),
+		"maintain provider": mpErr,
 	} {
 		if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "a trusted device has to") {
 			t.Errorf("%s: %v", name, err)

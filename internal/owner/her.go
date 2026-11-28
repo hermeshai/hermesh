@@ -253,7 +253,7 @@ func (o *Owner) SetHer(ctx context.Context, machineID string, enabled, erase boo
 	if enabled && erase {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("her data is erased only with Her turned off"))
 	}
-	if !o.Initialized() {
+	if o.localOnly() {
 		if l := o.local(); l != nil {
 			if err := onlyThisMachine(l, machineID); err != nil {
 				return err
@@ -474,7 +474,7 @@ func (o *Owner) SetHerCommandConnector(ctx context.Context, machineID string, c 
 	if _, ok, _ := o.onlyMachine(); ok {
 		return errNoRootKey("add or remove connectors started as commands")
 	}
-	if !o.Initialized() {
+	if o.localOnly() {
 		if l := o.local(); l != nil {
 			if err := onlyThisMachine(l, machineID); err != nil {
 				return err

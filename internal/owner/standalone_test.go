@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -311,5 +312,183 @@ func TestStandaloneColdStartHotUpgradeAndSmoothLeave(t *testing.T) {
 	finalSt, _ := lc.GetStatus(ctx, &localv1.GetStatusRequest{})
 	if finalSt.Initialized || !finalSt.LocalMachineEnabled || finalSt.GetRelayHealth().GetPhase() != "local" {
 		t.Fatalf("final status after ForceLocal Leave: %+v", finalSt)
+	}
+}
+
+func TestLocalModeMaintainProviderAndHer(t *testing.T) {
+	dir := t.TempDir()
+	d, err := Open(Config{
+		DataDir: filepath.Join(dir, "owner"),
+		MachineConfig: machine.Config{
+			WorkspaceMode: "none",
+			Drivers: map[string]rt.Driver{
+				"scripted": scripted.NewDriver(),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	runDone := make(chan struct{})
+	go func() {
+		defer close(runDone)
+		d.Run(runCtx)
+	}()
+	t.Cleanup(func() {
+		cancelRun()
+		<-runDone
+		d.Close()
+	})
+
+	var protocols http.Protocols
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	apiSrv := httptest.NewUnstartedServer(d.LocalHandler())
+	apiSrv.Config.Protocols = &protocols
+	apiSrv.Start()
+	t.Cleanup(apiSrv.Close)
+
+	lc := localv1connect.NewLocalServiceClient(apiSrv.Client(), apiSrv.URL)
+	ctx := context.Background()
+
+	var localID string
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		st, sErr := lc.GetStatus(ctx, &localv1.GetStatusRequest{})
+		if sErr == nil && st.LocalMachineEnabled && st.LocalMachineId != "" {
+			localID = st.LocalMachineId
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("standalone machine did not start: st=%+v err=%v", st, sErr)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	assertLocalOps := func(label, reqID string) {
+		t.Helper()
+		// Targeting another machine must be rejected locally.
+		if _, err := lc.MaintainProvider(ctx, &localv1.MaintainProviderRequest{
+			MachineId: "m_other",
+			Operation: &identityv1.MaintainProvider{RequestId: reqID + "-other", Provider: "codex", Action: "verify"},
+		}); connect.CodeOf(err) != connect.CodeNotFound {
+			t.Fatalf("%s MaintainProvider other machine: got %v, want NotFound", label, err)
+		}
+		if _, err := lc.MaintainProvider(ctx, &localv1.MaintainProviderRequest{
+			MachineId: localID,
+			Operation: &identityv1.MaintainProvider{RequestId: reqID, Provider: "codex", Action: "verify"},
+		}); err != nil {
+			t.Fatalf("%s MaintainProvider local: %v", label, err)
+		}
+		waitOp := time.Now().Add(5 * time.Second)
+		for {
+			ms, mErr := lc.ListMachines(ctx, &localv1.ListMachinesRequest{})
+			found := false
+			if mErr == nil && len(ms.Machines) == 1 {
+				for _, op := range ms.Machines[0].GetStatus().GetProviderOperations() {
+					if op.GetRequest().GetRequestId() == reqID && (op.Phase == "succeeded" || op.Phase == "failed") {
+						found = true
+					}
+				}
+			}
+			if found {
+				break
+			}
+			if time.Now().After(waitOp) {
+				t.Fatalf("%s provider op %s did not finish", label, reqID)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+
+		if _, err := lc.SetHer(ctx, &localv1.SetHerRequest{MachineId: localID, Enabled: true}); err != nil {
+			t.Fatalf("%s SetHer(true): %v", label, err)
+		}
+		if ms, err := lc.ListMachines(ctx, &localv1.ListMachinesRequest{}); err != nil || len(ms.Machines) != 1 || !ms.Machines[0].GetStatus().GetHer().GetEnabled() {
+			t.Fatalf("%s Her not enabled: %+v err=%v", label, ms, err)
+		}
+		if _, err := lc.SetHer(ctx, &localv1.SetHerRequest{MachineId: localID, Enabled: false}); err != nil {
+			t.Fatalf("%s SetHer(false): %v", label, err)
+		}
+		if ms, err := lc.ListMachines(ctx, &localv1.ListMachinesRequest{}); err != nil || len(ms.Machines) != 1 || ms.Machines[0].GetStatus().GetHer().GetEnabled() {
+			t.Fatalf("%s Her not disabled: %+v err=%v", label, ms, err)
+		}
+		// Command connector on local machine takes local path (fails with Her not running, never asks signer).
+		if _, err := lc.SetHerCommandConnector(ctx, &localv1.SetHerCommandConnectorRequest{
+			MachineId: localID,
+			Connector: &identityv1.SetHerCommandConnector{Name: "github", Command: "npx", Args: []string{"-y", "server-github"}},
+		}); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+			t.Fatalf("%s SetHerCommandConnector: got %v, want FailedPrecondition (Her not running)", label, err)
+		}
+	}
+
+	// 1. Uninitialized standalone mode (no signer connected).
+	assertLocalOps("standalone", "verify-standalone-001")
+
+	// 2. Setup, then SignOut: local machine stays in local-only mode and MUST NOT ask the signer.
+	rs, err := relay.New(relay.Config{DataDir: filepath.Join(dir, "relay")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = rs.Close() })
+	relaySrv := httptest.NewServer(rs.Handler())
+	t.Cleanup(relaySrv.Close)
+	claim, err := rs.ClaimCode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rootKey, err := identity.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var allowSign atomic.Bool
+	allowSign.Store(true)
+	unexpectedSign := make(chan string, 8)
+	signCtx, cancelSign := context.WithCancel(ctx)
+	t.Cleanup(cancelSign)
+	go func() {
+		stream, sErr := lc.WatchSigningRequests(signCtx, &localv1.WatchSigningRequestsRequest{})
+		if sErr != nil {
+			return
+		}
+		defer stream.Close()
+		for stream.Receive() {
+			req := stream.Msg()
+			if !allowSign.Load() {
+				unexpectedSign <- req.Type
+				_, _ = lc.CompleteSigningRequest(signCtx, &localv1.CompleteSigningRequestRequest{RequestId: req.RequestId, Rejected: true})
+				continue
+			}
+			sig, _ := rootKey.SignMessage(req.Message)
+			_, _ = lc.CompleteSigningRequest(signCtx, &localv1.CompleteSigningRequestRequest{RequestId: req.RequestId, Signature: sig})
+		}
+	}()
+
+	if _, err := lc.Setup(ctx, &localv1.SetupRequest{
+		RelayUrl:         relaySrv.URL,
+		ClaimCode:        claim,
+		RootPublicKey:    identity.MarshalPublicKey(rootKey.Public()),
+		RootLabel:        "test-mac",
+		RootPlatform:     "macos",
+		LocalMachineName: "test-mac",
+	}); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	if _, err := lc.SignOut(ctx, &localv1.SignOutRequest{}); err != nil {
+		t.Fatalf("SignOut: %v", err)
+	}
+	allowSign.Store(false)
+
+	assertLocalOps("signed-out", "verify-signedout-001")
+
+	// Direct signRoot while signed out must fail with FailedPrecondition without asking signer.
+	if _, err := d.owner().signRoot(ctx, &identityv1.AdminCommand{TargetMachineId: localID}); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("signRoot while signed out: got %v, want FailedPrecondition", err)
+	}
+	select {
+	case typ := <-unexpectedSign:
+		t.Fatalf("signed-out local operation triggered unexpected signing request: %s", typ)
+	default:
 	}
 }
