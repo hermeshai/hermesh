@@ -1,0 +1,1858 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="black">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>会话多图展示 · 竖图与长图留白优化交互原型</title>
+<style>
+@font-face {
+  font-family: "Google Sans Flex";
+  src: url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-flex.ttf") format("truetype");
+  font-style: oblique 0deg 10deg;
+  font-weight: 100 1000;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Google Sans Code";
+  src: url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-code.ttf") format("truetype");
+  font-weight: 300 800;
+  font-display: swap;
+}
+
+:root {
+  --font-mac: "Google Sans Flex", "Google Sans", -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif;
+  --font-ios: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  --mono: "Google Sans Code", ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --ease-out: cubic-bezier(.2, 0, 0, 1);
+}
+
+/* ---------- Pure Black OLED (Default — 1:1 matches uploaded screenshot) ---------- */
+[data-theme="black"] {
+  --page: #090a0e;
+  --page-fg: #ededf2;
+  --page-fg2: #989caa;
+  --page-fg3: #636776;
+  --page-card: #12131a;
+  --page-bd: rgba(255,255,255,.085);
+  --page-bar: rgba(14,15,21,.90);
+
+  --win: #000000;
+  --win2: #121318;
+  --win3: #1b1c23;
+  --code: #0b0c10;
+  --pill: #15161c;
+  --pill-bd: rgba(255,255,255,.10);
+
+  --l1: rgba(255,255,255,.93);
+  --l2: rgba(235,235,245,.60);
+  --l3: rgba(235,235,245,.36);
+  --l4: rgba(255,255,255,.15);
+  --sep: rgba(255,255,255,.095);
+  --fill: rgba(255,255,255,.055);
+  --fill2: rgba(255,255,255,.105);
+  --fill3: rgba(255,255,255,.155);
+
+  --accent: #4a66ff;
+  --accent-t: #8fa2ff;
+  --accent-bg: rgba(74,102,255,.18);
+  --ok: #38ce86;
+  --ok-bg: rgba(56,206,134,.15);
+  --warn: #f5a53c;
+  --warn-bg: rgba(245,165,60,.15);
+  --danger: #ff6670;
+  --danger-bg: rgba(255,102,112,.16);
+
+  --shadow-win: 0 0 0 1px rgba(255,255,255,.11), 0 24px 68px rgba(0,0,0,.78);
+  --simg-whisper: 0 0 0 .5px rgba(255,255,255,.11), 0 8px 26px rgba(0,0,0,.48);
+  --simg-whisper-hover: 0 0 0 .5px rgba(255,255,255,.20), 0 12px 32px rgba(0,0,0,.64);
+  --i-bg: #000000;
+  --i-glass: rgba(30,30,36,.84);
+  --i-glass-bd: rgba(255,255,255,.13);
+}
+
+/* ---------- Dark Gray (Desktop Standard Dark) ---------- */
+[data-theme="dark"] {
+  --page: #0f1116;
+  --page-fg: #ececf1;
+  --page-fg2: #989ba8;
+  --page-fg3: #666977;
+  --page-card: #171922;
+  --page-bd: rgba(255,255,255,.085);
+  --page-bar: rgba(20,21,28,.90);
+
+  --win: #1e1e22;
+  --win2: #26262b;
+  --win3: #303037;
+  --code: #17171b;
+  --pill: #29292f;
+  --pill-bd: rgba(255,255,255,.12);
+
+  --l1: rgba(255,255,255,.91);
+  --l2: rgba(255,255,255,.58);
+  --l3: rgba(255,255,255,.35);
+  --l4: rgba(255,255,255,.15);
+  --sep: rgba(255,255,255,.09);
+  --fill: rgba(255,255,255,.055);
+  --fill2: rgba(255,255,255,.095);
+  --fill3: rgba(255,255,255,.145);
+
+  --accent: #4a66ff;
+  --accent-t: #95a8ff;
+  --accent-bg: rgba(74,102,255,.18);
+  --ok: #3fcf86;
+  --ok-bg: rgba(63,207,134,.15);
+  --warn: #f5a623;
+  --warn-bg: rgba(245,166,35,.15);
+  --danger: #ff6b75;
+  --danger-bg: rgba(255,107,117,.16);
+
+  --shadow-win: 0 0 0 .5px rgba(255,255,255,.14), 0 24px 68px rgba(0,0,0,.56);
+  --simg-whisper: 0 0 0 .5px rgba(255,255,255,.09), 0 6px 22px rgba(0,0,0,.32);
+  --simg-whisper-hover: 0 0 0 .5px rgba(255,255,255,.16), 0 10px 28px rgba(0,0,0,.44);
+  --i-bg: #141417;
+  --i-glass: rgba(38,38,44,.80);
+  --i-glass-bd: rgba(255,255,255,.12);
+}
+
+/* ---------- Light ---------- */
+[data-theme="light"] {
+  --page: #e8eaf0;
+  --page-fg: #181920;
+  --page-fg2: #5d606e;
+  --page-fg3: #898d9c;
+  --page-card: #ffffff;
+  --page-bd: rgba(0,0,0,.08);
+  --page-bar: rgba(255,255,255,.90);
+
+  --win: #ffffff;
+  --win2: #f4f5f8;
+  --win3: #eaecf2;
+  --code: #f6f7fa;
+  --pill: #ffffff;
+  --pill-bd: rgba(0,0,0,.11);
+
+  --l1: rgba(0,0,0,.88);
+  --l2: rgba(0,0,0,.56);
+  --l3: rgba(0,0,0,.35);
+  --l4: rgba(0,0,0,.14);
+  --sep: rgba(0,0,0,.085);
+  --fill: rgba(0,0,0,.045);
+  --fill2: rgba(0,0,0,.08);
+  --fill3: rgba(0,0,0,.125);
+
+  --accent: #3d5bff;
+  --accent-t: #2c4ae8;
+  --accent-bg: rgba(61,91,255,.10);
+  --ok: #158f4c;
+  --ok-bg: rgba(21,143,76,.11);
+  --warn: #c96a04;
+  --warn-bg: rgba(201,106,4,.11);
+  --danger: #dc2626;
+  --danger-bg: rgba(220,38,38,.10);
+
+  --shadow-win: 0 0 0 .5px rgba(0,0,0,.15), 0 22px 62px rgba(15,23,42,.16);
+  --simg-whisper: 0 0 0 .5px rgba(0,0,0,.07), 0 4px 18px rgba(15,23,42,.06);
+  --simg-whisper-hover: 0 0 0 .5px rgba(0,0,0,.12), 0 8px 26px rgba(15,23,42,.10);
+  --i-bg: #ffffff;
+  --i-glass: rgba(250,250,252,.84);
+  --i-glass-bd: rgba(0,0,0,.08);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--page);
+  color: var(--page-fg);
+  font: 13.5px/1.55 var(--font-mac);
+  min-height: 100vh;
+  padding-bottom: 132px;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+svg { display: block; flex: none; }
+code { font-family: var(--mono); }
+
+/* ---------- Header ---------- */
+.top {
+  max-width: 1640px;
+  margin: 0 auto;
+  padding: 16px 20px 6px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+}
+.top-l { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.top h1 { margin: 0; font-size: 17.5px; font-weight: 650; letter-spacing: -.015em; }
+.top .sub { font-size: 12.8px; color: var(--page-fg2); }
+.pbadge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 9px; border-radius: 99px; font-size: 11.5px; font-weight: 560;
+  background: var(--accent-bg); color: var(--accent-t);
+  white-space: nowrap;
+}
+.pbadge.ok { background: var(--ok-bg); color: var(--ok); }
+.pbadge.warn { background: var(--warn-bg); color: var(--warn); }
+.pbadge.danger { background: var(--danger-bg); color: var(--danger); }
+
+/* ---------- Main Stage Layout ---------- */
+.wrap {
+  max-width: 1580px;
+  margin: 0 auto;
+  padding: 8px 18px 20px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+@media (min-width: 1480px) {
+  .wrap { flex-wrap: nowrap; }
+}
+#stage {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+@media (min-width: 1200px) {
+  #stage { flex-wrap: nowrap; }
+}
+
+/* ---------- Diagnostic Notes Card ---------- */
+.notes {
+  width: 324px;
+  max-width: 100%;
+  flex: none;
+  background: var(--page-card);
+  border: 1px solid var(--page-bd);
+  border-radius: 14px;
+  padding: 14px 15px;
+  font-size: 12.4px;
+  line-height: 1.58;
+}
+.notes h3 { margin: 0 0 5px; font-size: 13.8px; font-weight: 650; display: flex; align-items: center; gap: 7px; }
+.notes p { margin: 0; color: var(--page-fg2); }
+.notes ul { margin: 6px 0 0; padding-left: 16px; color: var(--page-fg2); }
+.notes li { margin: 4px 0; }
+.notes li b { color: var(--page-fg); font-weight: 600; }
+.notes .blk { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--page-bd); }
+.notes code { font-size: 11px; padding: 1px 4.5px; border-radius: 4px; background: var(--fill2); color: var(--page-fg); }
+.metric-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+.metric {
+  background: var(--fill);
+  border: .5px solid var(--sep);
+  border-radius: 8px;
+  padding: 6px 7px;
+}
+.metric small { display: block; font-size: 10.2px; color: var(--page-fg3); }
+.metric b { display: block; font-size: 12px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   IPHONE 17 PRO SIMULATION (1:1 with uploaded screenshot)
+   ========================================================================== */
+.phone {
+  width: 372px;
+  max-width: 100%;
+  height: 736px;
+  border-radius: 50px;
+  padding: 9px;
+  background: #1b1b21;
+  box-shadow: 0 24px 66px rgba(0,0,0,.48), inset 0 0 0 1.5px #383844;
+  flex: none;
+  user-select: none;
+}
+.scr {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 42px;
+  overflow: hidden;
+  background: var(--i-bg);
+  color: var(--l1);
+  font: 15px/1.48 var(--font-ios);
+}
+.island {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  width: 112px; height: 30px; border-radius: 16px; background: #000; z-index: 40;
+}
+.sb {
+  position: absolute; top: 0; left: 0; right: 0; height: 46px;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 26px 0 32px; font-size: 14px; font-weight: 600; z-index: 39;
+  pointer-events: none;
+}
+.inav {
+  position: absolute; top: 46px; left: 0; right: 0; height: 44px;
+  display: flex; align-items: center; justify-content: center; z-index: 20;
+  background: linear-gradient(var(--i-bg) 58%, transparent);
+}
+.iglass {
+  background: var(--i-glass);
+  backdrop-filter: blur(22px) saturate(1.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  box-shadow: 0 0 0 .5px var(--i-glass-bd), 0 4px 14px rgba(0,0,0,.20);
+}
+.itcap {
+  height: 36px; max-width: 228px; border-radius: 18px; padding: 0 14px;
+  display: flex; flex-direction: column; justify-content: center; text-align: center;
+}
+.itcap b { font-size: 12.8px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.itcap small { font-size: 10px; color: var(--l2); }
+
+/* Right floating rail buttons (matching user's screenshot!) */
+.irail-float {
+  position: absolute;
+  right: 10px;
+  top: 100px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 25;
+  pointer-events: none;
+}
+.irail-btn {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center;
+  color: var(--l1);
+  opacity: .88;
+}
+.iscroll {
+  position: absolute; inset: 0; overflow-y: auto; scrollbar-width: none;
+  padding: 96px 16px 88px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.iscroll::-webkit-scrollbar { display: none; }
+.iscroll h3 { margin: 2px 0 2px; font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
+.iscroll p { margin: 0; font-size: 15px; line-height: 1.52; color: var(--l1); padding-right: 26px; }
+.idock { position: absolute; left: 12px; right: 12px; bottom: 18px; z-index: 20; display: flex; gap: 8px; align-items: center; }
+.ibox { flex: 1; height: 42px; border-radius: 21px; padding: 0 14px; display: flex; align-items: center; color: var(--l3); font-size: 14px; }
+.ichat-fab { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; color: var(--l1); flex: none; }
+.homebar { position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); width: 128px; height: 4.5px; border-radius: 3px; background: var(--l1); opacity: .7; z-index: 25; }
+
+/* ==========================================================================
+   MAC DESKTOP WINDOW SIMULATION (InlineImages.tsx + files.css)
+   ========================================================================== */
+.mac {
+  width: 752px;
+  max-width: 100%;
+  height: 736px;
+  border-radius: 13px;
+  overflow: hidden;
+  box-shadow: var(--shadow-win);
+  display: flex;
+  background: var(--win);
+  color: var(--l1);
+  font: 14.5px/1.62 var(--font-mac);
+  position: relative;
+  user-select: none;
+}
+.mac.wide-only { width: 920px; }
+.scol {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--win);
+  position: relative;
+}
+.scol.split-narrow {
+  flex: 0 0 468px;
+  width: 468px;
+  max-width: 100%;
+}
+.ctool {
+  height: 44px;
+  border-bottom: .5px solid var(--sep);
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 16px;
+  gap: 9px;
+  flex: none;
+}
+.lights { display: flex; gap: 7px; margin-right: 4px; }
+.lights i { width: 11px; height: 11px; border-radius: 50%; background: #ff5f57; display: block; }
+.lights i:nth-child(2) { background: #febc2e; }
+.lights i:nth-child(3) { background: #28c840; }
+.ctitle { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.ctitle h2 { margin: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.th-where { font-size: 12px; color: var(--l2); white-space: nowrap; }
+.tb-ic { width: 27px; height: 27px; border-radius: 7px; display: grid; place-items: center; color: var(--l2); }
+.tb-ic:hover, .tb-ic.on { background: var(--fill2); color: var(--l1); }
+
+.cscroll { flex: 1; overflow-y: auto; padding: 18px 26px 88px; scrollbar-width: thin; }
+.mcol { max-width: 752px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+.mcol h3 { margin: 2px 0 0; font-size: 17.5px; font-weight: 650; letter-spacing: -.012em; }
+.mcol p { margin: 0; color: var(--l1); }
+
+.sfp-mock {
+  flex: 1; min-width: 0; border-left: .5px solid var(--sep); background: var(--win2);
+  display: flex; flex-direction: column;
+}
+.sfp-mock-hd {
+  height: 44px; border-bottom: .5px solid var(--sep); padding: 0 12px;
+  display: flex; align-items: center; font-size: 12px; color: var(--l2); gap: 6px;
+}
+.sfp-mock-bd {
+  flex: 1; padding: 16px; display: flex; flex-direction: column; justify-content: center; align-items: center;
+  text-align: center; color: var(--l3); font-size: 12.5px; gap: 6px;
+}
+
+.mcmp-zone {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 18px 24px 14px;
+  background: linear-gradient(transparent, var(--win) 28px);
+  pointer-events: none;
+}
+.mcmp {
+  pointer-events: auto;
+  max-width: 752px; margin: 0 auto;
+  background: var(--pill);
+  border-radius: 16px;
+  box-shadow: 0 0 0 .5px var(--pill-bd), 0 4px 14px rgba(0,0,0,.22);
+  padding: 8px 13px;
+  display: flex; align-items: center; gap: 8px;
+  color: var(--l3); font-size: 13.5px;
+}
+
+/* ==========================================================================
+   SHARED INDEX BAR & CAPTION (Matches files.css .simg-index-bar)
+   ========================================================================== */
+.idx-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 6px;
+  border-bottom: .5px solid var(--sep);
+  min-width: 0;
+}
+.idx-chips {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.idx-chips::-webkit-scrollbar { display: none; }
+.idx-chip {
+  flex: none;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--l3);
+  font-size: 12px;
+  line-height: 24px;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  gap: 4.5px;
+  transition: color .14s, background .14s;
+  max-width: 176px;
+}
+.idx-chip i { font-style: normal; font-family: var(--mono); font-size: 11px; }
+.idx-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.idx-chip:hover { color: var(--l1); background: var(--fill); }
+.idx-chip.on { color: var(--l1); font-weight: 600; background: var(--fill2); }
+.idx-count {
+  flex: none;
+  margin-left: auto;
+  padding-left: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--l3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.stage-cap {
+  font-size: 12.8px;
+  line-height: 1.48;
+  color: var(--l2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   0. CURRENT BUG REPRODUCTION (iOS full-width border box + Mac empty stage)
+   ========================================================================== */
+.bug-wrap { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+
+/* iOS Bug: SessionImages.swift:603 .frame(maxWidth: .infinity, maxHeight: 208, alignment: .leading) BEFORE .strokeBorder */
+.ios-bug-stage {
+  position: relative;
+  width: 100%;
+  height: 208px;
+  border-radius: 10px;
+  border: .5px solid var(--sep);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: zoom-in;
+}
+.ios-bug-stage .art-slot {
+  height: 100%;
+  width: auto;
+  flex: none;
+  display: flex;
+}
+.ios-bug-stage .art-slot svg { height: 100%; width: auto; }
+.void-callout {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  margin: 8px;
+  border-radius: 7px;
+  border: 1px dashed rgba(255, 102, 112, .42);
+  background: rgba(255, 102, 112, .05);
+  color: var(--danger);
+  font-size: 11px;
+  text-align: center;
+  padding: 6px;
+  pointer-events: none;
+}
+.void-callout small { color: var(--l3); font-size: 10.2px; }
+
+/* Mac Bug: files.css:206 aspect-ratio locked >= 1.25, width 100%, next arrow stranded on far right */
+.mac-bug-stage {
+  position: relative;
+  width: 100%;
+  height: 356px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: zoom-in;
+}
+.mac-bug-stage.landscape { height: auto; aspect-ratio: 2544 / 1390; max-height: 380px; }
+.mac-bug-stage .art-slot {
+  height: 100%;
+  max-width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--simg-whisper);
+  flex: none;
+}
+.mac-bug-stage .art-slot svg { height: 100%; width: auto; max-width: 100%; }
+.mac-bug-stage.landscape .art-slot { width: 100%; height: auto; }
+.mac-bug-stage.landscape .art-slot svg { width: 100%; height: auto; }
+.stage-nav {
+  position: absolute;
+  top: 50%;
+  margin-top: -15px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(18,19,25,.62);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.24);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  z-index: 3;
+}
+.stage-nav:hover { background: rgba(28,30,40,.88); }
+.stage-nav.prev { left: 8px; }
+.stage-nav.next { right: 8px; }
+
+/* Mac Pair Bug: files.css:200 width:100%; max-height:320px; object-fit:contain -> wide shadow box */
+.pair-row { display: flex; gap: 12px; width: 100%; align-items: flex-start; }
+.pair-bug-card {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: zoom-in;
+}
+.pair-bug-box {
+  width: 100%;
+  height: 250px;
+  border-radius: 8px;
+  box-shadow: var(--simg-whisper);
+  border: 1px dashed rgba(255,102,112,.40);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+.pair-bug-box svg { height: 100%; width: auto; }
+
+/* ==========================================================================
+   OPTION A: PROPORTIONAL MULTI-UP SNAP STRIP (推荐 1 · 多卡等高同屏轨道)
+   ========================================================================== */
+.opt-a { display: flex; flex-direction: column; gap: 8px; width: 100%; position: relative; }
+.opt-a-stage { position: relative; width: 100%; }
+.opt-a-track {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  padding: 2px 2px 4px;
+}
+.opt-a-track::-webkit-scrollbar { display: none; }
+
+.opt-a-card {
+  flex: none;
+  height: var(--strip-h, 296px);
+  scroll-snap-align: start;
+  border-radius: 9px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: var(--simg-whisper);
+  cursor: pointer;
+  transition: transform .16s var(--ease-out), box-shadow .16s var(--ease-out), opacity .16s;
+  background: var(--code);
+}
+.opt-a-card.ios { height: 244px; border-radius: 10px; }
+.opt-a-card:hover { box-shadow: var(--simg-whisper-hover); transform: translateY(-1px); }
+.opt-a-card.active {
+  box-shadow: 0 0 0 1.5px var(--accent), 0 8px 24px rgba(0,0,0,.36);
+}
+.opt-a-card svg { height: 100%; width: auto; display: block; }
+
+/* Long screenshot crop protection inside Strip or Stage */
+.opt-a-card.ultra-long {
+  width: 168px;
+}
+.opt-a-card.ios.ultra-long {
+  width: 142px;
+}
+.opt-a-card.ultra-long svg {
+  width: 100%;
+  height: auto;
+}
+.long-fade {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 54px;
+  background: linear-gradient(transparent, rgba(8,9,14,.88));
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 7px;
+  pointer-events: none;
+}
+.long-pill {
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: rgba(255,255,255,.14);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.22);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+.card-zoom-pill {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(10,11,16,.64);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.opt-a-card:hover .card-zoom-pill,
+.opt-a-card.active .card-zoom-pill { opacity: 1; }
+
+/* ==========================================================================
+   OPTION B: SIDE-INDEX EDITORIAL STAGE (推荐 2 · 左图右目录分栏舞台)
+   ========================================================================== */
+.opt-b {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  width: 100%;
+  padding: 2px 0;
+}
+.opt-b.ios { gap: 11px; }
+.opt-b-art {
+  flex: none;
+  position: relative;
+  height: 320px;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--simg-whisper);
+  cursor: zoom-in;
+  background: var(--code);
+}
+.opt-b.ios .opt-b-art { height: 254px; }
+.opt-b-art.landscape-art {
+  width: 56%;
+  height: auto;
+  aspect-ratio: 2544 / 1390;
+  align-self: center;
+}
+.opt-b.ios .opt-b-art.landscape-art {
+  width: 52%;
+}
+.opt-b-art.ultra-long { width: 176px; }
+.opt-b.ios .opt-b-art.ultra-long { width: 132px; }
+.opt-b-art svg { height: 100%; width: auto; display: block; }
+.opt-b-art.landscape-art svg { width: 100%; height: 100%; }
+.opt-b-art.ultra-long svg { width: 100%; height: auto; }
+
+.opt-b-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+.opt-b-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--l3);
+  font-family: var(--mono);
+  padding-bottom: 4px;
+  border-bottom: .5px solid var(--sep);
+}
+.opt-b-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.opt-b-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  text-align: left;
+  color: var(--l2);
+  font-size: 12.5px;
+  line-height: 1.35;
+  transition: background .14s, color .14s;
+}
+.opt-b.ios .opt-b-item { padding: 5.5px 8px; font-size: 12px; }
+.opt-b-item i {
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--l3);
+  flex: none;
+}
+.opt-b-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.opt-b-item:hover { background: var(--fill); color: var(--l1); }
+.opt-b-item.on {
+  background: var(--fill2);
+  color: var(--l1);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.opt-b-item.on i { color: var(--accent-t); }
+.opt-b-desc {
+  margin-top: auto;
+  padding-top: 7px;
+  border-top: .5px solid var(--sep);
+  font-size: 12.2px;
+  line-height: 1.48;
+  color: var(--l2);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.opt-b-open {
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--accent-t);
+  font-weight: 550;
+}
+
+/* ==========================================================================
+   OPTION C: FIT-CONTENT STAGE + NEXT-SLIDE PEEK (紧凑贴边舞台 + 邻帧微露)
+   ========================================================================== */
+.opt-c {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+}
+.opt-c-canvas {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  max-width: 100%;
+}
+.opt-c-main {
+  position: relative;
+  height: 320px;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--simg-whisper);
+  cursor: zoom-in;
+  flex: none;
+  background: var(--code);
+}
+.opt-c.ios .opt-c-main { height: 262px; }
+.opt-c-main.landscape-art {
+  height: auto;
+  width: min(560px, 100%);
+  aspect-ratio: 2544 / 1390;
+}
+.opt-c.ios .opt-c-main.landscape-art { width: 100%; }
+.opt-c-main.ultra-long { width: 196px; }
+.opt-c.ios .opt-c-main.ultra-long { width: 158px; }
+.opt-c-main svg { height: 100%; width: auto; display: block; }
+.opt-c-main.landscape-art svg { width: 100%; height: auto; }
+.opt-c-main.ultra-long svg { width: 100%; height: auto; }
+
+.opt-c-peek {
+  position: relative;
+  height: 286px;
+  border-radius: 9px;
+  overflow: hidden;
+  opacity: .42;
+  box-shadow: var(--simg-whisper);
+  cursor: pointer;
+  flex: none;
+  transition: opacity .16s, transform .16s;
+  background: var(--code);
+}
+.opt-c.ios .opt-c-peek { height: 228px; }
+.opt-c-peek.ultra-long { width: 120px; }
+.opt-c-peek:hover { opacity: .75; transform: translateX(-2px); }
+.opt-c-peek svg { height: 100%; width: auto; display: block; }
+.opt-c-peek-tag {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(0,0,0,.12), rgba(0,0,0,.58));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 560;
+  gap: 3px;
+}
+
+/* Clean Pair (Fixed N=2 hug bitmap) */
+.pair-clean-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  max-width: 100%;
+}
+.pair-clean-card {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: calc(50% - 7px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: zoom-in;
+}
+.pair-clean-pic {
+  height: 276px;
+  border-radius: 9px;
+  overflow: hidden;
+  box-shadow: var(--simg-whisper);
+  align-self: flex-start;
+}
+.pair-clean-card.ios .pair-clean-pic { height: 232px; }
+.pair-clean-pic svg { height: 100%; width: auto; max-width: 100%; display: block; }
+.pair-clean-cap { font-size: 12.2px; line-height: 1.42; color: var(--l2); }
+
+/* ==========================================================================
+   2x2 MATRIX COMPARISON VIEW
+   ========================================================================== */
+.matrix {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 480px));
+  gap: 16px;
+  justify-content: center;
+  width: 100%;
+}
+.mcard {
+  background: var(--win);
+  border-radius: 14px;
+  box-shadow: var(--shadow-win);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.mcard-hd {
+  padding: 10px 14px;
+  background: var(--win2);
+  border-bottom: .5px solid var(--sep);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.mcard-hd b { font-size: 13px; font-weight: 620; color: var(--l1); }
+.mcard-bd { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+.mcard-bd p { margin: 0; font-size: 13.5px; color: var(--l2); }
+
+/* ==========================================================================
+   LIGHTBOX (.slb)
+   ========================================================================== */
+.slb {
+  position: fixed;
+  inset: 0;
+  z-index: 600;
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 11, 16, .76);
+  backdrop-filter: blur(24px) saturate(1.28);
+  -webkit-backdrop-filter: blur(24px) saturate(1.28);
+  color: #f5f5f7;
+  user-select: none;
+  animation: fadeIn .15s ease-out;
+}
+@keyframes fadeIn { from { opacity: 0; } }
+.slb-top {
+  height: 54px;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 72px;
+  align-items: center;
+  padding: 0 16px;
+}
+.slb-center { text-align: center; min-width: 0; }
+.slb-title { font-size: 13.5px; font-weight: 560; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slb-meta { font-size: 11.5px; color: rgba(255,255,255,.62); font-variant-numeric: tabular-nums; }
+.slb-acts { display: flex; justify-content: flex-end; gap: 7px; }
+.slb-btn {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(255,255,255,.13);
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.18);
+  color: #fff; display: grid; place-items: center;
+}
+.slb-stage {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 8px 54px 24px;
+  position: relative;
+  gap: 10px;
+  overflow: auto;
+}
+.slb-art {
+  height: min(660px, calc(100vh - 148px));
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 24px 70px rgba(0,0,0,.55), 0 0 0 .5px rgba(255,255,255,.18);
+  transition: transform .18s var(--ease-out);
+  cursor: zoom-in;
+}
+.slb-art.landscape { height: auto; width: min(880px, 100%); }
+.slb-art.zoomed { transform: scale(1.45); cursor: zoom-out; }
+.slb-art svg { height: 100%; width: auto; display: block; }
+.slb-art.landscape svg { width: 100%; height: auto; }
+.slb-cap {
+  max-width: 680px;
+  padding: 5px 13px;
+  border-radius: 99px;
+  background: rgba(22,23,30,.78);
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.14);
+  font-size: 12.2px;
+  color: rgba(255,255,255,.90);
+  text-align: center;
+}
+.slb-nav {
+  position: absolute; top: 50%; margin-top: -18px;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(255,255,255,.13);
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.18);
+  color: #fff; display: grid; place-items: center;
+}
+.slb-nav.prev { left: 14px; }
+.slb-nav.next { right: 14px; }
+
+/* ---------- Bottom Sticky Control Bar ---------- */
+.ctl {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 200;
+  background: var(--page-bar);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-top: 1px solid var(--page-bd);
+  padding: 8px 14px calc(8px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+.ctl .g {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  overflow-x: auto;
+  min-width: 0;
+  max-width: 100%;
+  scrollbar-width: none;
+}
+.ctl .g::-webkit-scrollbar { display: none; }
+.ctl .g b { color: var(--page-fg2); font-weight: 560; margin-right: 2px; white-space: nowrap; }
+.ctl button {
+  flex: none;
+  padding: 4px 9.5px;
+  border-radius: 7px;
+  background: var(--fill2);
+  color: var(--page-fg);
+  white-space: nowrap;
+  transition: background .12s, color .12s;
+}
+.ctl button:hover { background: var(--fill3); }
+.ctl button.on { background: var(--accent); color: #fff; font-weight: 580; }
+.ctl button.danger-on { background: var(--danger); color: #fff; font-weight: 580; }
+
+@media (max-width: 920px) {
+  html, body { overflow-x: hidden; max-width: 100%; }
+  body { padding-bottom: 168px; }
+  .top { padding: 12px 14px 4px; }
+  .wrap { padding: 8px 12px 16px; gap: 14px; }
+  #stage { width: 100%; }
+  .phone { width: 100%; max-width: 378px; height: 684px; border-radius: 36px; padding: 6px; }
+  .scr { border-radius: 30px; }
+  .mac { width: 100%; height: 650px; }
+  .scol.split-narrow { flex: 1; width: 100%; }
+  .sfp-mock { display: none; }
+  .notes { width: 100%; max-width: 520px; overflow-wrap: anywhere; }
+  .matrix { width: 100%; grid-template-columns: minmax(0, 1fr); }
+  .ctl { flex-direction: column; align-items: stretch; gap: 5px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); }
+  .ctl .g { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="top-l">
+    <h1>多图展示 · 竖图与长图右侧留白优化原型</h1>
+    <span class="sub">1:1 复现截图中的 iPhone 全宽空黑框与 Mac 右侧 70% 留白痛点，对比三套优化方案（点任意图片可开毛玻璃灯箱）</span>
+  </div>
+  <div>
+    <span class="pbadge ok">支持手机 iPhone + 电脑 Mac 双端同步检视</span>
+  </div>
+</div>
+
+<div class="wrap">
+  <div id="stage"></div>
+  <aside class="notes" id="notes"></aside>
+</div>
+
+<div class="ctl" id="ctl"></div>
+<div id="lbRoot"></div>
+
+<script>
+const IC = {
+  chevL: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg>',
+  chevR: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg>',
+  x: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+  zoom: '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10 2h4v4M6 14H2v-4M14 2 9.5 6.5M2 14l4.5-4.5"/></svg>',
+  sidebar: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M10 2.5v11"/></svg>',
+  toc: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 4.5h10M3 8h7.5M3 11.5h5"/></svg>',
+  dots: '<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><circle cx="4" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12" cy="8" r="1.3"/></svg>',
+  chat: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M3 3.5h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H6.5L3.5 14v-2.5H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z"/></svg>'
+};
+
+/* ---------- 4 Realistic Test Datasets ---------- */
+const PORTRAIT_FOUR = [
+  {
+    name: "01_bar_drawer_open.png",
+    tag: "直板机 · 展开侧边栏",
+    caption: "直板机 · 展开侧边栏 (Drawer 滑出态)：左侧完整展示会话列表与底部 Demo Mode 提示条",
+    dim: "1206 × 2622", size: "238 KB", kind: "portrait", variant: "drawer-open"
+  },
+  {
+    name: "02_bar_drawer_closed.png",
+    tag: "直板机 · 不展开侧边栏",
+    caption: "直板机 · 不展开侧边栏 (主会话阅读态)：全宽展示 Markdown 回复流与底部胶囊输入框",
+    dim: "1206 × 2622", size: "224 KB", kind: "portrait", variant: "drawer-closed"
+  },
+  {
+    name: "03_bar_light_mode.png",
+    tag: "直板机 · 浅色模式",
+    caption: "直板机 · 浅色模式校验：白底纸面层次与顶栏毛玻璃胶囊对比度测试",
+    dim: "1206 × 2622", size: "216 KB", kind: "portrait", variant: "light-phone"
+  },
+  {
+    name: "04_bar_search_sheet.png",
+    tag: "直板机 · 全局搜索",
+    caption: "直板机 · 全局搜索半屏面板：快捷跳转跨机器历史会话与命令动作",
+    dim: "1206 × 2622", size: "242 KB", kind: "portrait", variant: "search-phone"
+  }
+];
+
+const MIXED_SLIDES = [
+  {
+    name: "01_mobile_drawer.png",
+    tag: "手机端 · 展开侧边栏 (唯一长图)",
+    caption: "多图组里唯一一张竖长图 (1206×2622)：与 3 张桌面横图同组时，翻到此帧最易暴露右侧大片留白",
+    dim: "1206 × 2622", size: "238 KB", kind: "portrait", variant: "drawer-open"
+  },
+  {
+    name: "02_mac_wide_dark.png",
+    tag: "桌面端 · 全宽会话",
+    caption: "桌面端横屏截图 (2544×1390)：752px 居中阅读列与底部输入框同轴对齐",
+    dim: "2544 × 1390", size: "312 KB", kind: "landscape", accent: "#4a66ff"
+  },
+  {
+    name: "03_mac_split_panel.png",
+    tag: "桌面端 · 分栏预览",
+    caption: "桌面端横屏截图 (2544×1390)：右侧打开文件预览面板时的双栏协同布局",
+    dim: "2544 × 1390", size: "328 KB", kind: "landscape", accent: "#38ce86"
+  },
+  {
+    name: "04_mac_light_check.png",
+    tag: "桌面端 · 回归测试",
+    caption: "桌面端横屏截图 (2544×1390)：端到端自动化快照断言全部通过",
+    dim: "2544 × 1390", size: "298 KB", kind: "landscape", accent: "#f5a53c"
+  }
+];
+
+const LONG_SLIDES = [
+  {
+    name: "01_fullpage_audit_long.png",
+    tag: "整页长截图 (1:4.2)",
+    caption: "超长整页滚动截图 (750 × 3150)：现状按高度硬缩成 50pt 细条完全不可读；优化后首屏适宽顶对齐 + 底部长图渐隐提示",
+    dim: "750 × 3150", size: "486 KB", kind: "long"
+  },
+  {
+    name: "02_bar_drawer_open.png",
+    tag: "侧边栏状态",
+    caption: "常规手机竖屏截图 (1206 × 2622)：与超长截图同组对比时的等高排布",
+    dim: "1206 × 2622", size: "238 KB", kind: "portrait", variant: "drawer-open"
+  },
+  {
+    name: "03_bar_drawer_closed.png",
+    tag: "会话阅读态",
+    caption: "常规手机竖屏截图 (1206 × 2622)：点击任意卡片均可打开灯箱缩放浏览完整长图",
+    dim: "1206 × 2622", size: "224 KB", kind: "portrait", variant: "drawer-closed"
+  }
+];
+
+const PAIR_PORTRAIT = [PORTRAIT_FOUR[0], PORTRAIT_FOUR[1]];
+
+/* ---------- Faithful SVG Mockups ---------- */
+function renderSlideSVG(s) {
+  if (s.kind === "landscape") {
+    return `<svg viewBox="0 0 640 350" xmlns="http://www.w3.org/2000/svg">
+      <rect width="640" height="350" fill="#0b0c12"/>
+      <rect x="18" y="18" width="604" height="314" rx="12" fill="#141620" stroke="#282c3e"/>
+      <circle cx="38" cy="36" r="4.5" fill="#ff5f57"/><circle cx="52" cy="36" r="4.5" fill="#febc2e"/><circle cx="66" cy="36" r="4.5" fill="#28c840"/>
+      <text x="88" y="40" font-family="-apple-system,sans-serif" font-size="12" font-weight="600" fill="#eef0f7">Hermesh Desktop · ${s.tag}</text>
+      <line x1="18" y1="52" x2="622" y2="52" stroke="#252838"/>
+      <rect x="18" y="52" width="142" height="280" fill="#10121a"/>
+      <line x1="160" y1="52" x2="160" y2="332" stroke="#252838"/>
+      <rect x="30" y="70" width="118" height="22" rx="6" fill="#222636"/>
+      <text x="40" y="85" font-family="-apple-system,sans-serif" font-size="10.5" fill="#d8dce8">Sidebar Task 1</text>
+      <text x="40" y="110" font-family="-apple-system,sans-serif" font-size="10.5" fill="#7d8398">Sidebar Task 2</text>
+      <text x="40" y="132" font-family="-apple-system,sans-serif" font-size="10.5" fill="#7d8398">Sidebar Task 3</text>
+      <rect x="330" y="74" width="256" height="34" rx="12" fill="${s.accent}"/>
+      <text x="346" y="95" font-family="-apple-system,sans-serif" font-size="11.5" fill="#fff">检查桌面端与手机端多图展示布局</text>
+      <text x="192" y="140" font-family="-apple-system,sans-serif" font-size="12" fill="#e5e8f2">已完成双端视觉回归验证，所有断言通过。</text>
+      <rect x="192" y="160" width="394" height="96" rx="9" fill="#0d0f17" stroke="#25293a"/>
+      <text x="208" y="186" font-family="monospace" font-size="11" fill="#38ce86">✓ PASS apps/desktop/e2e/session-files.spec.ts</text>
+      <text x="208" y="210" font-family="monospace" font-size="11" fill="#8fa2ff">✓ PASS apps/ios/HermeshUITests/SessionFilesUITests</text>
+      <rect x="192" y="280" width="394" height="36" rx="14" fill="#1a1d2a" stroke="#2c3146"/>
+    </svg>`;
+  }
+
+  if (s.kind === "long") {
+    return `<svg viewBox="0 0 360 1512" xmlns="http://www.w3.org/2000/svg">
+      <rect width="360" height="1512" fill="#0b0d13"/>
+      <rect x="16" y="18" width="328" height="44" rx="12" fill="#171a26" stroke="#2c3146"/>
+      <text x="32" y="45" font-family="-apple-system,sans-serif" font-size="15" font-weight="700" fill="#fff">Hermesh · 整页长截图报告</text>
+      <rect x="16" y="78" width="328" height="132" rx="14" fill="#141722" stroke="#262b3d"/>
+      <text x="32" y="108" font-family="-apple-system,sans-serif" font-size="13.5" font-weight="600" fill="#8fa2ff">1. 首屏核心指标概览</text>
+      <text x="32" y="136" font-family="-apple-system,sans-serif" font-size="12.5" fill="#d7dbe8">• CPU 峰值从 38% 降至 6.4%</text>
+      <text x="32" y="160" font-family="-apple-system,sans-serif" font-size="12.5" fill="#d7dbe8">• Watch 投影帧合并率 94.2%</text>
+      <text x="32" y="184" font-family="-apple-system,sans-serif" font-size="12.5" fill="#38ce86">• 零重复 RPC 请求</text>
+      <rect x="16" y="226" width="328" height="190" rx="14" fill="#141722" stroke="#262b3d"/>
+      <text x="32" y="256" font-family="-apple-system,sans-serif" font-size="13.5" font-weight="600" fill="#f3f4f8">2. 分阶段耗时火焰图对比</text>
+      <rect x="32" y="274" width="280" height="18" rx="5" fill="#4a66ff"/>
+      <rect x="32" y="302" width="196" height="18" rx="5" fill="#38ce86"/>
+      <rect x="32" y="330" width="124" height="18" rx="5" fill="#f5a53c"/>
+      <rect x="16" y="434" width="328" height="280" rx="14" fill="#141722" stroke="#262b3d"/>
+      <text x="32" y="468" font-family="-apple-system,sans-serif" font-size="13.5" font-weight="600" fill="#f3f4f8">3. 详细会话调用栈日志 (第 2 屏)</text>
+      <rect x="16" y="734" width="328" height="340" rx="14" fill="#141722" stroke="#262b3d"/>
+      <text x="32" y="768" font-family="-apple-system,sans-serif" font-size="13.5" font-weight="600" fill="#f3f4f8">4. SQLite 缓存命中统计 (第 3 屏)</text>
+      <rect x="16" y="1094" width="328" height="380" rx="14" fill="#141722" stroke="#262b3d"/>
+      <text x="32" y="1130" font-family="-apple-system,sans-serif" font-size="13.5" font-weight="600" fill="#f3f4f8">5. 端到端验证结论 (第 4 屏底部)</text>
+    </svg>`;
+  }
+
+  /* Portrait Phone Screenshot — 1:1 recreation of user's uploaded 01 Drawer Open screenshot! */
+  if (s.variant === "drawer-open") {
+    return `<svg viewBox="0 0 390 844" xmlns="http://www.w3.org/2000/svg">
+      <rect width="390" height="844" fill="#0d0d10"/>
+      <!-- Left Drawer -->
+      <rect x="0" y="0" width="308" height="844" fill="#111114"/>
+      <line x1="308" y1="0" x2="308" y2="844" stroke="#26262c"/>
+      <!-- Dimmed Main Peek on Right -->
+      <rect x="308" y="0" width="82" height="844" fill="#19191e"/>
+      <circle cx="348" cy="84" r="19" fill="#25252c"/>
+      <circle cx="358" cy="72" r="4" fill="#f59e0b"/>
+      <!-- Status Bar -->
+      <text x="36" y="34" font-family="-apple-system,sans-serif" font-size="15" font-weight="600" fill="#fff">12:23</text>
+      <rect x="340" y="23" width="24" height="11" rx="3" fill="#fff"/>
+      <!-- Brand + Search -->
+      <text x="30" y="88" font-family="-apple-system,sans-serif" font-size="19" font-weight="700" fill="#8fa2ff">✶</text>
+      <text x="54" y="88" font-family="-apple-system,sans-serif" font-size="19" font-weight="700" fill="#fff">Hermesh</text>
+      <circle cx="272" cy="82" r="17" fill="#1f1f25"/>
+      <circle cx="270" cy="80" r="5.5" stroke="#d4d4dc" stroke-width="1.8" fill="none"/>
+      <line x1="274" y1="84" x2="278" y2="88" stroke="#d4d4dc" stroke-width="1.8" stroke-linecap="round"/>
+      <!-- Nav Rows -->
+      <text x="32" y="142" font-family="-apple-system,sans-serif" font-size="16" fill="#ececf2">+   New</text>
+      <text x="32" y="186" font-family="-apple-system,sans-serif" font-size="16" fill="#ececf2">🐱  Her</text>
+      <text x="32" y="230" font-family="-apple-system,sans-serif" font-size="16" fill="#ececf2">ⓘ  Overview</text>
+      <circle cx="280" cy="224" r="4" fill="#f59e0b"/>
+      <text x="30" y="276" font-family="-apple-system,sans-serif" font-size="12.5" fill="#7c7c88">Tasks</text>
+      <circle cx="274" cy="272" r="14" fill="#1f1f25"/>
+      <text x="267" y="277" font-family="-apple-system,sans-serif" font-size="12" fill="#d4d4dc">⇅</text>
+      <!-- Needs You -->
+      <text x="30" y="324" font-family="-apple-system,sans-serif" font-size="12" fill="#7c7c88">Needs You ⌄</text>
+      <circle cx="38" cy="354" r="9" fill="#fff"/>
+      <text x="56" y="359" font-family="-apple-system,sans-serif" font-size="15" fill="#f2f2f7">Choose a greeting</text>
+      <circle cx="280" cy="354" r="4" fill="#f59e0b"/>
+      <!-- Done -->
+      <text x="30" y="456" font-family="-apple-system,sans-serif" font-size="12" fill="#7c7c88">Done ⌄</text>
+      <circle cx="38" cy="488" r="9" fill="#fff"/>
+      <text x="56" y="493" font-family="-apple-system,sans-serif" font-size="14.5" fill="#e5e5ec">Add a welcome page</text>
+      <!-- Selected Task -->
+      <rect x="18" y="512" width="276" height="40" rx="20" fill="#2c2c34"/>
+      <circle cx="38" cy="532" r="9" fill="#fff"/>
+      <text x="56" y="537" font-family="-apple-system,sans-serif" font-size="14.5" font-weight="600" fill="#fff">Sidebar Task 1</text>
+      <circle cx="38" cy="574" r="9" fill="#e06c3e"/>
+      <text x="56" y="579" font-family="-apple-system,sans-serif" font-size="14.5" fill="#d4d4dc">Sidebar Task 2</text>
+      <circle cx="38" cy="616" r="9" fill="#fff"/>
+      <text x="56" y="621" font-family="-apple-system,sans-serif" font-size="14.5" fill="#d4d4dc">Sidebar Task 3</text>
+      <circle cx="38" cy="658" r="9" fill="#e06c3e"/>
+      <text x="56" y="663" font-family="-apple-system,sans-serif" font-size="14.5" fill="#d4d4dc">Sidebar Task 4</text>
+      <circle cx="38" cy="700" r="9" fill="#fff"/>
+      <text x="56" y="705" font-family="-apple-system,sans-serif" font-size="14.5" fill="#d4d4dc">Sidebar Task 5</text>
+      <!-- Avatar + Demo Mode Bar -->
+      <circle cx="38" cy="738" r="19" fill="#2563eb"/>
+      <text x="32" y="744" font-family="-apple-system,sans-serif" font-size="15" font-weight="700" fill="#fff">D</text>
+      <rect x="0" y="776" width="390" height="68" fill="#16161b"/>
+      <line x1="0" y1="776" x2="390" y2="776" stroke="#282830"/>
+      <text x="24" y="802" font-family="-apple-system,sans-serif" font-size="13.5" font-weight="600" fill="#fff">Demo Mode</text>
+      <text x="24" y="820" font-family="-apple-system,sans-serif" font-size="11.5" fill="#7c7c88">Simulated data · No real tasks run</text>
+      <text x="312" y="812" font-family="-apple-system,sans-serif" font-size="13.5" font-weight="600" fill="#4a80ff">Exit Demo</text>
+    </svg>`;
+  }
+
+  if (s.variant === "light-phone") {
+    return `<svg viewBox="0 0 390 844" xmlns="http://www.w3.org/2000/svg">
+      <rect width="390" height="844" fill="#f7f8fb"/>
+      <text x="36" y="34" font-family="-apple-system,sans-serif" font-size="15" font-weight="600" fill="#161822">12:24</text>
+      <rect x="104" y="56" width="182" height="36" rx="18" fill="#ffffff" stroke="#dfe2ec"/>
+      <text x="136" y="79" font-family="-apple-system,sans-serif" font-size="13.5" font-weight="600" fill="#161822">Sidebar Task 1</text>
+      <rect x="116" y="122" width="250" height="52" rx="16" fill="#3d5bff"/>
+      <text x="134" y="153" font-family="-apple-system,sans-serif" font-size="14" fill="#fff">检查浅色外观下的直板机排版</text>
+      <rect x="22" y="198" width="346" height="164" rx="16" fill="#ffffff" stroke="#e3e6ef"/>
+      <text x="40" y="232" font-family="-apple-system,sans-serif" font-size="14.5" font-weight="600" fill="#181a24">浅色外观对比校验通过</text>
+      <text x="40" y="262" font-family="-apple-system,sans-serif" font-size="13.5" fill="#5e6272">• 顶栏悬浮胶囊清晰无灰雾</text>
+      <text x="40" y="290" font-family="-apple-system,sans-serif" font-size="13.5" fill="#5e6272">• 无右侧竖栏，全宽 390pt 阅读流</text>
+      <text x="40" y="318" font-family="-apple-system,sans-serif" font-size="13.5" fill="#158f4c">✓ 模拟器快照已保存</text>
+      <rect x="20" y="764" width="350" height="44" rx="22" fill="#ffffff" stroke="#dcdfe8"/>
+    </svg>`;
+  }
+
+  if (s.variant === "search-phone") {
+    return `<svg viewBox="0 0 390 844" xmlns="http://www.w3.org/2000/svg">
+      <rect width="390" height="844" fill="#090a0e"/>
+      <rect x="16" y="96" width="358" height="720" rx="28" fill="#16171f" stroke="#2b2d3c"/>
+      <rect x="34" y="120" width="322" height="42" rx="14" fill="#222430"/>
+      <text x="52" y="146" font-family="-apple-system,sans-serif" font-size="14.5" fill="#9498aa">🔍  搜索会话、机器或文件…</text>
+      <text x="36" y="196" font-family="-apple-system,sans-serif" font-size="12" fill="#6f7385">最近活跃</text>
+      <rect x="28" y="210" width="334" height="52" rx="13" fill="#242736"/>
+      <text x="46" y="241" font-family="-apple-system,sans-serif" font-size="14.5" font-weight="600" fill="#fff">多图展示长图留白优化</text>
+      <text x="46" y="296" font-family="-apple-system,sans-serif" font-size="14.5" fill="#d5d8e4">Choose a greeting</text>
+      <text x="46" y="344" font-family="-apple-system,sans-serif" font-size="14.5" fill="#d5d8e4">Add a welcome page</text>
+    </svg>`;
+  }
+
+  /* 02 Drawer Closed */
+  return `<svg viewBox="0 0 390 844" xmlns="http://www.w3.org/2000/svg">
+    <rect width="390" height="844" fill="#050507"/>
+    <text x="36" y="34" font-family="-apple-system,sans-serif" font-size="15" font-weight="600" fill="#fff">12:23</text>
+    <circle cx="38" cy="74" r="18" fill="#1c1c22"/>
+    <text x="31" y="79" font-family="-apple-system,sans-serif" font-size="14" fill="#fff">☰</text>
+    <rect x="108" y="56" width="174" height="36" rx="18" fill="#1a1a21" stroke="#2c2c36"/>
+    <text x="142" y="79" font-family="-apple-system,sans-serif" font-size="13.5" font-weight="600" fill="#fff">Sidebar Task 1</text>
+    <rect x="122" y="122" width="244" height="50" rx="16" fill="#4a66ff"/>
+    <text x="140" y="152" font-family="-apple-system,sans-serif" font-size="14" fill="#fff">收起侧边栏后的主会话界面</text>
+    <text x="24" y="214" font-family="-apple-system,sans-serif" font-size="15" font-weight="600" fill="#f3f4f8">标准直板机（无右侧竖栏）</text>
+    <text x="24" y="246" font-family="-apple-system,sans-serif" font-size="14" fill="#b4b8c8">收起 Drawer 后，对话正文享有完整对称边距，</text>
+    <text x="24" y="272" font-family="-apple-system,sans-serif" font-size="14" fill="#b4b8c8">底部仅保留轻量输入栏，阅读视野清爽。</text>
+    <rect x="24" y="298" width="342" height="128" rx="14" fill="#12131a" stroke="#252736"/>
+    <text x="40" y="330" font-family="monospace" font-size="12" fill="#38ce86">✓ Drawer closed · 390pt full width</text>
+    <text x="40" y="358" font-family="monospace" font-size="12" fill="#8fa2ff">✓ Right rail hidden on bar iPhone</text>
+    <rect x="20" y="760" width="350" height="44" rx="22" fill="#181920" stroke="#2b2d3a"/>
+    <text x="40" y="787" font-family="-apple-system,sans-serif" font-size="14" fill="#787c8e">+ Keep talking…</text>
+  </svg>`;
+}
+
+/* ---------- State ---------- */
+const isMobileScreen = () => window.innerWidth <= 820;
+
+const qs = typeof location !== "undefined" ? new URLSearchParams(location.search) : null;
+const S = {
+  scheme: (qs && qs.get("scheme")) || "a",
+  scene: (qs && qs.get("scene")) || "portrait4",
+  device: (qs && qs.get("device")) || (isMobileScreen() ? "ios" : "both"),
+  theme: (qs && qs.get("theme")) || "black",
+  idx: 0,
+  lb: null
+};
+if (S.theme !== "black") document.documentElement.dataset.theme = S.theme;
+
+function slidesOf() {
+  if (S.scene === "mixed") return MIXED_SLIDES;
+  if (S.scene === "long") return LONG_SLIDES;
+  if (S.scene === "pair") return PAIR_PORTRAIT;
+  return PORTRAIT_FOUR;
+}
+
+function pad2(n) { return String(n).padStart(2, "0"); }
+
+function setOpt(k, v) {
+  S[k] = v;
+  if (k === "theme") document.documentElement.dataset.theme = v;
+  if (k === "scene") { S.idx = 0; S.lb = null; }
+  render();
+}
+
+function pickIdx(i, e) {
+  if (e) e.stopPropagation();
+  const list = slidesOf();
+  S.idx = ((i % list.length) + list.length) % list.length;
+  render();
+}
+
+function clickStripCard(i, e) {
+  if (e) e.stopPropagation();
+  if (S.idx === i) {
+    openLB(i, e);
+  } else {
+    S.idx = i;
+    render();
+  }
+}
+
+function openLB(i, e) {
+  if (e) e.stopPropagation();
+  S.lb = { idx: i, zoomed: false };
+  renderLB();
+}
+
+function closeLB() {
+  S.lb = null;
+  renderLB();
+}
+
+function stepLB(delta, e) {
+  if (e) e.stopPropagation();
+  if (!S.lb) return;
+  const list = slidesOf();
+  S.lb.idx = (S.lb.idx + delta + list.length) % list.length;
+  S.lb.zoomed = false;
+  renderLB();
+}
+
+function toggleZoomLB(e) {
+  if (e) e.stopPropagation();
+  if (!S.lb) return;
+  S.lb.zoomed = !S.lb.zoomed;
+  renderLB();
+}
+
+window.addEventListener("keydown", (e) => {
+  if (S.lb) {
+    if (e.key === "Escape") closeLB();
+    else if (e.key === "ArrowLeft") stepLB(-1);
+    else if (e.key === "ArrowRight") stepLB(1);
+    return;
+  }
+  if (e.key === "ArrowLeft") pickIdx(S.idx - 1);
+  else if (e.key === "ArrowRight") pickIdx(S.idx + 1);
+});
+
+function renderIndexBar(list, idx) {
+  return `
+    <div class="idx-bar">
+      <div class="idx-chips">
+        ${list.map((it, i) => `
+          <button class="idx-chip ${i === idx ? "on" : ""}" onclick="pickIdx(${i}, event)" title="${it.caption}">
+            <i>${pad2(i + 1)}</i><span>${it.tag}</span>
+          </button>
+        `).join("")}
+      </div>
+      <span class="idx-count">${idx + 1} / ${list.length}</span>
+    </div>
+  `;
+}
+
+/* ---------- Render Gallery Component for Platform ('ios' | 'mac') ---------- */
+function renderGallery(scheme, platform) {
+  const list = slidesOf();
+  const n = list.length;
+  const idx = Math.min(S.idx, n - 1);
+  const cur = list[idx];
+  const isIOS = platform === "ios";
+
+  /* Pair Scene (N = 2) */
+  if (n === 2) {
+    if (scheme === "bug") {
+      return `
+        <div class="pair-row">
+          ${list.map((s, i) => `
+            <div class="pair-bug-card" onclick="openLB(${i}, event)">
+              <div class="pair-bug-box" title="现状 Bug：width:100% + object-fit:contain 导致阴影外框撑满半列，两侧留出空边">
+                ${renderSlideSVG(s)}
+              </div>
+              <div class="pair-clean-cap">${s.tag} <span style="color:var(--danger);font-size:11px">(外框鼓出空边)</span></div>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+    return `
+      <div class="pair-clean-row">
+        ${list.map((s, i) => `
+          <div class="pair-clean-card ${isIOS ? "ios" : ""}" onclick="openLB(${i}, event)">
+            <div class="pair-clean-pic">${renderSlideSVG(s)}</div>
+            <div class="pair-clean-cap">${s.tag}</div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  /* 0. BUG REPRODUCTION */
+  if (scheme === "bug") {
+    if (isIOS) {
+      return `
+        <div class="bug-wrap">
+          <div class="ios-bug-stage" onclick="openLB(${idx}, event)">
+            <div class="art-slot">${renderSlideSVG(cur)}</div>
+            ${cur.kind !== "landscape" ? `
+              <div class="void-callout">
+                <b>右侧 ~72% 空白黑框</b>
+                <small>固定 208pt 高 + 全宽外框包住空气</small>
+                <small>${cur.kind === "long" ? "超长图被压成 50pt 细条" : "图片仅宽 95pt，文字看不清"}</small>
+              </div>
+            ` : ""}
+          </div>
+          ${renderIndexBar(list, idx)}
+          <div class="stage-cap">${cur.caption}</div>
+        </div>
+      `;
+    }
+    return `
+      <div class="bug-wrap">
+        <div class="mac-bug-stage ${cur.kind === "landscape" ? "landscape" : ""}" onclick="openLB(${idx}, event)">
+          <button class="stage-nav prev" onclick="pickIdx(${idx - 1}, event)">${IC.chevL}</button>
+          <div class="art-slot">${renderSlideSVG(cur)}</div>
+          ${cur.kind !== "landscape" ? `
+            <div class="void-callout" style="height:82%;max-width:460px">
+              <b>桌面端右侧 ~73% 空置 + 右翻页箭头悬空在远端</b>
+              <small>舞台宽高比锁死 [1.25, 2.2]，单张竖图孤立贴左，右箭头距图 500px</small>
+            </div>
+          ` : ""}
+          <button class="stage-nav next" onclick="pickIdx(${idx + 1}, event)">${IC.chevR}</button>
+        </div>
+        ${renderIndexBar(list, idx)}
+        <div class="stage-cap">${cur.caption}</div>
+      </div>
+    `;
+  }
+
+  /* OPTION A: PROPORTIONAL MULTI-UP SNAP STRIP (推荐 1) */
+  if (scheme === "a") {
+    return `
+      <div class="opt-a">
+        <div class="opt-a-stage">
+          <div class="opt-a-track">
+            ${list.map((s, i) => {
+              const isLong = s.kind === "long";
+              const active = i === idx;
+              return `
+                <div class="opt-a-card ${isIOS ? "ios" : ""} ${isLong ? "ultra-long" : ""} ${active ? "active" : ""}"
+                     onclick="clickStripCard(${i}, event)"
+                     title="${active ? "再次点击打开灯箱看原图" : "点击选中此图并查看下方完整说明"}">
+                  ${renderSlideSVG(s)}
+                  <button class="card-zoom-pill" onclick="openLB(${i}, event)" title="放大看原图">${IC.zoom}</button>
+                  ${isLong ? `<div class="long-fade"><span class="long-pill">↕ 长图 · 点开看全图</span></div>` : ""}
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </div>
+        ${renderIndexBar(list, idx)}
+        <div class="stage-cap">${cur.caption}</div>
+      </div>
+    `;
+  }
+
+  /* OPTION B: SIDE-INDEX STAGE (推荐 2 · 左图右目录分栏) */
+  if (scheme === "b") {
+    const isLand = cur.kind === "landscape";
+    const isLong = cur.kind === "long";
+    return `
+      <div class="opt-b ${isIOS ? "ios" : ""}">
+        <div class="opt-b-art ${isLand ? "landscape-art" : ""} ${isLong ? "ultra-long" : ""}" onclick="openLB(${idx}, event)" title="点击打开毛玻璃灯箱">
+          ${renderSlideSVG(cur)}
+          ${isLong ? `<div class="long-fade"><span class="long-pill">↕ 长图全览</span></div>` : ""}
+        </div>
+        <div class="opt-b-side">
+          <div>
+            <div class="opt-b-head">
+              <span>截图目录</span>
+              <span>${idx + 1} / ${n}</span>
+            </div>
+            <div class="opt-b-list" style="margin-top:5px">
+              ${list.map((s, i) => `
+                <button class="opt-b-item ${i === idx ? "on" : ""}" onclick="pickIdx(${i}, event)">
+                  <i>${pad2(i + 1)}</i><span>${s.tag}</span>
+                </button>
+              `).join("")}
+            </div>
+          </div>
+          <div class="opt-b-desc">
+            ${cur.caption}
+            <div><button class="opt-b-open" onclick="openLB(${idx}, event)">点击左图放大查看 (${cur.dim}) ↗</button></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  /* OPTION C: FIT-CONTENT STAGE + NEXT-SLIDE PEEK */
+  const nextIdx = (idx + 1) % n;
+  const nextSlide = list[nextIdx];
+  const isLand = cur.kind === "landscape";
+  const isLong = cur.kind === "long";
+  return `
+    <div class="opt-c ${isIOS ? "ios" : ""}">
+      <div class="opt-c-canvas">
+        <div class="opt-c-main ${isLand ? "landscape-art" : ""} ${isLong ? "ultra-long" : ""}" onclick="openLB(${idx}, event)">
+          <button class="stage-nav prev" onclick="pickIdx(${idx - 1}, event)">${IC.chevL}</button>
+          ${renderSlideSVG(cur)}
+          ${isLong ? `<div class="long-fade"><span class="long-pill">↕ 长图 · 点击查看全图 (${cur.dim})</span></div>` : ""}
+          <button class="stage-nav next" onclick="pickIdx(${idx + 1}, event)">${IC.chevR}</button>
+        </div>
+        ${!isLand && nextSlide.kind !== "landscape" ? `
+          <div class="opt-c-peek ${nextSlide.kind === "long" ? "ultra-long" : ""}" onclick="pickIdx(${nextIdx}, event)" title="点击切换到下一张：${nextSlide.tag}">
+            ${renderSlideSVG(nextSlide)}
+            <div class="opt-c-peek-tag"><span>${pad2(nextIdx + 1)} ›</span></div>
+          </div>
+        ` : ""}
+      </div>
+      ${renderIndexBar(list, idx)}
+      <div class="stage-cap">${cur.caption}</div>
+    </div>
+  `;
+}
+
+function proseIntro() {
+  if (S.scene === "mixed") return "以下为桌面端与标准直板机在双端联调下的真实渲染截图（横竖图混排）：";
+  if (S.scene === "long") return "以下为整页长滚动性能报告（1:4.2 超长图）与模拟器页面的归档截图：";
+  if (S.scene === "pair") return "以下为展开侧边栏与收起侧边栏的 2 张竖屏对比截图（N = 2 双图行）：";
+  return "以下为标准直板机（无右侧竖栏）在展开侧边栏与不展开侧边栏下的真实模拟器渲染截图：";
+}
+
+function renderIPhoneFrame(scheme) {
+  return `
+    <div class="phone">
+      <div class="scr">
+        <div class="island"></div>
+        <div class="sb"><span>12:38</span><span>5G · 96%</span></div>
+        <div class="inav">
+          <div class="itcap iglass">
+            <b>直板机侧边栏交互验证</b>
+            <small>hermesh · Gemini 4 Carbon</small>
+          </div>
+        </div>
+        <div class="irail-float">
+          <div class="irail-btn iglass">${IC.toc}</div>
+          <div class="irail-btn iglass">${IC.dots}</div>
+        </div>
+        <div class="iscroll">
+          <h3>截图预览</h3>
+          <p>${proseIntro()}</p>
+          ${renderGallery(scheme, "ios")}
+          <p style="color:var(--l2);font-size:13.8px;margin-top:4px">点击图片可呼出全屏毛玻璃灯箱，支持双指缩放与下滑关闭。</p>
+        </div>
+        <div class="idock">
+          <div class="ibox iglass">继续和智能体对话…</div>
+          <div class="ichat-fab iglass">${IC.chat}</div>
+        </div>
+        <div class="homebar"></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderMacFrame(scheme) {
+  const split = S.device === "mac-split";
+  const wideOnly = S.device === "mac";
+  return `
+    <div class="mac ${wideOnly ? "wide-only" : ""}">
+      <div class="scol ${split ? "split-narrow" : ""}">
+        <div class="ctool">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="ctitle">
+            <h2>直板机侧边栏交互验证</h2>
+            <span class="th-where">hermesh · macOS Desktop</span>
+          </div>
+          <button class="tb-ic ${split ? "on" : ""}" onclick="setOpt('device', '${split ? "mac" : "mac-split"}')" title="切换右侧文件分栏（检验 468px 窄列 vs 752px 全宽）">${IC.sidebar}</button>
+        </div>
+        <div class="cscroll">
+          <div class="mcol">
+            <h3>截图预览</h3>
+            <p>${proseIntro()}</p>
+            ${renderGallery(scheme, "mac")}
+            <p style="color:var(--l2);font-size:13.8px">验证结论：直板机在展开与收起 Drawer 两种状态下布局切换平滑，无右侧竖栏遮挡。</p>
+          </div>
+        </div>
+        <div class="mcmp-zone">
+          <div class="mcmp"><span>继续提问，或点击上方图片打开灯箱查看原图…</span></div>
+        </div>
+      </div>
+      ${split ? `
+        <aside class="sfp-mock">
+          <div class="sfp-mock-hd"><span>SessionImages.swift · 右侧分栏已开启</span></div>
+          <div class="sfp-mock-bd">
+            <b>右侧文件分栏 (SidePanel)</b>
+            <span>左侧会话列收窄至 468px</span>
+            <span>点击右上角分栏图标可切回 752px 全宽</span>
+          </div>
+        </aside>
+      ` : ""}
+    </div>
+  `;
+}
+
+function renderMatrix() {
+  const cards = [
+    { key: "bug", title: "0 · 现状复现（全宽空框 + 右侧 72% 留白）", badge: "痛点复现", cls: "danger" },
+    { key: "a", title: "方案 A · 等高多卡同屏轨道（推荐 1）", badge: "同屏直比 · 零留白", cls: "ok" },
+    { key: "b", title: "方案 B · 左图右目录分栏舞台（推荐 2）", badge: "化空白为完整目录", cls: "ok" },
+    { key: "c", title: "方案 C · 贴边舞台 + 下一张微露", badge: "单主图聚焦 + 防空洞", cls: "" }
+  ];
+  return `
+    <div class="matrix">
+      ${cards.map((c) => `
+        <div class="mcard">
+          <div class="mcard-hd">
+            <b>${c.title}</b>
+            <span class="pbadge ${c.cls}">${c.badge}</span>
+          </div>
+          <div class="mcard-bd">
+            <p>${proseIntro()}</p>
+            ${renderGallery(c.key, "ios")}
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderNotes() {
+  const info = {
+    bug: {
+      title: "双端代码体检：为什么右边空了一大片？",
+      desc: "已逐行排查 iOS 与桌面端实现，定位到 4 处具体成因：",
+      m1: ["~72% 留白", "单竖图占宽仅 27%"],
+      m2: ["95 × 208 pt", "iPhone 竖图缩成邮票"],
+      m3: ["500px 悬空", "Mac 右翻页钮远离图片"],
+      bullets: [
+        "<b>手机端外框画在了全宽容器上（<code>SessionImages.swift:603</code>）</b>：<code>.frame(maxWidth: .infinity, maxHeight: 208, alignment: .leading)</code> 写在了 <code>.strokeBorder</code> 内部，导致圆角灰框包住了右侧 250pt 的纯黑空地（与你截图完全一致）。",
+        "<b>桌面端舞台比例锁死横屏（<code>InlineImages.tsx:171</code>）</b>：<code>stageRatio</code> 下限锁在 <code>1.25</code>，752px 宽舞台放单张手机竖图时右侧空出 550px，右箭头 <code>›</code> 悬空在最右边缘。",
+        "<b>超长截图（<code>1:4</code>）按高度硬缩不可读</b>：整张塞进 208pt/440px 高会变成 50px 宽的细面条（切到「超长截图」场景可看）。",
+        "<b>顺带抓出桌面端双竖图空框 Bug（<code>files.css:200</code>）</b>：<code>N=2</code> 并排时 <code>img { width: 100%; object-fit: contain }</code> 让阴影框撑满半列（切到「2 张竖图」可看）。"
+      ]
+    },
+    a: {
+      title: "方案 A · 等高多卡同屏轨道（推荐 1）",
+      desc: "最自然也最通用的解法：一行能放多张竖图时，直接并排铺开！",
+      m1: ["2.3 张 / 4 张", "手机 / 电脑同屏可见"],
+      m2: ["+40% 清晰度", "手机高度升至 244pt"],
+      m3: ["横竖通吃", "混排也严丝合缝"],
+      bullets: [
+        "<b>一眼对比多张状态</b>：比如你截图里的「01 展开侧边栏」和「02 不展开侧边栏」，在手机上直接左右紧挨着同屏对比，在电脑全宽下 <b>4 张竖图直接一排全放下</b>，零翻页、零右侧黑洞！",
+        "<b>保留底部索引条与完整图注</b>：点选任意卡片即高亮对应 <code>01/02</code> 芯片并更新底部双行说明；再次点击（或点右下角放大钮）直达毛玻璃灯箱。",
+        "<b>横竖混排天然自适应</b>：切到「横竖混排」可见——横图占宽卡、竖图占窄卡，相邻卡片自然填满行宽。"
+      ]
+    },
+    b: {
+      title: "方案 B · 左图右目录分栏舞台（推荐 2）",
+      desc: "巧用竖图右侧天然空出的 60% 区域，把底部截断的芯片变成右侧完整目录：",
+      m1: ["0 截断标题", "01~04 完整竖排"],
+      m2: ["省 ~68px 高", "省掉底部两层条"],
+      m3: ["点目录秒切", "阅读视线不上下跳"],
+      bullets: [
+        "<b>化废为宝</b>：你原截图底部 <code>02 直板机 · 不展开侧边...</code> 被迫截断，而图片右边却大片空着；把索引列表移到图片右侧后，4 个标题与图注全部舒展完整显示！",
+        "<b>智能触发条件清晰</b>：当一组图片以竖图为主（例如首图或多数图片 <code>width / height &lt; 0.85</code>）时自动启用「左图右目录」；纯横屏大图组则保持「上图下索引」。",
+        "<b>权衡</b>：单图焦点感强、目录最清晰；但若想同时并排看两张图本身的像素差异，不如方案 A 直观。"
+      ]
+    },
+    c: {
+      title: "方案 C · 贴边紧凑舞台 + 邻帧微露",
+      desc: "改动最小的单主图改良版：拆掉空外框，收缩舞台宽度并微露下一张：",
+      m1: ["描边 100% 贴图", "消灭全宽空黑框"],
+      m2: ["箭头贴图边缘", "告别 Mac 远端悬空"],
+      m3: ["邻帧 Peek", "暗示可滑且补齐视觉"],
+      bullets: [
+        "<b>精准止血</b>：外框与阴影严格贴在图片像素上，桌面端左右翻页箭头收拢在主图边缘，右侧露出半张下一帧预览（Peek）打破单调留白。",
+        "<b>超长图保护（A/B/C 均可共用）</b>：宽高比 <code>&lt; 0.38</code> 的整页长截图采用「可读最小宽度 + 顶部首屏对齐 + 底部渐隐 <code>↕ 长图</code> 提示」，不再缩成看不清的细线。"
+      ]
+    },
+    matrix: {
+      title: "四宫格全景对照（同一组数据直观PK）",
+      desc: "对比现状与 A / B / C 三套方案在相同竖图组下的空间利用率：",
+      m1: ["方案 A", "最适合多图同屏对比"],
+      m2: ["方案 B", "最适合长标题分步导览"],
+      m3: ["超长图保护", "可叠加至任一方案"],
+      bullets: [
+        "<b>也可以做「A + C 组合」或「纯横屏用原舞台、含竖图自动切方案 A / B」</b>：比如纯横屏（16:9）本来就能撑满全宽，保留现有舞台；一旦出现竖图/长图，自动走方案 A（同屏多卡轨道）或方案 B（左图右目录）！"
+      ]
+    }
+  }[S.scheme];
+
+  return `
+    <h3>${info.title}</h3>
+    <p>${info.desc}</p>
+    <div class="metric-row">
+      <div class="metric"><small>${info.m1[1]}</small><b>${info.m1[0]}</b></div>
+      <div class="metric"><small>${info.m2[1]}</small><b>${info.m2[0]}</b></div>
+      <div class="metric"><small>${info.m3[1]}</small><b>${info.m3[0]}</b></div>
+    </div>
+    <div class="blk">
+      <ul>${info.bullets.map((b) => `<li>${b}</li>`).join("")}</ul>
+    </div>
+  `;
+}
+
+function renderControls() {
+  const btn = (k, v, label, danger = false) =>
+    `<button class="${S[k] === v ? (danger ? "danger-on" : "on") : ""}" onclick="setOpt('${k}','${v}')">${label}</button>`;
+
+  return `
+    <div class="g">
+      <b>优化方案</b>
+      ${btn("scheme", "bug", "0 · 现状复现 (留白)", true)}
+      ${btn("scheme", "a", "方案 A · 等高多卡同屏 (推荐 1)")}
+      ${btn("scheme", "b", "方案 B · 左图右目录 (推荐 2)")}
+      ${btn("scheme", "c", "方案 C · 贴边舞台+邻帧")}
+      ${btn("scheme", "matrix", "四宫格同屏比")}
+    </div>
+    <div class="g">
+      <b>测试场景</b>
+      ${btn("scene", "portrait4", "4 张竖屏 (复现你截图)")}
+      ${btn("scene", "mixed", "1 长图 + 3 横图")}
+      ${btn("scene", "long", "超长截图 (1:4.2)")}
+      ${btn("scene", "pair", "2 张竖图 (双图框修复)")}
+    </div>
+    <div class="g">
+      <b>设备检查</b>
+      ${btn("device", "both", "手机 + 电脑同屏")}
+      ${btn("device", "ios", "仅手机 iPhone")}
+      ${btn("device", "mac", "电脑全宽 (752px)")}
+      ${btn("device", "mac-split", "电脑分栏 (468px)")}
+    </div>
+    <div class="g">
+      <b>外观</b>
+      ${btn("theme", "black", "纯黑 OLED")}
+      ${btn("theme", "dark", "深色灰")}
+      ${btn("theme", "light", "浅色")}
+    </div>
+  `;
+}
+
+function renderLB() {
+  const root = document.getElementById("lbRoot");
+  if (!S.lb) { root.innerHTML = ""; return; }
+  const list = slidesOf();
+  const idx = S.lb.idx;
+  const cur = list[idx];
+  const isLand = cur.kind === "landscape";
+  root.innerHTML = `
+    <div class="slb" onclick="closeLB()">
+      <div class="slb-top" onclick="event.stopPropagation()">
+        <div></div>
+        <div class="slb-center">
+          <div class="slb-title">${cur.name}</div>
+          <div class="slb-meta">${idx + 1} / ${list.length} · ${cur.dim} · ${cur.size}</div>
+        </div>
+        <div class="slb-acts">
+          <button class="slb-btn" onclick="closeLB()" title="关闭 (Esc)">${IC.x}</button>
+        </div>
+      </div>
+      <div class="slb-stage">
+        <button class="slb-nav prev" onclick="stepLB(-1, event)">${IC.chevL}</button>
+        <div class="slb-art ${isLand ? "landscape" : ""} ${S.lb.zoomed ? "zoomed" : ""}" onclick="toggleZoomLB(event)">
+          ${renderSlideSVG(cur)}
+        </div>
+        <div class="slb-cap" onclick="event.stopPropagation()">${cur.caption}</div>
+        <button class="slb-nav next" onclick="stepLB(1, event)">${IC.chevR}</button>
+      </div>
+    </div>
+  `;
+}
+
+function render() {
+  const stage = document.getElementById("stage");
+  if (S.scheme === "matrix") {
+    stage.innerHTML = renderMatrix();
+  } else if (S.device === "ios") {
+    stage.innerHTML = renderIPhoneFrame(S.scheme);
+  } else if (S.device === "mac" || S.device === "mac-split") {
+    stage.innerHTML = renderMacFrame(S.scheme);
+  } else {
+    stage.innerHTML = renderIPhoneFrame(S.scheme) + renderMacFrame(S.scheme);
+  }
+  document.getElementById("notes").innerHTML = renderNotes();
+  document.getElementById("ctl").innerHTML = renderControls();
+  renderLB();
+}
+
+render();
+</script>
+</body>
+</html>

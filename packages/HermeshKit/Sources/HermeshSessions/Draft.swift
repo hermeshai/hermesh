@@ -394,3 +394,18 @@ public func shortImageTag(_ caption: String, fileName: String) -> String {
     }
     return head
 }
+
+public let tallStageImageRatio: Double = 1.05
+public let ultraLongImageRatio: Double = 0.38
+
+/// True when a decoded image is portrait, tall, or near-square (`width / height <= 1.05`),
+/// so 3+ multi-image groups switch from a single-slide wide stage to an equal-height multi-card strip.
+public func isTallStageImage(width: Int, height: Int) -> Bool {
+    width > 0 && height > 0 && Double(width) / Double(height) <= tallStageImageRatio
+}
+
+/// True when a decoded image is an ultra-long scroll capture (`width / height < 0.38`),
+/// warranting a readable width floor, top-aligned first-screen crop, and subtle badge inline.
+public func isUltraLongImage(width: Int, height: Int) -> Bool {
+    width > 0 && height > 0 && Double(width) / Double(height) < ultraLongImageRatio
+}

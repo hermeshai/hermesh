@@ -9,7 +9,16 @@ import { DraftContext } from "../scope";
 import { FileTag } from "./FileTag";
 import { baseName, FilesHomeContext, FilesRunContext, sizeText, useFileInfo, type FilesHome, type SessionFile } from "./files";
 import { openFileInLightbox, openSessionLightbox, sessionImageMenu } from "./ImageLightbox";
-import { ReplyImagesContext, requestSessionImage, shortImageTag, useSessionImage, type ReplyImageItem } from "./images";
+import {
+  isTallStageImage,
+  isUltraLongImage,
+  ReplyImagesContext,
+  requestSessionImage,
+  shortImageTag,
+  useAnyTallSessionImage,
+  useSessionImage,
+  type ReplyImageItem,
+} from "./images";
 
 export type InlineImageSlotPayload = {
   items: ReplyImageItem[];
@@ -67,7 +76,7 @@ function SessionImageGroup({ items, fromLinks }: { items: ReplyImageItem[]; from
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [draft, visible]);
+  }, [draft, visible, Boolean(home)]);
 
   if (!home) {
     if (fromLinks) return null;
@@ -141,18 +150,51 @@ function SessionImageStage({
   const { t } = useTranslation("session");
   const st = useStore();
   const barRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const progScrollUntilRef = useRef(0);
   const stateKey = `${home.session}\0${run}\0${items[0]?.path ?? ""}`;
   const [activeIdx, setActiveIdx] = useState(() => stageIndexStore.get(stateKey) ?? 0);
   const [stageRatio, setStageRatio] = useState<number | null>(null);
   const [loupe, setLoupe] = useState<{ idx: number; left: number; bottom: number } | null>(null);
+  const [canScroll, setCanScroll] = useState(false);
+  const hasTall = useAnyTallSessionImage(home.session, run, items.map((it) => it.path));
+  const [latchedStrip, setLatchedStrip] = useState(false);
+  useEffect(() => {
+    if (hasTall && !latchedStrip) setLatchedStrip(true);
+  }, [hasTall, latchedStrip]);
+  const isStrip = latchedStrip || hasTall;
+
   const safeIdx = Math.max(0, Math.min(items.length - 1, activeIdx));
   const activeItem = items[safeIdx]!;
+
+  const scrollCardIntoView = (idx: number, smooth: boolean) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const card = track.querySelector<HTMLElement>(`[data-strip-idx="${idx}"]`);
+    if (!card) return;
+    const maxLeft = Math.max(0, track.scrollWidth - track.clientWidth);
+    if (maxLeft <= 2) return;
+    const cardLeft = card.offsetLeft;
+    const cardRight = cardLeft + card.offsetWidth;
+    const viewLeft = track.scrollLeft;
+    const viewRight = viewLeft + track.clientWidth;
+    let nextLeft = viewLeft;
+    if (cardLeft < viewLeft + 4) nextLeft = Math.max(0, cardLeft - 4);
+    else if (cardRight > viewRight - 4) nextLeft = Math.min(maxLeft, cardRight - track.clientWidth + 4);
+    else return;
+    progScrollUntilRef.current = performance.now() + (smooth ? 420 : 80);
+    track.scrollTo({
+      left: nextLeft,
+      behavior: smooth && !matchMedia("(prefers-reduced-motion: reduce)").matches ? "smooth" : "instant",
+    });
+  };
 
   const select = (next: number) => {
     const wrapped = ((next % items.length) + items.length) % items.length;
     rememberStageIndex(stateKey, wrapped);
     setLoupe(null);
     setActiveIdx(wrapped);
+    if (isStrip) scrollCardIntoView(wrapped, true);
   };
 
   const info = useFileInfo(activeItem.path);
@@ -163,23 +205,64 @@ function SessionImageStage({
   const activeFile: SessionFile = { session: home.session, run, path: effectivePath };
   const activeState = useSessionImage(goneByInfo ? null : activeFile, visible && !goneByInfo, online, true);
 
-  // Lock stage aspect ratio to the first decoded slide so stepping across slides never shifts vertical scroll,
-  // while keeping the stage background transparent so narrower/portrait slides never show gray side walls.
+  // Lock stage aspect ratio to the first decoded landscape slide so stepping across wide slides never shifts vertical scroll,
+  // while switching automatically to equal-height multi-up strip whenever any slide is portrait/tall (width / height <= 1.05).
   useEffect(() => {
-    if (stageRatio !== null) return;
+    if (stageRatio !== null || isStrip) return;
     if (activeState?.status === "ready" && activeState.width > 0 && activeState.height > 0) {
       setStageRatio(Math.max(1.25, Math.min(2.2, activeState.width / activeState.height)));
     }
-  }, [stageRatio, activeState]);
+  }, [stageRatio, isStrip, activeState]);
 
-  // Only prefetch immediate neighbors on initial view (avoids flooding N thumbnail fetches at once).
+  // Only prefetch immediate neighbors in single-slide stage mode (avoids flooding N thumbnail fetches at once).
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || isStrip) return;
     for (const delta of [1, -1]) {
       const neighbor = items[((safeIdx + delta) % items.length + items.length) % items.length];
       if (neighbor) requestSessionImage({ session: home.session, run, path: neighbor.path }, false, true);
     }
-  }, [visible, safeIdx, home.session, run, items]);
+  }, [visible, isStrip, safeIdx, home.session, run, items]);
+
+  useEffect(() => {
+    if (!isStrip) return;
+    const track = trackRef.current;
+    if (!track) return;
+    const measure = () => setCanScroll(track.scrollWidth > track.clientWidth + 4);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(track);
+    Array.from(track.children).forEach((c) => ro.observe(c));
+    return () => ro.disconnect();
+  }, [isStrip, items.length]);
+
+  const handleTrackScroll = () => {
+    const track = trackRef.current;
+    if (!track) return;
+    setCanScroll(track.scrollWidth > track.clientWidth + 4);
+    if (performance.now() < progScrollUntilRef.current) return;
+    const maxLeft = Math.max(0, track.scrollWidth - track.clientWidth);
+    if (maxLeft <= 2) return;
+    if (track.scrollLeft >= maxLeft - 6) {
+      const last = items.length - 1;
+      rememberStageIndex(stateKey, last);
+      setActiveIdx(last);
+      return;
+    }
+    const cards = track.querySelectorAll<HTMLElement>("[data-strip-idx]");
+    const anchor = track.scrollLeft + 24;
+    let best = 0;
+    let bestDist = Infinity;
+    cards.forEach((el) => {
+      const i = Number(el.dataset.stripIdx ?? 0);
+      const dist = Math.abs(el.offsetLeft - anchor);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = i;
+      }
+    });
+    rememberStageIndex(stateKey, best);
+    setActiveIdx(best);
+  };
 
   const activeResolvedPath = activeState?.status === "ready" ? activeState.resolvedPath : effectivePath;
   const activeFolder = activeState?.status === "ready" ? activeState.folder : info?.folder ?? "";
@@ -191,6 +274,17 @@ function SessionImageStage({
     if (idx === safeIdx) {
       setLoupe(null);
       return;
+    }
+    if (isStrip && trackRef.current) {
+      const card = trackRef.current.querySelector<HTMLElement>(`[data-strip-idx="${idx}"]`);
+      if (
+        card &&
+        card.offsetLeft >= trackRef.current.scrollLeft - 2 &&
+        card.offsetLeft + card.offsetWidth <= trackRef.current.scrollLeft + trackRef.current.clientWidth + 2
+      ) {
+        setLoupe(null);
+        return;
+      }
     }
     const bar = barRef.current;
     if (!bar) return;
@@ -207,7 +301,7 @@ function SessionImageStage({
       ref={boxRef}
       className="simg-stage"
       data-testid="session-image-row"
-      data-simg-mode="stage"
+      data-simg-mode={isStrip ? "strip" : "stage"}
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === "ArrowLeft") {
@@ -219,81 +313,135 @@ function SessionImageStage({
         }
       }}
     >
-      <div
-        className={`simg-stage-main ${stageLoading ? "shimmer" : ""}`}
-        style={stageRatio ? ({ "--stage-ratio": String(stageRatio) } as CSSProperties) : undefined}
-      >
-        <button
-          type="button"
-          className="simg-stage-nav prev"
-          aria-label={t("files.prevImage")}
-          data-testid="session-image-prev"
-          onClick={(e) => {
-            e.stopPropagation();
-            select(safeIdx - 1);
-          }}
+      {isStrip ? (
+        <div className="simg-strip-main">
+          {canScroll && (
+            <button
+              type="button"
+              className="simg-stage-nav prev"
+              aria-label={t("files.prevImage")}
+              data-testid="session-image-prev"
+              onClick={(e) => {
+                e.stopPropagation();
+                select(safeIdx - 1);
+              }}
+            >
+              <Icon name="chevL" />
+            </button>
+          )}
+          <div ref={trackRef} className="simg-strip-track" onScroll={handleTrackScroll}>
+            {items.map((it, idx) => (
+              <SessionStripCard
+                key={`${idx}:${it.path}`}
+                idx={idx}
+                item={it}
+                selected={idx === safeIdx}
+                home={home}
+                run={run}
+                visible={visible}
+                online={online}
+                urgent={Math.abs(idx - safeIdx) <= 2}
+                fromLinks={fromLinks}
+                onOpen={(resolvedPath) => {
+                  rememberStageIndex(stateKey, idx);
+                  setActiveIdx(idx);
+                  onOpen(it, resolvedPath);
+                }}
+              />
+            ))}
+          </div>
+          {canScroll && (
+            <button
+              type="button"
+              className="simg-stage-nav next"
+              aria-label={t("files.nextImage")}
+              data-testid="session-image-next"
+              onClick={(e) => {
+                e.stopPropagation();
+                select(safeIdx + 1);
+              }}
+            >
+              <Icon name="chevR" />
+            </button>
+          )}
+        </div>
+      ) : (
+        <div
+          className={`simg-stage-main ${stageLoading ? "shimmer" : ""}`}
+          style={stageRatio ? ({ "--stage-ratio": String(stageRatio) } as CSSProperties) : undefined}
         >
-          <Icon name="chevL" />
-        </button>
-
-        {goneByInfo || activeState?.status === "missing" ? (
-          <div className="simg-stage-empty">
-            {!fromLinks ? (
-              <FileTag target={{ path: activeItem.path }}>{activeItem.caption || baseName(activeItem.path)}</FileTag>
-            ) : (
-              <span>{t("files.notFound")}</span>
-            )}
-          </div>
-        ) : activeState?.status === "offline" ? (
-          <div className="simg-offline" data-testid="session-image-offline" data-path={effectivePath}>
-            <Icon name="cloudOff" />
-            <span>{t("files.imageOffline", { machine: machineName(st, home.machine) })}</span>
-          </div>
-        ) : activeState?.status === "tooLarge" ? (
-          <div className="simg-offline" data-path={effectivePath}>
-            <Icon name="doc" />
-            <span>{t("files.tooLarge", { size: sizeText(activeState.size) })}</span>
-          </div>
-        ) : activeState?.status === "error" ? (
-          <div className="simg-offline" data-path={effectivePath}>
-            <Icon name="warn" />
-            <span>{activeState.message}</span>
-          </div>
-        ) : (
           <button
             type="button"
-            className="simg-btn simg-stage-view"
-            aria-label={activeItem.caption || activeName}
-            data-testid="session-image"
-            data-path={activeResolvedPath}
-            onClick={() => onOpen(activeItem, activeResolvedPath)}
-            onContextMenu={(e) => {
-              e.preventDefault();
+            className="simg-stage-nav prev"
+            aria-label={t("files.prevImage")}
+            data-testid="session-image-prev"
+            onClick={(e) => {
               e.stopPropagation();
-              void sessionImageMenu(st, home, { session: home.session, run, path: activeResolvedPath }, activeFolder, {
-                onOpen: () => onOpen(activeItem, activeResolvedPath),
-              });
+              select(safeIdx - 1);
             }}
           >
-            {activeState?.status === "ready" && (
-              <img src={activeState.url} alt={activeItem.caption || activeName} draggable={false} />
-            )}
+            <Icon name="chevL" />
           </button>
-        )}
 
-        <button
-          type="button"
-          className="simg-stage-nav next"
-          aria-label={t("files.nextImage")}
-          data-testid="session-image-next"
-          onClick={(e) => {
-            e.stopPropagation();
-            select(safeIdx + 1);
-          }}
-        >
-          <Icon name="chevR" />
-        </button>
-      </div>
+          {goneByInfo || activeState?.status === "missing" ? (
+            <div className="simg-stage-empty">
+              {!fromLinks ? (
+                <FileTag target={{ path: activeItem.path }}>{activeItem.caption || baseName(activeItem.path)}</FileTag>
+              ) : (
+                <span>{t("files.notFound")}</span>
+              )}
+            </div>
+          ) : activeState?.status === "offline" ? (
+            <div className="simg-offline" data-testid="session-image-offline" data-path={effectivePath}>
+              <Icon name="cloudOff" />
+              <span>{t("files.imageOffline", { machine: machineName(st, home.machine) })}</span>
+            </div>
+          ) : activeState?.status === "tooLarge" ? (
+            <div className="simg-offline" data-path={effectivePath}>
+              <Icon name="doc" />
+              <span>{t("files.tooLarge", { size: sizeText(activeState.size) })}</span>
+            </div>
+          ) : activeState?.status === "error" ? (
+            <div className="simg-offline" data-path={effectivePath}>
+              <Icon name="warn" />
+              <span>{activeState.message}</span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="simg-btn simg-stage-view"
+              aria-label={activeItem.caption || activeName}
+              data-testid="session-image"
+              data-path={activeResolvedPath}
+              onClick={() => onOpen(activeItem, activeResolvedPath)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void sessionImageMenu(st, home, { session: home.session, run, path: activeResolvedPath }, activeFolder, {
+                  onOpen: () => onOpen(activeItem, activeResolvedPath),
+                });
+              }}
+            >
+              {activeState?.status === "ready" && (
+                <img src={activeState.url} alt={activeItem.caption || activeName} draggable={false} />
+              )}
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="simg-stage-nav next"
+            aria-label={t("files.nextImage")}
+            data-testid="session-image-next"
+            onClick={(e) => {
+              e.stopPropagation();
+              select(safeIdx + 1);
+            }}
+          >
+            <Icon name="chevR" />
+          </button>
+        </div>
+      )}
 
       <div
         ref={barRef}
@@ -349,6 +497,110 @@ function SessionImageStage({
         </figcaption>
       )}
     </figure>
+  );
+}
+
+function SessionStripCard({
+  idx,
+  item,
+  selected,
+  home,
+  run,
+  visible,
+  online,
+  urgent,
+  fromLinks,
+  onOpen,
+}: {
+  idx: number;
+  item: ReplyImageItem;
+  selected: boolean;
+  home: FilesHome;
+  run: string;
+  visible: boolean;
+  online: boolean;
+  urgent: boolean;
+  fromLinks: boolean;
+  onOpen: (resolvedPath: string) => void;
+}) {
+  const { t } = useTranslation("session");
+  const st = useStore();
+  const info = useFileInfo(item.path);
+  const goneByInfo = info?.kind === FileRefKind.MISSING || info?.kind === FileRefKind.OUTSIDE;
+  const effectivePath = info && !goneByInfo && info.path ? info.path : item.path;
+  const file: SessionFile = { session: home.session, run, path: effectivePath };
+  const state = useSessionImage(goneByInfo ? null : file, visible && !goneByInfo, online, urgent);
+
+  if (goneByInfo || state?.status === "missing") {
+    if (fromLinks) return null;
+    return (
+      <div className="simg-fallback" data-strip-idx={idx}>
+        <FileTag target={{ path: item.path }}>{item.caption || baseName(item.path)}</FileTag>
+      </div>
+    );
+  }
+  if (state?.status === "offline") {
+    return (
+      <div className="simg-offline" data-strip-idx={idx} data-testid="session-image-offline" data-path={effectivePath}>
+        <Icon name="cloudOff" />
+        <span>{t("files.imageOffline", { machine: machineName(st, home.machine) })}</span>
+      </div>
+    );
+  }
+  if (state?.status === "tooLarge") {
+    return (
+      <div className="simg-offline" data-strip-idx={idx} data-path={effectivePath}>
+        <Icon name="doc" />
+        <span>{t("files.tooLarge", { size: sizeText(state.size) })}</span>
+      </div>
+    );
+  }
+  if (state?.status === "error") {
+    if (fromLinks) return null;
+    return (
+      <div className="simg-offline" data-strip-idx={idx} data-path={effectivePath}>
+        <Icon name="warn" />
+        <span>{state.message}</span>
+      </div>
+    );
+  }
+
+  const ready = state?.status === "ready" && state.width > 0 && state.height > 0;
+  const ultraLong = Boolean(ready && state?.status === "ready" && isUltraLongImage(state.width, state.height));
+  const ratio = ready && state?.status === "ready" ? state.width / state.height : 0.5;
+  const resolvedPath = state?.status === "ready" ? state.resolvedPath : effectivePath;
+  const folder = state?.status === "ready" ? state.folder : info?.folder ?? "";
+  const name = baseName(resolvedPath);
+
+  return (
+    <div
+      className={`simg-strip-card ${selected ? "on" : ""} ${ultraLong ? "ultra-long" : ""} ${state?.status === "ready" ? "ready" : "loading shimmer"}`}
+      data-strip-idx={idx}
+      style={!ultraLong && ready ? ({ "--card-ratio": String(ratio) } as CSSProperties) : undefined}
+    >
+      <button
+        type="button"
+        className="simg-btn"
+        aria-label={item.caption || name}
+        data-testid="session-image"
+        data-path={resolvedPath}
+        onClick={() => onOpen(resolvedPath)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void sessionImageMenu(st, home, { session: home.session, run, path: resolvedPath }, folder, {
+            onOpen: () => onOpen(resolvedPath),
+          });
+        }}
+      >
+        {state?.status === "ready" && <img src={state.url} alt={item.caption || name} draggable={false} />}
+        {ultraLong && (
+          <span className="simg-long-veil" data-testid="session-image-long-badge">
+            <span>{`↕ ${t("files.longImage")}`}</span>
+          </span>
+        )}
+      </button>
+    </div>
   );
 }
 
@@ -452,17 +704,20 @@ function SessionImageCard({
     );
   }
 
-  const ratio = state?.status === "ready" && state.width > 0 && state.height > 0 ? state.width / state.height : undefined;
+  const ready = state?.status === "ready" && state.width > 0 && state.height > 0;
+  const ratio = ready && state?.status === "ready" ? state.width / state.height : undefined;
+  const compact = multi && Boolean(ready && state?.status === "ready" && isTallStageImage(state.width, state.height));
+  const ultraLong = Boolean(ready && state?.status === "ready" && isUltraLongImage(state.width, state.height));
   const resolvedPath = state?.status === "ready" ? state.resolvedPath : effectivePath;
   const folder = state?.status === "ready" ? state.folder : info?.folder ?? "";
 
   return (
     <figure
-      className={`simg-card ${multi ? "in-row" : "single"} ${state?.status === "ready" ? "ready" : "loading shimmer"}`}
+      className={`simg-card ${multi ? "in-row" : "single"} ${compact ? "compact" : ""} ${ultraLong ? "ultra-long" : ""} ${state?.status === "ready" ? "ready" : "loading shimmer"}`}
       style={
-        multi && ratio
-          ? { flexGrow: Math.max(0.55, Math.min(2.0, ratio)), flexBasis: 0 }
-          : !multi && state?.status === "ready" && state.width > 0 && state.height > 0
+        multi && ratio && !compact && !ultraLong
+          ? ({ flexGrow: Math.max(0.55, Math.min(2.0, ratio)), flexBasis: 0, "--img-ratio": String(ratio) } as CSSProperties)
+          : !multi && ready && !ultraLong && state?.status === "ready"
             ? { aspectRatio: `${state.width} / ${state.height}` }
             : undefined
       }
@@ -484,6 +739,11 @@ function SessionImageCard({
       >
         <span className="simg-pic">
           {state?.status === "ready" && <img src={state.url} alt={item.caption || name} draggable={false} />}
+          {ultraLong && (
+            <span className="simg-long-veil" data-testid="session-image-long-badge">
+              <span>{`↕ ${t("files.longImage")}`}</span>
+            </span>
+          )}
         </span>
         {showCaption && (
           <span className="simg-pair-cap">

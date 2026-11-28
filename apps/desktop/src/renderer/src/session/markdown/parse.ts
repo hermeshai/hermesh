@@ -260,6 +260,25 @@ export function extractPureImageSlice(text: string, basePath = ""): { items: Rep
   return items.length > 0 && fromList !== null ? { items, fromList } : null;
 }
 
+export const TALL_STAGE_RATIO = 1.05;
+export const ULTRA_LONG_RATIO = 0.38;
+
+/**
+ * True when a decoded image is portrait, tall, or near-square (`width / height <= 1.05`),
+ * so 3+ multi-image groups switch from a single-slide wide stage to an equal-height multi-card strip.
+ */
+export function isTallStageImage(width: number, height: number): boolean {
+  return width > 0 && height > 0 && width / height <= TALL_STAGE_RATIO;
+}
+
+/**
+ * True when a decoded image is an ultra-long scroll capture (`width / height < 0.38`),
+ * warranting a readable width floor, top-aligned first-screen crop, and subtle badge inline.
+ */
+export function isUltraLongImage(width: number, height: number): boolean {
+  return width > 0 && height > 0 && width / height < ULTRA_LONG_RATIO;
+}
+
 /**
  * Extracts a concise 2–12 char editorial label from an image caption for typographic index chips
  * (e.g. `"0 · 现状对照：桌面端..."` → `"现状对照"`, `"方案 A（默认收起）：..."` → `"方案 A"`),

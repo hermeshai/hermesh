@@ -235,9 +235,17 @@ test("a reply's files are tags opening side panel tabs; a page runs there offlin
   await expect(walkReply.locator('.md-callout[data-kind="note"]')).toContainText("兼容 Antigravity 轮播与提示框");
   await expect(walkReply).not.toContainText("[!NOTE]");
   await expect(walkReply.locator("pre")).toHaveCount(0);
-  await expect(walkReply.getByTestId("session-image-row").getByTestId("session-image")).toHaveCount(2);
+  const walkImgs = walkReply.getByTestId("session-image-row").getByTestId("session-image");
+  await expect(walkImgs).toHaveCount(2);
+  await log.hover();
+  await page.mouse.wheel(0, -1400);
+  await expect(walkImgs.first().locator("img")).toBeVisible();
+  const darkPairImgBox = (await walkImgs.first().locator("img").boundingBox())!;
+  expect(darkPairImgBox.width).toBeLessThan(darkPairImgBox.height);
 
-  // 3+ consecutive standalone images (separated by blank lines) merge into a frameless Stage + typographic index bar.
+  // 3+ consecutive standalone landscape images merge into a frameless Stage + typographic index bar.
+  await log.hover();
+  await page.mouse.wheel(0, 600);
   const stageReply = log.locator(".am").filter({ hasText: "多图舞台：" });
   const stageBox = stageReply.getByTestId("session-image-row");
   await expect(stageBox).toHaveAttribute("data-simg-mode", "stage");
@@ -261,6 +269,36 @@ test("a reply's files are tags opening side panel tabs; a page runs there offlin
   await page.keyboard.press("Escape");
   await expect(lb).toBeHidden();
 
+  // 3+ images containing portrait / ultra-long screenshots switch to Option A equal-height multi-up strip.
+  await log.hover();
+  await page.mouse.wheel(0, 1200);
+  const stripReply = log.locator(".am").filter({ hasText: "竖图轨道：" });
+  const stripBox = stripReply.getByTestId("session-image-row");
+  await expect(stripBox).toHaveAttribute("data-simg-mode", "strip");
+  const stripCards = stripBox.getByTestId("session-image");
+  await expect(stripCards).toHaveCount(3);
+  await expect(stripCards.nth(0).locator("img")).toBeVisible();
+  await expect(stripCards.nth(1).locator("img")).toBeVisible();
+  await expect(stripCards.nth(2).locator("img")).toBeVisible();
+  const sBox0 = (await stripCards.nth(0).boundingBox())!;
+  const sBox1 = (await stripCards.nth(1).boundingBox())!;
+  const sBox2 = (await stripCards.nth(2).boundingBox())!;
+  expect(Math.abs(sBox0.y - sBox1.y)).toBeLessThanOrEqual(6);
+  expect(sBox0.x + sBox0.width).toBeLessThanOrEqual(sBox1.x);
+  expect(sBox2.width).toBeGreaterThanOrEqual(150);
+  await expect(stripBox.getByTestId("session-image-long-badge")).toContainText("长图");
+  await stripBox.getByTestId("session-image-thumb").nth(1).click();
+  await expect(stripBox.getByTestId("session-image-counter")).toHaveText("2 / 3");
+  await expect(stripBox.getByTestId("session-image-caption")).toHaveText("02 直板机 · 不展开侧边栏");
+  await stripCards.nth(2).click();
+  await expect(lb).toBeVisible();
+  await expect(lb.getByTestId("lightbox-title")).toHaveText("long_3.png");
+  await expect(lb.getByTestId("lightbox-meta")).toContainText("3 / 3 · 120 × 520");
+  await page.keyboard.press("Escape");
+  await expect(lb).toBeHidden();
+
+  await log.hover();
+  await page.mouse.wheel(0, -1200);
   const walkTag = walkReply.locator('[data-testid=file-tag][data-path$="walkthrough.md"]');
   await expect(walkTag).toBeVisible();
   await expect(walkTag).not.toHaveClass(/\bgone\b/);

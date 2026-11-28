@@ -19110,6 +19110,16 @@
         }
       }
     },
+    "Long image": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "长图"
+          }
+        }
+      }
+    },
     "View Larger": {
       "localizations": {
         "zh-Hans": {
