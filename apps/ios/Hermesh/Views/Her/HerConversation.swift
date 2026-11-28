@@ -76,49 +76,54 @@ struct HerConversation: View {
                     guard rows.contains(where: { $0.key == key }) else { return model.show(String(localized: "The message this replies to isn’t here anymore")) }
                     reveal(key, in: proxy, after: .zero)
                 }
-            }
-            // As a session's page: open at the end, and stay there as it grows unless the owner scrolled up.
-            .scrollPosition($position)
-            .defaultScrollAnchor(.bottom, for: .initialOffset)
-            // Earlier messages are read while the top is still two screens away (read only once the top showed, the
-            // page was at its very top, pulled past it even, and stayed there, showing the page just read and reading the
-            // next, to the first message).
-            .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top < 2 * $0.containerSize.height } action: { _, near in
-                nearTop = near
-                if near { Task { await chat.earlier() } }
-            }
-            // Put above what was first, they push what is in sight down by as much as they take: unless the end is
-            // followed, it is scrolled as far again, in the layout that puts them there. On the scroll view itself: that takes it while the finger is
-            // still on the page or it is still gliding, where a scroll asked of SwiftUI then (ScrollPosition, a
-            // ScrollViewReader's) was dropped, and what was in sight went a page away.
-            .onScrollGeometryChange(for: HerGrowth.self) { HerGrowth(first: said.first?.key, height: $0.contentSize.height) } action: { was, now in
-                guard !atEnd, was.first != now.first, let first = was.first, said.contains(where: { $0.key == first }), now.height > was.height,
-                      let view = scrollView.view else { return }
-                view.contentOffset.y += now.height - was.height
-            }
-            .onScrollPhaseChange { _, phase in scrolling = phase == .interacting || phase == .decelerating }
-            .onScrollGeometryChange(for: Bool.self) { fromEnd($0) < 80 } action: { _, end in
-                if scrolling { atEnd = end }
-            }
-            // As it grows, and as less of it shows (the keyboard comes up): what was last stays in view.
-            .onScrollGeometryChange(for: [CGFloat].self) { [$0.contentSize.height, $0.containerSize.height] } action: { _, _ in
-                if atEnd && !scrolling { position.scrollTo(edge: .bottom) }
-            }
-            .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, away in far.away = away }
-            .scrollDismissesKeyboard(.interactively)
-            .keyboardAwayOnTap()
-            .overlay {
-                if rows.isEmpty && busy == nil {
-                    HerEmpty(chat: chat, machine: machine, loading: noModel || (chat.session == nil && state == .ready),
-                             notice: notice, openDiagnostics: openDiagnostics)
+                // As a session's page: open at the end, and stay there as it grows unless the owner scrolled up.
+                .scrollPosition($position)
+                .defaultScrollAnchor(.bottom, for: .initialOffset)
+                // Earlier messages are read while the top is still two screens away (read only once the top showed, the
+                // page was at its very top, pulled past it even, and stayed there, showing the page just read and reading the
+                // next, to the first message).
+                .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top < 2 * $0.containerSize.height } action: { _, near in
+                    nearTop = near
+                    if near { Task { await chat.earlier() } }
                 }
-            }
-            .safeAreaInset(edge: .bottom) {
-                if !archived {
-                    HerToEnd(far: far) {
-                        atEnd = true
-                        withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
-                    } over: {
+                // Put above what was first, they push what is in sight down by as much as they take: unless the end is
+                // followed, it is scrolled as far again, in the layout that puts them there. On the scroll view itself: that takes it while the finger is
+                // still on the page or it is still gliding, where a scroll asked of SwiftUI then (ScrollPosition, a
+                // ScrollViewReader's) was dropped, and what was in sight went a page away.
+                .onScrollGeometryChange(for: HerGrowth.self) { HerGrowth(first: said.first?.key, height: $0.contentSize.height) } action: { was, now in
+                    guard !atEnd, was.first != now.first, let first = was.first, said.contains(where: { $0.key == first }), now.height > was.height,
+                          let view = scrollView.view else { return }
+                    view.contentOffset.y += now.height - was.height
+                }
+                .onScrollPhaseChange { _, phase in scrolling = phase == .interacting || phase == .decelerating }
+                .onScrollGeometryChange(for: Bool.self) { fromEnd($0) < 80 } action: { _, end in
+                    if scrolling { atEnd = end }
+                }
+                // As it grows, and as less of it shows (the keyboard comes up): what was last stays in view.
+                .onScrollGeometryChange(for: [CGFloat].self) { [$0.contentSize.height, $0.containerSize.height] } action: { _, _ in
+                    if atEnd && !scrolling { position.scrollTo(edge: .bottom) }
+                }
+                .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, away in far.away = away }
+                .scrollDismissesKeyboard(.interactively)
+                .keyboardAwayOnTap()
+                .overlay {
+                    if rows.isEmpty && busy == nil {
+                        HerEmpty(chat: chat, machine: machine, loading: noModel || (chat.session == nil && state == .ready),
+                                 notice: notice, openDiagnostics: openDiagnostics)
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if !archived {
+                        HerToEnd(far: far) {
+                            atEnd = true
+                            withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
+                        }
+                    }
+                }
+                .scrollEdgeEffectHidden(false, for: .bottom)
+                .scrollEdgeEffectStyle(.soft, for: .bottom)
+                .safeAreaBar(edge: .bottom) {
+                    if !archived {
                         if let asking {
                             HerApprovalPanel(chat: chat, approval: asking.approval, agent: asking.agent, waiting: asking.waiting).id(asking.approval.callID)
                         } else {
@@ -126,6 +131,7 @@ struct HerConversation: View {
                         }
                     }
                 }
+                .background(Color(.systemBackground))
             }
         }
         .quickLookPreview($preview)
@@ -222,13 +228,20 @@ private struct HerScrollFinder: UIViewRepresentable {
 }
 
 /// The button back to the end, over what stands at the conversation's bottom.
-private struct HerToEnd<Bottom: View>: View {
+private struct HerToEnd: View {
     let far: HerFar
     let action: () -> Void
-    @ViewBuilder let over: Bottom
 
     var body: some View {
-        Group { over }.toEndButton(far.away, action: action)
+        ZStack(alignment: .bottom) {
+            if far.away {
+                ToEndButton(action: action)
+                    .transition(.opacity.combined(with: .offset(y: 6)))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+        .animation(.easeOut(duration: 0.18), value: far.away)
     }
 }
 

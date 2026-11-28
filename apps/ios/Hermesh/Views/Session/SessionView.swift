@@ -1255,17 +1255,18 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
                 alignTask?.cancel()
                 alignTask = nil
             }
-            .safeAreaInset(edge: .bottom) {
+            .toEndButton(away && !atEnd, waitingAgent: waitingAgent, waitingPlan: waitingPlan, todoSummary: todoSummary) {
+                atEnd = true
+                away = false
+                positioned = true
+                alignTask?.cancel()
+                alignTask = nil
+                withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
+            }
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
+            .safeAreaBar(edge: .bottom) {
                 VStack(spacing: 0) { bottom() }
                     .frame(maxWidth: .infinity)
-                    .toEndButton(away && !atEnd, waitingAgent: waitingAgent, waitingPlan: waitingPlan, todoSummary: todoSummary) {
-                        atEnd = true
-                        away = false
-                        positioned = true
-                        alignTask?.cancel()
-                        alignTask = nil
-                        withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
-                    }
             }
     }
 

@@ -58,16 +58,14 @@ private struct HerPage: View {
         // The whole page whatever shows: her mark at the top and the panel's dim over all of it, not around a
         // status as tall as its words.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemBackground))
         // Scrolled up, the conversation fades out in a short band at the bar's lower edge and is gone under her mark,
         // the buttons and the clock: no blurred message reads behind them, and no line where a blur would stop.
+        // Drawn as a top overlay rather than `.mask` so the conversation stays out of an offscreen mask group and keeps
+        // native `safeAreaBar` bottom scroll-edge blur and Liquid Glass backdrop sampling under `HerComposer`.
         .scrollEdgeEffectHidden(true, for: .top)
-        .mask {
-            VStack(spacing: 0) {
-                Color.clear.frame(height: max(statusBar + barHeight - fade, statusBar))
-                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: fade)
-                Color.black
-            }
-            .ignoresSafeArea()
+        .overlay(alignment: .top) {
+            HerTopFade(height: max(statusBar + barHeight - fade, statusBar), fade: fade)
         }
         // Over the conversation and its composer, under her mark: the panel grows from where the tag is.
         .overlay(alignment: .top) {
@@ -446,8 +444,11 @@ struct HerConversationPage: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemBackground))
         .scrollEdgeEffectHidden(true, for: .top)
-        .mask { topFadeMask }
+        .overlay(alignment: .top) {
+            HerTopFade(height: max(statusBar + barHeight - fade, statusBar), fade: fade)
+        }
         .overlay(alignment: .top) { teamOverlay }
         .safeAreaBar(edge: .top) {
             VStack(spacing: 6) {
@@ -460,15 +461,6 @@ struct HerConversationPage: View {
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0 }
         }
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { statusBar = $0 }
-    }
-
-    private var topFadeMask: some View {
-        VStack(spacing: 0) {
-            Color.clear.frame(height: max(statusBar + barHeight - fade, statusBar))
-            LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: fade)
-            Color.black
-        }
-        .ignoresSafeArea()
     }
 
     @ViewBuilder private var teamOverlay: some View {
@@ -653,6 +645,23 @@ struct HerConversationPage: View {
 
 extension View {
     func herConnections(_ chat: HerChat, machine: HerMachine) -> some View { modifier(HerConnections(chat: chat, machine: machine)) }
+}
+
+private struct HerTopFade: View {
+    let height: CGFloat
+    let fade: CGFloat
+
+    var body: some View {
+        let bg = Color(.systemBackground)
+        VStack(spacing: 0) {
+            bg.frame(height: height)
+            LinearGradient(colors: [bg, bg.opacity(0)], startPoint: .top, endPoint: .bottom).frame(height: fade)
+            Spacer(minLength: 0)
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
 }
 
 /// Progress, at the top right of Her's conversation, or in the system's bar where it stands on the side (inBar): the

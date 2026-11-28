@@ -213,6 +213,106 @@ final class SidebarUITests: XCTestCase {
         }
     }
 
+    /// Verifies that both SessionPage and HerConversation host their bottom composers in a soft-edge `.safeAreaBar(edge: .bottom)`
+    /// (matching the top SessionBar and the unfolded Sidebar footer), while keeping the `to-end` button hittable above the bar
+    /// on both slab portrait and unfolded wide split-screen layouts.
+    func testComposerBottomSoftEdgeBlurSlabAndUnfolded() throws {
+        XCUIDevice.shared.orientation = .portrait
+        defer { XCUIDevice.shared.orientation = .portrait }
+        launchDemo(["-DemoSessionDetailRegression", "-DemoSessions", "16", "-HerDemo", "24", "-HermeshTestTurns", "YES"])
+
+        // 1. Slab portrait: open Long history session, scroll up so messages pass under both top SessionBar and bottom composer,
+        //    and verify `to-end` sits above the composer and scrolls back to the bottom when tapped.
+        openDrawer()
+        let longRow = app.descendants(matching: .any)["session-Long history session"].firstMatch
+        XCTAssertTrue(longRow.waitForExistence(timeout: 10), "Long history session in drawer")
+        longRow.tap()
+
+        let composer = app.descendants(matching: .any)["thread-composer"].firstMatch
+        let latest = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Long latest #24")).firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 10), "session composer")
+        XCTAssertTrue(latest.waitForExistence(timeout: 10), "opened at bottom message")
+
+        let win = app.windows.firstMatch
+        for _ in 0..<3 {
+            let s = win.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.32))
+            let e = win.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
+            s.press(forDuration: 0.05, thenDragTo: e, withVelocity: .default, thenHoldForDuration: 0.2)
+            usleep(200_000)
+        }
+        let toEnd = app.buttons["to-end"]
+        XCTAssertTrue(toEnd.waitForExistence(timeout: 5), "to-end appears above bottom safeAreaBar when scrolled up")
+        XCTAssertTrue(toEnd.isHittable, "to-end remains hittable above bottom safeAreaBar")
+        XCTAssertLessThan(toEnd.frame.maxY, composer.frame.minY, "to-end floats above composer")
+        usleep(300_000)
+        let slabShot = XCUIScreen.main.screenshot()
+        attach(slabShot, name: "slab-session-top-and-bottom-soft-blur")
+
+        // Pixel check: text scrolled into the bottom safeAreaBar pocket (just below the composer glass) is softened/attenuated
+        // compared to sharp full-contrast conversation rows in the middle of the viewport.
+        let midViewport = CGRect(x: win.frame.minX + 24, y: win.frame.midY - 80, width: win.frame.width - 48, height: 140)
+        let underPocket = CGRect(x: win.frame.minX + 24, y: composer.frame.maxY + 7, width: win.frame.width - 48, height: 3)
+        let midContrast = contrastStats(in: slabShot.image, rectInPoints: midViewport)
+        let pocketContrast = contrastStats(in: slabShot.image, rectInPoints: underPocket)
+        XCTAssertGreaterThan(midContrast.range, 0.5, "expected sharp message text in middle viewport")
+        XCTAssertLessThan(pocketContrast.range, midContrast.range * 0.65,
+                          "bottom safeAreaBar soft edge attenuates content under composer (pocket=\(pocketContrast.range), mid=\(midContrast.range))")
+
+        toEnd.tap()
+        XCTAssertTrue(toEnd.waitForNonExistence(timeout: 6), "tapping to-end returns session to bottom")
+
+        // 2. Unfolded wide split-screen: Sidebar footer on the left and Session / Her composers on the right share symmetrical
+        //    bottom soft scroll-edge blurs, and `to-end` works on both SessionPage and HerConversation.
+        XCUIDevice.shared.orientation = .landscapeLeft
+        sleep(2)
+        let drawer = app.descendants(matching: .any)["drawer"].firstMatch
+        guard app.frame.width > app.frame.height, drawer.waitForExistence(timeout: 5), !app.buttons["menu"].exists else {
+            throw XCTSkip("no wide beside layout on this simulator")
+        }
+
+        let convX = (drawer.frame.maxX + app.frame.maxX) / 2
+        for _ in 0..<3 {
+            let s = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: convX, dy: app.frame.height * 0.32))
+            let e = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: convX, dy: app.frame.height * 0.78))
+            s.press(forDuration: 0.05, thenDragTo: e, withVelocity: .default, thenHoldForDuration: 0.2)
+            usleep(200_000)
+        }
+        XCTAssertTrue(toEnd.waitForExistence(timeout: 5), "to-end appears in unfolded session view")
+        usleep(300_000)
+        attach(XCUIScreen.main.screenshot(), name: "unfolded-symmetrical-session-bottom-blur")
+        toEnd.tap()
+        XCTAssertTrue(toEnd.waitForNonExistence(timeout: 6), "tapping to-end in unfolded session returns to bottom")
+
+        // Switch to Her beside the sidebar, scroll up so messages pass under HerComposer, and verify Her's `to-end` + blur.
+        drawer.buttons["her-place"].tap()
+        let herComposer = app.descendants(matching: .any)["her-composer"].firstMatch
+        XCTAssertTrue(herComposer.waitForExistence(timeout: 10), "Her composer beside sidebar")
+        usleep(500_000)
+        for _ in 0..<3 {
+            let s = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: convX, dy: app.frame.height * 0.36))
+            let e = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: convX, dy: app.frame.height * 0.80))
+            s.press(forDuration: 0.05, thenDragTo: e, withVelocity: .default, thenHoldForDuration: 0.2)
+            usleep(200_000)
+        }
+        XCTAssertTrue(toEnd.waitForExistence(timeout: 5), "to-end appears above HerComposer when scrolled up")
+        XCTAssertTrue(toEnd.isHittable, "Her to-end is hittable above safeAreaBar")
+        XCTAssertLessThan(toEnd.frame.maxY, herComposer.frame.minY, "Her to-end floats above HerComposer")
+        usleep(300_000)
+        let herShot = XCUIScreen.main.screenshot()
+        attach(herShot, name: "unfolded-symmetrical-her-bottom-blur")
+
+        let herMid = CGRect(x: drawer.frame.maxX + 24, y: app.frame.midY - 70, width: app.frame.maxX - drawer.frame.maxX - 48, height: 120)
+        let herUnder = CGRect(x: drawer.frame.maxX + 24, y: herComposer.frame.maxY + 7, width: app.frame.maxX - drawer.frame.maxX - 48, height: 4)
+        let herMidContrast = contrastStats(in: herShot.image, rectInPoints: herMid)
+        let herPocketContrast = contrastStats(in: herShot.image, rectInPoints: herUnder)
+        XCTAssertGreaterThan(herMidContrast.range, 0.4, "expected sharp Her message content in middle viewport")
+        XCTAssertLessThan(herPocketContrast.range, herMidContrast.range * 0.65,
+                          "HerComposer safeAreaBar soft edge blurs and attenuates content under composer (pocket=\(herPocketContrast.range), mid=\(herMidContrast.range))")
+
+        toEnd.tap()
+        XCTAssertTrue(toEnd.waitForNonExistence(timeout: 6), "tapping Her to-end returns HerConversation to bottom")
+    }
+
     /// Verifies that standalone `SessionsHubView` runs live provider-orbit and shimmer animations (not frozen when
     /// `drawerOpen == false`), reflects real disconnected/connecting Relay states on machine pills instead of stale
     /// green dots, and opens `ConnectionDiagnosticsSheet` from its live sync banner.
@@ -616,8 +716,18 @@ final class SidebarUITests: XCTestCase {
     }
 
     private func contrastStats(in image: UIImage, rectInPoints: CGRect, ignoringOrange: Bool = false) -> (range: Double, contrastPixels: Int) {
-        guard let cg = image.cgImage else { return (0, 0) }
-        let scale = CGFloat(cg.width) / max(1, image.size.width)
+        let normalized: UIImage
+        if image.imageOrientation == .up {
+            normalized = image
+        } else {
+            let fmt = UIGraphicsImageRendererFormat()
+            fmt.scale = image.scale
+            normalized = UIGraphicsImageRenderer(size: image.size, format: fmt).image { _ in
+                image.draw(in: CGRect(origin: .zero, size: image.size))
+            }
+        }
+        guard let cg = normalized.cgImage else { return (0, 0) }
+        let scale = CGFloat(cg.width) / max(1, normalized.size.width)
         let pixelRect = CGRect(
             x: floor(rectInPoints.minX * scale),
             y: floor(rectInPoints.minY * scale),

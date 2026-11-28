@@ -480,7 +480,8 @@ struct SessionPage: View {
                 NewSessionAurora(progress: roleProgress).ignoresSafeArea()
             }
         }
-        .safeAreaInset(edge: .bottom) {
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .safeAreaBar(edge: .bottom) {
             VStack(spacing: 6) {
                 if who == .agent {
                     placeRow
@@ -705,7 +706,8 @@ struct SessionPage: View {
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .scrollDismissesKeyboard(.interactively)
         .keyboardAwayOnTap()
-        .safeAreaInset(edge: .bottom) {
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .safeAreaBar(edge: .bottom) {
             box.padding(.bottom, 4)
         }
         .sessionBar(nil, renaming: $renaming, deleting: $deleting,

@@ -814,19 +814,19 @@ struct ToEndButton: View {
 }
 
 extension View {
-    /// The button back to the end, centred 12 over this (what is at the bottom of a conversation, or nothing),
-    /// while `away`: it takes no room, so nothing moves as it comes and goes.
+    /// The button back to the end, centred 12 over the bottom bar (or the bottom safe area when there is none),
+    /// while `away`: overlaid inside the scroll container above `safeAreaBar` so touches always reach it, and
+    /// taking no room so nothing moves as it comes and goes.
     func toEndButton(_ away: Bool, waitingAgent: String? = nil, waitingPlan: Bool = false, todoSummary: TodoEndSummary? = nil, action: @escaping () -> Void) -> some View {
-        overlay(alignment: .top) {
-            ZStack {
+        overlay(alignment: .bottom) {
+            ZStack(alignment: .bottom) {
                 if away {
                     ToEndButton(waitingAgent: waitingAgent, waitingPlan: waitingPlan, todoSummary: todoSummary, action: action)
                         .transition(.opacity.combined(with: .offset(y: 6)))
                 }
             }
-            .frame(minHeight: 44)
             .padding(.horizontal, 16)
-            .alignmentGuide(.top) { $0[.bottom] + 12 }
+            .padding(.bottom, 12)
             .animation(.easeOut(duration: 0.18), value: away)
         }
     }
