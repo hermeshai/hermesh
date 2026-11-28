@@ -317,7 +317,7 @@ private func kind(_ it: TranscriptItem) -> String {
         .message(seq: 12, incoming: false, name: "c_bot", text: "halfway", queued: false),
     ])
     let askers = rows.compactMap { row -> String? in
-        if case .user(_, _, _, let asker, _) = row { return asker } else { return nil }
+        if case .user(_, _, _, let asker, _, _) = row { return asker } else { return nil }
     }
     #expect(askers == ["c_grok", "c_her"])
 
@@ -329,13 +329,21 @@ private func kind(_ it: TranscriptItem) -> String {
     }
     let withAttachments = sessionTranscript(.with {
         $0.runs = [.with { $0.runID = "r1"; $0.ordinal = 1; $0.status = .running }]
-        $0.items = [item(1, "r1", .userMessage) { $0.text = ""; $0.attachments = [att] }]
+        $0.items = [
+            item(1, "r1", .userMessage) { $0.text = "initial"; $0.status = "completed" },
+            item(2, "r1", .userMessage) { $0.text = "live steer"; $0.status = "steered" },
+            item(3, "r1", .userMessage) { $0.text = ""; $0.attachments = [att]; $0.status = "promoted_to_steer" },
+        ]
     })
-    guard case .user(_, let text, _, _, let gotAtts) = withAttachments.last else {
+    let steeredFlags = withAttachments.compactMap { row -> Bool? in
+        if case .user(_, _, _, _, _, let steered) = row { return steered } else { return nil }
+    }
+    #expect(steeredFlags == [false, true, true])
+    guard case .user(_, let text, _, _, let gotAtts, let isSteered) = withAttachments.last else {
         Issue.record("expected user row with attachments")
         return
     }
-    #expect(text == "" && gotAtts == [att])
+    #expect(text == "" && gotAtts == [att] && isSteered)
 }
 
 @Test func partialOutputIsAPreviewOrLongerThanTheSummary() {

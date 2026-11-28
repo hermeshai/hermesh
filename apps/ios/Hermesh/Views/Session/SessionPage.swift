@@ -181,6 +181,7 @@ struct SessionPage: View {
     @State private var lastSend: Task<Void, Never>?
     /// Queued run IDs with an in-flight ManageQueue action.
     @State private var managingRuns: Set<String> = []
+    @State private var batchManagingQueue = false
     /// A new session's first message, from Send until its machine answers.
     @State private var starting: Starting?
     /// First-use third-party AI data-sharing disclosure when starting a Her conversation before accepting on Her's page.
@@ -201,6 +202,7 @@ struct SessionPage: View {
     /// True once the wide trailing panel has settled open, so the conversation lays out once at rest rather than across every spring frame.
     @State private var trailingSettled = false
     @State private var questionTyping = false
+    @State private var queueTyping = false
     @State private var boxOpen = false
     @State private var boxFocused = false
     @ScaledMetric(relativeTo: .body) private var composerLineHeight: CGFloat = 20.5
@@ -743,6 +745,8 @@ struct SessionPage: View {
         let hasInlineQuestion = pendingReq?.kind == .userInput || fallbackQuestion != nil
         let hasInlinePlan = pendingReq?.kind == .planReview
         let hasInlinePrompt = hasInlineQuestion || hasInlinePlan
+        let queued = s.status == .archived ? [] : queuedRuns(of: activeProj)
+        let inlineTyping = (hasInlinePrompt && questionTyping) || queueTyping
         let todos = memo.todos
         let workStatus = sessionWorkStatus(activeProj, steps: steps)
         let todoWindow = windowTodoSteps(todos, workText: workStatus?.text)
@@ -809,16 +813,36 @@ struct SessionPage: View {
                 if let f = sessionFailure(currentSession) {
                     FailedView(session: s, failure: f, grant: grant)
                 }
+                if !queued.isEmpty {
+                    QueuedStreamView(
+                        runs: queued,
+                        sessionID: s.sessionID,
+                        machineID: s.machineID,
+                        running: running,
+                        queueHeld: currentSession?.queueHeld == true,
+                        busyRunIDs: managingRuns,
+                        batchBusy: batchManagingQueue,
+                        isTyping: $queueTyping,
+                        onSteer: { run in manage(run, .promoteToSteer) },
+                        onEdit: { run, text in await editQueuedRun(run, text: text) },
+                        onMoveUp: { run, beforeID in moveQueuedRunUp(run, beforeRunID: beforeID) },
+                        onWithdraw: { run in withdrawQueuedRun(run) },
+                        onMergeAll: { mergeQueuedRuns(queued) },
+                        onSteerAll: { steerAllQueuedRuns(queued) },
+                        onResume: { resumeHeldQueue() }
+                    )
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 13).padding(.bottom, 21)
             .background(ConversationScrollFinder(box: scrollBox))
         }
         .keyboardAwayOnTap()
-        .onChange(of: questionTyping) { _, typingNow in
+        .onChange(of: inlineTyping) { _, typingNow in
             if typingNow {
                 focused = false
                 atEnd = true
+                spoken += 1
                 withAnimation(.smooth(duration: 0.2)) { position.scrollTo(edge: .bottom) }
             }
         }
@@ -828,7 +852,7 @@ struct SessionPage: View {
         .followsEnd(id: sessionID, ready: historyReady(s), spoken: spoken,
                     waitingAgent: hasInlinePrompt && !questionTyping ? s.agent : nil,
                     waitingPlan: hasInlinePlan,
-                    todoSummary: todoEndSummary, atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
+                    todoSummary: todoEndSummary, queuedCount: queued.count, atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
             if s.status != .archived {
                 VStack(spacing: 6) {
                     if let req = pendingReq, req.kind != .userInput, req.kind != .planReview {
@@ -836,8 +860,7 @@ struct SessionPage: View {
                             .id(req.requestID)
                     }
                     backgroundBar
-                    queue(activeProj)
-                    if !(hasInlinePrompt && questionTyping) {
+                    if !inlineTyping {
                         box
                     }
                 }
@@ -1066,38 +1089,6 @@ struct SessionPage: View {
                 .padding(.horizontal, 20)
                 .accessibilityIdentifier("thread-background-bar")
             }
-        }
-    }
-
-    /// What waits for the next turn, in a card over the box: each can steer the turn now, or go.
-    @ViewBuilder private func queue(_ activeProj: Hermesh_Session_V1_SessionProjection?) -> some View {
-        let queued = queuedRuns(of: activeProj)
-        if !queued.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Queue (\(queued.count))").font(.caption).foregroundStyle(.secondary)
-                ForEach(Array(queued.enumerated()), id: \.element.runID) { i, run in
-                    let rowBusy = managingRuns.contains(run.runID)
-                    HStack {
-                        Text(verbatim: run.prompt.isEmpty ? run.attachments.map(\.name).joined(separator: ", ") : run.prompt).font(.subheadline).lineLimit(1)
-                        Spacer()
-                        if rowBusy {
-                            ProgressView().controlSize(.mini)
-                        }
-                        Button("Steer Now") { manage(run, .promoteToSteer) }
-                            .font(.footnote).tint(.accentColor)
-                            .disabled(rowBusy)
-                            .accessibilityIdentifier("thread-queue-promote-\(i)")
-                        Button("Remove", systemImage: "xmark") { manage(run, .cancel) }
-                            .labelStyle(.iconOnly).font(.footnote).tint(.secondary)
-                            .disabled(rowBusy)
-                            .accessibilityIdentifier("thread-queue-cancel-\(i)")
-                    }
-                    .accessibilityIdentifier("thread-queued-\(i)")
-                }
-            }
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .padding(.horizontal, 20)
         }
     }
 
@@ -1851,13 +1842,14 @@ struct SessionPage: View {
             await before?.value
             do {
                 let res = try await api.dispatchMessage(r)
-                if res.queuedOffline {
+                if res.queuedOffline || (res.hasRun && res.run.status == .queued) {
                     var next = projection ?? .init()
                     if res.hasSession { next.session = res.session }
                     if res.hasRun, !next.runs.contains(where: { $0.runID == res.run.runID }) {
                         next.runs.append(res.run)
                     }
                     projection = next
+                    spoken += 1
                 }
             } catch {
                 model.report(error)
@@ -1916,13 +1908,14 @@ struct SessionPage: View {
             await before?.value
             do {
                 let res = try await api.dispatchMessage(r)
-                if res.queuedOffline {
+                if sid == sessionID, res.queuedOffline || (res.hasRun && res.run.status == .queued) {
                     var next = projection ?? .init()
                     if res.hasSession { next.session = res.session }
                     if res.hasRun, !next.runs.contains(where: { $0.runID == res.run.runID }) {
                         next.runs.append(res.run)
                     }
                     projection = next
+                    spoken += 1
                 }
             } catch {
                 model.report(error)
@@ -2064,7 +2057,7 @@ struct SessionPage: View {
     }
 
     private func manage(_ run: Hermesh_Session_V1_Run, _ op: Hermesh_Session_V1_QueueOperation) {
-        guard !managingRuns.contains(run.runID), let api = model.api else { return }
+        guard !managingRuns.contains(run.runID), !batchManagingQueue, let api = model.api else { return }
         var r = Hermesh_Session_V1_ManageQueueRequest()
         r.commandID = UUID().uuidString
         r.sessionID = sessionID
@@ -2076,6 +2069,221 @@ struct SessionPage: View {
             do {
                 let res = try await api.manageQueue(r)
                 if op == .promoteToSteer { spoken += 1 }
+                reconcileQueueResponse(res)
+            } catch {
+                model.report(error)
+            }
+        }
+    }
+
+    private func editQueuedRun(_ run: Hermesh_Session_V1_Run, text: String) async -> Bool {
+        guard !managingRuns.contains(run.runID), !batchManagingQueue, let api = model.api else { return false }
+        var r = Hermesh_Session_V1_ManageQueueRequest()
+        r.commandID = UUID().uuidString
+        r.sessionID = sessionID
+        r.runID = run.runID
+        r.operation = .edit
+        r.text = text
+        r.attachments = run.attachments
+        managingRuns.insert(run.runID)
+        defer { managingRuns.remove(run.runID) }
+        do {
+            let res = try await api.manageQueue(r)
+            reconcileQueueResponse(res)
+            return true
+        } catch {
+            model.report(error)
+            return false
+        }
+    }
+
+    private func moveQueuedRunUp(_ run: Hermesh_Session_V1_Run, beforeRunID: String) {
+        guard !managingRuns.contains(run.runID), !batchManagingQueue, let api = model.api else { return }
+        var r = Hermesh_Session_V1_ManageQueueRequest()
+        r.commandID = UUID().uuidString
+        r.sessionID = sessionID
+        r.runID = run.runID
+        r.beforeRunID = beforeRunID
+        r.operation = .reorder
+        managingRuns.insert(run.runID)
+        Task {
+            defer { managingRuns.remove(run.runID) }
+            do {
+                let res = try await api.manageQueue(r)
+                reconcileQueueResponse(res)
+            } catch {
+                model.report(error)
+            }
+        }
+    }
+
+    private func withdrawQueuedRun(_ run: Hermesh_Session_V1_Run) {
+        guard !managingRuns.contains(run.runID), !batchManagingQueue, let api = model.api else { return }
+        let savedText = run.prompt
+        let savedAtts = run.attachments
+        let savedSel = run.hasModelSelection ? run.modelSelection : selection
+        let savedMode = run.runtimeMode != .unspecified ? run.runtimeMode : clamped
+        let savedInter = run.interactionMode != .unspecified ? run.interactionMode : (plan ? .plan : .code)
+        let sid = sessionID
+        var r = Hermesh_Session_V1_ManageQueueRequest()
+        r.commandID = UUID().uuidString
+        r.sessionID = sid
+        r.runID = run.runID
+        r.operation = .cancel
+        managingRuns.insert(run.runID)
+        Task {
+            defer { managingRuns.remove(run.runID) }
+            do {
+                let res = try await api.manageQueue(r)
+                reconcileQueueResponse(res)
+                model.show(String(localized: "Withdrawn")) {
+                    requeueWithdrawn(sessionID: sid, text: savedText, attachments: savedAtts,
+                                     modelSelection: savedSel, runtimeMode: savedMode, interactionMode: savedInter)
+                }
+            } catch {
+                model.report(error)
+            }
+        }
+    }
+
+    private func requeueWithdrawn(
+        sessionID sid: String,
+        text: String,
+        attachments: [Hermesh_Session_V1_AttachmentRef],
+        modelSelection: Hermesh_Session_V1_ModelSelection,
+        runtimeMode: Hermesh_Identity_V1_RuntimeMode,
+        interactionMode: Hermesh_Session_V1_InteractionMode
+    ) {
+        guard let api = model.api else { return }
+        var r = Hermesh_Session_V1_DispatchMessageRequest()
+        r.commandID = UUID().uuidString
+        r.sessionID = sid
+        r.text = text
+        r.locale = AppLocale.current
+        r.attachments = attachments
+        r.intent = .queue
+        if !modelSelection.instanceID.isEmpty { r.modelSelection = modelSelection }
+        r.runtimeMode = runtimeMode
+        r.interactionMode = interactionMode
+        Task {
+            do {
+                let res = try await api.dispatchMessage(r)
+                if sid == sessionID, res.queuedOffline || (res.hasRun && res.run.status == .queued) {
+                    var next = projection ?? .init()
+                    if res.hasSession { next.session = res.session }
+                    if res.hasRun, !next.runs.contains(where: { $0.runID == res.run.runID }) {
+                        next.runs.append(res.run)
+                    }
+                    projection = next
+                    spoken += 1
+                }
+            } catch {
+                model.report(error)
+            }
+        }
+    }
+
+    private func combinedQueuePayload(_ runs: [Hermesh_Session_V1_Run]) -> (text: String, attachments: [Hermesh_Session_V1_AttachmentRef]) {
+        let joinedText = runs
+            .map { $0.prompt.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        var seen = Set<String>()
+        var combinedAtts: [Hermesh_Session_V1_AttachmentRef] = []
+        for att in runs.flatMap(\.attachments) where seen.insert(att.blobSha256).inserted {
+            combinedAtts.append(att)
+        }
+        return (joinedText, combinedAtts)
+    }
+
+    private func mergeQueuedRuns(_ runs: [Hermesh_Session_V1_Run]) {
+        guard runs.count >= 2, !batchManagingQueue, managingRuns.isEmpty, let api = model.api else { return }
+        let first = runs[0]
+        let rest = Array(runs.dropFirst())
+        let merged = combinedQueuePayload(runs)
+        batchManagingQueue = true
+        Task {
+            defer { batchManagingQueue = false }
+            do {
+                var editReq = Hermesh_Session_V1_ManageQueueRequest()
+                editReq.commandID = UUID().uuidString
+                editReq.sessionID = sessionID
+                editReq.runID = first.runID
+                editReq.operation = .edit
+                editReq.text = merged.text
+                editReq.attachments = merged.attachments
+                var latest = try await api.manageQueue(editReq)
+                for r in rest {
+                    var cancelReq = Hermesh_Session_V1_ManageQueueRequest()
+                    cancelReq.commandID = UUID().uuidString
+                    cancelReq.sessionID = sessionID
+                    cancelReq.runID = r.runID
+                    cancelReq.operation = .cancel
+                    if let nextRes = try? await api.manageQueue(cancelReq) {
+                        latest = nextRes
+                    }
+                }
+                reconcileQueueResponse(latest)
+                model.show(String(localized: "Merged into one message"))
+            } catch {
+                model.report(error)
+            }
+        }
+    }
+
+    private func steerAllQueuedRuns(_ runs: [Hermesh_Session_V1_Run]) {
+        guard !runs.isEmpty, !batchManagingQueue, managingRuns.isEmpty, let api = model.api else { return }
+        let first = runs[0]
+        let rest = Array(runs.dropFirst())
+        let merged = combinedQueuePayload(runs)
+        batchManagingQueue = true
+        Task {
+            defer { batchManagingQueue = false }
+            do {
+                if !rest.isEmpty {
+                    var editReq = Hermesh_Session_V1_ManageQueueRequest()
+                    editReq.commandID = UUID().uuidString
+                    editReq.sessionID = sessionID
+                    editReq.runID = first.runID
+                    editReq.operation = .edit
+                    editReq.text = merged.text
+                    editReq.attachments = merged.attachments
+                    _ = try await api.manageQueue(editReq)
+                    for r in rest {
+                        var cancelReq = Hermesh_Session_V1_ManageQueueRequest()
+                        cancelReq.commandID = UUID().uuidString
+                        cancelReq.sessionID = sessionID
+                        cancelReq.runID = r.runID
+                        cancelReq.operation = .cancel
+                        _ = try? await api.manageQueue(cancelReq)
+                    }
+                }
+                var promoteReq = Hermesh_Session_V1_ManageQueueRequest()
+                promoteReq.commandID = UUID().uuidString
+                promoteReq.sessionID = sessionID
+                promoteReq.runID = first.runID
+                promoteReq.operation = .promoteToSteer
+                let res = try await api.manageQueue(promoteReq)
+                spoken += 1
+                reconcileQueueResponse(res)
+            } catch {
+                model.report(error)
+            }
+        }
+    }
+
+    private func resumeHeldQueue() {
+        guard !batchManagingQueue, managingRuns.isEmpty, let api = model.api else { return }
+        batchManagingQueue = true
+        Task {
+            defer { batchManagingQueue = false }
+            do {
+                var r = Hermesh_Session_V1_ManageQueueRequest()
+                r.commandID = UUID().uuidString
+                r.sessionID = sessionID
+                r.operation = .resumeQueue
+                let res = try await api.manageQueue(r)
+                spoken += 1
                 reconcileQueueResponse(res)
             } catch {
                 model.report(error)

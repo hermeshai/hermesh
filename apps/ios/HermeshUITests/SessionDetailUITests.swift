@@ -636,3 +636,159 @@ final class LiveThinkingUITests: XCTestCase {
                        "historical thinking text must not remain in conversation")
     }
 }
+
+final class QueueSteerFlowUITests: XCTestCase {
+    let app = XCUIApplication()
+
+    override func setUp() {
+        continueAfterFailure = false
+        app.launchArguments = [
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
+            "-DemoSessionDetailRegression",
+        ]
+        app.launch()
+        let tryDemo = app.buttons["try-demo"]
+        XCTAssertTrue(tryDemo.waitForExistence(timeout: 15), "try-demo")
+        tryDemo.tap()
+        let menu = app.descendants(matching: .any)["menu"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 15), "menu")
+        menu.tap()
+        let row = app.descendants(matching: .any)["session-Queue steer session"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "drawer row Queue steer session")
+        row.tap()
+        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10), "session page")
+    }
+
+    func testInlineQueuedBubblesEditReorderMergeSteerAndUndo() {
+        // 1. Pre-seeded queued message renders inline at the foot of the stream with full readable text and no dock card.
+        let q0 = app.descendants(matching: .any)["thread-queued-0"].firstMatch
+        XCTAssertTrue(q0.waitForExistence(timeout: 10), "initial inline queued bubble")
+        let bubble0 = app.buttons["thread-queue-bubble-0"]
+        XCTAssertTrue(bubble0.exists && bubble0.label.contains("returning flashes blank"), "full text shown: \(bubble0.label)")
+        XCTAssertTrue(app.staticTexts["Next turn"].exists, "single item status")
+
+        // 2. Queue two additional follow-ups via the composer's Queue button; scroll stays pinned to the bottom.
+        let composer = app.descendants(matching: .any)["thread-composer"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        composer.tap()
+        composer.typeText("Run favorite unit tests")
+        let queueBtn = app.buttons["thread-queue"]
+        XCTAssertTrue(queueBtn.waitForExistence(timeout: 5) && queueBtn.isEnabled, "Queue pill while running")
+        queueBtn.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["thread-queued-1"].waitForExistence(timeout: 5), "2nd queued bubble")
+
+        composer.tap()
+        composer.typeText("Verify light mode contrast")
+        XCTAssertTrue(queueBtn.wait(for: \.isEnabled, toEqual: true, timeout: 5))
+        queueBtn.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["thread-queued-2"].waitForExistence(timeout: 5), "3rd queued bubble")
+        XCTAssertTrue(app.staticTexts["Next #1"].exists && app.staticTexts["Next #2"].exists && app.staticTexts["Next #3"].exists)
+        XCTAssertTrue(app.staticTexts["3 queued"].exists, "multi-item batch footer")
+
+        // Dismiss composer keyboard before scrolling up.
+        let conv = app.scrollViews.firstMatch
+        conv.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.25)).tap()
+        _ = app.keyboards.firstMatch.waitForNonExistence(timeout: 3)
+        for _ in 0..<5 {
+            let start = conv.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30))
+            let finish = conv.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+            start.press(forDuration: 0.02, thenDragTo: finish)
+        }
+        let toEnd = app.buttons["to-end"]
+        XCTAssertTrue(toEnd.waitForExistence(timeout: 5), "to-end button appears when scrolled up")
+        XCTAssertTrue(toEnd.label.contains("3 queued"), "to-end shows queued count: \(toEnd.label)")
+        toEnd.tap()
+        XCTAssertTrue(toEnd.waitForNonExistence(timeout: 5), "scrolled back to pending bubbles")
+
+        // 3. Inline direct edit: tapping Edit opens inline field, hides bottom composer while typing, and saves in place.
+        let edit1 = app.buttons["thread-queue-edit-1"]
+        XCTAssertTrue(edit1.waitForExistence(timeout: 5) && edit1.isHittable)
+        edit1.tap()
+
+        let editInput = app.descendants(matching: .any)["thread-queue-edit-input"].firstMatch
+        XCTAssertTrue(editInput.waitForExistence(timeout: 5), "inline queue edit input")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "keyboard opens on inline queue edit")
+        XCTAssertFalse(app.descendants(matching: .any)["thread-composer"].exists, "bottom composer hides while editing inline bubble")
+
+        editInput.typeText(" offline")
+        app.buttons["thread-queue-edit-save"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["thread-composer"].waitForExistence(timeout: 5), "bottom composer returns after Save")
+        XCTAssertTrue(app.buttons["thread-queue-bubble-1"].label.contains("Run favorite unit tests offline"),
+                      "updated text saved in place: \(app.buttons["thread-queue-bubble-1"].label)")
+
+        // 4. Move up reorders #2 ahead of #1.
+        app.buttons["thread-queue-up-1"].tap()
+        let predMoved = NSPredicate(format: "label CONTAINS %@", "Run favorite unit tests offline")
+        expectation(for: predMoved, evaluatedWith: app.buttons["thread-queue-bubble-0"])
+        waitForExpectations(timeout: 5)
+
+        // 5. Steer promotes #1 into the active turn with "Joined this turn" note while #2 and #3 remain queued.
+        app.buttons["thread-queue-promote-0"].tap()
+        XCTAssertTrue(app.staticTexts["Joined this turn"].waitForExistence(timeout: 5), "steered bubble shows Joined this turn note")
+        XCTAssertTrue(app.staticTexts["2 queued"].waitForExistence(timeout: 5), "2 items remain queued")
+
+        // 6. Merge into one combines the remaining 2 queued items into a single pending bubble.
+        app.buttons["thread-queue-merge"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["thread-queued-1"].waitForNonExistence(timeout: 5), "merged down to 1 bubble")
+        let mergedLabel = app.buttons["thread-queue-bubble-0"].label
+        XCTAssertTrue(mergedLabel.contains("returning flashes blank") && mergedLabel.contains("Verify light mode contrast"),
+                      "merged text contains both items: \(mergedLabel)")
+
+        // 7. Withdraw removes the bubble and Undo restores it.
+        app.buttons["thread-queue-cancel-0"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["thread-queued-0"].waitForNonExistence(timeout: 5), "bubble withdrawn")
+        let undoBtn = app.buttons["Undo"]
+        XCTAssertTrue(undoBtn.waitForExistence(timeout: 5), "Undo toast appears")
+        undoBtn.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["thread-queued-0"].waitForExistence(timeout: 5), "Undo restores withdrawn bubble")
+        XCTAssertTrue(app.buttons["thread-queue-bubble-0"].label.contains("Verify light mode contrast"))
+    }
+
+    func testChineseInlineQueuedBubblesLabelsAndSteer() {
+        app.terminate()
+        app.launchArguments = [
+            "-AppleLanguages", "(zh-Hans)",
+            "-AppleLocale", "zh_CN",
+            "-DemoSessionDetailRegression",
+        ]
+        app.launch()
+        let tryDemo = app.buttons["try-demo"]
+        XCTAssertTrue(tryDemo.waitForExistence(timeout: 15), "try-demo zh")
+        tryDemo.tap()
+        let menu = app.descendants(matching: .any)["menu"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 15), "menu zh")
+        menu.tap()
+        let row = app.descendants(matching: .any)["session-Queue steer session"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "drawer row zh")
+        row.tap()
+        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10), "session page zh")
+
+        // Verify Chinese single-bubble labels: 排在下一轮 · 插话 · 编辑 · 撤回
+        XCTAssertTrue(app.staticTexts["排在下一轮"].waitForExistence(timeout: 10), "排在下一轮")
+        XCTAssertEqual(app.buttons["thread-queue-promote-0"].label, "插话")
+        XCTAssertEqual(app.buttons["thread-queue-edit-0"].label, "编辑")
+        XCTAssertEqual(app.buttons["thread-queue-cancel-0"].label, "撤回")
+
+        // Queue a 2nd message in Chinese and verify 排队 pill + multi-bubble Chinese batch labels
+        let composer = app.descendants(matching: .any)["thread-composer"].firstMatch
+        composer.tap()
+        composer.typeText("顺便跑一下收藏单测")
+        let queueBtn = app.buttons["thread-queue"]
+        XCTAssertTrue(queueBtn.waitForExistence(timeout: 5) && queueBtn.label == "排队", "排队 pill: \(queueBtn.label)")
+        queueBtn.tap()
+
+        XCTAssertTrue(app.staticTexts["下一轮 #1"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["下一轮 #2"].exists)
+        XCTAssertEqual(app.buttons["thread-queue-up-1"].label, "前移")
+        XCTAssertTrue(app.staticTexts["共 2 条待发"].exists)
+        XCTAssertEqual(app.buttons["thread-queue-merge"].label, "合并为一条")
+        XCTAssertEqual(app.buttons["thread-queue-steer-all"].label, "全部插话")
+
+        // Steer #2 into active turn and verify 已并入当前轮 note
+        app.buttons["thread-queue-promote-1"].tap()
+        XCTAssertTrue(app.staticTexts["已并入当前轮"].waitForExistence(timeout: 5), "已并入当前轮 note")
+    }
+}

@@ -621,6 +621,11 @@ enum Palette {
         : UIColor(white: 0, alpha: 0.085) })
     static let settledAnswerShadow = Color(UIColor { $0.userInterfaceStyle == .dark ? .clear
         : UIColor(white: 0, alpha: 0.03) })
+    /// Pending follow-up messages waiting in the stream for the next turn.
+    static let pendingBubble = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.075)
+        : UIColor(white: 0, alpha: 0.045) })
+    static let pendingBubbleBorder = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.11)
+        : UIColor(white: 0, alpha: 0.09) })
 }
 
 /// Putting the keyboard away, as Messages does (docs/thread-composer.md §16): there is no button for it on iPhone.
@@ -751,6 +756,7 @@ struct ToEndButton: View {
     var waitingAgent: String? = nil
     var waitingPlan: Bool = false
     var todoSummary: TodoEndSummary? = nil
+    var queuedCount: Int = 0
     let action: () -> Void
 
     private var waitingLabel: LocalizedStringKey {
@@ -801,6 +807,20 @@ struct ToEndButton: View {
                 .padding(.leading, 11).padding(.trailing, 8).padding(.vertical, 8)
                 .glassEffect(.regular.interactive(), in: .capsule)
                 .contentShape(.capsule)
+            } else if queuedCount > 0 {
+                HStack(spacing: 7) {
+                    Text("\(queuedCount) queued")
+                        .font(.footnote.weight(.medium).monospacedDigit())
+                        .lineLimit(1)
+                    Image(systemName: "arrow.down")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 20, height: 20)
+                        .background(Color.accentColor, in: .circle)
+                }
+                .padding(.leading, 12).padding(.trailing, 8).padding(.vertical, 8)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .contentShape(.capsule)
             } else {
                 Image(systemName: "arrow.down").font(.body.weight(.semibold)).frame(width: 44, height: 44)
                     .glassEffect(.regular.interactive(), in: .circle)
@@ -808,7 +828,7 @@ struct ToEndButton: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(waitingAgent != nil ? Text(waitingLabel) : Text("Back to the Bottom"))
+        .accessibilityLabel(waitingAgent != nil ? Text(waitingLabel) : queuedCount > 0 ? Text("\(queuedCount) queued") : Text("Back to the Bottom"))
         .accessibilityIdentifier("to-end")
     }
 }
@@ -817,11 +837,11 @@ extension View {
     /// The button back to the end, centred 12 over the bottom bar (or the bottom safe area when there is none),
     /// while `away`: overlaid inside the scroll container above `safeAreaBar` so touches always reach it, and
     /// taking no room so nothing moves as it comes and goes.
-    func toEndButton(_ away: Bool, waitingAgent: String? = nil, waitingPlan: Bool = false, todoSummary: TodoEndSummary? = nil, action: @escaping () -> Void) -> some View {
+    func toEndButton(_ away: Bool, waitingAgent: String? = nil, waitingPlan: Bool = false, todoSummary: TodoEndSummary? = nil, queuedCount: Int = 0, action: @escaping () -> Void) -> some View {
         overlay(alignment: .bottom) {
             ZStack(alignment: .bottom) {
                 if away {
-                    ToEndButton(waitingAgent: waitingAgent, waitingPlan: waitingPlan, todoSummary: todoSummary, action: action)
+                    ToEndButton(waitingAgent: waitingAgent, waitingPlan: waitingPlan, todoSummary: todoSummary, queuedCount: queuedCount, action: action)
                         .transition(.opacity.combined(with: .offset(y: 6)))
                 }
             }

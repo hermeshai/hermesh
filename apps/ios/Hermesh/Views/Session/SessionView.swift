@@ -97,17 +97,24 @@ struct StepView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("thread-wake-line")
             }
-        case .user(_, let text, let at, let asker, let attachments):
+        case .user(_, let text, let at, let asker, let attachments, let steered):
             // Who asked for the turn speaks on the right: the owner in the blue bubble, with nothing over it; another
             // of the owner's agents (Her, a granted one) in a quiet bubble with its face on the corner. Each turn says
             // its own: a session Her started can hold the owner's words too.
             // Queued on this iPhone while its machine is offline: faded, and said under it, with Discard.
+            let note: PromptNote? = if session.offlineQueued {
+                PromptNote(kind: .waiting(machine: model.machineName(session.machineID)) {
+                    Task { _ = await model.delete(session) }
+                })
+            } else if steered {
+                PromptNote(kind: .steered)
+            } else {
+                nil
+            }
             PromptBubble(text: text, sent: at, from: sender(asker.isEmpty ? session.createdBy : asker),
                          attachments: attachments, sessionID: session.sessionID, machineID: session.machineID,
                          faded: session.offlineQueued,
-                         note: session.offlineQueued ? PromptNote(kind: .waiting(machine: model.machineName(session.machineID)) {
-                             Task { _ = await model.delete(session) }
-                         }) : nil) { EmptyView() }
+                         note: note) { EmptyView() }
         case .workspace(let row):
             WorkspaceLine(row: row)
         case .agent(_, let text, let runID):
@@ -552,6 +559,7 @@ struct PromptBubble<Sender: View>: View {
 struct PromptNote: View {
     enum Kind {
         case sending
+        case steered
         case waiting(machine: String, discard: () -> Void)
         case refused(why: String, retry: () -> Void, edit: () -> Void)
     }
@@ -563,6 +571,8 @@ struct PromptNote: View {
             switch kind {
             case .sending:
                 Delayed(active: true) { Text("Sending…") }
+            case .steered:
+                Text("Joined this turn")
             case .waiting(let machine, let discard):
                 Text("Delivered when \(machine) is back")
                 Button("Discard", action: discard)
@@ -1141,12 +1151,13 @@ extension View {
         waitingAgent: String? = nil,
         waitingPlan: Bool = false,
         todoSummary: TodoEndSummary? = nil,
+        queuedCount: Int = 0,
         atEnd: Binding<Bool>,
         position: Binding<ScrollPosition>,
         scrollBox: ConversationScrollBox,
         @ViewBuilder bottom: @escaping () -> Bottom
     ) -> some View {
-        modifier(FollowsEnd(id: id, ready: ready, spoken: spoken, waitingAgent: waitingAgent, waitingPlan: waitingPlan, todoSummary: todoSummary, atEnd: atEnd, position: position, scrollBox: scrollBox, bottom: bottom))
+        modifier(FollowsEnd(id: id, ready: ready, spoken: spoken, waitingAgent: waitingAgent, waitingPlan: waitingPlan, todoSummary: todoSummary, queuedCount: queuedCount, atEnd: atEnd, position: position, scrollBox: scrollBox, bottom: bottom))
     }
 }
 
@@ -1157,6 +1168,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
     let waitingAgent: String?
     let waitingPlan: Bool
     let todoSummary: TodoEndSummary?
+    let queuedCount: Int
     @Binding var atEnd: Bool
     @Binding var position: ScrollPosition
     let scrollBox: ConversationScrollBox
@@ -1233,7 +1245,7 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
                 alignTask?.cancel()
                 alignTask = nil
             }
-            .toEndButton(away && !atEnd, waitingAgent: waitingAgent, waitingPlan: waitingPlan, todoSummary: todoSummary) {
+            .toEndButton(away && !atEnd, waitingAgent: waitingAgent, waitingPlan: waitingPlan, todoSummary: todoSummary, queuedCount: queuedCount) {
                 atEnd = true
                 away = false
                 positioned = true

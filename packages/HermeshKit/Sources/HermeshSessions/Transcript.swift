@@ -43,7 +43,8 @@ public func partialOutput(_ r: ToolResult) -> Bool {
 public enum TranscriptItem: Equatable {
     case turn(seq: UInt64, turn: Int, at: Date?, wakeReason: String = "")
     /// at: when it was sent. asker: who asked for its turn (a client id, or "owner"; "" when the machine didn't say).
-    case user(seq: UInt64, text: String, at: Date?, asker: String = "", attachments: [Hermesh_Session_V1_AttachmentRef] = [])
+    /// steered: injected live into an active turn rather than starting a turn of its own.
+    case user(seq: UInt64, text: String, at: Date?, asker: String = "", attachments: [Hermesh_Session_V1_AttachmentRef] = [], steered: Bool = false)
     /// runID: the turn it belongs to, whose files its links open as that turn left them (docs/session-files.md §6.2).
     case agent(seq: UInt64, text: String, runID: String = "")
     case tool(ToolItem)
@@ -62,7 +63,7 @@ public enum TranscriptItem: Equatable {
 
     public var seq: UInt64 {
         switch self {
-        case .turn(let s, _, _, _), .user(let s, _, _, _, _), .agent(let s, _, _), .question(let s, _, _),
+        case .turn(let s, _, _, _), .user(let s, _, _, _, _, _), .agent(let s, _, _), .question(let s, _, _),
              .planReview(let s, _, _, _), .turnEnd(let s, _, _), .error(let s, _), .message(let s, _, _, _, _): s
         case .tool(let t): t.seq
         case .workspace(let w): w.seq
@@ -264,7 +265,8 @@ public func sessionTranscript(_ proj: Hermesh_Session_V1_SessionProjection?) -> 
         switch it.kind {
         case .userMessage:
             let asker = actorID(it.hasActor ? it.actor : (run?.hasAuthor == true ? run?.author : nil))
-            out.append(.user(seq: seq, text: it.text, at: dateOf(it.createdAt, set: it.hasCreatedAt), asker: asker, attachments: it.attachments))
+            let steered = it.status == "steered" || it.status == "promoted_to_steer"
+            out.append(.user(seq: seq, text: it.text, at: dateOf(it.createdAt, set: it.hasCreatedAt), asker: asker, attachments: it.attachments, steered: steered))
         case .assistantMessage:
             out.append(.agent(seq: seq, text: it.text, runID: it.runID))
         case .proposedPlan:

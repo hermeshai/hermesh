@@ -1,0 +1,1771 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Hermesh 手机端插话与排队 · 极简交互原型</title>
+<style>
+:root {
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-theme="dark"] {
+  --page: #0a0b0e;
+  --page-fg: #ececf1;
+  --page-fg2: #8e92a2;
+  --page-card: #14151b;
+  --page-bd: rgba(255, 255, 255, .08);
+
+  --bg: #000000;
+  --bg-rgb: 0, 0, 0;
+  --vbar: #050507;
+  --sheet: #16161a;
+  --group: #212126;
+
+  --l1: rgba(255, 255, 255, .92);
+  --l2: rgba(235, 235, 245, .56);
+  --l3: rgba(235, 235, 245, .32);
+  --l4: rgba(255, 255, 255, .13);
+  --sep: rgba(255, 255, 255, .085);
+  --fill: rgba(255, 255, 255, .06);
+  --fill2: rgba(255, 255, 255, .10);
+
+  --accent: #4a66ff;
+  --accent-t: #8da2ff;
+  --accent-bg: rgba(74, 102, 255, .16);
+  --warn: #eba038;
+  --red: #f2646d;
+
+  --glass: rgba(28, 28, 32, .82);
+  --glass-sh: inset 0 .5px 0 rgba(255, 255, 255, .12), 0 0 0 .5px rgba(255, 255, 255, .10), 0 10px 28px rgba(0, 0, 0, .5);
+  --pending-bub: rgba(255, 255, 255, .075);
+  --pending-bd: rgba(255, 255, 255, .11);
+  --scrim: rgba(0, 0, 0, .48);
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  --page: #e8eaf0;
+  --page-fg: #181920;
+  --page-fg2: #606472;
+  --page-card: #ffffff;
+  --page-bd: rgba(0, 0, 0, .08);
+
+  --bg: #fbfbfc;
+  --bg-rgb: 251, 251, 252;
+  --vbar: #f0f1f5;
+  --sheet: #f2f2f7;
+  --group: #ffffff;
+
+  --l1: rgba(0, 0, 0, .88);
+  --l2: rgba(60, 60, 67, .58);
+  --l3: rgba(60, 60, 67, .34);
+  --l4: rgba(0, 0, 0, .12);
+  --sep: rgba(0, 0, 0, .08);
+  --fill: rgba(0, 0, 0, .045);
+  --fill2: rgba(0, 0, 0, .08);
+
+  --accent: #3d5bff;
+  --accent-t: #3350eb;
+  --accent-bg: rgba(61, 91, 255, .10);
+  --warn: #c46b08;
+  --red: #d6323c;
+
+  --glass: rgba(250, 250, 252, .84);
+  --glass-sh: inset 0 .5px 0 rgba(255, 255, 255, .9), 0 0 0 .5px rgba(0, 0, 0, .09), 0 8px 24px rgba(20, 24, 40, .09);
+  --pending-bub: rgba(0, 0, 0, .045);
+  --pending-bd: rgba(0, 0, 0, .09);
+  --scrim: rgba(0, 0, 0, .24);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--page);
+  color: var(--page-fg);
+  font: 14px/1.5 var(--font);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  padding-bottom: 78px;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+textarea, input { font: inherit; color: inherit; }
+svg { display: block; flex: none; }
+[hidden] { display: none !important; }
+
+.ic {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ic.sm { width: 14px; height: 14px; }
+.ic.xs { width: 12px; height: 12px; stroke-width: 2; }
+
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(26px) saturate(1.5);
+  -webkit-backdrop-filter: blur(26px) saturate(1.5);
+  box-shadow: var(--glass-sh);
+}
+
+/* ---------- Desktop Top Bar ---------- */
+.desk-hdr {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 14px 24px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  flex-wrap: wrap;
+}
+.desk-hdr h1 { margin: 0; font-size: 17px; font-weight: 640; letter-spacing: -.01em; }
+.desk-hdr p { margin: 2px 0 0; font-size: 12.5px; color: var(--page-fg2); }
+
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--page-card);
+  border: 1px solid var(--page-bd);
+  border-radius: 11px;
+}
+.seg button {
+  padding: 5.5px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 540;
+  color: var(--page-fg2);
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+}
+.seg button.on { background: var(--fill2); color: var(--page-fg); font-weight: 600; }
+html[data-theme="light"] .seg button.on { background: #181920; color: #fff; }
+
+/* ---------- Mobile Switcher Bar (<= 540px) ---------- */
+.mob-bar {
+  display: none;
+  background: var(--bg);
+  border-bottom: .5px solid var(--sep);
+  padding: 6px 10px;
+  gap: 6px;
+  align-items: center;
+  z-index: 95;
+}
+.mob-tabs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 2px;
+  background: var(--fill);
+  padding: 2px;
+  border-radius: 9px;
+}
+.mob-tabs button {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 3px;
+  border-radius: 7px;
+  font-size: 12px;
+  color: var(--l2);
+  text-align: center;
+  white-space: nowrap;
+}
+.mob-tabs button.on {
+  background: var(--fill2);
+  color: var(--l1);
+  font-weight: 600;
+}
+.mob-cfg {
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  background: var(--fill);
+  color: var(--l2);
+  font-size: 12px;
+  flex: none;
+}
+
+/* ---------- Stage ---------- */
+.stage {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 10px 20px 16px;
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ---------- Phone Shell ---------- */
+.phone {
+  width: 440px;
+  height: 620px;
+  border-radius: 44px;
+  padding: 10px;
+  background: #191a1f;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .48), inset 0 0 0 1.5px #343640;
+  position: relative;
+  user-select: none;
+  flex: none;
+}
+.phone.std {
+  width: 390px;
+  height: 636px;
+  border-radius: 50px;
+}
+.scr {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 35px;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--l1);
+  display: flex;
+}
+.phone.std .scr { border-radius: 41px; }
+
+.phone-main {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Duo Right Vertical Bar (matches user screenshot) */
+.dvbar {
+  width: 66px;
+  flex: none;
+  background: var(--vbar);
+  border-left: .5px solid var(--sep);
+  padding: 14px 0 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  z-index: 35;
+}
+.phone.std .dvbar { display: none; }
+.dvbar .vclock { font-size: 13.5px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--l2); }
+.dvbar .vsp { flex: 1; }
+.vtab-cap {
+  width: 48px;
+  border-radius: 24px;
+  padding: 4px;
+  background: var(--fill);
+  box-shadow: inset 0 .5px 0 var(--l4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.vtab-it {
+  width: 40px;
+  height: 42px;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  color: var(--l2);
+}
+.vtab-it.sel { background: var(--fill2); color: var(--accent-t); }
+
+/* ---------- Top Session Nav ---------- */
+.inav {
+  height: 48px;
+  flex: none;
+  padding: 4px 14px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 20;
+}
+.nav-orb {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--l1);
+}
+.nav-ttl { flex: 1; min-width: 0; text-align: center; }
+.nav-ttl b {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nav-ttl small {
+  display: block;
+  font-size: 11px;
+  color: var(--l2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Toast (minimal plain text + undo) ---------- */
+.toast {
+  position: absolute;
+  left: 50%;
+  top: 56px;
+  transform: translate(-50%, -8px);
+  padding: 6px 13px;
+  border-radius: 99px;
+  font-size: 12.5px;
+  color: var(--l1);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s, transform .18s var(--ease);
+  z-index: 65;
+}
+.toast.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.toast button { color: var(--accent-t); font-weight: 560; }
+
+/* ---------- Conversation Stream ---------- */
+.chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scrollbar-width: none;
+}
+.chat-scroll::-webkit-scrollbar { display: none; }
+.chat-spacer { margin-top: auto; }
+
+.um-group {
+  align-self: flex-end;
+  max-width: 85%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  animation: fadeUp .18s var(--ease);
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+.um {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 18px;
+  padding: 8.5px 13px;
+  font-size: 14.5px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+.um-meta {
+  font-size: 11.5px;
+  color: var(--l3);
+  padding-right: 4px;
+}
+
+/* ==========================================================================
+   SCHEME 1: Inline Pending Bubbles directly at bottom of Conversation Stream
+   ========================================================================== */
+.pending-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 2px;
+}
+.pb-item {
+  align-self: flex-end;
+  max-width: 86%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  animation: fadeUp .18s var(--ease);
+}
+.pb-bub {
+  background: var(--pending-bub);
+  border: .5px solid var(--pending-bd);
+  color: var(--l1);
+  border-radius: 18px;
+  padding: 8.5px 13px;
+  font-size: 14.5px;
+  line-height: 1.45;
+  word-break: break-word;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.pb-bub:active { background: var(--fill2); }
+
+.pb-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--l3);
+  padding-right: 4px;
+}
+.pb-actions .dot { opacity: .45; }
+.pb-actions button {
+  color: var(--l2);
+  font-size: 12px;
+  transition: color .12s;
+}
+.pb-actions button.pri { color: var(--accent-t); font-weight: 520; }
+.pb-actions button:active { opacity: .65; }
+
+/* Inline direct text editor (zero banners, zero icons, Apple Notes feel) */
+.inline-edit-box {
+  width: 100%;
+  min-width: 230px;
+  background: var(--fill);
+  border: 1px solid var(--accent);
+  border-radius: 16px;
+  padding: 8px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.inline-edit-box textarea {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: none;
+  color: var(--l1);
+  font: 14.5px/1.45 var(--font);
+  min-height: 44px;
+  overflow: hidden;
+  scrollbar-width: none;
+}
+.inline-edit-box textarea::-webkit-scrollbar { display: none; }
+.inline-edit-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  font-size: 12.5px;
+}
+.inline-edit-foot button { color: var(--l2); }
+.inline-edit-foot button.save { color: var(--accent-t); font-weight: 600; }
+
+.pb-batch-bar {
+  align-self: flex-end;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--l3);
+  padding-right: 4px;
+  margin-top: -2px;
+}
+.pb-batch-bar button { color: var(--l2); }
+.pb-batch-bar button.pri { color: var(--accent-t); }
+
+/* Assistant & Tool rows */
+.tool-ln {
+  font-size: 13px;
+  color: var(--l2);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.am {
+  font-size: 14.5px;
+  line-height: 1.56;
+  color: var(--l1);
+}
+.am p { margin: 0; }
+.am code {
+  font: 12.5px var(--mono);
+  background: var(--fill);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.work-ln {
+  font-size: 13px;
+  color: var(--l2);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 0;
+}
+.work-ln .tm { color: var(--l3); font-variant-numeric: tabular-nums; }
+@keyframes shimmerText {
+  0%, 100% { opacity: .55; }
+  50% { opacity: 1; }
+}
+.work-shimmer { animation: shimmerText 2.2s ease-in-out infinite; }
+
+/* ---------- Bottom Dock ---------- */
+.dock {
+  flex: none;
+  position: relative;
+  padding: 4px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: linear-gradient(to bottom, rgba(var(--bg-rgb), 0), rgba(var(--bg-rgb), .92) 25%, var(--bg) 100%);
+  z-index: 25;
+}
+.phone.std .dock { padding-bottom: 20px; }
+
+/* ==========================================================================
+   SCHEME 2: Unified Composer Top Lip (Single Merged Glass Container)
+   ========================================================================== */
+.cmp-shell {
+  border-radius: 24px;
+  overflow: hidden;
+  transition: border-radius .2s;
+}
+.lip-single {
+  padding: 10px 13px 9px 15px;
+  border-bottom: .5px solid var(--sep);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.lip-txt {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--l2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  cursor: pointer;
+}
+.lip-acts {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding-top: 1px;
+  font-size: 13px;
+}
+.lip-acts .steer { color: var(--accent-t); font-weight: 540; }
+.lip-acts .rm {
+  color: var(--l3);
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+}
+
+.lip-multi-collapsed {
+  padding: 9px 14px;
+  border-bottom: .5px solid var(--sep);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.lip-cnt { color: var(--l1); font-weight: 560; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lip-preview {
+  flex: 1;
+  min-width: 0;
+  color: var(--l2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lip-open { color: var(--l2); font-size: 12.5px; flex: none; }
+
+.lip-expanded {
+  border-bottom: .5px solid var(--sep);
+  max-height: 260px;
+  display: flex;
+  flex-direction: column;
+  animation: fadeUp .16s var(--ease);
+}
+.lip-exp-hd {
+  padding: 9px 14px 7px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: var(--l2);
+}
+.lip-exp-hd .acts { display: flex; gap: 12px; }
+.lip-exp-hd button { color: var(--l2); }
+.lip-exp-hd button.pri { color: var(--accent-t); font-weight: 540; }
+
+.lip-exp-list {
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.lip-exp-list::-webkit-scrollbar { display: none; }
+.lip-row {
+  padding: 9px 14px;
+  border-top: .5px solid var(--sep);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.lip-row-num {
+  font-size: 12px;
+  color: var(--l3);
+  font-variant-numeric: tabular-nums;
+  padding-top: 2px;
+  width: 14px;
+  flex: none;
+}
+.lip-row-body {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.42;
+  color: var(--l1);
+  word-break: break-word;
+  cursor: pointer;
+}
+.lip-row-acts {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: none;
+  font-size: 12.5px;
+  padding-top: 1px;
+}
+.lip-row-acts .up { color: var(--l3); }
+.lip-row-acts .steer { color: var(--accent-t); font-weight: 540; }
+.lip-row-acts .rm { color: var(--l3); }
+
+/* ==========================================================================
+   SCHEME 3: Slim Bar + Native iOS Grouped Sheet
+   ========================================================================== */
+.slim-bar {
+  border-radius: 17px;
+  padding: 9px 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.slim-bar .lbl { color: var(--l2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.slim-bar .txt {
+  flex: 1;
+  min-width: 0;
+  color: var(--l1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.slim-bar .steer { color: var(--accent-t); font-size: 13px; font-weight: 540; flex: none; margin-left: 2px; }
+.slim-bar .more { color: var(--l3); font-size: 12.5px; flex: none; }
+
+/* Native Bottom Sheet for Scheme 3 */
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .22s var(--ease);
+  z-index: 40;
+}
+.sheet-scrim.on { opacity: 1; pointer-events: auto; }
+.ios-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 74%;
+  background: var(--sheet);
+  border-radius: 30px 30px 0 0;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, .4);
+  z-index: 45;
+  padding: 8px 16px 26px;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(104%);
+  transition: transform .28s var(--ease);
+}
+.ios-sheet.on { transform: translateY(0); }
+.grabber {
+  width: 36px;
+  height: 4.5px;
+  border-radius: 3px;
+  background: var(--l4);
+  margin: 0 auto 10px;
+  flex: none;
+}
+.sh-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 2px 12px;
+}
+.sh-nav b { font-size: 16px; font-weight: 620; }
+.sh-nav .r { display: flex; gap: 14px; font-size: 14px; }
+.sh-nav .r button { color: var(--l2); }
+.sh-nav .r button.done { color: var(--l1); font-weight: 600; }
+
+.sh-group {
+  background: var(--group);
+  border-radius: 16px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.sh-group::-webkit-scrollbar { display: none; }
+.sh-row {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.sh-row + .sh-row { border-top: .5px solid var(--sep); }
+.sh-row-txt {
+  font-size: 14.5px;
+  line-height: 1.44;
+  color: var(--l1);
+  word-break: break-word;
+  cursor: pointer;
+}
+.sh-row-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: var(--l3);
+}
+.sh-row-foot .acts { display: flex; gap: 14px; }
+.sh-row-foot button { color: var(--l2); }
+.sh-row-foot button.pri { color: var(--accent-t); font-weight: 540; }
+.sh-row-foot button.del { color: var(--red); }
+
+/* Legacy Screenshot Reproduction */
+.q-legacy {
+  border-radius: 20px;
+  padding: 9px 13px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.q-legacy .hd { font-size: 12px; color: var(--l2); }
+.q-legacy .row { display: flex; align-items: center; gap: 8px; font-size: 14.5px; }
+.q-legacy .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.q-legacy .st { font-size: 13.5px; color: var(--accent); flex: none; }
+.q-legacy .x { color: var(--l3); flex: none; display: grid; place-items: center; }
+
+/* ---------- Composer Body (Exact Hermesh SessionPage.swift Style) ---------- */
+.cmp-inner {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cmp-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+}
+.cmp-ta {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: none;
+  color: var(--l1);
+  font: 15.5px/21px var(--font);
+  padding: 7px 4px 7px 8px;
+  height: 35px;
+  min-height: 35px;
+  max-height: 105px;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  caret-color: var(--accent);
+}
+.cmp-ta::-webkit-scrollbar { display: none; }
+.cmp-ta::placeholder {
+  color: var(--l3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmp-inner.open .cmp-ta {
+  min-height: 50px;
+  overflow-y: auto;
+  padding: 6px 8px 2px 10px;
+}
+.cmp-inner.open .cmp-ta::placeholder { white-space: normal; }
+
+.cbtn {
+  width: 35px;
+  height: 35px;
+  border-radius: 50%;
+  background: var(--fill2);
+  color: var(--l1);
+  display: grid;
+  place-items: center;
+  flex: none;
+  transition: transform .1s, opacity .15s;
+}
+.cbtn:active { transform: scale(.92); }
+.cbtn.send { background: var(--accent); color: #fff; opacity: .38; }
+.cbtn.send.ready { opacity: 1; }
+
+.q-pill-btn {
+  height: 35px;
+  padding: 0 12px;
+  border-radius: 18px;
+  background: var(--fill2);
+  color: var(--l1);
+  font-size: 13px;
+  font-weight: 520;
+  white-space: nowrap;
+  flex: none;
+}
+.q-pill-btn:active { transform: scale(.95); }
+
+.cmp-tail { display: flex; gap: 6px; align-items: center; flex: none; }
+.cmp-bar { display: none; align-items: center; gap: 6px; padding-top: 2px; }
+.cmp-inner.open .cmp-bar { display: flex; }
+.cmp-inner.open .cmp-lead, .cmp-inner.open .cmp-tail { display: none; }
+
+.model-btn {
+  height: 34px;
+  padding: 0 11px;
+  border-radius: 17px;
+  background: var(--fill);
+  color: var(--l2);
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ---------- Side Notes (Desktop) ---------- */
+.notes {
+  width: 390px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ncard {
+  background: var(--page-card);
+  border: 1px solid var(--page-bd);
+  border-radius: 15px;
+  padding: 15px 17px;
+  font-size: 13px;
+  line-height: 1.62;
+}
+.ncard h3 { margin: 0 0 6px; font-size: 14px; font-weight: 630; }
+.ncard p { margin: 0; color: var(--page-fg2); }
+.ncard ul { margin: 6px 0 0; padding-left: 17px; color: var(--page-fg2); }
+.ncard li { margin: 5px 0; }
+.ncard li b { color: var(--page-fg); font-weight: 600; }
+
+/* ---------- Desktop Bottom Control Bar ---------- */
+.ctl-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--page-card);
+  border-top: 1px solid var(--page-bd);
+  padding: 9px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 18px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+  z-index: 80;
+}
+.ctl-g { display: inline-flex; align-items: center; gap: 4px; }
+.ctl-g b { color: var(--page-fg2); font-weight: 540; margin-right: 3px; }
+.ctl-g button {
+  padding: 4.5px 10px;
+  border-radius: 7px;
+  background: var(--fill);
+  color: var(--page-fg);
+  font-size: 12px;
+}
+.ctl-g button.on { background: var(--accent); color: #fff; }
+
+/* ---------- Mobile Preset Sheet ---------- */
+.mob-cfg-scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 110; }
+.mob-cfg-sheet {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  background: var(--sheet);
+  border-radius: 24px 24px 0 0;
+  padding: 14px 16px 30px;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mob-cfg-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.mob-cfg-grid button {
+  padding: 7px 12px;
+  border-radius: 9px;
+  background: var(--fill);
+  font-size: 12.5px;
+}
+.mob-cfg-grid button.on { background: var(--accent); color: #fff; }
+
+@media (max-width: 540px) {
+  body {
+    padding-bottom: 0;
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+  }
+  .desk-hdr, .notes, .ctl-dock { display: none; }
+  .mob-bar { display: flex; flex: none; }
+  .stage { flex: 1; min-height: 0; width: 100%; padding: 0; margin: 0; }
+  .phone, .phone.std {
+    width: 100%; height: 100%;
+    border-radius: 0; padding: 0;
+    background: var(--bg); box-shadow: none;
+  }
+  .scr, .phone.std .scr { border-radius: 0; }
+  .phone:not(.force-duo) .dvbar { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- Desktop Header -->
+<header class="desk-hdr">
+  <div>
+    <h1>插话与排队 · 极简交互对比（零装饰图标）</h1>
+    <p>去掉所有角标与功能图标，纯靠字体层级、半透明质感与顺手直觉解决「单条可读、插多条、直接编辑」。</p>
+  </div>
+  <div class="seg">
+    <button data-var="inline" class="on">方案一 · 流内待发气泡</button>
+    <button data-var="lip">方案二 · 输入框一体顶沿</button>
+    <button data-var="sheet">方案三 · 极简条 + 半屏</button>
+    <button data-var="legacy">原图现状</button>
+  </div>
+</header>
+
+<!-- Mobile Switcher Bar -->
+<div class="mob-bar">
+  <div class="mob-tabs">
+    <button data-var="inline" class="on">流内气泡</button>
+    <button data-var="lip">一体顶沿</button>
+    <button data-var="sheet">半屏列表</button>
+    <button data-var="legacy">现状</button>
+  </div>
+  <button class="mob-cfg" id="mobCfgBtn">场景</button>
+</div>
+
+<main class="stage">
+  <div class="phone" id="phone">
+    <div class="scr">
+      <div class="phone-main">
+        <!-- Session Nav -->
+        <div class="inav">
+          <button class="nav-orb glass" aria-label="菜单">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M5 8h14M5 12h10M5 16h14"/></svg>
+          </button>
+          <div class="nav-ttl">
+            <b>排查收藏页登录态异常</b>
+            <small>你 · work-mac / hermesh-ios</small>
+          </div>
+          <button class="nav-orb glass" id="navAddBtn" title="快速模拟追加一条排队消息">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+
+        <!-- Minimal Toast -->
+        <div class="toast glass" id="toast">
+          <span id="toastTxt"></span>
+          <button id="toastUndo" hidden>撤销</button>
+        </div>
+
+        <!-- Conversation Stream -->
+        <div class="chat-scroll" id="chatScroll"></div>
+
+        <!-- Sheet Scrim & Native Sheet (Scheme 3) -->
+        <div class="sheet-scrim" id="sheetScrim"></div>
+        <div class="ios-sheet" id="iosSheet">
+          <div class="grabber"></div>
+          <div class="sh-nav">
+            <b id="shTitle">待发消息</b>
+            <div class="r">
+              <button id="shMergeBtn" hidden>合并为一条</button>
+              <button class="done" id="shDoneBtn">完成</button>
+            </div>
+          </div>
+          <div class="sh-group" id="shList"></div>
+        </div>
+
+        <!-- Bottom Dock -->
+        <div class="dock">
+          <div id="aboveBoxMount"></div>
+
+          <div class="cmp-shell glass" id="cmpShell">
+            <div id="lipMount"></div>
+            <div class="cmp-inner" id="cmpInner">
+              <div class="cmp-row">
+                <button class="cbtn cmp-lead" aria-label="添加">
+                  <svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+                <textarea class="cmp-ta" id="ta" rows="1" placeholder="继续说，直接插入当前轮…"></textarea>
+                <div class="cmp-tail" id="cmpTail"></div>
+              </div>
+              <div class="cmp-bar">
+                <button class="cbtn" aria-label="添加">
+                  <svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+                <button class="model-btn" type="button">
+                  <span>Opus 4.5</span>
+                  <svg class="ic xs" style="opacity:.45" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <span style="flex:1"></span>
+                <div id="cmpBarRight" style="display:flex;gap:6px;align-items:center"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Duo Folded Right Vertical Bar -->
+      <aside class="dvbar">
+        <div class="vclock">16:20</div>
+        <div class="vsp"></div>
+        <div class="vtab-cap">
+          <div class="vtab-it sel"><svg class="ic" viewBox="0 0 24 24"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 6l-3 12"/></svg></div>
+          <div class="vtab-it"><svg class="ic" viewBox="0 0 24 24"><path d="M5 9V5l4 2.5a8 8 0 0 1 6 0L19 5v4a7 7 0 1 1-14 0Z"/></svg></div>
+          <div class="vtab-it"><svg class="ic" viewBox="0 0 24 24"><path d="M4.5 16.5a8.5 8.5 0 1 1 15 0"/><path d="M12 13l3.5-3.5"/></svg></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Clean Design Notes -->
+  <aside class="notes" id="notesBox"></aside>
+</main>
+
+<!-- Desktop Bottom Controls -->
+<div class="ctl-dock">
+  <div class="ctl-g">
+    <b>队列条数</b>
+    <button data-scene="single" class="on">1 条（原图场景）</button>
+    <button data-scene="multi">3 条连发</button>
+    <button data-scene="empty">空队列</button>
+  </div>
+  <div class="ctl-g">
+    <b>动作模拟</b>
+    <button id="simAdd">+ 追加一条</button>
+    <button id="simFinish">当前轮完成（自动接续下一条）</button>
+  </div>
+  <div class="ctl-g">
+    <b>宽度</b>
+    <button data-dev="duo" class="on">Duo 折叠窄屏</button>
+    <button data-dev="std">标准 iPhone</button>
+  </div>
+  <div class="ctl-g">
+    <b>外观</b>
+    <button data-th="dark" class="on">深色</button>
+    <button data-th="light">浅色</button>
+  </div>
+</div>
+
+<!-- Mobile Preset Sheet -->
+<div id="mobCfgWrap" hidden>
+  <div class="mob-cfg-scrim" id="mobCfgScrim"></div>
+  <div class="mob-cfg-sheet">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <b>切换测试场景</b>
+      <button id="mobCfgClose" style="color:var(--l2);font-size:13px">关闭</button>
+    </div>
+    <div class="mob-cfg-grid">
+      <button data-scene="single" class="on">1 条待发</button>
+      <button data-scene="multi">3 条连发</button>
+      <button data-scene="empty">空队列</button>
+    </div>
+    <div class="mob-cfg-grid">
+      <button id="mobSimAdd">+ 追加一条</button>
+      <button id="mobSimFinish">模拟当前轮完成</button>
+      <button id="mobToggleDuo">切换右侧竖栏宽度</button>
+      <button id="mobToggleTheme">深 / 浅色</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+
+  const SAMPLES = [
+    "顺便检查下 Duo 折叠窄屏的右边距，别贴着竖栏",
+    "修完跑一遍收藏相关的单元测试",
+    "未登录态返回码如果是 401，先清本地缓存再跳登录"
+  ];
+  let sampleCursor = 0;
+
+  const BASE_CHAT = () => [
+    { role: "user", text: "帮我排查一下未登录进入详情页偶发卡死的问题" },
+    { role: "tool", text: "已读取 4 个文件" },
+    { role: "assistant", text: "定位到了：`FavoriteButton` 在无会话令牌时会重复触发刷新闭包。正在修改状态守卫并补充测试。" }
+  ];
+
+  const SCENES = {
+    single: [
+      { id: "q1", text: "而且我还发现一个 bug，如果用户没登录直接点收藏，返回上一页时会白屏闪退" }
+    ],
+    multi: [
+      { id: "q1", text: "而且我还发现一个 bug，如果用户没登录直接点收藏，返回上一页时会白屏闪退" },
+      { id: "q2", text: "修完之后顺便跑一下收藏模块相关的单元测试" },
+      { id: "q3", text: "再检查一下浅色模式下空状态文字的对比度" }
+    ],
+    empty: []
+  };
+
+  const NOTES = {
+    inline: {
+      title: "方案一：流内待发气泡（最自然，输入框上方彻底归零）",
+      desc: "既然是发给 Agent 的话，本质就是聊天消息。不再在输入框头顶叠第二块厚卡片，而是直接落在对话流最底部：",
+      bullets: [
+        "<b>零遮挡、全文可见：</b>半透明气泡代表「排在下一轮」，不管是 1 条还是连插 5 条，都像发微信一样自然往下排，全文完整显示，再也不会被截成 10 个字。",
+        "<b>点气泡直接原位改：</b>点一下气泡文字（或点「编辑」），气泡直接变成编辑框，改完点保存即可；零横幅、零模式打断。",
+        "<b>随时插话或合并：</b>气泡下方只有一行克制的小字 <code>下一轮 · 插话 · 编辑 · 撤回</code>；多条时底部支持一键「合并为一条」或「全部插话」。"
+      ]
+    },
+    lip: {
+      title: "方案二：输入框一体顶沿（融合为一整块毛玻璃）",
+      desc: "如果你希望往上翻看旧记录时底部仍能一眼看到待发消息，把原来上下分离的两块厚砖块合成一块：",
+      bullets: [
+        "<b>单条极简：</b>去掉占地方的标题行与一切图标，仅用 0.5px 细线隔开；左侧两行正文，右侧仅 <code>插话</code> 与 <code>×</code>。<b>点一下正文直接拿回输入框重改</b>（无需任何编辑模式横幅）。",
+        "<b>多条折叠不挡屏：</b>2 条及以上自动收成一行 <code>3 条待发 · 而且我还发现…  展开</code>；点开后向上舒展为纯文字列表，点字即改、可调序、可合并。"
+      ]
+    },
+    sheet: {
+      title: "方案三：单行纯字条 + 原生半屏列表",
+      desc: "与 Hermesh 现有的「选模型 / 选分支」保持完全一致的 iOS 半屏抽屉语言：",
+      bullets: [
+        "<b>底部永远只有一行：</b>无论是 1 条还是多条，输入框上方固定只占 38pt 高度，绝不随条数变高。",
+        "<b>宽敞的半屏管理：</b>点一下弹出原生分组列表，在充裕的空间里直接点字修改、调整先后顺序、合并或挑某一条插话。"
+      ]
+    },
+    legacy: {
+      title: "原图现状（对比参考）",
+      desc: "独立悬浮卡片 + 标题行 + 6 字长按钮：",
+      bullets: [
+        "窄屏下正文只剩 10 个字；<code>立即插入引导</code> 与 <code>×</code> 紧挨容易误删；没有编辑能力；多条直接竖向硬撑。"
+      ]
+    }
+  };
+
+  const S = {
+    variant: "inline",   // 'inline' | 'lip' | 'sheet' | 'legacy'
+    scene: "single",
+    device: "duo",
+    theme: "dark",
+    running: true,
+    lipOpen: false,
+    sheetOpen: false,
+    editingId: null,
+    editingText: "",
+    boxFocus: false,
+    messages: BASE_CHAT(),
+    queued: JSON.parse(JSON.stringify(SCENES.single)),
+    undoFn: null
+  };
+
+  let seq = 10;
+  const uid = () => `q${++seq}`;
+
+  let toastT = null;
+  function toast(msg, undo = null) {
+    S.undoFn = undo;
+    $("toastTxt").textContent = msg;
+    $("toastUndo").hidden = !undo;
+    $("toast").classList.add("on");
+    clearTimeout(toastT);
+    toastT = setTimeout(() => {
+      $("toast").classList.remove("on");
+      S.undoFn = null;
+    }, undo ? 3800 : 2000);
+  }
+  $("toastUndo").onclick = () => {
+    if (S.undoFn) {
+      const fn = S.undoFn;
+      S.undoFn = null;
+      $("toast").classList.remove("on");
+      fn();
+      render();
+    }
+  };
+
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const fmt = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+
+  function setScene(name) {
+    S.scene = name;
+    S.running = true;
+    S.lipOpen = false;
+    S.sheetOpen = false;
+    S.editingId = null;
+    S.messages = BASE_CHAT();
+    S.queued = JSON.parse(JSON.stringify(SCENES[name] || []));
+    $("ta").value = "";
+    autoGrow();
+    render();
+    scrollBottom();
+  }
+
+  /* ---------- Queue Operations ---------- */
+
+  // Pull back into composer (for 1-tap effortless editing on collapsed 1-item lip!)
+  function pullBackToComposer(id) {
+    const idx = S.queued.findIndex((x) => x.id === id);
+    if (idx < 0) return;
+    const [item] = S.queued.splice(idx, 1);
+    const cur = $("ta").value.trim();
+    $("ta").value = cur ? `${item.text}\n${cur}` : item.text;
+    S.boxFocus = true;
+    render();
+    requestAnimationFrame(() => {
+      const ta = $("ta");
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+      autoGrow();
+    });
+  }
+
+  function beginInlineEdit(id) {
+    const item = S.queued.find((x) => x.id === id);
+    if (!item) return;
+    S.editingId = id;
+    S.editingText = item.text;
+    render();
+    requestAnimationFrame(() => {
+      const el = document.querySelector("[data-inline-ta]");
+      if (el) {
+        el.style.height = "auto";
+        el.style.height = el.scrollHeight + "px";
+        el.oninput = () => { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; };
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      }
+    });
+  }
+
+  function saveInlineEdit() {
+    const el = document.querySelector("[data-inline-ta]");
+    const val = (el ? el.value : S.editingText).trim();
+    const item = S.queued.find((x) => x.id === S.editingId);
+    if (item && val) {
+      item.text = val;
+      toast("已保存修改");
+    }
+    S.editingId = null;
+    render();
+  }
+
+  function steerItem(id) {
+    const idx = S.queued.findIndex((x) => x.id === id);
+    if (idx < 0) return;
+    const [item] = S.queued.splice(idx, 1);
+    if (S.editingId === id) S.editingId = null;
+    S.running = true;
+    S.messages.push({ role: "user", text: item.text, note: "已并入当前轮" });
+    if (!S.queued.length) { S.lipOpen = false; S.sheetOpen = false; }
+    toast("已插入当前轮");
+    render();
+    scrollBottom();
+  }
+
+  function steerAll() {
+    if (!S.queued.length) return;
+    const text = S.queued.map((x) => x.text).join("\n");
+    S.queued = [];
+    S.editingId = null;
+    S.lipOpen = false;
+    S.sheetOpen = false;
+    S.running = true;
+    S.messages.push({ role: "user", text, note: "已并入当前轮" });
+    toast("已全部插入当前轮");
+    render();
+    scrollBottom();
+  }
+
+  function mergeAll() {
+    if (S.queued.length < 2) return;
+    const snap = JSON.parse(JSON.stringify(S.queued));
+    const joined = S.queued.map((x) => x.text).join("；");
+    S.queued = [{ id: uid(), text: joined }];
+    S.editingId = null;
+    S.lipOpen = false;
+    toast("已合并为一条", () => { S.queued = snap; });
+    render();
+  }
+
+  function removeItem(id) {
+    const idx = S.queued.findIndex((x) => x.id === id);
+    if (idx < 0) return;
+    const snap = JSON.parse(JSON.stringify(S.queued));
+    S.queued.splice(idx, 1);
+    if (S.editingId === id) S.editingId = null;
+    if (!S.queued.length) { S.lipOpen = false; S.sheetOpen = false; }
+    toast("已撤回", () => { S.queued = snap; });
+    render();
+  }
+
+  function moveItem(idx, dir) {
+    const to = idx + dir;
+    if (to < 0 || to >= S.queued.length) return;
+    const t = S.queued[idx];
+    S.queued[idx] = S.queued[to];
+    S.queued[to] = t;
+    render();
+  }
+
+  function sendFromComposer(mode) {
+    const text = $("ta").value.trim();
+    if (!text) return;
+    $("ta").value = "";
+    autoGrow();
+    if (mode === "queue" && S.running) {
+      S.queued.push({ id: uid(), text });
+      toast("已排到下一轮");
+    } else {
+      S.messages.push({ role: "user", text, note: S.running ? "已并入当前轮" : "" });
+      S.running = true;
+      toast(S.running ? "已插入当前轮" : "已发送");
+    }
+    render();
+    scrollBottom();
+  }
+
+  function scrollBottom() {
+    requestAnimationFrame(() => {
+      const el = $("chatScroll");
+      el.scrollTop = el.scrollHeight;
+    });
+  }
+
+  /* ---------- Renderers ---------- */
+
+  function renderInlineEditor(item) {
+    return `
+      <div class="inline-edit-box">
+        <textarea data-inline-ta rows="2">${esc(item.text)}</textarea>
+        <div class="inline-edit-foot">
+          <button data-cancel-ed>取消</button>
+          <button class="save" data-save-ed>保存</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderChat() {
+    const parts = ['<div class="chat-spacer"></div>'];
+    for (const m of S.messages) {
+      if (m.role === "user") {
+        parts.push(`<div class="um-group"><div class="um">${esc(m.text)}</div>${m.note ? `<span class="um-meta">${esc(m.note)}</span>` : ""}</div>`);
+      } else if (m.role === "tool") {
+        parts.push(`<div class="tool-ln"><svg class="ic sm" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg><span>${esc(m.text)}</span></div>`);
+      } else if (m.role === "assistant") {
+        parts.push(`<div class="am"><p>${fmt(m.text)}</p></div>`);
+      }
+    }
+    if (S.running) {
+      parts.push(`<div class="work-ln"><span class="work-shimmer">正在修改代码并运行测试…</span><span class="tm">0:18</span></div>`);
+    } else {
+      parts.push(`<div class="work-ln"><span>这一轮做完了。</span></div>`);
+    }
+
+    // Scheme 1: Pending Queued Bubbles live directly here at the end of the conversation!
+    if (S.variant === "inline" && S.queued.length > 0) {
+      const q = S.queued;
+      parts.push(`<div class="pending-stream">`);
+      q.forEach((item, i) => {
+        if (S.editingId === item.id) {
+          parts.push(`<div class="pb-item" style="width:86%">${renderInlineEditor(item)}</div>`);
+        } else {
+          parts.push(`
+            <div class="pb-item">
+              <div class="pb-bub" data-ed="${item.id}" title="点按直接编辑">${esc(item.text)}</div>
+              <div class="pb-actions">
+                <span>${q.length > 1 ? `下一轮 #${i + 1}` : "排在下一轮"}</span>
+                <span class="dot">·</span>
+                <button class="pri" data-st="${item.id}">插话</button>
+                <span class="dot">·</span>
+                <button data-ed="${item.id}">编辑</button>
+                ${i > 0 ? `<span class="dot">·</span><button data-up="${i}">前移</button>` : ""}
+                <span class="dot">·</span>
+                <button data-rm="${item.id}">撤回</button>
+              </div>
+            </div>
+          `);
+        }
+      });
+      if (q.length >= 2) {
+        parts.push(`
+          <div class="pb-batch-bar">
+            <span>共 ${q.length} 条待发</span>
+            <span>·</span>
+            <button data-merge>合并为一条</button>
+            <span>·</span>
+            <button class="pri" data-st-all>全部插话</button>
+          </div>
+        `);
+      }
+      parts.push(`</div>`);
+    }
+
+    $("chatScroll").innerHTML = parts.join("");
+    bindActionAttrs($("chatScroll"));
+  }
+
+  function renderDockQueue() {
+    const above = $("aboveBoxMount");
+    const lip = $("lipMount");
+    const q = S.queued;
+    above.innerHTML = "";
+    lip.innerHTML = "";
+
+    $("sheetScrim").classList.toggle("on", S.variant === "sheet" && S.sheetOpen && q.length > 0);
+    $("iosSheet").classList.toggle("on", S.variant === "sheet" && S.sheetOpen && q.length > 0);
+
+    if (!q.length || S.variant === "inline") return;
+
+    // Legacy reproduction
+    if (S.variant === "legacy") {
+      above.innerHTML = `
+        <div class="q-legacy glass">
+          <div class="hd">待执行队列 (${q.length})</div>
+          ${q.map((item) => `
+            <div class="row">
+              <span class="t">${esc(item.text)}</span>
+              <button class="st" data-st="${item.id}">立即插入引导</button>
+              <button class="x" data-rm="${item.id}" aria-label="移除">
+                <svg class="ic sm" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+              </button>
+            </div>
+          `).join("")}
+        </div>
+      `;
+      bindActionAttrs(above);
+      return;
+    }
+
+    // Scheme 2: Unified Lip inside the Composer Glass Shell
+    if (S.variant === "lip") {
+      if (q.length === 1 && !S.lipOpen) {
+        const it = q[0];
+        lip.innerHTML = `
+          <div class="lip-single">
+            <div class="lip-txt" data-pull="${it.id}" title="点按拿回输入框修改">${esc(it.text)}</div>
+            <div class="lip-acts">
+              <button class="steer" data-st="${it.id}">插话</button>
+              <button class="rm" data-rm="${it.id}" aria-label="撤回">
+                <svg class="ic xs" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+              </button>
+            </div>
+          </div>
+        `;
+      } else if (!S.lipOpen) {
+        lip.innerHTML = `
+          <div class="lip-multi-collapsed" data-lip-toggle="1">
+            <span class="lip-cnt">${q.length} 条待发</span>
+            <span style="color:var(--l3)">·</span>
+            <span class="lip-preview">${esc(q[0].text)}</span>
+            <span class="lip-open">展开</span>
+          </div>
+        `;
+      } else {
+        lip.innerHTML = `
+          <div class="lip-expanded">
+            <div class="lip-exp-hd">
+              <span>${q.length} 条待发</span>
+              <div class="acts">
+                ${q.length >= 2 ? `<button data-merge>合并</button>` : ""}
+                <button data-lip-toggle="0">收起</button>
+              </div>
+            </div>
+            <div class="lip-exp-list">
+              ${q.map((it, i) => `
+                <div class="lip-row">
+                  <span class="lip-row-num">${i + 1}</span>
+                  ${S.editingId === it.id
+                    ? `<div style="flex:1;min-width:0">${renderInlineEditor(it)}</div>`
+                    : `<div class="lip-row-body" data-ed="${it.id}">${esc(it.text)}</div>
+                       <div class="lip-row-acts">
+                         ${i > 0 ? `<button class="up" data-up="${i}">前移</button>` : ""}
+                         <button class="steer" data-st="${it.id}">插话</button>
+                         <button class="rm" data-rm="${it.id}">
+                           <svg class="ic xs" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                         </button>
+                       </div>`}
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `;
+      }
+      bindActionAttrs(lip);
+      return;
+    }
+
+    // Scheme 3: Slim Bar + Native Bottom Sheet
+    if (S.variant === "sheet") {
+      const first = q[0];
+      above.innerHTML = `
+        <div class="slim-bar glass" data-open-sheet>
+          <span class="lbl">${q.length > 1 ? `${q.length} 条待发` : "下一轮"}</span>
+          <span style="color:var(--l4)">·</span>
+          <span class="txt">${esc(first.text)}</span>
+          ${q.length === 1
+            ? `<button class="steer" data-st="${first.id}">插话</button>`
+            : `<span class="more">查看</span>`}
+        </div>
+      `;
+      $("shTitle").textContent = `待发消息（${q.length}）`;
+      $("shMergeBtn").hidden = q.length < 2;
+      $("shList").innerHTML = q.map((it, i) => `
+        <div class="sh-row">
+          ${S.editingId === it.id
+            ? renderInlineEditor(it)
+            : `<div class="sh-row-txt" data-ed="${it.id}">${esc(it.text)}</div>
+               <div class="sh-row-foot">
+                 <span>#${i + 1}</span>
+                 <div class="acts">
+                   ${i > 0 ? `<button data-up="${i}">前移</button>` : ""}
+                   <button data-ed="${it.id}">编辑</button>
+                   <button class="pri" data-st="${it.id}">插话</button>
+                   <button class="del" data-rm="${it.id}">撤回</button>
+                 </div>
+               </div>`}
+        </div>
+      `).join("");
+      bindActionAttrs(above);
+      bindActionAttrs($("shList"));
+    }
+  }
+
+  function bindActionAttrs(root) {
+    root.querySelectorAll("[data-st]").forEach((b) => {
+      b.onclick = (e) => { e.stopPropagation(); steerItem(b.dataset.st); };
+    });
+    root.querySelectorAll("[data-rm]").forEach((b) => {
+      b.onclick = (e) => { e.stopPropagation(); removeItem(b.dataset.rm); };
+    });
+    root.querySelectorAll("[data-ed]").forEach((b) => {
+      b.onclick = (e) => { e.stopPropagation(); beginInlineEdit(b.dataset.ed); };
+    });
+    root.querySelectorAll("[data-pull]").forEach((b) => {
+      b.onclick = (e) => {
+        e.stopPropagation();
+        pullBackToComposer(b.dataset.pull);
+        toast("已放回输入框，改完可直接发送");
+      };
+    });
+    root.querySelectorAll("[data-up]").forEach((b) => {
+      b.onclick = (e) => { e.stopPropagation(); moveItem(+b.dataset.up, -1); };
+    });
+    root.querySelectorAll("[data-merge]").forEach((b) => {
+      b.onclick = (e) => { e.stopPropagation(); mergeAll(); };
+    });
+    root.querySelectorAll("[data-st-all]").forEach((b) => {
+      b.onclick = (e) => { e.stopPropagation(); steerAll(); };
+    });
+    root.querySelectorAll("[data-lip-toggle]").forEach((b) => {
+      b.onclick = (e) => { e.stopPropagation(); S.lipOpen = b.dataset.lipToggle === "1"; render(); };
+    });
+    root.querySelectorAll("[data-open-sheet]").forEach((b) => {
+      b.onclick = () => { S.sheetOpen = true; render(); };
+    });
+    root.querySelectorAll("[data-cancel-ed]").forEach((b) => {
+      b.onclick = (e) => { e.stopPropagation(); S.editingId = null; render(); };
+    });
+    root.querySelectorAll("[data-save-ed]").forEach((b) => {
+      b.onclick = (e) => { e.stopPropagation(); saveInlineEdit(); };
+    });
+  }
+
+  function renderComposer() {
+    const ta = $("ta");
+    const ready = ta.value.trim().length > 0;
+    const open = S.boxFocus || ready;
+    $("cmpInner").classList.toggle("open", open);
+
+    ta.placeholder = S.variant === "legacy"
+      ? "继续聊..."
+      : S.running ? "继续说，直接插入当前轮…" : "继续聊…";
+
+    const stopSvg = '<svg class="ic sm" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor" stroke="none"/></svg>';
+    const upSvg = '<svg class="ic" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>';
+
+    // Minimalist plain-text "排队" pill appears cleanly only when typing while running (exact Hermesh SessionPage.swift pattern)
+    const queueBtn = (ready && S.running && S.variant !== "legacy")
+      ? `<button class="q-pill-btn" data-send-queue type="button">排队</button>`
+      : "";
+    const stopBtn = (S.running && S.variant !== "legacy")
+      ? `<button class="cbtn" data-stop type="button" aria-label="停下">${stopSvg}</button>`
+      : "";
+    const sendBtn = `<button class="cbtn send${ready ? " ready" : ""}" data-send-steer type="button" aria-label="发送">${upSvg}</button>`;
+
+    $("cmpTail").innerHTML = `${stopBtn}${sendBtn}`;
+    $("cmpBarRight").innerHTML = `${queueBtn}${stopBtn}${sendBtn}`;
+
+    document.querySelectorAll("[data-send-queue]").forEach((b) => {
+      b.onmousedown = (e) => e.preventDefault();
+      b.onclick = () => sendFromComposer("queue");
+    });
+    document.querySelectorAll("[data-send-steer]").forEach((b) => {
+      b.onmousedown = (e) => e.preventDefault();
+      b.onclick = () => sendFromComposer("steer");
+    });
+    document.querySelectorAll("[data-stop]").forEach((b) => {
+      b.onmousedown = (e) => e.preventDefault();
+      b.onclick = () => { S.running = false; toast("已停下当前轮"); render(); };
+    });
+  }
+
+  function renderNotes() {
+    const n = NOTES[S.variant];
+    $("notesBox").innerHTML = `
+      <div class="ncard">
+        <h3>${n.title}</h3>
+        <p>${n.desc}</p>
+        <ul>${n.bullets.map((b) => `<li>${b}</li>`).join("")}</ul>
+      </div>
+      <div class="ncard">
+        <h3>发送与连插多条（极简无图标）</h3>
+        <ul>
+          <li><b>平时一行：</b>只留 <code>+</code>、输入框、停下与 <code>↑</code>，不放任何常驻模式开关。</li>
+          <li><b>打字后分流：</b>正在运行时输入文字，<code>↑</code> 直接插话进当前轮；旁边浮现纯文字胶囊 <code>排队</code>（仅 2 个字，无图标），想排多条就点 <code>排队</code>。</li>
+        </ul>
+      </div>
+    `;
+  }
+
+  function autoGrow() {
+    const ta = $("ta");
+    ta.style.height = "auto";
+    ta.style.height = Math.min(105, Math.max(35, ta.scrollHeight)) + "px";
+  }
+
+  function syncControls() {
+    document.querySelectorAll("[data-var]").forEach((b) => b.classList.toggle("on", b.dataset.var === S.variant));
+    document.querySelectorAll("[data-scene]").forEach((b) => b.classList.toggle("on", b.dataset.scene === S.scene));
+    document.querySelectorAll("[data-dev]").forEach((b) => b.classList.toggle("on", b.dataset.dev === S.device));
+    document.querySelectorAll("[data-th]").forEach((b) => b.classList.toggle("on", b.dataset.th === S.theme));
+    $("phone").classList.toggle("std", S.device === "std");
+    document.documentElement.dataset.theme = S.theme;
+  }
+
+  function render() {
+    syncControls();
+    renderChat();
+    renderDockQueue();
+    renderComposer();
+    renderNotes();
+  }
+
+  /* ---------- Events ---------- */
+
+  $("ta").addEventListener("focus", () => { S.boxFocus = true; S.lipOpen = false; renderComposer(); });
+  $("ta").addEventListener("blur", () => { S.boxFocus = false; renderComposer(); });
+  $("ta").addEventListener("input", () => { autoGrow(); renderComposer(); });
+  $("ta").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      sendFromComposer("steer");
+    }
+  });
+
+  $("sheetScrim").onclick = () => { S.sheetOpen = false; S.editingId = null; render(); };
+  $("shDoneBtn").onclick = () => { S.sheetOpen = false; S.editingId = null; render(); };
+  $("shMergeBtn").onclick = () => mergeAll();
+
+  const addSample = () => {
+    S.queued.push({ id: uid(), text: SAMPLES[sampleCursor++ % SAMPLES.length] });
+    S.running = true;
+    toast(`已加入第 ${S.queued.length} 条待发`);
+    render();
+    scrollBottom();
+  };
+  const finishTurn = () => {
+    if (S.queued.length) {
+      const next = S.queued.shift();
+      S.messages.push({ role: "assistant", text: "上一轮修改与测试已完成。" });
+      S.messages.push({ role: "user", text: next.text });
+      S.running = true;
+      toast("上一轮完成，已自动开始下一条");
+    } else {
+      S.running = false;
+      toast("当前轮已完成");
+    }
+    render();
+    scrollBottom();
+  };
+
+  $("navAddBtn").onclick = addSample;
+  $("simAdd").onclick = addSample;
+  $("simFinish").onclick = finishTurn;
+
+  document.querySelectorAll("[data-var]").forEach((b) => {
+    b.onclick = () => {
+      S.variant = b.dataset.var;
+      S.lipOpen = false;
+      S.sheetOpen = false;
+      S.editingId = null;
+      render();
+      scrollBottom();
+    };
+  });
+  document.querySelectorAll("[data-scene]").forEach((b) => {
+    b.onclick = () => { setScene(b.dataset.scene); $("mobCfgWrap").hidden = true; };
+  });
+  document.querySelectorAll("[data-dev]").forEach((b) => {
+    b.onclick = () => { S.device = b.dataset.dev; render(); };
+  });
+  document.querySelectorAll("[data-th]").forEach((b) => {
+    b.onclick = () => { S.theme = b.dataset.th; render(); };
+  });
+
+  $("mobCfgBtn").onclick = () => { $("mobCfgWrap").hidden = false; };
+  $("mobCfgScrim").onclick = () => { $("mobCfgWrap").hidden = true; };
+  $("mobCfgClose").onclick = () => { $("mobCfgWrap").hidden = true; };
+  $("mobSimAdd").onclick = () => { $("mobCfgWrap").hidden = true; addSample(); };
+  $("mobSimFinish").onclick = () => { $("mobCfgWrap").hidden = true; finishTurn(); };
+  $("mobToggleDuo").onclick = () => { $("phone").classList.toggle("force-duo"); $("mobCfgWrap").hidden = true; };
+  $("mobToggleTheme").onclick = () => { S.theme = S.theme === "dark" ? "light" : "dark"; $("mobCfgWrap").hidden = true; render(); };
+
+  // Query params for visual testing
+  const qp = new URLSearchParams(location.search);
+  if (qp.get("scene") && SCENES[qp.get("scene")]) S.queued = JSON.parse(JSON.stringify(SCENES[qp.get("scene")])), S.scene = qp.get("scene");
+  if (qp.get("var")) S.variant = qp.get("var");
+  if (qp.get("lip") === "1") S.lipOpen = true;
+  if (qp.get("sheet") === "1") S.sheetOpen = true;
+  if (qp.get("ed")) S.editingId = qp.get("ed");
+
+  render();
+  scrollBottom();
+})();
+</script>
+</body>
+</html>

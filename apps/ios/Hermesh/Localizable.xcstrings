@@ -1335,6 +1335,16 @@
         }
       }
     },
+    "%lld queued": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "共 %lld 条待发"
+          }
+        }
+      }
+    },
     "%lld results": {
       "localizations": {
         "en": {
@@ -6836,16 +6846,6 @@
         }
       }
     },
-    "Installed into the default command-line directory so you can also run it directly in Terminal.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "直接安装到默认命令行目录，安装后在终端也可直接使用。"
-          }
-        }
-      }
-    },
     "Exit %lld · %@": {
       "localizations": {
         "zh-Hans": {
@@ -8928,6 +8928,16 @@
         }
       }
     },
+    "Installed into the default command-line directory so you can also run it directly in Terminal.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直接安装到默认命令行目录，安装后在终端也可直接使用。"
+          }
+        }
+      }
+    },
     "Install…": {
       "localizations": {
         "zh-Hans": {
@@ -9424,6 +9434,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "已加入"
+          }
+        }
+      }
+    },
+    "Joined this turn": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已并入当前轮"
           }
         }
       }
@@ -9963,6 +9983,16 @@
         }
       }
     },
+    "Long image": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "长图"
+          }
+        }
+      }
+    },
     "Looking for repositories…": {
       "localizations": {
         "zh-Hans": {
@@ -10212,6 +10242,16 @@
         }
       }
     },
+    "Merge into one": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "合并为一条"
+          }
+        }
+      }
+    },
     "Merged": {
       "localizations": {
         "zh-Hans": {
@@ -10228,6 +10268,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "已合并至 %@"
+          }
+        }
+      }
+    },
+    "Merged into one message": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已合并为一条"
           }
         }
       }
@@ -10414,6 +10464,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "移动 %@？"
+          }
+        }
+      }
+    },
+    "Move up": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "前移"
           }
         }
       }
@@ -10784,6 +10844,16 @@
         }
       }
     },
+    "Next #%lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下一轮 #%lld"
+          }
+        }
+      }
+    },
     "Next %@ · %@": {
       "localizations": {
         "zh-Hans": {
@@ -10800,6 +10870,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "接下来"
+          }
+        }
+      }
+    },
+    "Next turn": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排在下一轮"
           }
         }
       }
@@ -12796,6 +12876,16 @@
         }
       }
     },
+    "Queue": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排队"
+          }
+        }
+      }
+    },
     "Queue (%lld)": {
       "localizations": {
         "zh-Hans": {
@@ -12812,6 +12902,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "离线入队"
+          }
+        }
+      }
+    },
+    "Queue paused": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "队列已暂停"
           }
         }
       }
@@ -13980,6 +14080,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "恢复"
+          }
+        }
+      }
+    },
+    "Resume queue": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "恢复队列"
           }
         }
       }
@@ -16098,12 +16208,32 @@
         }
       }
     },
+    "Steer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "插话"
+          }
+        }
+      }
+    },
     "Steer Now": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "立即插入引导"
+          }
+        }
+      }
+    },
+    "Steer all": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部插话"
           }
         }
       }
@@ -19120,16 +19250,6 @@
         }
       }
     },
-    "Long image": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "长图"
-          }
-        }
-      }
-    },
     "View Larger": {
       "localizations": {
         "zh-Hans": {
@@ -19855,6 +19975,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "无需扫码：连接请求会自动显示在这里，请比对双方的核对码。"
+          }
+        }
+      }
+    },
+    "Withdraw": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤回"
+          }
+        }
+      }
+    },
+    "Withdrawn": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已撤回"
           }
         }
       }

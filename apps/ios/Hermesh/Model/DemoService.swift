@@ -690,6 +690,7 @@ final class DemoService {
                     .with {
                         $0.instanceID = pid; $0.driver = pid; $0.displayName = pid == "claude" ? "Claude Code" : "Codex"
                         $0.enabled = true; $0.installed = true; $0.authenticated = true
+                        if pid == "claude" { $0.capabilities = .with { $0.midTurnSteer = true } }
                         $0.models = [.with { $0.slug = "demo-model"; $0.name = "Demo Model"; $0.shortName = "Demo Model"; $0.isDefault = true }]
                     }
                 }
@@ -772,6 +773,20 @@ final class DemoService {
                 publish()
                 return try encoded(Hermesh_Session_V1_DispatchMessageResponse.with { $0.session = world.sessions[i]; $0.run = qRun })
             }
+            if req.intent == .steer, world.sessions[i].status == .running, !world.sessions[i].activeRunID.isEmpty {
+                let activeRunID = world.sessions[i].activeRunID
+                let item = appendItem(req.sessionID, runID: activeRunID, kind: .userMessage) {
+                    $0.status = "steered"
+                    $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+                    $0.text = req.text
+                    $0.attachments = req.attachments
+                }
+                world.sessions[i].updatedAt = .init(date: .now)
+                syncSession(req.sessionID)
+                emitEvent(req.sessionID) { $0.type = "item.created"; $0.item = item }
+                publish()
+                return try encoded(Hermesh_Session_V1_DispatchMessageResponse.with { $0.session = world.sessions[i] })
+            }
             let ord = UInt32((projections[req.sessionID]?.runs.count ?? 0) + 1)
             let rid = "r\(ord)"
             beginRun(req.sessionID, runID: rid, ordinal: ord, asker: "owner", status: .completed)
@@ -786,6 +801,19 @@ final class DemoService {
             let req = try Hermesh_Session_V1_ManageQueueRequest(jsonUTF8Data: data, options: dec)
             guard let i = world.sessions.firstIndex(where: { $0.sessionID == req.sessionID }) else { throw CancellationError() }
             var p = projections[req.sessionID, default: .init()]
+            func sortedQueued(_ proj: Hermesh_Session_V1_SessionProjection) -> [Hermesh_Session_V1_Run] {
+                proj.runs.filter { $0.status == .queued }.sorted { $0.queueOrder < $1.queueOrder }
+            }
+            if req.operation == .resumeQueue {
+                world.sessions[i].queueHeld = false
+                world.sessions[i].updatedAt = .init(date: .now)
+                p.session = world.sessions[i]
+                projections[req.sessionID] = p
+                let rem = sortedQueued(p)
+                emitEvent(req.sessionID) { $0.type = "queue.updated" }
+                publish()
+                return try encoded(Hermesh_Session_V1_ManageQueueResponse.with { $0.session = world.sessions[i]; $0.queuedRuns = rem })
+            }
             guard let rIdx = p.runs.firstIndex(where: { $0.runID == req.runID && $0.status == .queued }) else {
                 throw APIError(code: "failed_precondition", message: "run is no longer queued")
             }
@@ -804,18 +832,55 @@ final class DemoService {
                     $0.attachments = qRun.attachments
                 }
                 p = projections[req.sessionID, default: .init()]
-                let rem = p.runs.filter { $0.status == .queued }
+                let rem = sortedQueued(p)
+                world.sessions[i].queueHeld = false
                 world.sessions[i].queuedRunCount = UInt32(rem.count)
                 world.sessions[i].updatedAt = .init(date: .now)
                 syncSession(req.sessionID)
                 emitEvent(req.sessionID) { $0.type = "queue.promoted"; $0.run = qRun; $0.item = item }
                 publish()
                 return try encoded(Hermesh_Session_V1_ManageQueueResponse.with { $0.session = world.sessions[i]; $0.queuedRuns = rem })
+            case .edit:
+                p.runs[rIdx].prompt = req.text
+                if !req.attachments.isEmpty {
+                    p.runs[rIdx].attachments = req.attachments
+                }
+                let edited = p.runs[rIdx]
+                let rem = sortedQueued(p)
+                world.sessions[i].updatedAt = .init(date: .now)
+                p.session = world.sessions[i]
+                projections[req.sessionID] = p
+                emitEvent(req.sessionID) { $0.type = "queue.updated"; $0.run = edited }
+                publish()
+                return try encoded(Hermesh_Session_V1_ManageQueueResponse.with { $0.session = world.sessions[i]; $0.queuedRuns = rem })
+            case .reorder:
+                let moving = p.runs[rIdx]
+                var queued = sortedQueued(p).filter { $0.runID != moving.runID }
+                let insertAt = queued.firstIndex(where: { $0.runID == req.beforeRunID }) ?? queued.count
+                queued.insert(moving, at: insertAt)
+                var byID: [String: Double] = [:]
+                for (k, qr) in queued.enumerated() {
+                    byID[qr.runID] = Double((k + 1) * 1000)
+                }
+                for idx in p.runs.indices {
+                    if let ord = byID[p.runs[idx].runID] {
+                        p.runs[idx].queueOrder = ord
+                    }
+                }
+                let rem = sortedQueued(p)
+                world.sessions[i].updatedAt = .init(date: .now)
+                p.session = world.sessions[i]
+                projections[req.sessionID] = p
+                for qr in rem {
+                    emitEvent(req.sessionID) { $0.type = "queue.updated"; $0.run = qr }
+                }
+                publish()
+                return try encoded(Hermesh_Session_V1_ManageQueueResponse.with { $0.session = world.sessions[i]; $0.queuedRuns = rem })
             case .cancel:
                 p.runs[rIdx].status = .cancelled
                 p.runs[rIdx].completedAt = .init(date: .now)
                 let cancelled = p.runs[rIdx]
-                let rem = p.runs.filter { $0.status == .queued }
+                let rem = sortedQueued(p)
                 world.sessions[i].queuedRunCount = UInt32(rem.count)
                 world.sessions[i].updatedAt = .init(date: .now)
                 p.session = world.sessions[i]
@@ -824,7 +889,7 @@ final class DemoService {
                 publish()
                 return try encoded(Hermesh_Session_V1_ManageQueueResponse.with { $0.session = world.sessions[i]; $0.queuedRuns = rem })
             default:
-                let rem = p.runs.filter { $0.status == .queued }
+                let rem = sortedQueued(p)
                 return try encoded(Hermesh_Session_V1_ManageQueueResponse.with { $0.session = world.sessions[i]; $0.queuedRuns = rem })
             }
         case "LookupPairing":
@@ -1400,6 +1465,54 @@ final class DemoService {
         addHistory(id: "demo-long-history", title: "Long history session", prefix: "Long", turns: 24, status: .idle, updatedOffset: 20)
         addHistory(id: "demo-delayed-history", title: "Delayed history session", prefix: "Delayed", turns: 24, status: .idle, updatedOffset: 10)
         addHistory(id: "demo-streaming-session", title: "Streaming session", prefix: "Stream", turns: 20, status: .running, updatedOffset: 30)
+        seedQueueSteerFlow()
+    }
+
+    private func seedQueueSteerFlow() {
+        let id = "demo-queue-steer"
+        var s = session(id, title: "Queue steer session", machine: "demo-mac", status: .running)
+        s.agent = "claude"
+        s.createdBy = "owner"
+        s.modelSelection = .with { $0.instanceID = "claude"; $0.model = "demo-model" }
+        s.activeRunID = "r12"
+        s.queuedRunCount = 1
+        s.progress.turnCount = 11
+        s.progress.turnStartedAt = .init(date: .now)
+        s.updatedAt = .init(date: .now.addingTimeInterval(35))
+        world.sessions.insert(s, at: 0)
+
+        for t in 1 ... 11 {
+            let rid = "r\(t)"
+            beginRun(id, runID: rid, ordinal: UInt32(t), asker: "owner", status: .completed, startedAt: .now.addingTimeInterval(Double(-120 + t * 5)))
+            appendItem(id, runID: rid, kind: .userMessage) {
+                $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+                $0.text = "Queue context #\(t): inspect session state transition."
+            }
+            appendItem(id, runID: rid, kind: .assistantMessage) {
+                $0.text = "Queue analysis #\(t): verified transition invariants and event ordering for turn \(t)."
+            }
+        }
+
+        beginRun(id, runID: "r12", ordinal: 12, asker: "owner", status: .running, startedAt: .now)
+        appendItem(id, runID: "r12", kind: .userMessage) {
+            $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+            $0.text = "Investigate intermittent favorite tap freeze when logged out."
+        }
+        appendItem(id, runID: "r12", kind: .commandExecution) {
+            $0.command = "swift test"
+            $0.status = "running"
+        }
+        let q1: Hermesh_Session_V1_Run = .with {
+            $0.runID = "q_seed_1"
+            $0.sessionID = id
+            $0.status = .queued
+            $0.queueOrder = 1000
+            $0.author = .with { $0.kind = .owner; $0.id = "owner" }
+            $0.prompt = "Also found a bug when tapping favorite logged out; returning flashes blank."
+            $0.createdAt = .init(date: .now)
+        }
+        projections[id, default: .init()].runs.append(q1)
+        syncSession(id)
     }
 
     private func seedCodeBlockRunner() {
