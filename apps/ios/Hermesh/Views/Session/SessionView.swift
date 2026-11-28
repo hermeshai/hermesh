@@ -165,8 +165,8 @@ struct StepView: View {
     }
 }
 
-/// Settled question card (Style A): calm secondary question prompt over a highlighted checked answer row
-/// with the Recommended badge preserved inline and zero redundant top header clutter.
+/// Settled question record: in-stream secondary question prompt over a compact checked option pill
+/// with a calm inline Recommended badge and no outer wrapper box.
 struct SettledQuestionCard: View {
     @Environment(AppModel.self) private var model
     let question: Question
@@ -182,19 +182,14 @@ struct SettledQuestionCard: View {
                 Text("\(byOther) answered")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 2)
             }
-            ForEach(Array(rows.enumerated()), id: \.offset) { i, row in
-                if i > 0 {
-                    Rectangle().fill(Palette.separator).frame(height: 0.5)
-                }
-                VStack(alignment: .leading, spacing: 7) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                VStack(alignment: .leading, spacing: 5) {
                     if !row.prompt.isEmpty {
                         Text(verbatim: row.prompt)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .lineSpacing(2)
-                            .padding(.horizontal, 2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     if row.status == .answered && !row.choices.isEmpty {
@@ -205,91 +200,87 @@ struct SettledQuestionCard: View {
                 }
             }
         }
-        .padding(.horizontal, 14).padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settled-question")
     }
 
     @ViewBuilder private func answeredChoicesBox(_ choices: [ParsedOptionLabel]) -> some View {
+        let multi = choices.count > 1
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(choices.enumerated()), id: \.offset) { idx, choice in
                 if idx > 0 {
                     Rectangle().fill(Palette.separator).frame(height: 0.5)
                 }
-                HStack(alignment: .top, spacing: 9) {
+                HStack(alignment: .top, spacing: 8) {
                     answerMark(.answered)
-                        .padding(.top, 1.5)
+                        .padding(.top, 2)
                     choiceText(choice)
                         .foregroundStyle(.primary)
-                        .lineSpacing(3)
+                        .lineSpacing(2.5)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: multi ? .infinity : nil, alignment: .leading)
                 }
-                .padding(.leading, 11).padding(.trailing, 13).padding(.vertical, 9.5)
+                .padding(.leading, 10).padding(.trailing, 12).padding(.vertical, 7)
             }
         }
-        .background(Palette.settledAnswer, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.settledAnswerBorder, lineWidth: 0.5))
+        .background(Palette.settledAnswer, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Palette.settledAnswerBorder, lineWidth: 0.5))
         .shadow(color: Palette.settledAnswerShadow, radius: 1.5, x: 0, y: 0.5)
     }
 
     @ViewBuilder private func mutedAnswerBox(status: SettledQuestionRow.StatusKind, statusText: String) -> some View {
-        HStack(alignment: .top, spacing: 9) {
+        HStack(alignment: .top, spacing: 8) {
             answerMark(status)
-                .padding(.top, 0.5)
+                .padding(.top, 1)
             Text(verbatim: statusText)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .lineSpacing(2.5)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.leading, 11).padding(.trailing, 13).padding(.vertical, 9)
-        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
+        .padding(.leading, 10).padding(.trailing, 12).padding(.vertical, 7)
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
     }
 
     @ViewBuilder private func answerMark(_ status: SettledQuestionRow.StatusKind) -> some View {
         switch status {
         case .answered:
             Image(systemName: "checkmark")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.green)
-                .frame(width: 18, height: 18)
-                .background(Color.green.opacity(0.15), in: .circle)
-                .overlay(Circle().strokeBorder(Color.green.opacity(0.3), lineWidth: 0.5))
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.secondary)
+                .frame(width: 15, height: 15)
+                .background(Palette.fill2, in: .circle)
         case .timedOut:
             Image(systemName: "clock")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 9.5, weight: .semibold))
                 .foregroundStyle(.orange)
-                .frame(width: 18, height: 18)
+                .frame(width: 15, height: 15)
                 .background(Color.orange.opacity(0.15), in: .circle)
         default:
             Image(systemName: "minus")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 9.5, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 18, height: 18)
+                .frame(width: 15, height: 15)
                 .background(Palette.fill2, in: .circle)
         }
     }
 
     @ViewBuilder private func choiceText(_ choice: ParsedOptionLabel) -> some View {
-        let baseFont: Font = .subheadline.weight(.medium)
+        let baseFont: Font = .subheadline
         let label = Text(verbatim: choice.text).font(baseFont)
         if choice.recommended {
-            let badgeFont: Font = .caption2.weight(.semibold)
+            let badgeFont: Font = .caption2.weight(.medium)
             let space = Text(verbatim: " ").font(baseFont)
             let badge = Text(verbatim: "\u{00A0}\(String(localized: "Recommended"))\u{00A0}")
                 .font(badgeFont)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(.secondary)
                 .baselineOffset(0.5)
                 .customAttribute(RecommendedBadgeAttribute(selected: false))
             Text("\(label)\(space)\(badge)")
-                .textRenderer(RecommendedTextRenderer(accent: .accentColor))
+                .textRenderer(RecommendedTextRenderer(accent: .secondary))
         } else {
             label
         }

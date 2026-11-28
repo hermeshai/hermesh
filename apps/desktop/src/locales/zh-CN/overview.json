@@ -178,9 +178,10 @@
     "untilWholeHours_other": "还有 {{count}} 小时",
     "untilMinutes_other": "还有 {{count}} 分",
     "none": "它没有提供额度信息",
+    "noCompliantQuery": "暂无官方合规余量查询支持",
     "notYet": "还没有读到，用订阅账号登录后显示",
     "stale": "窗口已重置，下次查询或运行后更新",
     "notStarted": "使用后开始计时",
-    "foot": "额度由各提供方给出：打开此页时向这台 Mac 上的 Claude Code、Codex 和 Antigravity 查询，运行任务时也会更新。Hermesh 只转述，不读取账号。其他电脑上的，是它们上次给出的数。"
+    "foot": "额度由各提供方给出：打开此页时向这台 Mac 上的 Claude Code 和 Codex 查询，运行任务时也会更新。Hermesh 只转述，不读取账号。其他电脑上的，是它们上次给出的数。"
   }
 }

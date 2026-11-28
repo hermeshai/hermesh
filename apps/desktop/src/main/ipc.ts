@@ -52,6 +52,14 @@ const terminalCommands: Record<TerminalCommand, string> = {
   codexLogin: "codex login",
   claudeLogin: "claude",
   antigravityLogin: "hermesh agent login antigravity",
+  copilotLogin: "copilot",
+  opencodeLogin: "opencode auth login",
+  qoderLogin: "qodercli",
+  qwenLogin: "qwen",
+  kimiLogin: "kimi",
+  codebuddyLogin: "codebuddy",
+  grokLogin: "grok",
+  auggieLogin: "auggie login",
 };
 
 export function registerIPC() {

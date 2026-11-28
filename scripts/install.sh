@@ -64,9 +64,9 @@ printf '%s             Your coding agents, connected.%s\n\n' "$DIM" "$RESET"
 
 # Hermesh runs as the user it is installed for. As root, the installer says
 # so and installs for root, or for another user you name.
-AS=""
 if [ "$(id -u)" = 0 ] && [ -z "$FOR_USER" ] && [ -n "$TTY" ]; then
   echo "You are root: Hermesh will be installed for root."
+  echo "  (Remote CLI install from the Hermesh app requires a non-root user.)"
   printf 'Press Enter to continue, or type another user to install for (q quits): '
   read -r FOR_USER <"$TTY" || true
   case "$FOR_USER" in q | Q) echo "Nothing was installed."; exit 0 ;; esac
@@ -93,19 +93,33 @@ elif [ "$(id -u)" = 0 ]; then
   fi
   uid="$(id -u "$FOR_USER")"
   home="$(getent passwd "$FOR_USER" | cut -d: -f6)"
+  shell="$(getent passwd "$FOR_USER" | cut -d: -f7)"
   if loginctl enable-linger "$FOR_USER" 2>/dev/null; then
     echo "✓ Installing for $FOR_USER, with lingering on"
   else
     echo "✓ Installing for $FOR_USER"
   fi
   BIN_DIR="${HERMESH_BIN_DIR:-$home/.local/bin}"
-  AS="runuser -u $FOR_USER -- env HOME=$home USER=$FOR_USER LOGNAME=$FOR_USER XDG_RUNTIME_DIR=/run/user/$uid"
 elif [ -n "$FOR_USER" ]; then
   die "--user is for root; you are installing for yourself already"
 fi
 
+as_user() {
+  if [ -n "$FOR_USER" ]; then
+    runuser -u "$FOR_USER" -- env \
+      -u XDG_DATA_HOME -u XDG_CONFIG_HOME -u XDG_CACHE_HOME -u XDG_STATE_HOME \
+      -u DBUS_SESSION_BUS_ADDRESS -u TMPDIR \
+      "HOME=$home" "USER=$FOR_USER" "LOGNAME=$FOR_USER" \
+      "SHELL=${shell:-/bin/sh}" "PATH=$BIN_DIR:$PATH" \
+      "XDG_RUNTIME_DIR=/run/user/$uid" "$@"
+  else
+    "$@"
+  fi
+}
+
 command -v curl >/dev/null || die "curl is required"
 command -v openssl >/dev/null || die "openssl is required to verify the download"
+[ "$MODE" != machine ] || command -v tar >/dev/null || die "tar is required"
 
 if [ -n "${HERMESH_DOWNLOAD_BASE:-}" ]; then
   BASE="$HERMESH_DOWNLOAD_BASE"
@@ -125,11 +139,11 @@ prepare_data_dir() {
   target_home="$HOME"
   target_uid="$(id -u)"
   data_base="${XDG_DATA_HOME:-$HOME/.local/share}"
-  if [ -n "$AS" ]; then
+  if [ -n "$FOR_USER" ]; then
     target_home="$home"
     target_uid="$uid"
-    # Match the environment runuser passes to hermeshd.
-    data_base="${XDG_DATA_HOME:-$home/.local/share}"
+    # Match the environment runuser passes to hermeshd (never root's XDG_DATA_HOME).
+    data_base="$home/.local/share"
   fi
   DATA_ENTRY="$data_base/hermesh"
   [ "$OS" = darwin ] && DATA_ENTRY="$target_home/Library/Application Support/Hermesh"
@@ -145,7 +159,7 @@ prepare_data_dir() {
     [ -d "$DATA_ENTRY" ] || die "$DATA_ENTRY is not a directory"
     printf '  Existing data: %s\n' "$DATA_ENTRY"
     # shellcheck disable=SC2016 # Expanded by the target user's shell.
-    printf '  Stored at:    %s\n' "$( $AS sh -c 'cd "$1" && pwd -P' sh "$DATA_ENTRY" )"
+    printf '  Stored at:    %s\n' "$( as_user sh -c 'cd "$1" && pwd -P' sh "$DATA_ENTRY" )"
     show_space "$DATA_ENTRY"
     echo '  Keeping this location. Moving existing data is a separate migration.'
     return
@@ -161,7 +175,7 @@ prepare_data_dir() {
   if [ "$OS" = linux ] && [ -f /etc.defaults/VERSION ] && [ -z "${HERMESH_DATA_DIR:-}" ]; then
     awk '$2 ~ /^\/volume[0-9]+$/ && ($3 == "btrfs" || $3 == "ext4") && $4 ~ /(^|,)rw(,|$)/ {print $2}' /proc/mounts > "$TMP/mounts"
     while IFS= read -r volume; do
-      $AS test -w "$volume" || continue
+      as_user test -w "$volume" || continue
       available="$(free_kb "$volume")"
       [ "$available" -ge 2097152 ] || continue
       case "$DATA_ENTRY" in "$volume"/*) home_on_volume=true ;; esac
@@ -219,9 +233,9 @@ prepare_data_dir() {
       problem='Please use a path without control characters.'
     fi
     if [ -z "$problem" ] && { [ -e "$selected" ] || [ -L "$selected" ]; }; then
-      if ! $AS test -d "$selected" || ! $AS test -w "$selected"; then
+      if ! as_user test -d "$selected" || ! as_user test -w "$selected"; then
         problem='This location is not a writable directory.'
-      elif [ -n "$( $AS ls -A "$selected" )" ]; then
+      elif [ -n "$( as_user ls -A "$selected" )" ]; then
         problem='This folder is not empty. Choose a new or empty folder for Hermesh.'
       fi
     fi
@@ -237,7 +251,7 @@ prepare_data_dir() {
         fi
       fi
     fi
-    if [ -z "$problem" ] && ! (umask 077; $AS mkdir -p "$selected"); then
+    if [ -z "$problem" ] && ! (umask 077; as_user mkdir -p "$selected"); then
       problem='Could not create this folder as the installation user. Choose a writable location.'
     fi
     if [ -n "$problem" ]; then
@@ -248,13 +262,13 @@ prepare_data_dir() {
     if [ "$selected" != "$DATA_ENTRY" ]; then
       # ln (without -f) never replaces an existing installation. The
       # dangling link also prevents writes if its data volume goes away.
-      (umask 077; $AS mkdir -p "$(dirname "$DATA_ENTRY")")
-      $AS ln -sT "$selected" "$DATA_ENTRY" 2>/dev/null || {
+      (umask 077; as_user mkdir -p "$(dirname "$DATA_ENTRY")")
+      as_user ln -sT "$selected" "$DATA_ENTRY" 2>/dev/null || {
         # BSD ln has no -T; check first so it cannot put a link inside a directory.
         if [ -e "$DATA_ENTRY" ] || [ -L "$DATA_ENTRY" ]; then
           die "data entry already exists: $DATA_ENTRY; it was not replaced"
         fi
-        $AS ln -s "$selected" "$DATA_ENTRY"
+        as_user ln -s "$selected" "$DATA_ENTRY"
       }
     fi
     printf '\n%s  ✓ Data location: %s%s\n' "$CYAN" "$selected" "$RESET"
@@ -301,7 +315,7 @@ fetch() {
   [ "$(sha256 "$TMP/$1")" = "$want" ] || die "$1 checksum mismatch"
 }
 put() { # file, where: installed for the user Hermesh is for
-  if [ -n "$AS" ]; then
+  if [ -n "$FOR_USER" ]; then
     install -m 0755 -o "$FOR_USER" -g "$(id -gn "$FOR_USER")" "$1" "$2"
   else
     install -m 0755 "$1" "$2"
@@ -310,11 +324,7 @@ put() { # file, where: installed for the user Hermesh is for
 
 [ "$MODE" = cli ] || prepare_data_dir
 
-if [ -n "$AS" ]; then
-  $AS mkdir -p "$BIN_DIR"
-else
-  mkdir -p "$BIN_DIR"
-fi
+as_user mkdir -p "$BIN_DIR"
 for b in $BINS; do
   fetch "$b-$OS-$ARCH"
   put "$TMP/$b-$OS-$ARCH" "$BIN_DIR/$b"
@@ -326,11 +336,11 @@ if [ "$MODE" = machine ] && grep -q " her-$OS-$ARCH\$" "$TMP/checksums.txt"; the
   fetch "her-$OS-$ARCH"
   fetch her-console.tar.gz
   mkdir "$TMP/her-console"
-  tar -xzf "$TMP/her-console.tar.gz" -C "$TMP/her-console"
+  tar --no-same-owner -xzf "$TMP/her-console.tar.gz" -C "$TMP/her-console"
   put "$TMP/her-$OS-$ARCH" "$BIN_DIR/her"
   rm -rf "$BIN_DIR/her-console"
   cp -R "$TMP/her-console" "$BIN_DIR/her-console"
-  [ -z "$AS" ] || chown -R "$FOR_USER:$(id -gn "$FOR_USER")" "$BIN_DIR/her-console"
+  [ -z "$FOR_USER" ] || chown -R "$FOR_USER:$(id -gn "$FOR_USER")" "$BIN_DIR/her-console"
 fi
 # agent-desktop, which Her's computer use runs on a desktop (docs/linux.md
 # §5), in a folder of its own beside her: its clipboard helper refuses a
@@ -339,11 +349,11 @@ if [ "$MODE" = machine ] && grep -q " her-computer-$OS-$ARCH.tar.gz\$" "$TMP/che
   && { [ -e /lib64/ld-linux-x86-64.so.2 ] || [ -e /lib/ld-linux-aarch64.so.1 ]; }; then
   fetch "her-computer-$OS-$ARCH.tar.gz"
   mkdir "$TMP/her-computer"
-  tar -xzf "$TMP/her-computer-$OS-$ARCH.tar.gz" -C "$TMP/her-computer"
+  tar --no-same-owner -xzf "$TMP/her-computer-$OS-$ARCH.tar.gz" -C "$TMP/her-computer"
   rm -rf "$BIN_DIR/her-computer"
   cp -R "$TMP/her-computer" "$BIN_DIR/her-computer"
   chmod -R u+rwX,go-w,go+rX "$BIN_DIR/her-computer"
-  [ -z "$AS" ] || chown -R "$FOR_USER:$(id -gn "$FOR_USER")" "$BIN_DIR/her-computer"
+  [ -z "$FOR_USER" ] || chown -R "$FOR_USER:$(id -gn "$FOR_USER")" "$BIN_DIR/her-computer"
 fi
 # Her's PDF worker and PDFium (docs/linux.md §4), from the same release as
 # her, which is static and cannot load the library itself. They need glibc.
@@ -351,10 +361,10 @@ if [ "$MODE" = machine ] && grep -q " her-pdf-$OS-$ARCH.tar.gz\$" "$TMP/checksum
   && { [ -e /lib64/ld-linux-x86-64.so.2 ] || [ -e /lib/ld-linux-aarch64.so.1 ]; }; then
   fetch "her-pdf-$OS-$ARCH.tar.gz"
   mkdir "$TMP/her-pdf"
-  tar -xzf "$TMP/her-pdf-$OS-$ARCH.tar.gz" -C "$TMP/her-pdf"
+  tar --no-same-owner -xzf "$TMP/her-pdf-$OS-$ARCH.tar.gz" -C "$TMP/her-pdf"
   rm -rf "$BIN_DIR/her-pdf"
   cp -R "$TMP/her-pdf" "$BIN_DIR/her-pdf"
-  [ -z "$AS" ] || chown -R "$FOR_USER:$(id -gn "$FOR_USER")" "$BIN_DIR/her-pdf"
+  [ -z "$FOR_USER" ] || chown -R "$FOR_USER:$(id -gn "$FOR_USER")" "$BIN_DIR/her-pdf"
 fi
 # Computer Control's helper, beside hermeshd, which starts it while one of
 # the owner's devices sees this screen (docs/computer-control-linux.md).
@@ -363,7 +373,7 @@ if [ "$MODE" = machine ] && grep -q " hermesh-screen-$OS-$ARCH\$" "$TMP/checksum
   put "$TMP/hermesh-screen-$OS-$ARCH" "$BIN_DIR/hermesh-screen"
 fi
 echo "✓ installed to $BIN_DIR"
-if [ -z "$AS" ]; then
+if [ -z "$FOR_USER" ]; then
   case ":$PATH:" in
     *":$BIN_DIR:"*) ;;
     *) echo "note: $BIN_DIR is not on your PATH; add it with:"
@@ -391,13 +401,14 @@ else
 fi
 [ -n "$ADDRESS" ] && set -- "$@" "$ADDRESS"
 # The terminal goes to hermeshd as its stdin, for what it asks.
+[ -z "$FOR_USER" ] || cd "$home"
 if [ -n "$TTY" ]; then
-  $AS "$BIN_DIR/hermeshd" "$@" <"$TTY"
+  as_user "$BIN_DIR/hermeshd" "$@" <"$TTY"
 else
-  $AS "$BIN_DIR/hermeshd" "$@"
+  as_user "$BIN_DIR/hermeshd" "$@"
 fi
 # Installed by root: its commands, as the service, are that user's.
-if [ -n "$AS" ]; then
+if [ -n "$FOR_USER" ]; then
   echo
   echo "Hermesh runs as $FOR_USER: run these as $FOR_USER (su - $FOR_USER)"
   if ! su - "$FOR_USER" -c 'command -v hermeshd' >/dev/null 2>&1; then

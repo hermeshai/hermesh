@@ -53,3 +53,5 @@ func workspaceBytes(ctx context.Context, path string) (uint64, error) {
 }
 
 func providerLocalDisk(string) bool { return false }
+
+func dirWritable(string) bool { return false }

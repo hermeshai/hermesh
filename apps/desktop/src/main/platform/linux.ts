@@ -206,7 +206,7 @@ export const linux: Platform = {
     const dir = path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"), "hermesh");
     fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, `${c}.sh`);
-    fs.writeFileSync(file, `#!/bin/sh\n${command}\nexec "\${SHELL:-/bin/sh}" -l\n`, { mode: 0o700 });
+    fs.writeFileSync(file, `#!/bin/sh\nexport PATH="$PATH:$HOME/.local/bin"\n${command}\nexec "\${SHELL:-/bin/sh}" -l\n`, { mode: 0o700 });
     first(terminal(["sh", "-lc", `exec '${file.replaceAll("'", "'\\''")}'`]));
   },
 

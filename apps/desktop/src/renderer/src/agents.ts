@@ -15,10 +15,9 @@ export function useCheckAgents(on = true) {
 }
 
 /**
- * Refreshes account rate limits (including out-of-band queries like Antigravity's
- * `agy -p /usage`) once when Limits opens, for this Mac and any online remote
- * machines. Each machine is asked at most once per mount (and rate-limited on
- * the machine itself); stale cached limits stay visible while fresh ones load.
+ * Refreshes account rate limits once when Limits opens, for this Mac and any
+ * online remote machines. Each machine is asked at most once per mount; stale
+ * cached limits stay visible while fresh ones load.
  */
 export function useCheckLimits(machines: readonly Machine[]) {
   const asked = useRef(new Set<string>());

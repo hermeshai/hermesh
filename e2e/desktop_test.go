@@ -605,19 +605,18 @@ func otherMacLimits(t *testing.T, f desktopFixture) {
 		return s.Status == "idle"
 	})
 
-	// agy-mac: Antigravity alone, as the agy CLI, asked its quota when its
-	// agents are checked (Check Again, from this Mac): two groups of models,
-	// none low; the second's five hours not started yet, which agy says as a
-	// reset in 1970.
+	// agy-mac: Antigravity alone, as the agy CLI. Programmatic `agy -p /usage`
+	// is disabled for usage-policy compliance, so checking Limits leaves its
+	// quota unset and never calls `agy -p /usage`.
 	at := func(hours float64) string {
 		return time.Now().Add(time.Duration(hours * float64(time.Hour))).UTC().Format(time.RFC3339)
 	}
 	usage := fmt.Sprintf(`{"command":{"name":"usage","data":{"groups":[`+
-		`{"name":"Gemini Models","buckets":[{"window":"weekly","remaining_fraction":0.83,"reset_time":%q},{"window":"5h","remaining_fraction":0.97,"reset_time":%q}]},`+
-		`{"name":"Claude and GPT models","buckets":[{"window":"weekly","remaining_fraction":0.35,"reset_time":%q},{"window":"5h","remaining_fraction":1,"reset_time":"1970-01-01T00:00:00Z"}]}]}}}`,
-		at(146), at(4.5), at(18))
+		`{"name":"Gemini Models","buckets":[{"window":"weekly","remaining_fraction":0.83,"reset_time":%q},{"window":"5h","remaining_fraction":0.97,"reset_time":%q}]}]}}}`,
+		at(146), at(4.5))
+	usageLog := filepath.Join(t.TempDir(), "agy-usage.calls")
 	missing := filepath.Join(t.TempDir(), "not-installed")
-	env := append(fakeAgy(t, []byte(usage)), "HERMESH_CLAUDE_BIN="+missing, "HERMESH_CODEX_BIN="+missing)
+	env := append(fakeAgy(t, []byte(usage)), "FAKE_AGY_USAGE_LOG="+usageLog, "HERMESH_CLAUDE_BIN="+missing, "HERMESH_CODEX_BIN="+missing)
 	for _, a := range acp.Agents {
 		if a.Name != "antigravity" {
 			env = append(env, "HERMESH_"+strings.ToUpper(a.Name)+"_BIN="+missing)
@@ -629,19 +628,24 @@ func otherMacLimits(t *testing.T, f desktopFixture) {
 		_, err := w.app.client.CheckAgents(ctx, &localv1.CheckAgentsRequest{MachineId: joined.LocalMachineId, Limits: true})
 		return err == nil
 	})
-	eventually(t, time.Minute, "Antigravity's quota from agy-mac", func() bool {
+	eventually(t, time.Minute, "Antigravity ready without quota on agy-mac", func() bool {
 		res, err := w.app.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
 		if err != nil {
 			return false
 		}
 		for _, m := range res.Machines {
 			for _, a := range m.Status.GetAgents() {
-				if a.Name == "antigravity" && len(a.Limits.GetWindows()) == 4 {
-					return true
+				if a.Name == "antigravity" && a.Available && a.LoggedIn && !a.Checking {
+					return a.Limits == nil
 				}
 			}
 		}
 		return false
+	})
+	t.Cleanup(func() {
+		if b, _ := os.ReadFile(usageLog); strings.TrimSpace(string(b)) != "" {
+			t.Errorf("agy -p /usage ran during desktop Limits e2e: %q", string(b))
+		}
 	})
 }
 

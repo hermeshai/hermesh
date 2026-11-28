@@ -630,7 +630,7 @@ struct LimitsPage: View {
         let cards = agentLimits(model.machines.map { (machineID: $0.machineID, agents: $0.status.agents) }, now: model.now)
         VStack(alignment: .leading, spacing: 10) {
             ForEach(cards) { c in LimitsCard(card: c) }
-            Text("Each provider gives its own limits: each computer asks Claude Code, Codex and Antigravity when it checks its agents, and running a task updates them too. Hermesh only passes them on and doesn’t read your accounts.")
+            Text("Each provider gives its own limits: each computer asks Claude Code and Codex when it checks its agents, and running a task updates them too. Hermesh only passes them on and doesn’t read your accounts.")
                 .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 4)
         }
         .task { await model.refreshLimits() }
@@ -642,16 +642,19 @@ struct LimitsCard: View {
     let card: AgentLimitsCard
 
     /// The agents that report their limits (the others never will).
-    static let reporting: Set<String> = ["claude", "codex", "antigravity"]
+    static let reporting: Set<String> = ["claude", "codex"]
+    /// Google harnesses currently have no official compliant quota query API.
+    static let googleHarnesses: Set<String> = ["antigravity", "gemini"]
 
     var body: some View {
         let c = card
+        let showReported = c.observedAt != nil && (!Self.googleHarnesses.contains(c.agent) || !c.windows.isEmpty)
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 AgentLogo(id: c.agent, size: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: agentTitle(c.agent)).font(.headline)
-                    if c.observedAt != nil { Text(verbatim: reportedText(model, c)).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                    if showReported { Text(verbatim: reportedText(model, c)).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
                 }
                 Spacer(minLength: 4)
                 // What the account is, always: a window running low is said by its own row, as it may be one of several.
@@ -661,7 +664,7 @@ struct LimitsCard: View {
                 }
             }
             if c.windows.isEmpty {
-                Text(c.stale ? "Its windows have reset; updates after the next check or run" : Self.reporting.contains(c.agent) ? "Not read yet; shows once it’s signed in with a subscription" : "It doesn’t report its limits")
+                Text(Self.googleHarnesses.contains(c.agent) ? "No official compliant quota query supported yet" : c.stale ? "Its windows have reset; updates after the next check or run" : Self.reporting.contains(c.agent) ? "Not read yet; shows once it’s signed in with a subscription" : "It doesn’t report its limits")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             ForEach(c.windows) { w in

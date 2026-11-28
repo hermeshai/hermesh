@@ -293,6 +293,12 @@ type Engine struct {
 	gitSyncMu        sync.Mutex
 	gitSyncLastAt    map[string]time.Time
 	gitSyncInFlight  map[string]bool
+	gitRefreshFlight *gitRefreshCall
+}
+
+type gitRefreshCall struct {
+	done chan struct{}
+	err  error
 }
 
 func Open(cfg Config) (*Engine, error) {
@@ -1073,6 +1079,10 @@ func (e *Engine) notifyOutOfBandSessionChanges(updated []*sessionv1.Session) {
 }
 
 func (e *Engine) inspectSessionGitStatus(ctx context.Context, sess *sessionv1.Session, cp *sessionv1.Checkpoint, cumStat *sessionv1.DiffStat) *sessionv1.GitStatus {
+	return e.inspectSessionGitStatusBatch(ctx, sess, cp, cumStat, nil)
+}
+
+func (e *Engine) inspectSessionGitStatusBatch(ctx context.Context, sess *sessionv1.Session, cp *sessionv1.Checkpoint, cumStat *sessionv1.DiffStat, batch *vcs.BatchCache) *sessionv1.GitStatus {
 	if sess == nil {
 		return nil
 	}
@@ -1132,7 +1142,7 @@ func (e *Engine) inspectSessionGitStatus(ctx context.Context, sess *sessionv1.Se
 		unchangedCheckpoints := initialTreeOID != "" && latestCp != nil &&
 			latestCp.GitTreeOid == initialTreeOID && latestCp.HeadOid == initialHeadOID && !hasChangesHint
 		if unchangedCheckpoints || !e.inPlaceSessionMutatedRepo(sess.SessionId, ws.Path, initialHeadOID, latestCp) {
-			if !vcs.IsGitRepo(gCtx, ws.Path) {
+			if !batch.IsRepo(gCtx, ws.Path) {
 				return nil
 			}
 			return &sessionv1.GitStatus{State: sessionv1.GitState_GIT_STATE_CLEAN}
@@ -1152,6 +1162,7 @@ func (e *Engine) inspectSessionGitStatus(ctx context.Context, sess *sessionv1.Se
 		PreExistingDirty:  preExistingDirty,
 		LockSessionBranch: mode != identityv1.Workspace_WORKSPACE_WORKTREE && cp == nil && sess.GetGitStatus().GetBranch() != "",
 		HasChangesHint:    hasChangesHint,
+		Batch:             batch,
 	})
 }
 
@@ -1254,11 +1265,12 @@ func (e *Engine) maybeTriggerRemoteGitSync(projectID string) {
 			gitStatus *sessionv1.GitStatus
 		}
 		var patches []gitPatch
+		batch := vcs.NewBatchCache()
 		for _, s := range all {
 			if s.ActiveRunId != "" || s.GetGitStatus().GetState() != sessionv1.GitState_GIT_STATE_PUSHED {
 				continue
 			}
-			next := e.inspectSessionGitStatus(e.bgCtx, s, nil, nil)
+			next := e.inspectSessionGitStatusBatch(e.bgCtx, s, nil, nil, batch)
 			if !proto.Equal(s.GitStatus, next) {
 				patches = append(patches, gitPatch{sessionID: s.SessionId, gitStatus: next})
 			}
@@ -1291,37 +1303,127 @@ func (e *Engine) RefreshGitStatus(ctx context.Context, p *Principal, sessionIDs 
 	if p == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
-	var candidates []*sessionv1.Session
-	if len(sessionIDs) > 0 {
-		seen := make(map[string]bool, len(sessionIDs))
-		for _, id := range sessionIDs {
-			if id == "" || seen[id] {
-				continue
-			}
-			seen[id] = true
-			s, err := e.st.Session(id)
-			if err == nil && p.canViewSession(s) {
-				candidates = append(candidates, s)
-			}
-			if len(candidates) >= 64 {
-				break
-			}
-		}
-	} else {
-		all, err := e.st.ListSessions("", false, 30)
+	if len(sessionIDs) == 0 {
+		all, err := e.refreshAllSettledGitStatus(ctx)
 		if err != nil {
 			return nil, err
 		}
+		out := make([]*sessionv1.Session, 0, len(all))
 		for _, s := range all {
-			if p.canViewSession(s) && s.ActiveRunId == "" {
-				candidates = append(candidates, s)
+			if p.canViewSession(s) {
+				out = append(out, proto.Clone(s).(*sessionv1.Session))
 			}
+		}
+		return &sessionv1.RefreshGitStatusResponse{Sessions: out}, nil
+	}
+
+	var candidates []*sessionv1.Session
+	seen := make(map[string]bool, len(sessionIDs))
+	for _, id := range sessionIDs {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		s, err := e.st.Session(id)
+		if err == nil && p.canViewSession(s) {
+			candidates = append(candidates, s)
+		}
+		if len(candidates) >= 64 {
+			break
 		}
 	}
 	if len(candidates) == 0 {
 		return &sessionv1.RefreshGitStatusResponse{}, nil
 	}
+	out, err := e.refreshGitStatusCandidates(ctx, candidates)
+	if err != nil {
+		return nil, err
+	}
+	// Only targeted user inspections (hover / click / explicit IDs) trigger the
+	// throttled background remote probe when a session is waiting in PUSHED state.
+	if len(sessionIDs) <= 4 {
+		for _, cur := range out {
+			if cur.GetGitStatus().GetState() == sessionv1.GitState_GIT_STATE_PUSHED {
+				e.maybeTriggerRemoteGitSync(cur.ProjectId)
+			}
+		}
+	}
+	return &sessionv1.RefreshGitStatusResponse{Sessions: out}, nil
+}
 
+func (e *Engine) refreshAllSettledGitStatus(ctx context.Context) ([]*sessionv1.Session, error) {
+	e.gitSyncMu.Lock()
+	if call := e.gitRefreshFlight; call != nil {
+		e.gitSyncMu.Unlock()
+		select {
+		case <-call.done:
+			if call.err != nil {
+				return nil, call.err
+			}
+			all, err := e.st.ListSessions("", false, 30)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]*sessionv1.Session, 0, len(all))
+			for _, s := range all {
+				if s.ActiveRunId == "" {
+					out = append(out, s)
+				}
+			}
+			return out, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	call := &gitRefreshCall{done: make(chan struct{})}
+	e.gitRefreshFlight = call
+	e.gitSyncMu.Unlock()
+
+	var updated []*sessionv1.Session
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		var runErr error
+		defer func() {
+			call.err = runErr
+			e.gitSyncMu.Lock()
+			if e.gitRefreshFlight == call {
+				e.gitRefreshFlight = nil
+			}
+			e.gitSyncMu.Unlock()
+			close(call.done)
+		}()
+
+		fCtx, cancel := context.WithTimeout(e.bgCtx, 10*time.Second)
+		defer cancel()
+
+		all, err := e.st.ListSessions("", false, 30)
+		if err != nil {
+			runErr = err
+			return
+		}
+		var candidates []*sessionv1.Session
+		for _, s := range all {
+			if s.ActiveRunId == "" {
+				candidates = append(candidates, s)
+			}
+		}
+		if len(candidates) == 0 {
+			return
+		}
+		updated, runErr = e.refreshGitStatusCandidates(fCtx, candidates)
+	}()
+
+	select {
+	case <-call.done:
+		return updated, call.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (e *Engine) refreshGitStatusCandidates(ctx context.Context, candidates []*sessionv1.Session) ([]*sessionv1.Session, error) {
+	batch := vcs.NewBatchCache()
 	computed := make([]*sessionv1.GitStatus, len(candidates))
 	inspected := make([]bool, len(candidates))
 	sem := make(chan struct{}, 4)
@@ -1341,7 +1443,7 @@ func (e *Engine) RefreshGitStatus(ctx context.Context, p *Principal, sessionIDs 
 			if ctx.Err() != nil {
 				return
 			}
-			computed[i] = e.inspectSessionGitStatus(ctx, s, nil, nil)
+			computed[i] = e.inspectSessionGitStatusBatch(ctx, s, nil, nil, batch)
 			inspected[i] = true
 		})
 	}
@@ -1396,15 +1498,9 @@ func (e *Engine) RefreshGitStatus(ctx context.Context, p *Principal, sessionIDs 
 
 	out := make([]*sessionv1.Session, 0, len(candidates))
 	for _, s := range candidates {
-		cur := byID[s.SessionId]
-		out = append(out, cur)
-		// Only targeted user inspections (hover / click / explicit IDs) trigger the
-		// throttled background remote probe when a session is waiting in PUSHED state.
-		if len(sessionIDs) > 0 && len(sessionIDs) <= 4 && cur.GetGitStatus().GetState() == sessionv1.GitState_GIT_STATE_PUSHED {
-			e.maybeTriggerRemoteGitSync(cur.ProjectId)
-		}
+		out = append(out, byID[s.SessionId])
 	}
-	return &sessionv1.RefreshGitStatusResponse{Sessions: out}, nil
+	return out, nil
 }
 
 func (e *Engine) newSessionID() string {
@@ -3943,7 +4039,9 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			lastAliveAt = now
 			quietMarked = false
 			diagTool = ""
-			if dg, ok := pumpSess.(runtime.Diagnoser); ok {
+			if ls, ok := pumpSess.(runtime.LivenessSampler); ok {
+				prevLastOut, prevCPUTicks, prevHasCPU = ls.SampleLiveness()
+			} else if dg, ok := pumpSess.(runtime.Diagnoser); ok {
 				d := dg.Diagnose()
 				prevLastOut = d.LastOutput
 				prevCPUTicks = d.CPUTicks
@@ -4093,22 +4191,54 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				continue
 			}
 
-			var diag runtime.Diagnosis
-			if dg, hasDiag := pumpSess.(runtime.Diagnoser); hasDiag {
-				diag = dg.Diagnose()
-			}
-			childActive := len(diag.Running) > 0
+			isQuiet := now.Sub(lastEventAt) >= quietThresh
 			bgActive := sess.ActiveBackgroundCount > 0
-			outAdvanced := !diag.LastOutput.IsZero() && diag.LastOutput.After(prevLastOut)
-			cpuAdvanced := diag.HasCPU && prevHasCPU && diag.CPUTicks > prevCPUTicks
-			if !diag.LastOutput.IsZero() {
-				prevLastOut = diag.LastOutput
+			var (
+				diag        runtime.Diagnosis
+				haveDiag    bool
+				childActive bool
+			)
+			if !isQuiet {
+				if ls, ok := pumpSess.(runtime.LivenessSampler); ok {
+					lastOut, cpuTicks, hasCPU := ls.SampleLiveness()
+					outAdv := !lastOut.IsZero() && lastOut.After(prevLastOut)
+					cpuAdv := hasCPU && prevHasCPU && cpuTicks > prevCPUTicks
+					if bgActive || outAdv || cpuAdv {
+						if !lastOut.IsZero() {
+							prevLastOut = lastOut
+						}
+						if hasCPU {
+							prevCPUTicks = cpuTicks
+							prevHasCPU = true
+						}
+						lastAliveAt = now
+					} else if dg, hasDiag := pumpSess.(runtime.Diagnoser); hasDiag {
+						diag = dg.Diagnose()
+						haveDiag = true
+					}
+				} else if dg, hasDiag := pumpSess.(runtime.Diagnoser); hasDiag {
+					diag = dg.Diagnose()
+					haveDiag = true
+				}
+			} else if dg, hasDiag := pumpSess.(runtime.Diagnoser); hasDiag {
+				diag = dg.Diagnose()
+				haveDiag = true
 			}
-			if diag.HasCPU {
-				prevCPUTicks = diag.CPUTicks
-				prevHasCPU = true
-			}
-			if childActive || bgActive || outAdvanced || cpuAdvanced {
+			if haveDiag {
+				childActive = len(diag.Running) > 0
+				outAdvanced := !diag.LastOutput.IsZero() && diag.LastOutput.After(prevLastOut)
+				cpuAdvanced := diag.HasCPU && prevHasCPU && diag.CPUTicks > prevCPUTicks
+				if !diag.LastOutput.IsZero() {
+					prevLastOut = diag.LastOutput
+				}
+				if diag.HasCPU {
+					prevCPUTicks = diag.CPUTicks
+					prevHasCPU = true
+				}
+				if childActive || bgActive || outAdvanced || cpuAdvanced {
+					lastAliveAt = now
+				}
+			} else if bgActive {
 				lastAliveAt = now
 			}
 
@@ -8095,6 +8225,25 @@ func (e *Engine) GetSession(_ context.Context, p *Principal, sessionID string) (
 		ps.ProcessAlive = e.sup.Get(ps.ProviderSessionId) != nil
 	}
 	return proj, nil
+}
+
+// GetSessionRecord loads and authorizes only the Session metadata record without
+// reading runs, turn items, checkpoints, or background tasks from SQLite.
+func (e *Engine) GetSessionRecord(_ context.Context, p *Principal, sessionID string) (*sessionv1.Session, error) {
+	if p == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
+	}
+	sess, err := e.st.Session(sessionID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("session not found"))
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !p.canViewSession(sess) {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
+	}
+	return sess, nil
 }
 
 func (e *Engine) busyInPlace(projectID, except string) bool {

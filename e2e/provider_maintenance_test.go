@@ -170,7 +170,8 @@ func TestProviderMaintenanceReal(t *testing.T) {
 			}
 		})
 	}
-	for _, id := range machine.AgentNames() {
+	for _, c := range status().GetProviderMaintenance() {
+		id := c.Provider
 		t.Run("verify-"+id, func(t *testing.T) {
 			run(t, id, "verify", "", "")
 		})
@@ -246,7 +247,8 @@ func iphoneProviderRelease(t *testing.T, w *ownerMac, mux *http.ServeMux) {
 	}
 	sock := filepath.Join(filepath.Dir(w.sock), "provider.sock")
 	args := []string{"run", "--owner", "--data-dir", t.TempDir(), "--socket", sock}
-	env := []string{"HOME=" + t.TempDir(), "SHELL=/bin/sh", "PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"}
+	homeDir := t.TempDir()
+	env := []string{"HOME=" + homeDir, "NPM_CONFIG_PREFIX=" + filepath.Join(homeDir, ".local"), "SHELL=/bin/sh", "PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"}
 	previous := start(t, "provider target", env, filepath.Join(old, "previous"), args...)
 	home, err := w.app.client.GetStatus(context.Background(), &lv.GetStatusRequest{})
 	if err != nil {

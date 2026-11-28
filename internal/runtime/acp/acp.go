@@ -55,21 +55,16 @@ type App struct {
 
 type Provider struct {
 	Agent
-	PathEnv       string
-	Binary        string
-	drv           *Driver
-	modelsMu      sync.Mutex
-	list          *modelList
-	acpMu         sync.Mutex
-	acpProbe      map[string]bool
-	chosenStamp   string
-	chosenLaunch  launch
-	startSem      chan struct{}
-	usageMu       sync.Mutex
-	usageKey      string
-	usageAt       time.Time
-	usageCooldown time.Duration
-	now           func() time.Time
+	PathEnv      string
+	Binary       string
+	drv          *Driver
+	modelsMu     sync.Mutex
+	list         *modelList
+	acpMu        sync.Mutex
+	acpProbe     map[string]bool
+	chosenStamp  string
+	chosenLaunch launch
+	startSem     chan struct{}
 }
 
 type launch struct {
@@ -108,6 +103,9 @@ func (p *Provider) effectiveBinary() string {
 func (p *Provider) binary() string {
 	if b := p.effectiveBinary(); b != "" {
 		return b
+	}
+	if p.Name() == "gemini" {
+		return ""
 	}
 	home, _ := os.UserHomeDir()
 	var extra []string
@@ -3069,6 +3067,10 @@ func (s *session) ForceStop() error {
 
 func (s *session) Diagnose() runtime.Diagnosis {
 	return s.proc.Diagnose()
+}
+
+func (s *session) SampleLiveness() (time.Time, uint64, bool) {
+	return s.proc.SampleLiveness()
 }
 
 func (s *session) Close() error {

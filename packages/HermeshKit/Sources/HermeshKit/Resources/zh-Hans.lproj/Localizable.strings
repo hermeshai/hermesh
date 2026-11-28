@@ -191,4 +191,4 @@
 "Enable automatic updates for %@ on %@" = "开启 %1$@ 的自动更新（%2$@）";
 "Disable automatic updates for %@ on %@" = "关闭 %1$@ 的自动更新（%2$@）";
 "Cancel maintenance of %@ on %@" = "取消 %1$@ 的维护任务（%2$@）";
-"Hermesh runs this operation as the machine’s user." = "Hermesh 将以目标机器上的用户身份执行此操作。";
+"Hermesh runs this operation as the machine’s user." = "Hermesh 将以目标环境上的用户身份执行此操作。";

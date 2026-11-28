@@ -32,7 +32,9 @@ for os in darwin linux; do
     done
   done
 done
-for f in her-linux-arm64 her-linux-amd64 her-windows-arm64.exe her-windows-amd64.exe her-console.tar.gz; do
+for f in her-linux-arm64 her-linux-amd64 her-windows-arm64.exe her-windows-amd64.exe her-console.tar.gz \
+  her-pdf-linux-arm64.tar.gz her-pdf-linux-amd64.tar.gz her-computer-linux-arm64.tar.gz her-computer-linux-amd64.tar.gz \
+  hermesh-screen-linux-arm64 hermesh-screen-linux-amd64; do
   need "$f"
   grep -q "  $f\$" "$DIR/checksums.txt" || fail "$f is not in checksums.txt"
 done

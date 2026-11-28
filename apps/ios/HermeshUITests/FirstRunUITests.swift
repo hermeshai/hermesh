@@ -101,7 +101,7 @@ extension HermeshUITests {
         let agent = app.buttons["agent-claude"]
         XCTAssertTrue(agent.waitForExistence(timeout: 30), "its coding agent")
         XCTAssertTrue(text("vps-1 上找到 1 个").exists || text("vps-1 上找到 2 个").exists)
-        XCTAssertTrue(text("还支持").exists && text("Gemini CLI").exists, "the others it works with")
+        XCTAssertTrue(text("还支持").exists && text("Copilot CLI").exists, "the others it works with")
         let rescan = app.buttons["rescan"]
         press(rescan)
         try waitFor("rescanned") { rescan.label.contains("重新扫描") ? true : nil }

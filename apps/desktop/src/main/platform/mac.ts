@@ -42,7 +42,7 @@ async function kickstartDaemon() {
 
 // The CLIs that come with the Claude and ChatGPT (Codex) desktop apps, after
 // the person's own PATH, as hermeshd finds them: for those who have only the app.
-const appCLIs = String.raw`path+=(~/Library/Application\ Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude(Nn[-1]:h) {,~}/Applications/{ChatGPT.app/Contents/Resources/codex-cli/bin,Codex.app/Contents/Resources}/codex(N:h))`;
+const appCLIs = String.raw`path+=(~/.local/bin(N) ~/Library/Application\ Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude(Nn[-1]:h) {,~}/Applications/{ChatGPT.app/Contents/Resources/codex-cli/bin,Codex.app/Contents/Resources}/codex(N:h))`;
 
 export const mac: Platform = {
   token: "mac",

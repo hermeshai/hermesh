@@ -55,7 +55,16 @@ export function BrokenState({ a }: { a: AgentStatus }) {
 
 /** Claude Code and Codex first, then the order Hermesh lists them in. */
 const order = (name: string) => codingAgentIds.indexOf(name);
-const collapsedWhenMissing = new Set(["auggie", "deepseek", "gemini"]);
+const hiddenWhenMissing = new Set(["gemini"]);
+const collapsedWhenMissing = new Set(["auggie", "deepseek"]);
+
+export const installUrls: Record<string, string> = {
+  antigravity: "https://github.com/google-antigravity/antigravity-cli",
+  cursor: "https://cursor.com/docs/cli/installation",
+  goose: "https://github.com/aaif-goose/goose",
+  kiro: "https://kiro.dev/docs/getting-started/installation/",
+  deepseek: "https://github.com/deepseek-ai/deepseek-harness",
+};
 
 /**
  * A machine's agents sorted out: installed (ready first), still being checked
@@ -67,7 +76,7 @@ export function sortAgents(agents: AgentStatus[] | undefined) {
   const troubled = (agents ?? []).filter(broken).sort((a, b) => order(a.name) - order(b.name));
   const checking = (agents ?? []).filter((a) => a.checking && !a.available).sort((a, b) => order(a.name) - order(b.name));
   const listed = (id: string) => [...installed, ...troubled, ...checking].some((a) => a.name === id);
-  const missing = codingAgentIds.filter((id) => !listed(id));
+  const missing = codingAgentIds.filter((id) => !listed(id) && !hiddenWhenMissing.has(id));
   const moreMissing = missing.filter((id) => {
     const defaults = agents?.find((a) => a.name === id)?.defaults;
     return collapsedWhenMissing.has(id) && !(defaults?.model || defaults?.effort || defaults?.speed);
@@ -193,6 +202,14 @@ export const logins: Record<string, { key: TerminalCommand; text: string }> = {
   codex: { key: "codexLogin", text: "codex login" },
   claude: { key: "claudeLogin", text: "claude" },
   antigravity: { key: "antigravityLogin", text: "hermesh agent login antigravity" },
+  copilot: { key: "copilotLogin", text: "copilot" },
+  opencode: { key: "opencodeLogin", text: "opencode auth login" },
+  qoder: { key: "qoderLogin", text: "qodercli" },
+  qwen: { key: "qwenLogin", text: "qwen" },
+  kimi: { key: "kimiLogin", text: "kimi" },
+  codebuddy: { key: "codebuddyLogin", text: "codebuddy" },
+  grok: { key: "grokLogin", text: "grok" },
+  auggie: { key: "auggieLogin", text: "auggie login" },
 };
 
 /**

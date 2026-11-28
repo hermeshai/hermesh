@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	procInfoCallPidInfo = 2
-	procPidTaskInfo     = 4
-	procTaskInfoSize    = 96
+	procInfoCallPidInfo    = 2
+	procPidTaskInfo        = 4
+	procTaskInfoSize       = 96
+	procCPUNanosecondExact = true
 )
 
 // procCPU returns pid's cumulative user + system CPU time in nanoseconds via
@@ -60,18 +61,27 @@ func procArgs(pid int) []string {
 
 // listProcs returns this user's processes.
 func listProcs() []procInfo {
-	kps, err := unix.SysctlKinfoProcSlice("kern.proc.all")
+	uid := os.Getuid()
+	kps, err := unix.SysctlKinfoProcSlice("kern.proc.uid", uid)
 	if err != nil {
 		return nil
 	}
-	uid := uint32(os.Getuid())
-	ps := make([]procInfo, 0, max(16, len(kps)/2))
-	for _, kp := range kps {
+	return extractProcInfos(kps, uint32(uid))
+}
+
+func extractProcInfos(kps []unix.KinfoProc, uid uint32) []procInfo {
+	ps := make([]procInfo, 0, len(kps))
+	for i := range kps {
+		kp := &kps[i]
 		if kp.Eproc.Ucred.Uid != uid {
 			continue
 		}
 		st := kp.Proc.P_starttime
-		ps = append(ps, procInfo{pid: int(kp.Proc.P_pid), ppid: int(kp.Eproc.Ppid), start: int64(st.Sec)*1e6 + int64(st.Usec)})
+		ps = append(ps, procInfo{
+			pid:   int(kp.Proc.P_pid),
+			ppid:  int(kp.Eproc.Ppid),
+			start: int64(st.Sec)*1e6 + int64(st.Usec),
+		})
 	}
 	return ps
 }

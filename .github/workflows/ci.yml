@@ -38,6 +38,7 @@ jobs:
       mac_native: ${{ steps.route.outputs.mac_native }}
       go_macos: ${{ steps.route.outputs.go_macos }}
       go_e2e: ${{ steps.route.outputs.go_e2e }}
+      linux_docker: ${{ steps.route.outputs.linux_docker }}
       her_integration: ${{ steps.route.outputs.her_integration }}
       console_only: ${{ steps.route.outputs.console_only }}
       desktop_e2e: ${{ steps.route.outputs.desktop_e2e }}
@@ -151,6 +152,11 @@ jobs:
       - name: Relay, daemon and CLI user journey
         if: ${{ needs.changes.outputs.exhaustive != 'true' && needs.changes.outputs.go_e2e != 'true' }}
         run: go test ./e2e -run '^Test(UserJourney|MobileNetwork)$' -count=1 -timeout 10m
+      - name: Linux installer and systemd containers
+        if: matrix.os == 'ubuntu-latest' && (needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.linux_docker == 'true')
+        run: go test ./e2e -run '^(TestLinuxMachineInDocker|TestLinuxFirstInstall|TestLinuxUninstall|TestLinuxUpdate|TestLinuxInstallAndProviderSessions)$' -count=1 -v -timeout 15m
+        env:
+          HERMESH_DOCKER: "1"
   # Computer Control's helper for Linux (docs/computer-control-linux.md): its
   # own tests, then end to end on X11, Sway and GNOME in containers.
   screen-linux:
@@ -240,10 +246,10 @@ jobs:
       - name: Build Her for its end-to-end tests
         shell: bash
         env:
-          NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
+          BETTEROFFICE_TOKEN: ${{ secrets.BETTEROFFICE_TOKEN }}
         run: |
-          if [ -n "$NIMBLEOFFICE_TOKEN" ]; then
-            git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
+          if [ -n "$BETTEROFFICE_TOKEN" ]; then
+            git config --global url."https://x-access-token:${BETTEROFFICE_TOKEN}@github.com/Eliseowzy/betteroffice".insteadOf "https://github.com/Eliseowzy/betteroffice"
             export CARGO_NET_GIT_FETCH_WITH_CLI=true
           fi
           cargo build --manifest-path her/Cargo.toml -p her-cli -p her-mock
@@ -282,10 +288,10 @@ jobs:
       - name: Build Her for its dedicated desktop fixtures
         if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.her_integration == 'true'
         env:
-          NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
+          BETTEROFFICE_TOKEN: ${{ secrets.BETTEROFFICE_TOKEN }}
         run: |
-          if [ -n "$NIMBLEOFFICE_TOKEN" ]; then
-            git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
+          if [ -n "$BETTEROFFICE_TOKEN" ]; then
+            git config --global url."https://x-access-token:${BETTEROFFICE_TOKEN}@github.com/Eliseowzy/betteroffice".insteadOf "https://github.com/Eliseowzy/betteroffice"
             export CARGO_NET_GIT_FETCH_WITH_CLI=true
           fi
           cargo build --manifest-path her/Cargo.toml -p her-cli -p her-mock

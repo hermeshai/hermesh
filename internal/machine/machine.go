@@ -547,9 +547,8 @@ func (n *Machine) CheckAgents(force bool, maxAge time.Duration) <-chan struct{} 
 	return done
 }
 
-// CheckLimits refreshes coding agents and also asks any LimitsReader
-// (Antigravity's `agy -p /usage`) for its account's rate limits. It is called
-// only when the owner opens the Limits view.
+// CheckLimits refreshes coding agents and also asks any LimitsReader for its
+// account's rate limits. It is called only when the owner opens the Limits view.
 func (n *Machine) CheckLimits() <-chan struct{} {
 	checkDone := n.CheckAgents(true, 0)
 	done := make(chan struct{})

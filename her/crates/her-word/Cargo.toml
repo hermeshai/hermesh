@@ -1,13 +1,13 @@
 [package]
 name = "her-word"
-description = "Word documents: the kernel's editing session (NimbleOffice Yrs), read, edit, review, undo, and render saved bytes."
+description = "Word documents: the kernel's editing session (BetterOffice Yrs), read, edit, review, undo, and render saved bytes."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
-nimbleoffice-docx.workspace = true
+betteroffice-docx.workspace = true
 docx-edit.workspace = true
 docx-native-save.workspace = true
 her-slide.workspace = true

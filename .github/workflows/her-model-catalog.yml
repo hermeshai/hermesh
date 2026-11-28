@@ -27,16 +27,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # The PPT and Word engines are a private repository (her/Cargo.toml): cargo fetches it with this token.
-      - name: Read access to the NimbleOffice fork
+      - name: Read access to the BetterOffice fork
         env:
-          NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
+          BETTEROFFICE_TOKEN: ${{ secrets.BETTEROFFICE_TOKEN }}
         run: |
-          if [ -z "$NIMBLEOFFICE_TOKEN" ]; then
-            echo "::warning::NIMBLEOFFICE_TOKEN is not set: cargo cannot fetch github.com/Eliseowzy/nimbleoffice"
-            exit 0
+          if [ -n "$BETTEROFFICE_TOKEN" ]; then
+            git config --global url."https://x-access-token:${BETTEROFFICE_TOKEN}@github.com/Eliseowzy/betteroffice".insteadOf "https://github.com/Eliseowzy/betteroffice"
+            echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
           fi
-          git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
-          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
       - name: Sync the snapshot
         run: cargo run -q -p her-llm --example sync_catalog | tee report.txt
       - name: Open a pull request

@@ -215,24 +215,27 @@ final class HermeshUITests: XCTestCase {
         reach("machine-provider-mac")
         tap("machine-provider-mac")
         tap("env-providers")
-        tap("provider-maintenance")
-        tap("maintain-opencode")
+        reach("install-opencode")
+        tap("install-opencode")
         tap("maintenance-install")
-        XCTAssertTrue(app.buttons["maintenance-enable_auto"].waitForExistence(timeout: 180))
+        XCTAssertTrue(app.buttons["agent-opencode"].waitForExistence(timeout: 180))
+        tap("agent-opencode")
+        let auto = app.switches["maintenance-auto"]
+        XCTAssertTrue(auto.waitForExistence(timeout: 30))
         _ = try control("provider-release", method: "POST")
         XCTAssertTrue(app.buttons["maintenance-update"].waitForExistence(timeout: 90))
         tap("maintenance-update")
         XCTAssertTrue(app.descendants(matching: .any)["installed-version-2.4.2"].firstMatch.waitForExistence(timeout: 120))
-        // Wait for the persisted terminal receipt before the next write.
-        let auto = app.buttons["maintenance-enable_auto"]
         let enabled = NSPredicate(format: "enabled == true")
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: enabled, object: auto)], timeout: 120), .completed)
-        tap("maintenance-enable_auto")
-        tap("maintenance-disable_auto", timeout: 30)
-        XCTAssertTrue(auto.waitForExistence(timeout: 30))
-        tap("maintenance-verify")
+        auto.switches.firstMatch.tap()
+        XCTAssertEqual(auto.value as? String, "1")
+        auto.switches.firstMatch.tap()
+        XCTAssertEqual(auto.value as? String, "0")
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        for action in ["install", "update", "enable_auto", "disable_auto", "verify"] {
+        reach("provider-history")
+        tap("provider-history")
+        for action in ["install", "update", "enable_auto", "disable_auto"] {
             reach("history-opencode-\(action)-succeeded")
         }
     }
@@ -1076,11 +1079,11 @@ final class HermeshUITests: XCTestCase {
         app.swipeUp()
         XCTAssertTrue(app.descendants(matching: .any)["usage-weeks"].firstMatch.exists && text("活跃天数").exists, "the weeks")
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "输入含各提供方的缓存读写")).firstMatch.exists)
-        // Limits: a card an agent; Gemini CLI says none.
+        // Limits: a card an agent; Google harnesses say no official compliant quota query is supported yet.
         views.buttons["额度"].tap()
         let limits = app.descendants(matching: .any)["limits-gemini"].firstMatch
         XCTAssertTrue(limits.waitForExistence(timeout: 10), "Gemini CLI's card")
-        XCTAssertTrue(text("它没有提供额度信息").exists)
+        XCTAssertTrue(text("暂无官方合规余量查询支持").exists)
         views.buttons["实时"].tap()
         // The account sheet no longer has usage: it is Usage's last card.
         openMenu()

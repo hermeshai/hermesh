@@ -322,7 +322,7 @@ to that owner's devices by itself. Then it installs the background service.`,
 			// Run again on a paired machine whose owner is still there (the
 			// install command, updating): start the service on this program.
 			_, wantOwner, _ := connaddr.ParseAny(address)
-			if c, running, err := machineCheck(cmd.Context(), dataDir, openMachine); err == nil && c.Paired && (wantOwner == "" || wantOwner == c.OwnerID) &&
+			if c, running, err := machineCheck(cmd.Context(), filepath.Join(dataDir, "machine"), openMachine); err == nil && c.Paired && (wantOwner == "" || wantOwner == c.OwnerID) &&
 				!machine.OwnerGone(cmd.Context(), http.DefaultClient, c.RelayURL, c.OwnerID) {
 				fmt.Printf("This machine is already paired as %q.\n", c.Name)
 				switch {
@@ -380,7 +380,7 @@ to that owner's devices by itself. Then it installs the background service.`,
 						fmt.Fprintln(os.Stderr, "Could not start hermeshd in the background either:", err)
 					}
 					up = err == nil
-				case runtime.GOOS == "linux":
+				case runtime.GOOS == "linux" && service.AtBoot():
 					fmt.Println("✓ Background service on: starts with the server, keeps running after you log out")
 					up = true
 				default:
@@ -407,11 +407,14 @@ to that owner's devices by itself. Then it installs the background service.`,
 			}
 			for _, a := range acp.Agents {
 				if i := infos[a.Name]; i.Available {
-					fmt.Printf("  %-10s %s, sign-in not checked\n", a.Name, i.Version)
+					ready = reportACP(os.Stdout, a.Name, i, "") || ready
 				}
 			}
 			if !ready {
 				fmt.Println("  Install one as this user and sign in once (run `claude`); `hermeshd doctor` checks again.")
+				if (runtime.GOOS == "linux" || (runtime.GOOS == "darwin" && runtime.GOARCH == "arm64")) && os.Getuid() > 0 {
+					fmt.Println("  With Node.js/npm here, you can also install Claude Code, Codex, Copilot or OpenCode from the Hermesh app.")
+				}
 			}
 			fmt.Printf("\nNext\n  add a project   hermeshd project add ~/code/app   (or in the Hermesh app)\n")
 			// Her, when she is installed here: on in the app, then hers to talk to anywhere, here too.
@@ -462,14 +465,7 @@ to that owner's devices by itself. Then it installs the background service.`,
 				ok = false
 			}
 			fmt.Printf("PATH         %s\n", shellenv.Path())
-			for _, name := range []string{"claude", "codex"} {
-				ok = report(name, c.Agents[name]) && ok
-			}
-			for _, a := range acp.Agents { // optional: listed when installed
-				if i := c.Agents[a.Name]; i.Available {
-					fmt.Printf("  %-10s %s at %s, login not checked\n", a.Name, i.Version, i.Binary)
-				}
-			}
+			ok = reportDoctorAgents(os.Stdout, c.Agents, c.Her.GetEnabled()) && ok
 			ok = serviceLine(running) && ok
 			fmt.Printf("her          %s\n", herLine(c.Her, running))
 			if c.Screen != nil {
@@ -654,7 +650,7 @@ Hermesh also updates itself when no session is running, unless
 			return shellenv.OnUserPath(args[1], args[0] == "add")
 		}}
 	root.AddCommand(deviceCommands(&dataDir)...)
-	root.AddCommand(eraseCommand(&dataDir), uninstallCommand(&dataDir), screenCommand(&dataDir, openMachine), herCommand(&dataDir), perfSnapshotCommand(&dataDir))
+	root.AddCommand(eraseCommand(&dataDir), uninstallCommand(&dataDir), screenCommand(&dataDir, openActiveMachine), herCommand(&dataDir), perfSnapshotCommand(&dataDir))
 	root.AddCommand(run, pair, doctor, status, audit, svc, upd, helper, messageMCP, userPath, projects,
 		&cobra.Command{Use: "version", Short: "Print the version", Args: cobra.NoArgs, Run: func(*cobra.Command, []string) { fmt.Println(machine.Version) }})
 	return root
@@ -838,21 +834,51 @@ var installPages = map[string]string{
 }
 
 func report(name string, i rt.Info) bool {
+	return reportTo(os.Stdout, name, i)
+}
+
+func reportTo(w io.Writer, name string, i rt.Info) bool {
 	switch {
 	case !i.Available:
-		fmt.Printf("  %-10s not installed: %s\n", name, installPages[name])
+		fmt.Fprintf(w, "  %-10s not installed: %s\n", name, installPages[name])
 		return false
 	case !i.LoggedIn:
 		command := name
 		if name == "antigravity" {
 			command = "hermesh agent login antigravity"
 		}
-		fmt.Printf("  %-10s %s, NOT SIGNED IN → run `%s` once as this user (on a server it prints a link to open on any device)\n", name, i.Version, command)
+		fmt.Fprintf(w, "  %-10s %s, NOT SIGNED IN → run `%s` once as this user (on a server it prints a link to open on any device)\n", name, i.Version, command)
 		return false
 	default:
-		fmt.Printf("  %-10s %s, signed in\n", name, i.Version)
+		fmt.Fprintf(w, "  %-10s %s, signed in\n", name, i.Version)
 		return true
 	}
+}
+
+func reportACP(w io.Writer, name string, i rt.Info, where string) bool {
+	if !i.LoggedIn {
+		command := name
+		if name == "antigravity" {
+			command = "hermesh agent login antigravity"
+		}
+		fmt.Fprintf(w, "  %-10s %s%s, NOT SIGNED IN → run `%s` once as this user\n", name, i.Version, where, command)
+		return false
+	}
+	fmt.Fprintf(w, "  %-10s %s%s, signed in\n", name, i.Version, where)
+	return true
+}
+
+func reportDoctorAgents(w io.Writer, agents map[string]rt.Info, herEnabled bool) bool {
+	ready := false
+	for _, name := range []string{"claude", "codex"} {
+		ready = reportTo(w, name, agents[name]) || ready
+	}
+	for _, a := range acp.Agents { // optional: listed when installed
+		if i := agents[a.Name]; i.Available {
+			ready = reportACP(w, a.Name, i, " at "+i.Binary) || ready
+		}
+	}
+	return ready || herEnabled
 }
 
 // eraseMachine erases a machine whose owner erased everything

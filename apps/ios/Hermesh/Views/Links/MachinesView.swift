@@ -12,8 +12,13 @@ func workspaceText(_ w: Hermesh_Identity_V1_Workspace) -> String {
 
 /// Where each coding agent says how to install it.
 let installPage: [String: URL] = [
-    "claude": URL(string: "https://github.com/anthropics/claude-code")!,
+    "claude": URL(string: "https://code.claude.com/docs/en/setup")!,
     "codex": URL(string: "https://github.com/openai/codex")!,
+    "antigravity": URL(string: "https://github.com/google-antigravity/antigravity-cli")!,
+    "cursor": URL(string: "https://cursor.com/docs/cli/installation")!,
+    "goose": URL(string: "https://github.com/aaif-goose/goose")!,
+    "kiro": URL(string: "https://kiro.dev/docs/getting-started/installation/")!,
+    "deepseek": URL(string: "https://github.com/deepseek-ai/deepseek-harness")!,
 ]
 
 /// "v1.2.3" or "1.2.3-dev" as [1, 2, 3]; nil for a build with no version.

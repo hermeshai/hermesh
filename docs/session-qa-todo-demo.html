@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>会话区选项与进度 · 简化对比 Demo</title>
+<style>
+@font-face {
+  font-family: "Google Sans Flex";
+  src: url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-flex.ttf") format("truetype");
+  font-style: oblique 0deg 10deg;
+  font-weight: 100 1000;
+  font-stretch: 25% 151%;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Google Sans Code";
+  src: url("../apps/desktop/src/renderer/src/assets/fonts/google-sans-code.ttf") format("truetype");
+  font-weight: 300 800;
+  font-display: swap;
+}
+
+:root {
+  --font: "Google Sans Flex", "Google Sans", system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", sans-serif;
+  --mono: "Google Sans Code", ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --font-axes: "ROND" 0, "slnt" 0, "wdth" 92;
+  --sp-1: 8px;
+  --sp-2: 13px;
+  --sp-3: 21px;
+  --conv-w: 728px;
+}
+
+[data-theme="dark"] {
+  --page: #111216;
+  --bar: #1a1b20;
+  --bar-bd: rgba(255,255,255,.08);
+  --win: #1e1e21;
+  --bub: #303030;
+  --bub-fg: #f0f0ed;
+  --l1: #f0f0ed;
+  --l2: #b2b2ad;
+  --l3: #999993;
+  --l4: rgba(255,255,255,.16);
+  --msg: #dededb;
+  --sep: rgba(255,255,255,.08);
+  --fill: rgba(255,255,255,.042);
+  --fill2: rgba(255,255,255,.075);
+  --tq-ans: rgba(255,255,255,.055);
+  --tq-ans-sh: inset 0 0 0 .5px rgba(255,255,255,.085);
+  --accent: #2f71e3;
+  --accent-t: #8ab4f8;
+  --accent-bg: rgba(47,113,227,.14);
+  --green: #7aae66;
+  --green-bg: rgba(122,174,102,.12);
+  --win-sh: 0 0 0 .5px rgba(255,255,255,.13), 0 24px 64px rgba(0,0,0,.55);
+  --aurora-g0: #22e1c9; --aurora-g1: #00d0de; --aurora-g2: #00b9f1;
+  --aurora-g3: #009cfe; --aurora-g4: #3e7bff; --aurora-g5: #5175ff;
+  --aurora-g6: #616eff; --aurora-g7: #6e68ff; --aurora-g8: #7b61ff;
+}
+
+[data-theme="soft"] {
+  --page: #e4e6ec;
+  --bar: #eef0f4;
+  --bar-bd: rgba(32,33,39,.09);
+  --win: #f4f5f7;
+  --bub: #e7ebf2;
+  --bub-fg: #202127;
+  --l1: #202127;
+  --l2: #60636d;
+  --l3: #727580;
+  --l4: rgba(32,33,39,.15);
+  --msg: #202127;
+  --sep: rgba(32,33,39,.07);
+  --fill: rgba(32,33,39,.04);
+  --fill2: rgba(32,33,39,.07);
+  --tq-ans: rgba(255,255,255,.94);
+  --tq-ans-sh: inset 0 0 0 .5px rgba(32,33,39,.08), 0 1px 2px rgba(32,33,39,.03);
+  --accent: #2f6fd6;
+  --accent-t: #285fb8;
+  --accent-bg: rgba(47,111,214,.09);
+  --green: #17924f;
+  --green-bg: rgba(23,146,79,.11);
+  --win-sh: 0 0 0 .5px rgba(32,33,39,.14), 0 20px 52px rgba(20,24,40,.10);
+  --aurora-g0: #0891b2; --aurora-g1: #008cc2; --aurora-g2: #0084d3;
+  --aurora-g3: #0079e3; --aurora-g4: #2f6bf0; --aurora-g5: #4361f2;
+  --aurora-g6: #5356f3; --aurora-g7: #614af2; --aurora-g8: #6d3cf0;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--page);
+  color: var(--l1);
+  font-family: var(--font);
+  font-variation-settings: var(--font-axes);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+svg { display: block; flex: none; }
+
+/* ---------- Minimal Single Top Bar ---------- */
+.topbar {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 20px 16px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+body.split .topbar { max-width: 1480px; }
+
+.seg-bar {
+  display: inline-flex;
+  padding: 3px;
+  gap: 3px;
+  border-radius: 10px;
+  background: var(--bar);
+  border: 1px solid var(--bar-bd);
+}
+.seg-bar button {
+  height: 30px;
+  padding: 0 13px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--l2);
+  transition: background .14s, color .14s;
+}
+.seg-bar button:hover { color: var(--l1); }
+.seg-bar button.on { background: var(--accent); color: #fff; font-weight: 600; }
+
+.sub-actions { display: inline-flex; gap: 6px; }
+.ghost-btn {
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--l2);
+  background: var(--bar);
+  border: 1px solid var(--bar-bd);
+}
+.ghost-btn:hover { color: var(--l1); }
+.ghost-btn.on { color: var(--accent-t); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-bg); }
+
+/* ---------- Stage ---------- */
+.stage {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 16px 36px;
+}
+body.split .stage {
+  max-width: 1480px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  body.split .stage { grid-template-columns: 1fr; }
+}
+
+.pane-label {
+  display: none;
+  font-size: 12px;
+  color: var(--l2);
+  margin: 0 4px 7px;
+}
+body.split .pane-label { display: block; }
+
+/* ---------- Conversation Surface (Exact 728px + 52px gutters = 832px) ---------- */
+.win {
+  background: var(--win);
+  border-radius: 18px;
+  box-shadow: var(--win-sh);
+  padding: 28px 52px 34px;
+}
+body.split .win { padding: 24px 32px 30px; }
+
+.dbody {
+  max-width: var(--conv-w);
+  margin: 0 auto;
+}
+.tr {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2); /* 13px */
+}
+
+/* User Bubble ("同意") */
+.um {
+  align-self: flex-end;
+  max-width: 80%;
+  margin-bottom: var(--sp-3); /* Orig: 21px + 13px = 34px */
+}
+.um.balanced {
+  margin-bottom: var(--sp-1); /* Refined: 8px + 13px = 21px (--sp-3) */
+}
+.bub {
+  background: var(--bub);
+  color: var(--bub-fg);
+  border-radius: 12px;
+  padding: 9px 15px;
+  font-size: 14.5px;
+  line-height: 1.625;
+}
+
+/* Tool Summary ("运行了 10 条命令…") */
+.tg-h {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--l2);
+  font-variant-numeric: tabular-nums;
+}
+.tg-h .chev { width: 14px; height: 14px; margin-left: -3px; color: var(--l3); transform: rotate(-90deg); }
+
+/* ==========================================================================
+   SETTLED QUESTION: Orig vs V1 (Font/Spacing Polish) vs V2 (Unboxed Chip)
+   ========================================================================== */
+
+/* Orig (Current app.css:808-824) */
+.tq-orig {
+  border-radius: 14px;
+  background: var(--fill);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.tq-orig .item { display: flex; flex-direction: column; gap: 7px; }
+.tq-orig .item + .item { padding-top: 11px; border-top: .5px solid var(--sep); }
+.tq-orig .q { font-size: 12.5px; line-height: 1.5; color: var(--l2); padding: 0 2px; }
+.tq-orig .ans { border-radius: 10px; background: var(--tq-ans); box-shadow: var(--tq-ans-sh); }
+.tq-orig .choice { display: flex; align-items: flex-start; gap: 9px; padding: 9px 14px 9px 11px; }
+.tq-orig .ck {
+  width: 18px; height: 18px; margin-top: 1.5px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--green-bg); color: var(--green);
+  box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--green) 24%, transparent);
+}
+.tq-orig .atxt { font-size: 13.5px; font-weight: 450; line-height: 21px; letter-spacing: -.004em; color: var(--l1); }
+.tq-orig .rec {
+  display: inline-flex; align-items: center; height: 17px; padding: 0 5.5px; margin-left: 4px;
+  border-radius: 4.5px; font-size: 11px; font-weight: 550; line-height: 1;
+  background: var(--accent-bg); color: var(--accent-t); vertical-align: .5px;
+}
+
+/* V1: Same Card Structure · Pure Font, Spacing & Calm Neutral Check */
+.tq-v1 {
+  border-radius: 10px;
+  background: var(--fill);
+  box-shadow: inset 0 0 0 .5px var(--sep);
+  padding: 10px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: var(--sp-1); /* + 13px .tr gap = 21px (--sp-3), symmetrical with top! */
+}
+.tq-v1 .item { display: flex; flex-direction: column; gap: 6px; }
+.tq-v1 .item + .item { padding-top: 10px; border-top: .5px solid var(--sep); }
+.tq-v1 .q { font-size: 13px; line-height: 19px; color: var(--l2); padding: 0 1px; }
+.tq-v1 .ans { border-radius: 8px; background: var(--tq-ans); box-shadow: var(--tq-ans-sh); }
+.tq-v1 .choice { display: flex; align-items: center; gap: 8px; padding: 7.5px 12px 7.5px 10px; }
+.tq-v1 .ck {
+  width: 16px; height: 16px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--fill2); color: var(--l2);
+}
+.tq-v1 .atxt { font-size: 14px; font-weight: 400; line-height: 20px; color: var(--msg); font-variant-numeric: tabular-nums; }
+.tq-v1 .rec {
+  display: inline-flex; align-items: center; height: 16px; padding: 0 5px; margin-left: 5px;
+  border-radius: 4px; font-size: 11px; font-weight: 500; line-height: 1;
+  background: var(--fill2); color: var(--l2);
+}
+
+/* V2: Remove Only Outer 728px Box · In-Stream Question + Compact Option Pill */
+.tq-v2 {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  margin-bottom: var(--sp-1); /* + 13px = 21px (--sp-3) */
+}
+.tq-v2 .item { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.tq-v2 .q { font-size: 13.5px; line-height: 20px; color: var(--l2); }
+.tq-v2 .pill {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 100%;
+  padding: 6.5px 12px 6.5px 10px; border-radius: 8px;
+  background: var(--tq-ans); box-shadow: var(--tq-ans-sh);
+  font-size: 14px; line-height: 20px; color: var(--msg); font-variant-numeric: tabular-nums;
+}
+.tq-v2 .ck {
+  width: 15px; height: 15px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--fill2); color: var(--l2);
+}
+.tq-v2 .rec {
+  display: inline-flex; align-items: center; height: 16px; padding: 0 5px; margin-left: 4px;
+  border-radius: 4px; font-size: 11px; font-weight: 500; line-height: 1;
+  background: var(--fill2); color: var(--l2);
+}
+
+/* ==========================================================================
+   T0 SPINE: Structure Unchanged · Orig vs Refined Font & Spacing
+   ========================================================================== */
+.hm-mark { flex: none; display: inline-block; }
+.hm-seq .hm-beam { opacity: .26; animation: hm-seq 1.25s linear infinite; }
+.hm-seq .hm-b1 { animation-delay: .41s; }
+.hm-seq .hm-b2 { animation-delay: .82s; }
+@keyframes hm-seq { 0%, 62%, 100% { opacity: .26; } 30% { opacity: 1; } }
+.shimmer {
+  -webkit-mask-image: linear-gradient(90deg, #000 36%, rgba(0,0,0,.34) 50%, #000 64%);
+  mask-image: linear-gradient(90deg, #000 36%, rgba(0,0,0,.34) 50%, #000 64%);
+  -webkit-mask-size: 280% 100%;
+  mask-size: 280% 100%;
+  animation: sweep 2.4s linear infinite;
+}
+@keyframes sweep { from { -webkit-mask-position: 100% 0; mask-position: 100% 0; } to { -webkit-mask-position: 0 0; mask-position: 0 0; } }
+
+.todo { position: relative; display: flex; flex-direction: column; }
+.todo .nd { position: relative; display: grid; align-items: start; min-width: 0; }
+.todo .nd:not(:last-child)::after { content: ""; position: absolute; border-left: 1px solid var(--sep); pointer-events: none; }
+.todo .nd.traversed:not(:last-child)::after { border-left-color: color-mix(in srgb, var(--green) 34%, transparent); }
+.todo .nd.future-seg:not(:last-child)::after { border-left: 1px dashed var(--l4); }
+.todo .g { display: flex; align-items: center; justify-content: center; position: relative; z-index: 1; }
+
+/* Orig T0 (composer.css:14-38) */
+.todo.orig { padding: 5px 0 0; }
+.todo.orig .nd { grid-template-columns: 18px minmax(0, 1fr); column-gap: 8px; padding: 2.5px 0; }
+.todo.orig .nd.active { padding: 6px 0; }
+.todo.orig .nd:not(:last-child)::after { left: 8.5px; top: 20px; bottom: -4px; }
+.todo.orig .nd.active:not(:last-child)::after { top: 24px; }
+.todo.orig .g { width: 18px; height: 19px; }
+.todo.orig .nd.active .g { height: 20px; }
+.todo.orig .rtxt { font-size: 12.75px; line-height: 19px; color: var(--l3); }
+.todo.orig .nd.pending .rtxt { color: var(--l2); opacity: .76; }
+.todo.orig .amain { font-size: 14px; line-height: 20px; color: var(--l1); font-weight: 450; }
+.todo.orig .ameta {
+  margin-left: 7px; font-family: var(--mono); font-variation-settings: normal;
+  font-size: 11.5px; color: var(--l3); font-variant-numeric: tabular-nums;
+}
+.todo.orig .asub { margin-top: 2.5px; display: flex; gap: 6px; font-size: 12.5px; line-height: 18px; color: var(--l2); }
+.todo.orig .asub .el { font-family: var(--mono); font-variation-settings: normal; font-size: 11.5px; color: var(--l3); }
+
+/* Refined T0: Same Spine · Unified Sans Font + 14px Scale + 13px Top Gap + Breathing Rails */
+.todo.refined { padding: var(--sp-2) 0 0; /* 13px */ }
+.todo.refined .nd { grid-template-columns: 16px minmax(0, 1fr); column-gap: 9px; padding: 4.5px 0; }
+.todo.refined .nd.active { padding: 6.5px 0; }
+.todo.refined .nd:not(:last-child)::after { left: 7.5px; top: 22.5px; bottom: -6.5px; }
+.todo.refined .nd.active:not(:last-child)::after { top: 25px; }
+.todo.refined .g { width: 16px; height: 20px; }
+.todo.refined .rtxt { font-size: 14px; line-height: 20px; font-weight: 400; color: var(--l3); font-variant-numeric: tabular-nums; }
+.todo.refined .nd.pending .rtxt { color: var(--l2); opacity: .88; }
+.todo.refined .amain { font-size: 14px; line-height: 20px; color: var(--msg); font-weight: 450; font-variant-numeric: tabular-nums; }
+.todo.refined .ameta {
+  margin-left: 7px; font-family: var(--font);
+  font-size: 12.5px; font-weight: 400; color: var(--l3); font-variant-numeric: tabular-nums;
+}
+.todo.refined .asub {
+  margin-top: 3px; display: flex; align-items: baseline; gap: 5px;
+  font-size: 13px; line-height: 19px; color: var(--l2); font-variant-numeric: tabular-nums;
+}
+.todo.refined .asub .el { font-size: 12.5px; color: var(--l3); }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="seg-bar" role="tablist" aria-label="方案切换">
+    <button type="button" data-mode="orig">原状</button>
+    <button type="button" data-mode="v1" class="on">方案 1 · 仅调字体与间距</button>
+    <button type="button" data-mode="v2">方案 2 · 去选项外框 + 调字体间距</button>
+  </div>
+  <div class="sub-actions">
+    <button type="button" class="ghost-btn" id="btn-split">并排对比原状</button>
+    <button type="button" class="ghost-btn" id="btn-theme">切换浅色</button>
+  </div>
+</header>
+
+<main class="stage" id="stage"></main>
+
+<script>
+const state = {
+  mode: "v1",
+  split: false,
+  theme: "dark"
+};
+
+let seq = 0;
+function markSvg(size) {
+  const uid = "m" + (++seq);
+  const beams = [0, 1, 2].map((i) => {
+    const a = (i * Math.PI) / 3;
+    const dx = Math.cos(a), dy = Math.sin(a);
+    const mx = -dy * 10, my = dx * 10;
+    return {
+      x1: (mx - dx * 37).toFixed(2), y1: (my - dy * 37).toFixed(2),
+      x2: (mx + dx * 37).toFixed(2), y2: (my + dy * 37).toFixed(2),
+      cls: "hm-beam hm-b" + i, gid: uid + "-" + i
+    };
+  });
+  const stops = [0,1,2,3,4,5,6,7,8].map(k => `<stop offset="${(k/8).toFixed(3)}" style="stop-color:var(--aurora-g${k})"/>`).join("");
+  return `<svg class="hm-mark hm-seq" width="${size}" height="${size}" viewBox="-49 -48 92 94" aria-hidden="true">
+    <defs>${beams.map(b => `<linearGradient id="${b.gid}" gradientUnits="userSpaceOnUse" x1="${b.x1}" y1="${b.y1}" x2="${b.x2}" y2="${b.y2}">${stops}</linearGradient>`).join("")}</defs>
+    <g>${beams.map(b => `<path d="M${b.x1} ${b.y1}L${b.x2} ${b.y2}" pathLength="100" class="${b.cls}" stroke="url(#${b.gid})" stroke-width="13" stroke-linecap="round" fill="none"/>`).join("")}</g>
+  </svg>`;
+}
+
+const IC = {
+  ckSm: `<svg width="10.5" height="10.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4l3.1 3.1 6.5-6.8"/></svg>`,
+  ckTodo: `<svg width="12.5" height="12.5" viewBox="0 0 16 16" fill="none" stroke="var(--green)" stroke-opacity=".82" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4l3.1 3.1 6.5-6.8"/></svg>`,
+  ring: `<svg width="12" height="12" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="4.6" stroke="var(--l4)" stroke-width="1.35"/></svg>`,
+  caret: `<svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.8 6.2L8 9.4l3.2-3.2"/></svg>`
+};
+
+function renderQA(mode) {
+  if (mode === "v2") {
+    return `
+      <div class="tq-v2">
+        <div class="item">
+          <div class="q">DeepSeek Harness（目前仅 RC 版）和 Gemini CLI（折叠项）的一键安装策略怎么定？</div>
+          <div class="pill"><span class="ck">${IC.ckSm}</span><span>geminicli删掉不支持了，deepseek排除</span></div>
+        </div>
+        <div class="item">
+          <div class="q">下一步执行范围？</div>
+          <div class="pill"><span class="ck">${IC.ckSm}</span><span>更新 Demo 对齐全部 16 个提供方，并直接落地正式代码（Go + Mac + iPhone）<span class="rec">推荐</span></span></div>
+        </div>
+      </div>`;
+  }
+  const cls = mode === "orig" ? "tq-orig" : "tq-v1";
+  return `
+    <div class="${cls}">
+      <div class="item">
+        <div class="q">DeepSeek Harness（目前仅 RC 版）和 Gemini CLI（折叠项）的一键安装策略怎么定？</div>
+        <div class="ans"><div class="choice"><span class="ck">${IC.ckSm}</span><span class="atxt">geminicli删掉不支持了，deepseek排除</span></div></div>
+      </div>
+      <div class="item">
+        <div class="q">下一步执行范围？</div>
+        <div class="ans"><div class="choice"><span class="ck">${IC.ckSm}</span><span class="atxt">更新 Demo 对齐全部 16 个提供方，并直接落地正式代码（Go + Mac + iPhone）<span class="rec">推荐</span></span></div></div>
+      </div>
+    </div>`;
+}
+
+function renderTodo(mode) {
+  const isOrig = mode === "orig";
+  return `
+    <div class="todo ${isOrig ? "orig" : "refined"}">
+      <div class="nd completed traversed"><span class="g">${IC.ckTodo}</span><div class="rtxt">更新交互 Demo 对齐提供方规则</div></div>
+      <div class="nd completed traversed"><span class="g">${IC.ckTodo}</span><div class="rtxt">扩展后端托管配方并移除 Gemini 发现</div></div>
+      <div class="nd completed traversed"><span class="g">${IC.ckTodo}</span><div class="rtxt">重构桌面端提供方列表与详情交互</div></div>
+      <div class="nd active in_progress future-seg">
+        <span class="g">${markSvg(isOrig ? 17 : 16)}</span>
+        <div style="min-width:0">
+          <div class="amain"><span>统一 iPhone 端提供方安装与维护页面</span><span class="ameta">4/5</span></div>
+          <div class="asub"><span class="shimmer">等待模型响应</span><span class="el">· 16:36</span></div>
+        </div>
+      </div>
+      <div class="nd pending future-seg"><span class="g">${IC.ring}</span><div class="rtxt">运行前后端与端到端验证测试</div></div>
+    </div>`;
+}
+
+function renderPane(mode, label) {
+  return `
+    <div>
+      <div class="pane-label">${label}</div>
+      <div class="win">
+        <div class="dbody">
+          <div class="tr">
+            <div class="um ${mode === "orig" ? "" : "balanced"}"><div class="bub">同意</div></div>
+            ${renderQA(mode)}
+            <div class="tg-h"><span>运行了 10 条命令、读取了 21 个文件、编辑了 36 个文件</span>${IC.caret}</div>
+          </div>
+          ${renderTodo(mode)}
+        </div>
+      </div>
+    </div>`;
+}
+
+function render() {
+  document.documentElement.setAttribute("data-theme", state.theme);
+  document.body.classList.toggle("split", state.split);
+  document.querySelectorAll("[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === state.mode));
+  document.getElementById("btn-split").classList.toggle("on", state.split);
+  document.getElementById("btn-theme").textContent = state.theme === "dark" ? "切换浅色" : "切换深色";
+
+  const labels = { orig: "原状", v1: "方案 1 · 仅调字体与间距", v2: "方案 2 · 去选项外框 + 调字体间距" };
+  document.getElementById("stage").innerHTML = state.split
+    ? renderPane("orig", "左：原状") + renderPane(state.mode === "orig" ? "v1" : state.mode, "右：" + labels[state.mode === "orig" ? "v1" : state.mode])
+    : renderPane(state.mode, labels[state.mode]);
+}
+
+document.addEventListener("click", (e) => {
+  const mb = e.target.closest("[data-mode]");
+  if (mb) { state.mode = mb.dataset.mode; render(); return; }
+  if (e.target.id === "btn-split") { state.split = !state.split; render(); return; }
+  if (e.target.id === "btn-theme") { state.theme = state.theme === "dark" ? "soft" : "dark"; render(); }
+});
+
+const p = new URLSearchParams(location.search);
+if (p.get("mode")) state.mode = p.get("mode");
+if (p.get("split") === "1") state.split = true;
+if (p.get("theme")) state.theme = p.get("theme");
+render();
+</script>
+</body>
+</html>

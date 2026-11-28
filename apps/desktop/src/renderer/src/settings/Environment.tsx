@@ -90,7 +90,7 @@ export function Environment({ item, go }: { item: string; go: (item: string) => 
   const [id, sub, x] = item.split("/");
   const m = st.machines.find((y) => y.machineId === id);
   if (!m) return <NotEnvironment />;
-  if (sub === "providers" && x === "history") return <ProviderHistory />;
+  if (sub === "providers" && x === "history") return <ProviderHistory m={m} />;
   if (sub === "providers" && x) return <Provider key={m.machineId + x} m={m} agent={x} />;
   if (sub === "providers") return <Providers m={m} open={(a) => go(`${id}/providers/${a}`)} />;
   if (sub === "projects") return <Projects m={m} />;

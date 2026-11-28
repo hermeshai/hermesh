@@ -195,6 +195,12 @@ type Store struct {
 	workSeq    int64
 	workSeqNow atomic.Int64
 	workKeys   map[workWho]int64
+
+	projectsMu     sync.Mutex
+	projectsGen    atomic.Uint64
+	projectsAtGen  uint64
+	projectsLoaded bool
+	projectsCache  []Project
 }
 
 func OpenStore(path string) (*Store, error) {
@@ -261,6 +267,11 @@ func (s *Store) Set(key string, v []byte) error {
 	return err
 }
 
+func (s *Store) Delete(key string) error {
+	_, err := s.db.Exec(`DELETE FROM kv WHERE key=?`, key)
+	return err
+}
+
 func (s *Store) GetProto(key string, m proto.Message) (bool, error) {
 	b, err := s.Get(key)
 	if err != nil || b == nil {
@@ -288,6 +299,16 @@ type Project struct {
 func (p *Project) InPlace() bool { return p.Workspace == identityv1.Workspace_WORKSPACE_IN_PLACE }
 
 func (s *Store) Projects() ([]Project, error) {
+	gen := s.projectsGen.Load()
+	s.projectsMu.Lock()
+	if s.projectsLoaded && s.projectsAtGen == gen {
+		out := make([]Project, len(s.projectsCache))
+		copy(out, s.projectsCache)
+		s.projectsMu.Unlock()
+		return out, nil
+	}
+	s.projectsMu.Unlock()
+
 	rows, err := s.rdb.Query(`SELECT project_id, path, default_base_ref, workspace, description FROM projects ORDER BY project_id`)
 	if err != nil {
 		return nil, err
@@ -301,7 +322,20 @@ func (s *Store) Projects() ([]Project, error) {
 		}
 		out = append(out, p)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	s.projectsMu.Lock()
+	if s.projectsGen.Load() == gen {
+		cached := make([]Project, len(out))
+		copy(cached, out)
+		s.projectsCache = cached
+		s.projectsAtGen = gen
+		s.projectsLoaded = true
+	}
+	s.projectsMu.Unlock()
+	return out, nil
 }
 
 func (s *Store) Project(id string) (*Project, error) {
@@ -314,14 +348,24 @@ func (s *Store) Project(id string) (*Project, error) {
 }
 
 func (s *Store) PutProject(p Project) error {
+	s.projectsGen.Add(1)
 	_, err := s.db.Exec(`INSERT INTO projects(project_id,path,default_base_ref,workspace,description,created_at) VALUES(?,?,?,?,?,?)
 		ON CONFLICT(project_id) DO UPDATE SET path=excluded.path, default_base_ref=excluded.default_base_ref, workspace=excluded.workspace, description=excluded.description`,
 		p.ID, p.Path, p.DefaultBaseRef, int(p.Workspace), p.Description, time.Now().Unix())
+	s.projectsMu.Lock()
+	s.projectsGen.Add(1)
+	s.projectsLoaded = false
+	s.projectsMu.Unlock()
 	return err
 }
 
 func (s *Store) DeleteProject(id string) error {
+	s.projectsGen.Add(1)
 	_, err := s.db.Exec(`DELETE FROM projects WHERE project_id=?`, id)
+	s.projectsMu.Lock()
+	s.projectsGen.Add(1)
+	s.projectsLoaded = false
+	s.projectsMu.Unlock()
 	return err
 }
 

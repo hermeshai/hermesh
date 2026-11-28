@@ -3156,9 +3156,9 @@ private struct SessionTodoSpine: View {
         let isLast = step.index == lastActiveIndex
         let showSub = isLast && window.subFocus != nil
         let deduplicatedWork = isLast && window.subFocus == nil && hasWork
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: 9) {
             glyphBox(active: true) { stepGlyph(step.status) }
-            VStack(alignment: .leading, spacing: 2.5) {
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(Self.styledStepText(step.text, meta: order == 0 ? "\(window.stepNumber)/\(window.total)" : nil))
                         .font(.subheadline.weight(.medium))
@@ -3217,20 +3217,20 @@ private struct SessionTodoSpine: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 6.5)
         .background { spineLine(segment(for: step), active: true) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("thread-todo-step-\(step.index)")
     }
 
     @ViewBuilder private func passiveNode(_ step: IndexedTodoStep) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: 9) {
             glyphBox(active: false) { stepGlyph(step.status) }
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(Self.styledStepText(step.text))
-                    .font(.footnote)
+                    .font(.subheadline)
                     .foregroundStyle(step.status == .pending ? .secondary : .tertiary)
-                    .opacity(step.status == .pending ? 0.76 : 1)
+                    .opacity(step.status == .pending ? 0.88 : 1)
                     .fixedSize(horizontal: false, vertical: true)
                 if step.status == .skipped {
                     Text("Skipped")
@@ -3243,7 +3243,7 @@ private struct SessionTodoSpine: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 2.5)
+        .padding(.vertical, 4.5)
         .background { spineLine(segment(for: step), active: false) }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("thread-todo-step-\(step.index)")
@@ -3252,15 +3252,15 @@ private struct SessionTodoSpine: View {
     @ViewBuilder private func spineLine(_ seg: SpineSegment, active: Bool) -> some View {
         if seg != .none {
             GeometryReader { geo in
-                let startY: CGFloat = active ? 24 : 20
-                let endY: CGFloat = geo.size.height + 4
+                let startY: CGFloat = active ? 25 : 22.5
+                let endY: CGFloat = geo.size.height + 6.5
                 if endY > startY {
                     Path { p in
-                        p.move(to: CGPoint(x: 9, y: startY))
-                        p.addLine(to: CGPoint(x: 9, y: endY))
+                        p.move(to: CGPoint(x: 8, y: startY))
+                        p.addLine(to: CGPoint(x: 8, y: endY))
                     }
                     .stroke(
-                        seg == .traversed ? Color.green.opacity(0.30) : (seg == .future ? Color(UIColor.quaternaryLabel) : Palette.separator),
+                        seg == .traversed ? Color.green.opacity(0.34) : (seg == .future ? Color(UIColor.quaternaryLabel) : Palette.separator),
                         style: seg == .future ? StrokeStyle(lineWidth: 1, dash: [2.5, 2.5]) : StrokeStyle(lineWidth: 1)
                     )
                 }
@@ -3270,7 +3270,7 @@ private struct SessionTodoSpine: View {
 
     private func glyphBox<Content: View>(active: Bool, @ViewBuilder _ content: () -> Content) -> some View {
         content()
-            .frame(width: 18, height: active ? 20 : 19)
+            .frame(width: 16, height: 20)
     }
 
     @ViewBuilder private func stepGlyph(_ status: TodoStepStatus) -> some View {

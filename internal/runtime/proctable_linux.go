@@ -7,6 +7,8 @@ import (
 	"syscall"
 )
 
+const procCPUNanosecondExact = false
+
 // procCPU returns pid's cumulative utime + stime clock ticks from /proc/<pid>/stat.
 func procCPU(pid int) (uint64, bool) {
 	if pid <= 0 {

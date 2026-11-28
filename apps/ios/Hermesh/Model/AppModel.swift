@@ -1600,9 +1600,8 @@ final class AppModel {
         } catch { report(error) }
     }
 
-    /// Refreshes account rate limits (including out-of-band queries like Antigravity's
-    /// `agy -p /usage`) on each online machine when Limits opens; stale cached limits
-    /// stay visible while fresh ones arrive over Watch.
+    /// Refreshes account rate limits on each online machine when Limits opens;
+    /// stale cached limits stay visible while fresh ones arrive over Watch.
     func refreshLimits() async {
         guard let api else { return }
         let ids = machines.filter(\.online).map(\.machineID)

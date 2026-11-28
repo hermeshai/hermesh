@@ -41,7 +41,7 @@ export function Searching() {
           {t("team.searching")}
         </h2>
         <div className="fr-sweep in" style={rise(1)} aria-hidden="true">
-          {codingAgentIds.map((id, i) => (
+          {codingAgentIds.filter((id) => id !== "gemini").map((id, i) => (
             <span key={id} style={{ "--i": i } as CSSProperties}>
               <AgentLogo agent={id} size={32} />
             </span>

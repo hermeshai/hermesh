@@ -125,7 +125,7 @@ func (l *localService) watchRound(ctx context.Context, send func(*localv1.WatchR
 	ctx = context.WithValue(ctx, heldOnly{}, true)
 
 	var w shown
-	first := w.diff(ctx, l, o, mode)
+	first := w.diff(ctx, l, o, mode, true)
 	first.Reset_ = true
 	if mode != "status" {
 		page, err := l.ListSessions(ctx, &localv1.ListSessionsRequest{Limit: keepSessions, View: sessionv1.SessionView_SESSION_VIEW_BASIC})
@@ -152,6 +152,7 @@ func (l *localService) watchRound(ctx context.Context, send func(*localv1.WatchR
 	defer tick.Stop()
 	for {
 		var out *localv1.WatchResponse
+		full := true
 		select {
 		case <-ctx.Done():
 			return nil
@@ -171,7 +172,7 @@ func (l *localService) watchRound(ctx context.Context, send func(*localv1.WatchR
 			mWatchWakeSession.Inc()
 			if m.MachinesChanged {
 				t0 := time.Now()
-				out = w.diff(ctx, l, o, mode)
+				out = w.diff(ctx, l, o, mode, true)
 				mWatchDiff.Since(t0)
 			} else {
 				out = &localv1.WatchResponse{}
@@ -181,13 +182,14 @@ func (l *localService) watchRound(ctx context.Context, send func(*localv1.WatchR
 			mWatchWakeKick.Inc()
 		case <-tick.C:
 			mWatchWakeTick.Inc()
+			full = false
 		}
 		if out == nil {
 			if l.o() != o || screenMode(o.Status()) != mode {
 				return errNewRound
 			}
 			t0 := time.Now()
-			out = w.diff(ctx, l, o, mode)
+			out = w.diff(ctx, l, o, mode, full)
 			mWatchDiff.Since(t0)
 		}
 		if !watchResponseEmpty(out) {
@@ -322,8 +324,11 @@ type shown struct {
 }
 
 // diff is what changed since the screen was last sent (everything, the
-// first time). A list that could not be read is left as it was.
-func (w *shown) diff(ctx context.Context, l *localService, o *Owner, mode string) *localv1.WatchResponse {
+// first time). A list that could not be read is left as it was. When full is
+// false (periodic screenTick without a replica/write kick), owner-mode screens
+// skip re-cloning and diffing replica-only lists whose mutations always emit
+// kick (Clients, and Pairings when no active pairing awaits expiry).
+func (w *shown) diff(ctx context.Context, l *localService, o *Owner, mode string, full bool) *localv1.WatchResponse {
 	out := &localv1.WatchResponse{}
 	st := o.Status()
 	// Suppress minor relay ping RTT micro-jitter when connection health is
@@ -385,8 +390,10 @@ func (w *shown) diff(ctx context.Context, l *localService, o *Owner, mode string
 		}
 		out.Machines, out.RemovedMachineIds = w.machines.diff(r.Machines, func(m *localv1.Machine) string { return m.MachineId })
 	}
-	if r, err := l.ListClients(ctx, &localv1.ListClientsRequest{}); err == nil {
-		out.Clients, out.RemovedGrantIds = w.clients.diff(r.Clients, func(c *localv1.Client) string { return c.GrantId })
+	if full || mode != "owner" {
+		if r, err := l.ListClients(ctx, &localv1.ListClientsRequest{}); err == nil {
+			out.Clients, out.RemovedGrantIds = w.clients.diff(r.Clients, func(c *localv1.Client) string { return c.GrantId })
+		}
 	}
 	var projRes *localv1.ListProjectsResponse
 	var projErr error
@@ -409,8 +416,10 @@ func (w *shown) diff(ctx context.Context, l *localService, o *Owner, mode string
 		} else if r, err := l.ListDevices(ctx, &localv1.ListDevicesRequest{}); err == nil {
 			out.Devices, out.RemovedDeviceKeyIds = w.devices.diff(r.Devices, func(d *localv1.Device) string { return d.KeyId })
 		}
-		if r, err := l.ListPairingRequests(ctx, &localv1.ListPairingRequestsRequest{}); err == nil {
-			out.Pairings, out.RemovedPairingCodes = w.pairings.diff(r.Pairings, func(p *localv1.PairingDetails) string { return p.Code })
+		if full || len(w.pairings.by) > 0 {
+			if r, err := l.ListPairingRequests(ctx, &localv1.ListPairingRequestsRequest{}); err == nil {
+				out.Pairings, out.RemovedPairingCodes = w.pairings.diff(r.Pairings, func(p *localv1.PairingDetails) string { return p.Code })
+			}
 		}
 	}
 	return out

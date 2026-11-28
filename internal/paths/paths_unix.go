@@ -31,13 +31,19 @@ func cliHome() string {
 }
 
 // Endpoints are Unix sockets, whose paths have a short limit: a long data
-// directory's go to the temp folder.
+// directory's go to a short temp folder (sessions' own TMPDIR can be >100 bytes).
+func shortTempDir() string {
+	if d := os.TempDir(); len(d) <= 40 {
+		return d
+	}
+	return "/tmp"
+}
 
 // LocalAPI is where the owner role serves LocalService.
 func LocalAPI(dataDir string) string {
 	p := filepath.Join(dataDir, "run", "hermeshd.sock")
 	if len(p) > 100 {
-		p = filepath.Join(os.TempDir(), fmt.Sprintf("hermesh-%d", os.Getuid()), "hermeshd.sock")
+		p = filepath.Join(shortTempDir(), fmt.Sprintf("hermesh-%d", os.Getuid()), "hermeshd.sock")
 	}
 	return p
 }
@@ -47,7 +53,7 @@ func LocalAPI(dataDir string) string {
 func DesktopPerf(dataDir string) string {
 	p := filepath.Join(dataDir, "run", "desktop-perf.sock")
 	if len(p) > 100 {
-		p = filepath.Join(os.TempDir(), fmt.Sprintf("hermesh-%d", os.Getuid()), "desktop-perf.sock")
+		p = filepath.Join(shortTempDir(), fmt.Sprintf("hermesh-%d", os.Getuid()), "desktop-perf.sock")
 	}
 	return p
 }
@@ -60,7 +66,7 @@ func Control(dataDir string) string {
 	if len(p) > 100 {
 		abs, _ := filepath.Abs(dataDir)
 		h := sha256.Sum256([]byte(abs))
-		p = filepath.Join(os.TempDir(), fmt.Sprintf("hermesh-control-%d-%x.sock", os.Getuid(), h[:8]))
+		p = filepath.Join(shortTempDir(), fmt.Sprintf("hermesh-control-%d-%x.sock", os.Getuid(), h[:8]))
 	}
 	return p
 }
@@ -69,7 +75,7 @@ func Control(dataDir string) string {
 func Tools(dataDir, machineID string) string {
 	p := filepath.Join(dataDir, "tools.sock")
 	if len(p) > 100 {
-		p = filepath.Join(os.TempDir(), "hermesh-"+strings.TrimPrefix(machineID, "m_")[:12]+".sock")
+		p = filepath.Join(shortTempDir(), "hermesh-"+strings.TrimPrefix(machineID, "m_")[:12]+".sock")
 	}
 	return p
 }
@@ -83,7 +89,7 @@ func Her(dataDir string) string {
 	if len(p) > 100 {
 		abs, _ := filepath.Abs(dataDir)
 		h := sha256.Sum256([]byte(abs))
-		p = filepath.Join(os.TempDir(), fmt.Sprintf("hermesh-her-%d-%x", os.Getuid(), h[:8]), "her.sock")
+		p = filepath.Join(shortTempDir(), fmt.Sprintf("hermesh-her-%d-%x", os.Getuid(), h[:8]), "her.sock")
 	}
 	return p
 }
@@ -96,7 +102,7 @@ func Link(cliHome string) string {
 	if len(p) > 100 {
 		abs, _ := filepath.Abs(cliHome)
 		h := sha256.Sum256([]byte(abs))
-		p = filepath.Join(os.TempDir(), fmt.Sprintf("hermesh-link-%d-%x.sock", os.Getuid(), h[:8]))
+		p = filepath.Join(shortTempDir(), fmt.Sprintf("hermesh-link-%d-%x.sock", os.Getuid(), h[:8]))
 	}
 	return p
 }
@@ -106,6 +112,8 @@ func LinkLock(cliHome string) string { return filepath.Join(cliHome, "link") }
 
 // localDir is this user's own folder in the temp directory (the same for
 // what launchd or systemd starts and for a shell), as LocalAPI's is.
-func localDir() string { return filepath.Join(os.TempDir(), fmt.Sprintf("hermesh-%d", os.Getuid())) }
+func localDir() string {
+	return filepath.Join(shortTempDir(), fmt.Sprintf("hermesh-%d", os.Getuid()))
+}
 
 const localExt = ".sock"

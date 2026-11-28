@@ -1738,7 +1738,7 @@ pub struct DeckOpenResult {
     pub dirty: bool,
     /// `DECK_CONTRACT_VERSION` of the kernel.
     pub contract_version: u32,
-    /// The engine build (`nimbleoffice 65549f0e`): a replica built from another is refused.
+    /// The engine build (`betteroffice 301ce547`): a replica built from another is refused.
     pub engine: String,
     /// Replicas: the whole Yrs document as one v1 update, base64.
     #[serde(default, skip_serializing_if = "Option::is_none")]

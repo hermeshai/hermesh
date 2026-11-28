@@ -1429,7 +1429,7 @@ function renderStepText(text: string): ReactNode {
 function TodoStepGlyph({ status }: { status: TodoStepStatus }) {
   switch (status) {
     case "in_progress":
-      return <Mark size={17} variant="seq" />;
+      return <Mark size={16} variant="seq" />;
     case "completed":
       return <Icon name="check" className="th-todo-ic" />;
     case "skipped":

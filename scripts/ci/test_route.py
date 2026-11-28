@@ -32,6 +32,11 @@ class RouteTests(unittest.TestCase):
             (["her/crates/her-core/src/a.rs"], ""),
             (["her/apps/console/src/a.ts"], "app her_integration"),
             (["internal/runtime/acp/acp.go"], "go"),
+            (["scripts/install.sh"], "go linux_docker"),
+            (["cmd/hermeshd/main.go"], "go linux_docker"),
+            (["internal/update/update.go"], "go linux_docker"),
+            (["internal/service/service_unix.go"], "go go_macos windows linux_docker"),
+            (["e2e/linux_provider_e2e_test.go"], "go linux_docker"),
             (["cmd/hermesh-mobile/main.go"], "go ios"),
             (["cmd/hermesh-signer/panel_windows.go"], "windows windows_arm"),
             (["packages/her-client/testdata/deliveries.json"], "go app her_integration ios hermeshkit mac_native windows"),
@@ -149,7 +154,8 @@ class GitRouteTests(unittest.TestCase):
 
     def test_file_mode_only(self):
         (self.repo / "scripts/install.sh").chmod(0o755)
-        self.assertEqual(self.output(self.merge())["go"], "true")
+        result = self.output(self.merge())
+        self.assertEqual((result["go"], result["linux_docker"]), ("true", "true"))
 
     def test_unusual_names_and_non_pr_events(self):
         (self.repo / "docs" / "中文 $(touch x)\nmode=full.md").touch()

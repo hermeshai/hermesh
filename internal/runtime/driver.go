@@ -298,6 +298,13 @@ type Diagnoser interface {
 	Diagnose() Diagnosis
 }
 
+// LivenessSampler is optionally implemented alongside Diagnoser to sample last
+// stdout activity and cumulative CPU ticks without scanning the full OS process
+// table or redacting stderr on every watchdog tick during active streaming.
+type LivenessSampler interface {
+	SampleLiveness() (lastOutput time.Time, cpuTicks uint64, hasCPU bool)
+}
+
 // MaxBackgroundIdleTTL bounds how long awaited background work can keep an
 // otherwise silent provider process exempt from Supervisor idle reaping.
 const MaxBackgroundIdleTTL = 2 * time.Hour

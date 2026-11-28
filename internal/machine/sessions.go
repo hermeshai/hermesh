@@ -73,8 +73,8 @@ type AgentDiscoverer interface {
 }
 
 // LimitsReader is optionally implemented by an AgentDiscoverer whose account
-// rate limits are queried separately from routine agent discovery (e.g.
-// Antigravity's `agy -p /usage`), only when the owner views Limits.
+// rate limits are queried separately from routine agent discovery, only when
+// the owner views Limits.
 type LimitsReader interface {
 	ReadLimits(ctx context.Context) *rt.Limits
 }
@@ -96,6 +96,9 @@ func defaultDiscoverers(pathEnv string) map[string]AgentDiscoverer {
 		"codex":  cx,
 	}
 	for _, p := range rtacp.Providers(pathEnv) {
+		if p.Name() == "gemini" && os.Getenv("HERMESH_GEMINI_BIN") == "" {
+			continue
+		}
 		ds[p.Name()] = p
 	}
 	return ds
@@ -503,11 +506,7 @@ func (n *Machine) GetSessionFor(ctx context.Context, p *Principal, id string) (*
 	if n.sessions == nil {
 		return nil, cerr(connect.CodeNotFound, "session not found")
 	}
-	proj, err := n.sessions.GetSession(ctx, toKernelPrincipal(p), id)
-	if err != nil {
-		return nil, err
-	}
-	return proj.GetSession(), nil
+	return n.sessions.GetSessionRecord(ctx, toKernelPrincipal(p), id)
 }
 
 func (n *Machine) Running() int {

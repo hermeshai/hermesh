@@ -157,6 +157,10 @@ type Owner struct {
 	sessionMu   sync.Mutex
 	sessionWake chan struct{}
 	sessionSubs map[chan *sessionv1.WatchSessionsResponse]struct{}
+
+	devCacheMu   sync.Mutex
+	devCacheRoot *identityv1.RootCert
+	devCacheList []cachedRootDevice
 }
 
 type directFailure struct {
@@ -2373,6 +2377,7 @@ func (o *Owner) LookupPairing(ctx context.Context, code string) (*localv1.Pairin
 		o.byCode[d.Code] = true
 		o.mu.Unlock()
 		d.Confirmed = true
+		o.kickScreens()
 	}
 	return d, err
 }

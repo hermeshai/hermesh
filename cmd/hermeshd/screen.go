@@ -16,13 +16,14 @@ import (
 // docs/computer-control-linux.md): whether the owner's devices can see and
 // operate its screen, and the switches a person at the machine has.
 func screenCommand(dataDir *string, open func() (*machine.Machine, error)) *cobra.Command {
+	machineDir := func() string { return resolveMachineDir(*dataDir) }
 	cmd := &cobra.Command{Use: "screen", Short: "Remote Desktop: whether your devices can see and operate this screen",
 		Long: `Your trusted devices can see and operate this machine's screen (Remote
 Desktop, in the iPhone app's Her settings). On Linux it works on X11, GNOME,
 Plasma and wlroots desktops (Sway, Hyprland and their kind).`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			c, _, err := machineCheck(cmd.Context(), *dataDir, open)
+			c, _, err := machineCheck(cmd.Context(), machineDir(), open)
 			if err != nil {
 				return err
 			}
@@ -36,7 +37,7 @@ Plasma and wlroots desktops (Sway, Hyprland and their kind).`,
 	cmd.AddCommand(
 		&cobra.Command{Use: "stop", Short: "End the session under way", Args: cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, _ []string) error {
-				_, ok, err := machine.ControlRequest(cmd.Context(), filepath.Join(*dataDir, "machine"), "POST", "/screen/stop", nil)
+				_, ok, err := machine.ControlRequest(cmd.Context(), machineDir(), "POST", "/screen/stop", nil)
 				if !ok {
 					return errors.New("hermeshd is not running")
 				}
@@ -44,20 +45,20 @@ Plasma and wlroots desktops (Sway, Hyprland and their kind).`,
 			}},
 		&cobra.Command{Use: "off", Short: "Refuse every device's request to see this screen, until `hermeshd screen on`", Args: cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, _ []string) error {
-				f := machine.ScreenOffPath(filepath.Join(*dataDir, "machine"))
+				f := machine.ScreenOffPath(machineDir())
 				if err := os.MkdirAll(filepath.Dir(f), 0o700); err != nil {
 					return err
 				}
 				if err := os.WriteFile(f, nil, 0o600); err != nil {
 					return err
 				}
-				machine.ControlRequest(cmd.Context(), filepath.Join(*dataDir, "machine"), "POST", "/screen/stop", nil)
+				machine.ControlRequest(cmd.Context(), machineDir(), "POST", "/screen/stop", nil)
 				fmt.Println("Remote Desktop is off on this machine")
 				return nil
 			}},
 		&cobra.Command{Use: "on", Short: "Let your devices see and operate this screen again", Args: cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, _ []string) error {
-				if err := os.Remove(machine.ScreenOffPath(filepath.Join(*dataDir, "machine"))); err != nil && !os.IsNotExist(err) {
+				if err := os.Remove(machine.ScreenOffPath(machineDir())); err != nil && !os.IsNotExist(err) {
 					return err
 				}
 				fmt.Println("Remote Desktop is on on this machine")

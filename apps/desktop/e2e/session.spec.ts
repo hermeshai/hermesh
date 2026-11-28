@@ -654,6 +654,15 @@ test("a multi-question decision presents one item at a time, auto-advances, and 
     const settled = log.getByTestId("settled-question");
     await expect(settled.locator(".tq-choice")).toHaveCount(3);
     await expect(settled.locator(".tq-rec")).toHaveText(["推荐", "推荐"]);
+    const settledStyle = await settled.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      const outer = el.getBoundingClientRect();
+      const firstPill = el.querySelector(".tq-ans")!.getBoundingClientRect();
+      return { bg: cs.backgroundColor, shadow: cs.boxShadow, outerWidth: outer.width, pillWidth: firstPill.width };
+    });
+    expect(settledStyle.bg).toBe("rgba(0, 0, 0, 0)");
+    expect(settledStyle.shadow).toBe("none");
+    expect(settledStyle.pillWidth).toBeLessThan(settledStyle.outerWidth);
     const alignment = await settled.locator(".tq-choice").evaluateAll((rows) =>
       rows.map((row) => {
         const val = row.querySelector(".tq-val")!.getBoundingClientRect();
@@ -1339,6 +1348,15 @@ test("a live ACP session shows its inline step checklist and focus while running
     // Flows inline inside .dbody above the composer (never inside .cmp-zone), and never leaks raw update_steps tool rows:
     const inScrollFlow = await todoCard.evaluate((el) => !!el.closest(".dbody") && !el.closest(".cmp-zone"));
     expect(inScrollFlow).toBe(true);
+    const todoMetrics = await todoCard.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      const meta = getComputedStyle(el.querySelector(".th-todo-meta")!);
+      const passive = getComputedStyle(el.querySelector(".th-todo-row-txt")!);
+      return { padTop: cs.paddingTop, metaFont: meta.fontFamily, passiveSize: passive.fontSize };
+    });
+    expect(todoMetrics.padTop).toBe("13px");
+    expect(todoMetrics.metaFont).not.toContain("Google Sans Code");
+    expect(todoMetrics.passiveSize).toBe("14px");
     const [cardBox, cmpBox] = [(await todoCard.boundingBox())!, (await page.locator(".th-cmp").boundingBox())!];
     expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(cmpBox.y);
     await expect(log).not.toContainText("update_steps");

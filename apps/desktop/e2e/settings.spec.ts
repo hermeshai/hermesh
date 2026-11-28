@@ -398,9 +398,15 @@ test("settings 环境: this Mac's page names it, keeps it online, opens its prov
   const providers = page_(settings, "Agent 提供方");
   const gemini = providers.getByRole("list", { name: "Agent 提供方" }).getByRole("listitem", { name: "Gemini CLI" });
   await expect(gemini).toContainText("已登录", { timeout: 30_000 });
-  await expect(providers.getByRole("list", { name: "未安装" }).getByRole("listitem").first()).toContainText("安装后会自动出现在这里");
-  const others = providers.getByRole("button", { name: "其他提供方（2）" });
   const missing = providers.getByRole("list", { name: "未安装" });
+  await expect(missing.getByRole("listitem", { name: "Antigravity" })).toContainText("安装后会自动发现");
+  if ((await missing.getByRole("button", { name: "安装…" }).count()) > 0) {
+    await missing.getByRole("button", { name: "安装…" }).first().click();
+    await expect(settings.getByRole("dialog")).toContainText("owner-mac");
+    await settings.getByRole("dialog").getByRole("button", { name: "取消" }).click();
+    await expect(settings.getByRole("dialog")).toHaveCount(0);
+  }
+  const others = providers.getByRole("button", { name: "其他提供方（2）" });
   await expect(missing.getByRole("listitem", { name: "Augment" })).toHaveCount(0);
   await expect(missing.getByRole("listitem", { name: "DeepSeek Harness" })).toHaveCount(0);
   await others.click();
@@ -421,18 +427,11 @@ test("settings 环境: this Mac's page names it, keeps it online, opens its prov
   await snap(settings, "settings-providers");
   await gemini.click();
   await expect(page_(settings, "Gemini CLI").getByRole("region", { name: "Gemini CLI" })).toContainText("owner-mac");
-  await page_(settings, "Gemini CLI").getByRole("button", { name: "验证命令行工具" }).click();
-  await expect(page_(settings, "Gemini CLI").getByRole("status")).toContainText("已完成", { timeout: 30_000 });
-  await page_(settings, "Gemini CLI").getByRole("button", { name: "用此机账号测试模型" }).click();
+  await page_(settings, "Gemini CLI").getByRole("button", { name: "测试" }).click();
   // The scripted CLI ignores a natural-language prompt; a completed process alone cannot pass.
   await expect(page_(settings, "Gemini CLI").getByRole("status").filter({ hasText: "会话未通过" })).toBeVisible({ timeout: 30_000 });
   // No projects of its own: projects are the environment's.
   await expect(page_(settings, "Gemini CLI")).not.toContainText("添加项目");
-  await settings.getByRole("button", { name: "返回Agent 提供方" }).click();
-  await providers.getByRole("button", { name: "提供方任务记录" }).click();
-  const history = page_(settings, "提供方任务记录");
-  await expect(history).toContainText("Gemini CLI · owner-mac");
-  await expect(history).toContainText("已完成");
   await settings.getByRole("button", { name: "返回Agent 提供方" }).click();
   await settings.getByRole("button", { name: `返回${thisComputer}` }).click();
   await expect(entries).toBeVisible();
